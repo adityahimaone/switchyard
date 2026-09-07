@@ -2,106 +2,165 @@
 
 /* =========================================================
    BoardUI redesign tokens — kanban-board
-   Semantic layer inspired by BoardUI (boardui.com) while
-   preserving every application animation (loading signal,
-   agent flow, flow map, provider grid, reduced-motion).
-   Dark-first: one token set, tuned for ops surfaces.
+   Dual-theme semantic layer (light + dark) following the
+   BoardUI token model: primitive values live in :root/.dark,
+   @theme inline re-exports them as Tailwind utilities so the
+   whole app flips on the `.dark` class of <html>.
+   Dark is the product default (ops surface); init script in
+   index.html applies it before first paint.
    ========================================================= */
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  /* --- BoardUI semantic surfaces (dark-first) --- */
-  --color-background-full: #0b0e14;          /* page ground          */
-  --color-background-primary: #11151f;      /* cards / panels        */
-  --color-background-primary-hover: #161c29;
-  --color-background-secondary: #0d1119;    /* inset / rail          */
-  --color-background-tertiary: #161b27;     /* chips / sub-surfaces  */
+:root {
+  --kb-bg-full: #f6f8fb;            /* page ground          */
+  --kb-bg-primary: #ffffff;         /* cards / panels       */
+  --kb-bg-primary-hover: #f1f4f9;
+  --kb-bg-secondary: #eef1f6;       /* inset / rail         */
+  --kb-bg-tertiary: #e6eaf1;        /* chips / sub-surfaces */
+  --kb-text-primary: #171a21;
+  --kb-text-secondary: #414855;
+  --kb-text-tertiary: #6a7383;
+  --kb-text-placeholder: #98a1b1;
+  --kb-border-default: #e0e5ed;
+  --kb-border-strong: #cdd5e1;
+  --kb-border-focus-ring: #0cb6b3;
+  --kb-accent-400: #10c8c5;
+  --kb-accent-500: #0cb6b3;
+  --kb-accent-600: #0a918f;
+  --kb-accent-foreground: #ffffff;
+  --kb-status-success: #059669;
+  --kb-status-warning: #b45309;
+  --kb-status-danger: #dc2626;
+  --kb-status-info: #0369a1;
+  --kb-status-neutral: #66748a;
+  --kb-sidebar: #eef1f6;
+  --kb-shadow-card: 0 1px 2px rgb(16 24 40 / 0.06), 0 4px 12px rgb(16 24 40 / 0.06);
+  --kb-shadow-dropdown: 0 4px 16px rgb(16 24 40 / 0.10);
+  --kb-scrollbar: #c3ccd9;
+  color-scheme: light;
+}
+
+.dark {
+  --kb-bg-full: #0b0e14;
+  --kb-bg-primary: #11151f;
+  --kb-bg-primary-hover: #161c29;
+  --kb-bg-secondary: #0d1119;
+  --kb-bg-tertiary: #161b27;
+  --kb-text-primary: #f4f7fb;
+  --kb-text-secondary: #b5bdcc;
+  --kb-text-tertiary: #8b93a7;
+  --kb-text-placeholder: #5b6478;
+  --kb-border-default: #1e2430;
+  --kb-border-strong: #273043;
+  --kb-border-focus-ring: #10e0dd;
+  --kb-accent-400: #4ee9e6;
+  --kb-accent-500: #10e0dd;
+  --kb-accent-600: #0cb6b3;
+  --kb-accent-foreground: #06070a;
+  --kb-status-success: #34d399;
+  --kb-status-warning: #fbbf24;
+  --kb-status-danger: #f87171;
+  --kb-status-info: #38bdf8;
+  --kb-status-neutral: #66748a;
+  --kb-sidebar: #0e1118;
+  --kb-shadow-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 4px 12px rgb(0 0 0 / 0.22);
+  --kb-shadow-dropdown: 0 4px 16px rgb(0 0 0 / 0.35);
+  --kb-scrollbar: #2a3140;
+  color-scheme: dark;
+}
+
+@theme inline {
+  /* --- Surfaces --- */
+  --color-background-full: var(--kb-bg-full);
+  --color-background-primary: var(--kb-bg-primary);
+  --color-background-primary-hover: var(--kb-bg-primary-hover);
+  --color-background-secondary: var(--kb-bg-secondary);
+  --color-background-tertiary: var(--kb-bg-tertiary);
 
   /* --- Text ramp --- */
-  --color-text-primary: #f4f7fb;
-  --color-text-secondary: #b5bdcc;
-  --color-text-tertiary: #8b93a7;
-  --color-text-placeholder: #5b6478;
+  --color-text-primary: var(--kb-text-primary);
+  --color-text-secondary: var(--kb-text-secondary);
+  --color-text-tertiary: var(--kb-text-tertiary);
+  --color-text-placeholder: var(--kb-text-placeholder);
 
   /* --- Borders --- */
-  --color-border-default: #1e2430;
-  --color-border-strong: #273043;
-  --color-border-focus-ring: #10e0dd;
+  --color-border-default: var(--kb-border-default);
+  --color-border-strong: var(--kb-border-strong);
+  --color-border-focus-ring: var(--kb-border-focus-ring);
 
   /* --- Accent (CTA / selection) --- */
-  --color-accent-400: #4ee9e6;
-  --color-accent-500: #10e0dd;
-  --color-accent-600: #0cb6b3;
+  --color-accent-400: var(--kb-accent-400);
+  --color-accent-500: var(--kb-accent-500);
+  --color-accent-600: var(--kb-accent-600);
+  --color-accent-foreground: var(--kb-accent-foreground);
 
   /* --- Status (task state only) --- */
-  --color-status-success: #34d399;
-  --color-status-warning: #fbbf24;
-  --color-status-danger: #f87171;
-  --color-status-info: #38bdf8;
-  --color-status-neutral: #66748a;
+  --color-status-success: var(--kb-status-success);
+  --color-status-warning: var(--kb-status-warning);
+  --color-status-danger: var(--kb-status-danger);
+  --color-status-info: var(--kb-status-info);
+  --color-status-neutral: var(--kb-status-neutral);
 
-  /* --- Chart ramp (overview future blocks) --- */
-  --color-chart-1: #10e0dd;
-  --color-chart-2: #38bdf8;
+  /* --- Chart ramp (overview blocks) --- */
+  --color-chart-1: var(--kb-accent-500);
+  --color-chart-2: var(--kb-status-info);
   --color-chart-3: #a78bfa;
-  --color-chart-4: #34d399;
-  --color-chart-5: #fbbf24;
+  --color-chart-4: var(--kb-status-success);
+  --color-chart-5: var(--kb-status-warning);
 
   /* --- App legacy aliases (still consumed by features) --- */
-  --color-bg: #0b0e14;
-  --color-panel: #11151f;
-  --color-border-app: #1e2430;
-  --color-accent: #10e0dd;
-  --color-foreground: #f4f7fb;
-  --color-muted: #161b27;
-  --color-muted-foreground: #8b93a7;
+  --color-bg: var(--kb-bg-full);
+  --color-panel: var(--kb-bg-primary);
+  --color-border-app: var(--kb-border-default);
+  --color-accent: var(--kb-accent-500);
+  --color-foreground: var(--kb-text-primary);
+  --color-muted: var(--kb-bg-tertiary);
+  --color-muted-foreground: var(--kb-text-tertiary);
+
+  /* --- Shadows --- */
+  --shadow-card: var(--kb-shadow-card);
+  --shadow-dropdown: var(--kb-shadow-dropdown);
 
   /* --- Radii --- */
   --radius-card: 1rem;
 
-  /* --- Shadows --- */
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 4px 12px rgb(0 0 0 / 0.22);
-  --shadow-dropdown: 0 4px 16px rgb(0 0 0 / 0.35);
-}
-
-@theme inline {
   /* shadcn/shadcn-sidebar compat — mapped to BoardUI tokens */
-  --color-background: var(--color-background-full);
-  --color-card: var(--color-background-primary);
-  --color-card-foreground: var(--color-text-primary);
-  --color-popover: var(--color-background-primary);
-  --color-popover-foreground: var(--color-text-primary);
-  --color-primary: var(--color-accent-500);
-  --color-primary-foreground: #06070a;
-  --color-secondary: var(--color-background-tertiary);
-  --color-secondary-foreground: var(--color-text-primary);
-  --color-accent-foreground: #06070a;
-  --color-destructive: var(--color-status-danger);
-  --color-destructive-foreground: #fff;
-  --color-border: var(--color-border-default);
-  --color-input: var(--color-border-default);
-  --color-ring: var(--color-border-focus-ring);
-  --color-success: var(--color-status-success);
-  --color-warning: var(--color-status-warning);
-  --color-info: var(--color-status-info);
-  --color-danger: var(--color-status-danger);
-  --color-surface: var(--color-background-primary);
-  --color-inset: var(--color-background-tertiary);
-  --color-line: var(--color-border-default);
-  --color-ink: var(--color-text-primary);
-  --color-ink-2: var(--color-text-secondary);
-  --color-ink-3: var(--color-text-tertiary);
+  --color-background: var(--kb-bg-full);
+  --color-card: var(--kb-bg-primary);
+  --color-card-foreground: var(--kb-text-primary);
+  --color-popover: var(--kb-bg-primary);
+  --color-popover-foreground: var(--kb-text-primary);
+  --color-primary: var(--kb-accent-500);
+  --color-primary-foreground: var(--kb-accent-foreground);
+  --color-secondary: var(--kb-bg-tertiary);
+  --color-secondary-foreground: var(--kb-text-primary);
+  --color-accent-foreground: var(--kb-accent-foreground);
+  --color-destructive: var(--kb-status-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--kb-border-default);
+  --color-input: var(--kb-border-default);
+  --color-ring: var(--kb-border-focus-ring);
+  --color-success: var(--kb-status-success);
+  --color-warning: var(--kb-status-warning);
+  --color-info: var(--kb-status-info);
+  --color-danger: var(--kb-status-danger);
+  --color-surface: var(--kb-bg-primary);
+  --color-inset: var(--kb-bg-tertiary);
+  --color-line: var(--kb-border-default);
+  --color-ink: var(--kb-text-primary);
+  --color-ink-2: var(--kb-text-secondary);
+  --color-ink-3: var(--kb-text-tertiary);
 
   /* Sidebar compat */
-  --color-sidebar: #0e1118;
-  --color-sidebar-foreground: var(--color-text-primary);
-  --color-sidebar-primary: var(--color-accent-500);
-  --color-sidebar-primary-foreground: #06070a;
-  --color-sidebar-accent: var(--color-background-tertiary);
-  --color-sidebar-accent-foreground: var(--color-text-primary);
-  --color-sidebar-border: var(--color-border-default);
-  --color-sidebar-ring: var(--color-border-focus-ring);
+  --color-sidebar: var(--kb-sidebar);
+  --color-sidebar-foreground: var(--kb-text-primary);
+  --color-sidebar-primary: var(--kb-accent-500);
+  --color-sidebar-primary-foreground: var(--kb-accent-foreground);
+  --color-sidebar-accent: var(--kb-bg-tertiary);
+  --color-sidebar-accent-foreground: var(--kb-text-primary);
+  --color-sidebar-border: var(--kb-border-default);
+  --color-sidebar-ring: var(--kb-border-focus-ring);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -109,12 +168,60 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@theme {
+  /* ===== BoardUI composite type ramp (used subset) ===== */
+  --text-title-3-semibold: 1.125rem;
+  --text-title-3-semibold--line-height: 1.625rem;
+  --text-title-3-semibold--letter-spacing: 0;
+  --text-title-3-semibold--font-weight: 600;
+
+  --text-body-regular: 0.875rem;
+  --text-body-regular--line-height: 1.25rem;
+  --text-body-regular--letter-spacing: 0;
+  --text-body-regular--font-weight: 400;
+  --text-body-medium: 0.875rem;
+  --text-body-medium--line-height: 1.25rem;
+  --text-body-medium--letter-spacing: 0;
+  --text-body-medium--font-weight: 500;
+
+  --text-body-2-regular: 0.8125rem;
+  --text-body-2-regular--line-height: 1.125rem;
+  --text-body-2-regular--letter-spacing: 0;
+  --text-body-2-regular--font-weight: 400;
+  --text-body-2-medium: 0.8125rem;
+  --text-body-2-medium--line-height: 1.125rem;
+  --text-body-2-medium--letter-spacing: 0;
+  --text-body-2-medium--font-weight: 500;
+
+  --text-caption-1-regular: 0.75rem;
+  --text-caption-1-regular--line-height: 1rem;
+  --text-caption-1-regular--letter-spacing: 0.15px;
+  --text-caption-1-regular--font-weight: 400;
+  --text-caption-1-medium: 0.75rem;
+  --text-caption-1-medium--line-height: 1rem;
+  --text-caption-1-medium--letter-spacing: 0.15px;
+  --text-caption-1-medium--font-weight: 500;
+  --text-caption-1-semibold: 0.75rem;
+  --text-caption-1-semibold--line-height: 1rem;
+  --text-caption-1-semibold--letter-spacing: 0.15px;
+  --text-caption-1-semibold--font-weight: 600;
+
+  --text-caption-2-regular: 0.6875rem;
+  --text-caption-2-regular--line-height: 0.9375rem;
+  --text-caption-2-regular--letter-spacing: 0.2px;
+  --text-caption-2-regular--font-weight: 400;
+  --text-caption-2-semibold: 0.6875rem;
+  --text-caption-2-semibold--line-height: 0.9375rem;
+  --text-caption-2-semibold--letter-spacing: 0.2px;
+  --text-caption-2-semibold--font-weight: 600;
+}
+
 :root {
   --radius: 0.5rem;
 }
 
 html, body, #root { height: 100%; }
-body { background: var(--color-background-full); color: var(--color-text-primary); }
+body { background: var(--kb-bg-full); color: var(--kb-text-primary); }
 
 /* Loading uses the app's existing signal language: one sweep and a few quiet
    geometry-preserving bars. It communicates progress without taking over the
@@ -134,7 +241,7 @@ body { background: var(--color-background-full); color: var(--color-text-primary
   left: 0;
   height: 1px;
   width: 34%;
-  background: var(--color-accent-500);
+  background: var(--kb-accent-500);
   box-shadow: 0 0 12px rgba(16, 224, 221, 0.45);
   animation: signal-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite;
 }
@@ -143,7 +250,7 @@ body { background: var(--color-background-full); color: var(--color-text-primary
   position: relative;
   overflow: hidden;
   border-radius: 3px;
-  background: #161b27;
+  background: var(--kb-bg-tertiary);
 }
 .signal-skeleton::after {
   content: "";
@@ -160,10 +267,10 @@ body { background: var(--color-background-full); color: var(--color-text-primary
   .signal-skeleton::after { animation: none; opacity: 0.16; }
 }
 
-/* thin scrollbars to match dark theme */
-* { scrollbar-width: thin; scrollbar-color: #2a3140 transparent; }
+/* thin scrollbars to match theme */
+* { scrollbar-width: thin; scrollbar-color: var(--kb-scrollbar) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 4px; }
+*::-webkit-scrollbar-thumb { background: var(--kb-scrollbar); border-radius: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @keyframes ekg-sweep {
@@ -259,7 +366,7 @@ body { background: var(--color-background-full); color: var(--color-text-primary
 
 /* Focus treatment — BoardUI standard */
 *:focus-visible {
-  outline: 2px solid var(--color-border-focus-ring);
+  outline: 2px solid var(--kb-border-focus-ring);
   outline-offset: 2px;
 }
 
@@ -276,5 +383,5 @@ body { background: var(--color-background-full); color: var(--color-text-primary
   width: 2px;
   border-start-start-radius: 999px;
   border-end-start-radius: 999px;
-  background: linear-gradient(180deg, var(--color-accent-400), var(--color-accent-600));
+  background: linear-gradient(180deg, var(--kb-accent-400), var(--kb-accent-600));
 }

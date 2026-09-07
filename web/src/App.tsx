@@ -268,8 +268,8 @@ export default function App() {
   return (
     <SidebarProvider>
       <AppSidebar page={page} onSelectPage={handleSelectPage} />
-      <SidebarInset className="flex h-dvh flex-col overflow-hidden bg-[#0b0e14]">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-[#1e2430] bg-[#11151f] px-3">
+      <SidebarInset className="flex h-dvh flex-col overflow-hidden bg-background-full">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border-default bg-background-primary px-3">
           <SidebarTrigger className="-ml-1 text-neutral-300 hover:text-[#10e0dd]" />
           <Separator orientation="vertical" className="mr-1 h-5" />
           <h1 className="truncate text-sm font-semibold tracking-tight">{pageTitle}</h1>
@@ -277,10 +277,10 @@ export default function App() {
           {page === "board" && !detailId && (
             <>
               <Select value={slug} onValueChange={(next) => { setSlug(next); go(pagePath("board", next)) }}>
-                <SelectTrigger size="sm" className="ml-2 w-auto gap-1.5 border-[#1e2430] bg-[#0b0e14] text-xs">
+                <SelectTrigger size="sm" className="ml-2 w-auto gap-1.5 border-border-default bg-background-full text-xs">
                   <SelectValue placeholder="board" />
                 </SelectTrigger>
-                <SelectContent className="border-[#1e2430] bg-[#11151f]">
+                <SelectContent className="border-border-default bg-background-primary">
                   {active.map((b) => (
                     <SelectItem key={b.slug} value={b.slug} className="text-xs">
                       {b.icon ? `${b.icon} ` : ""}{b.name}
@@ -288,13 +288,13 @@ export default function App() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" onClick={() => setCreatingBoard(true)} className="h-7 gap-1 border-[#1e2430] bg-[#11151f] px-2 text-xs text-neutral-300">
+              <Button variant="outline" size="sm" onClick={() => setCreatingBoard(true)} className="h-7 gap-1 border-border-default bg-background-primary px-2 text-xs text-neutral-300">
                 <Plus className="size-3" /> New Board
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setEditingBoard(true)} disabled={!currentBoard} className="h-7 gap-1 border-[#1e2430] bg-[#11151f] px-2 text-xs text-neutral-300 disabled:opacity-40">
+              <Button variant="outline" size="sm" onClick={() => setEditingBoard(true)} disabled={!currentBoard} className="h-7 gap-1 border-border-default bg-background-primary px-2 text-xs text-neutral-300 disabled:opacity-40">
                 <Pencil className="size-3" /> Edit
               </Button>
-              <span className="rounded bg-[#0b0e14] px-1.5 py-0.5 text-[10px] text-neutral-400">
+              <span className="rounded bg-background-full px-1.5 py-0.5 text-[10px] text-neutral-400">
                 {filtersActive ? `${filtered.length}/${tasks.data?.length ?? 0}` : `${tasks.data?.length ?? 0}`} tasks
               </span>
               <Button size="sm" onClick={() => setCreating(true)}
@@ -304,7 +304,7 @@ export default function App() {
             </>
           )}
           {page === "board" && detailId && (
-            <span className="ml-2 rounded bg-[#0b0e14] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">{detailId}</span>
+            <span className="ml-2 rounded bg-background-full px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">{detailId}</span>
           )}
         </header>
 
@@ -425,16 +425,16 @@ function NewBoardDialog({ onClose, onCreated }: { onClose: () => void; onCreated
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg border border-[#1e2430] bg-[#11151f] p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-lg border border-border-default bg-background-primary p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">New Board</h2>
         <label className="mt-3 block text-xs text-neutral-400">Slug</label>
         <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="f8-gadjian"
-          className="mt-1 border-[#1e2430] bg-[#0b0e14]" />
+          className="mt-1 border-border-default bg-background-full" />
         <label className="mt-3 block text-xs text-neutral-400">Name</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="F8 Gadjian"
-          className="mt-1 border-[#1e2430] bg-[#0b0e14]" />
+          className="mt-1 border-border-default bg-background-full" />
         <label className="mt-3 block text-xs text-neutral-400">Icon (emoji)</label>
-        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[#1e2430] bg-[#0b0e14]" />
+        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-border-default bg-background-full" />
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
@@ -467,14 +467,14 @@ function EditBoardDialog({ board, onClose, onSaved }: { board: Board; onClose: (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg border border-[#1e2430] bg-[#11151f] p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-lg border border-border-default bg-background-primary p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">Edit Board · {board.slug}</h2>
         <label className="mt-3 block text-xs text-neutral-400">Slug (read-only)</label>
-        <Input value={board.slug} disabled className="mt-1 border-[#1e2430] bg-[#0b0e14] opacity-60" />
+        <Input value={board.slug} disabled className="mt-1 border-border-default bg-background-full opacity-60" />
         <label className="mt-3 block text-xs text-neutral-400">Name</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 border-[#1e2430] bg-[#0b0e14]" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 border-border-default bg-background-full" />
         <label className="mt-3 block text-xs text-neutral-400">Icon (emoji)</label>
-        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[#1e2430] bg-[#0b0e14]" />
+        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-border-default bg-background-full" />
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
