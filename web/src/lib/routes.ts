@@ -7,7 +7,7 @@ export type AppRoute = {
 }
 
 const PAGES = new Set<Page>([
-  "overview", "board", "workspaces", "profiles", "providers", "logs", "skills",
+  "overview", "board", "command-center", "workspaces", "profiles", "providers", "logs", "skills",
   "memory", "flow", "agent-mapping", "settings",
 ])
 
@@ -23,6 +23,10 @@ export function parseRoute(pathname: string): AppRoute {
     }
   }
 
+  if (root === "command-center") {
+    return { page: "command-center", slug: second || "f8-saas", taskId: third }
+  }
+
   if (root && PAGES.has(root as Page)) return { page: root as Page }
   return { page: "board", slug: "f8-saas" }
 }
@@ -32,6 +36,9 @@ export function pagePath(page: Page, slug: string, taskId?: string): string {
     return taskId
       ? `/board/${encodeURIComponent(slug)}/task/${encodeURIComponent(taskId)}`
       : `/board/${encodeURIComponent(slug)}`
+  }
+  if (page === "command-center") {
+    return `/command-center/${encodeURIComponent(slug)}/${encodeURIComponent(taskId ?? "")}`
   }
   return `/${page}`
 }

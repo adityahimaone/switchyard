@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import { Bot, Brain, FolderGit2, Gauge, GitBranch, LayoutDashboard, Network, Puzzle, ScrollText, Server } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "flow" | "agent-mapping" | "settings"
+export type Page = "overview" | "board" | "command-center" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "flow" | "agent-mapping" | "settings"
 
 export type SidebarItem = {
   id: Exclude<Page, "settings">

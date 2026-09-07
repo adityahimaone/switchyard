@@ -21,6 +21,7 @@ import SettingsPage from "./features/settings/SettingsPage"
 import FlowPage from "./features/flow/FlowPage"
 import AgentMappingPage from "./features/flow/AgentMappingPage"
 import OverviewPage from "./features/overview/OverviewPage"
+import CommandCenterPage from "./features/command-center/CommandCenterPage"
 import { Archive, Pencil, Plus, Search, X } from "lucide-react"
 import { useSettings } from "./hooks/useSettings"
 import LoadingState from "./components/LoadingState"
@@ -50,7 +51,7 @@ export default function App() {
   const qc = useQueryClient()
 
   const boards = useQuery({ queryKey: ["boards"], queryFn: () => api<Board[]>("/api/boards") })
-  const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board", refetchInterval: refreshMs > 0 ? refreshMs : false })
+  const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board" || page === "command-center", refetchInterval: refreshMs > 0 ? refreshMs : false })
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
 
@@ -115,6 +116,9 @@ export default function App() {
   }
 
   const byCol = (s: Status) => filtered.filter((t) => t.status === s)
+  const commandTask = page === "command-center" && detailId
+    ? (tasks.data ?? []).find((task) => task.id === detailId) ?? null
+    : null
   const pageTitle =
     page === "workspaces" ? "Workspaces"
     : page === "overview" ? "Overview"
@@ -125,6 +129,7 @@ export default function App() {
     : page === "memory" ? "Memory"
     : page === "flow" ? "Agent Flow"
     : page === "agent-mapping" ? "Flow Map"
+    : page === "command-center" ? "Command Center"
     : page === "settings" ? "Settings"
     : detailPage ? detailPage.title
     : "Kanban Board"
@@ -316,6 +321,21 @@ export default function App() {
             {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
             {page === "flow" && <div className="flex-1 overflow-hidden p-6"><FlowPage /></div>}
             {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
+            {page === "command-center" && (
+              commandTask ? (
+                <CommandCenterPage
+                  slug={slug}
+                  task={commandTask}
+                  profiles={profiles.data ?? []}
+                  workspaces={workspaces.data ?? []}
+                  onBack={() => { setPage("board"); setDetailId(commandTask.id); go(pagePath("board", slug, commandTask.id)) }}
+                />
+              ) : tasks.isLoading ? (
+                <LoadingState variant="detail" label="Memuat command center" />
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-6 text-sm text-red-400">Task `{detailId}` tidak ditemukan di board ini.</div>
+              )
+            )}
             {page === "board" && detailId && detailPage && (
               <TaskDetailPage
                 slug={slug}
@@ -377,7 +397,7 @@ export default function App() {
           onReassign={(a) =>
             reassign.mutateAsync({ id: detail.id, assignee: a }).then(() => setDetail({ ...detail, assignee: a }))
           }
-          onOpenPage={() => { const t = detail; setDetail(null); setDetailId(t.id); go(pagePath("board", slug, t.id)) }}
+          onOpenPage={() => { const t = detail; setDetail(null); setPage("command-center"); setDetailId(t.id); go(pagePath("command-center", slug, t.id)) }}
         />
       )}
     </SidebarProvider>
