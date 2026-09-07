@@ -7,7 +7,7 @@ export type AppRoute = {
 }
 
 const PAGES = new Set<Page>([
-  "board", "workspaces", "profiles", "providers", "logs", "skills",
+  "overview", "board", "workspaces", "profiles", "providers", "logs", "skills",
   "memory", "flow", "agent-mapping", "settings",
 ])
 

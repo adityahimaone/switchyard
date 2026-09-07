@@ -20,6 +20,7 @@ import MemoryPage from "./features/memory/MemoryPage"
 import SettingsPage from "./features/settings/SettingsPage"
 import FlowPage from "./features/flow/FlowPage"
 import AgentMappingPage from "./features/flow/AgentMappingPage"
+import OverviewPage from "./features/overview/OverviewPage"
 import { Archive, Pencil, Plus, Search, X } from "lucide-react"
 import { useSettings } from "./hooks/useSettings"
 import LoadingState from "./components/LoadingState"
@@ -116,6 +117,7 @@ export default function App() {
   const byCol = (s: Status) => filtered.filter((t) => t.status === s)
   const pageTitle =
     page === "workspaces" ? "Workspaces"
+    : page === "overview" ? "Overview"
     : page === "profiles" ? "Agent Profiles"
     : page === "providers" ? "Providers"
     : page === "logs" ? "Logs"
@@ -306,6 +308,7 @@ export default function App() {
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {filterRail}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {page === "overview" && <div className="flex-1 overflow-hidden"><OverviewPage slug={slug} /></div>}
             {page === "workspaces" && <div className="flex-1 overflow-y-auto"><WorkspacesPage /></div>}
             {page === "profiles" && <div className="flex-1 overflow-y-auto"><ProfilesPage /></div>}
             {page === "providers" && <div className="flex-1 overflow-y-auto"><ProvidersPage /></div>}

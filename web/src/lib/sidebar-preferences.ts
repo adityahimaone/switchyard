@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react"
-import { Bot, Brain, FolderGit2, GitBranch, LayoutDashboard, Network, Puzzle, ScrollText, Server } from "lucide-react"
+import { Bot, Brain, FolderGit2, Gauge, GitBranch, LayoutDashboard, Network, Puzzle, ScrollText, Server } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-export type Page = "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "flow" | "agent-mapping" | "settings"
+export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "flow" | "agent-mapping" | "settings"
 
 export type SidebarItem = {
   id: Exclude<Page, "settings">
@@ -12,6 +12,7 @@ export type SidebarItem = {
 }
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
+  { id: "overview", label: "Overview", tooltip: "Overview", icon: Gauge },
   { id: "board", label: "Kanban Board", tooltip: "Kanban Board", icon: LayoutDashboard },
   { id: "workspaces", label: "Workspaces", tooltip: "Workspaces", icon: FolderGit2 },
   { id: "profiles", label: "Agent Profiles", tooltip: "Agent Profiles", icon: Bot },

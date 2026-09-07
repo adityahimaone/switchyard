@@ -1,77 +1,120 @@
 @import "tailwindcss";
 
+/* =========================================================
+   BoardUI redesign tokens — kanban-board
+   Semantic layer inspired by BoardUI (boardui.com) while
+   preserving every application animation (loading signal,
+   agent flow, flow map, provider grid, reduced-motion).
+   Dark-first: one token set, tuned for ops surfaces.
+   ========================================================= */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  /* --- BoardUI semantic surfaces (dark-first) --- */
+  --color-background-full: #0b0e14;          /* page ground          */
+  --color-background-primary: #11151f;      /* cards / panels        */
+  --color-background-primary-hover: #161c29;
+  --color-background-secondary: #0d1119;    /* inset / rail          */
+  --color-background-tertiary: #161b27;     /* chips / sub-surfaces  */
+
+  /* --- Text ramp --- */
+  --color-text-primary: #f4f7fb;
+  --color-text-secondary: #b5bdcc;
+  --color-text-tertiary: #8b93a7;
+  --color-text-placeholder: #5b6478;
+
+  /* --- Borders --- */
+  --color-border-default: #1e2430;
+  --color-border-strong: #273043;
+  --color-border-focus-ring: #10e0dd;
+
+  /* --- Accent (CTA / selection) --- */
+  --color-accent-400: #4ee9e6;
+  --color-accent-500: #10e0dd;
+  --color-accent-600: #0cb6b3;
+
+  /* --- Status (task state only) --- */
+  --color-status-success: #34d399;
+  --color-status-warning: #fbbf24;
+  --color-status-danger: #f87171;
+  --color-status-info: #38bdf8;
+  --color-status-neutral: #66748a;
+
+  /* --- Chart ramp (overview future blocks) --- */
+  --color-chart-1: #10e0dd;
+  --color-chart-2: #38bdf8;
+  --color-chart-3: #a78bfa;
+  --color-chart-4: #34d399;
+  --color-chart-5: #fbbf24;
+
+  /* --- App legacy aliases (still consumed by features) --- */
   --color-bg: #0b0e14;
   --color-panel: #11151f;
-  --color-border: #1e2430;
+  --color-border-app: #1e2430;
   --color-accent: #10e0dd;
-
-  --color-background: #0b0e14;
-  --color-foreground: #e6e9ef;
-  --color-card: #11151f;
-  --color-card-foreground: #e6e9ef;
-  --color-popover: #11151f;
-  --color-popover-foreground: #e6e9ef;
-  --color-primary: #10e0dd;
-  --color-primary-foreground: #06070a;
-  --color-secondary: #161b27;
-  --color-secondary-foreground: #e6e9ef;
+  --color-foreground: #f4f7fb;
   --color-muted: #161b27;
   --color-muted-foreground: #8b93a7;
-  --color-accent-foreground: #06070a;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #fff;
-  --color-border-app: #1e2430;
-  --color-input: #1e2430;
-  --color-ring: #10e0dd;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-info: #38bdf8;
-  --color-danger: #ef4444;
-  --color-surface: #11151f;
-  --color-inset: #161b27;
-  --color-line: #1e2430;
-  --color-ink: #e6e9ef;
-  --color-ink-2: #b5bdcc;
-  --color-ink-3: #8b93a7;
-  --color-red: #ef4444;
-  --color-green: #22c55e;
-  --color-red-tint: rgba(239, 68, 68, 0.14);
-  --color-green-tint: rgba(34, 197, 94, 0.14);
-  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
 
-:root {
-  --radius: 0.5rem;
-  --sidebar: #0e1118;
-  --sidebar-foreground: #e6e9ef;
-  --sidebar-primary: #10e0dd;
-  --sidebar-primary-foreground: #06070a;
-  --sidebar-accent: #161b27;
-  --sidebar-accent-foreground: #e6e9ef;
-  --sidebar-border: #1e2430;
-  --sidebar-ring: #10e0dd;
+  /* --- Radii --- */
+  --radius-card: 1rem;
+
+  /* --- Shadows --- */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 4px 12px rgb(0 0 0 / 0.22);
+  --shadow-dropdown: 0 4px 16px rgb(0 0 0 / 0.35);
 }
 
 @theme inline {
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  /* shadcn/shadcn-sidebar compat — mapped to BoardUI tokens */
+  --color-background: var(--color-background-full);
+  --color-card: var(--color-background-primary);
+  --color-card-foreground: var(--color-text-primary);
+  --color-popover: var(--color-background-primary);
+  --color-popover-foreground: var(--color-text-primary);
+  --color-primary: var(--color-accent-500);
+  --color-primary-foreground: #06070a;
+  --color-secondary: var(--color-background-tertiary);
+  --color-secondary-foreground: var(--color-text-primary);
+  --color-accent-foreground: #06070a;
+  --color-destructive: var(--color-status-danger);
+  --color-destructive-foreground: #fff;
+  --color-border: var(--color-border-default);
+  --color-input: var(--color-border-default);
+  --color-ring: var(--color-border-focus-ring);
+  --color-success: var(--color-status-success);
+  --color-warning: var(--color-status-warning);
+  --color-info: var(--color-status-info);
+  --color-danger: var(--color-status-danger);
+  --color-surface: var(--color-background-primary);
+  --color-inset: var(--color-background-tertiary);
+  --color-line: var(--color-border-default);
+  --color-ink: var(--color-text-primary);
+  --color-ink-2: var(--color-text-secondary);
+  --color-ink-3: var(--color-text-tertiary);
+
+  /* Sidebar compat */
+  --color-sidebar: #0e1118;
+  --color-sidebar-foreground: var(--color-text-primary);
+  --color-sidebar-primary: var(--color-accent-500);
+  --color-sidebar-primary-foreground: #06070a;
+  --color-sidebar-accent: var(--color-background-tertiary);
+  --color-sidebar-accent-foreground: var(--color-text-primary);
+  --color-sidebar-border: var(--color-border-default);
+  --color-sidebar-ring: var(--color-border-focus-ring);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+:root {
+  --radius: 0.5rem;
+}
+
 html, body, #root { height: 100%; }
-body { background: var(--color-bg); color: var(--color-foreground); }
+body { background: var(--color-background-full); color: var(--color-text-primary); }
 
 /* Loading uses the app's existing signal language: one sweep and a few quiet
    geometry-preserving bars. It communicates progress without taking over the
@@ -91,7 +134,7 @@ body { background: var(--color-bg); color: var(--color-foreground); }
   left: 0;
   height: 1px;
   width: 34%;
-  background: var(--color-accent);
+  background: var(--color-accent-500);
   box-shadow: 0 0 12px rgba(16, 224, 221, 0.45);
   animation: signal-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite;
 }
@@ -211,3 +254,27 @@ body { background: var(--color-bg); color: var(--color-foreground); }
 }
 .map-idle-card { animation: map-idle-card 3.6s ease-in-out infinite; }
 .map-idle-edge { stroke-dasharray: 3 9; animation: map-idle-edge 2.8s linear infinite; }
+
+/* ============ BoardUI-style helpers ============ */
+
+/* Focus treatment — BoardUI standard */
+*:focus-visible {
+  outline: 2px solid var(--color-border-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Thin active edge — execution signal motif (spec §3 Identity motif).
+   Used only for live task/worker state, not decoration. */
+.edge-live {
+  position: relative;
+}
+.edge-live::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 0;
+  width: 2px;
+  border-start-start-radius: 999px;
+  border-end-start-radius: 999px;
+  background: linear-gradient(180deg, var(--color-accent-400), var(--color-accent-600));
+}
