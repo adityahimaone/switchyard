@@ -148,19 +148,19 @@ export default function App() {
     ) : tasks.isError ? (
       <p className="p-6 text-sm text-red-400">Gagal load tasks: {(tasks.error as Error).message}</p>
     ) : (
-      <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3">
+      <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden bg-background-full p-3">
         {BOARD_COLUMNS.map((col) => {
           const cards = byCol(col)
           return (
-          <section key={col} className={`flex h-full shrink-0 flex-col rounded-xl bg-[#11151f]/40 ${col === "archived" ? "w-60 opacity-90" : "w-72"}`}>
-            <h2 className="flex shrink-0 items-center justify-between border-b border-[#1e2430]/60 px-3 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <section key={col} className={`flex h-full shrink-0 flex-col rounded-2xl border border-border-default bg-background-primary shadow-card ${col === "archived" ? "w-60 opacity-90" : "w-72"}`}>
+            <h2 className="flex shrink-0 items-center justify-between border-b border-border-default bg-background-secondary px-3 py-3 text-caption-1-semibold text-text-tertiary">
               <span className="flex items-center gap-1.5">
                 {col === "archived" && <Archive className="size-3" />}
                 {col}
               </span>
-              <span className="rounded bg-[#0b0e14] px-1.5 py-0.5 text-[10px]">{cards.length}</span>
+              <span className="rounded-full border border-border-default bg-background-full px-2 py-0.5 text-caption-2-semibold text-text-secondary">{cards.length}</span>
             </h2>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 py-2">
               {cards.map((t) => (
                 <TaskCard
                   key={t.id}
@@ -173,9 +173,7 @@ export default function App() {
                   workspaces={workspaces.data ?? []}
                 />
               ))}
-              {!cards.length && (
-                <p className="px-1 py-2 text-[11px] text-neutral-600">empty</p>
-              )}
+              {!cards.length && <p className="px-1 py-6 text-center text-caption-1-regular text-text-tertiary">empty</p>}
             </div>
           </section>
           )
@@ -184,77 +182,77 @@ export default function App() {
     )
 
   const filterRail = page === "board" && !detailId && filtersOpen && (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-[#1e2430] bg-[#11151f]">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#1e2430] px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Filters</span>
-        {filtersActive && <span className="size-2 rounded-full bg-[#10e0dd]" />}
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border-default bg-background-primary" aria-label="Task filters">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-default bg-background-secondary px-3">
+        <span className="text-caption-1-semibold text-text-tertiary">Filters</span>
+        {filtersActive && <span className="size-2 rounded-full bg-accent-500" aria-hidden="true" />}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-neutral-300">{filtered.length} / {tasks.data?.length ?? 0} match</span>
+            <span className="text-body-2-medium text-text-secondary">{filtered.length} / {tasks.data?.length ?? 0} match</span>
             {filtersActive && (
-              <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-neutral-400" onClick={clearFilters}>
+              <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-caption-1-regular text-text-secondary" onClick={clearFilters}>
                 <X className="size-3" /> reset
               </Button>
             )}
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari judul / body / id / result…"
-              className="h-8 border-[#1e2430] bg-[#0b0e14] pl-7 text-xs" />
+              className="h-8 border-border-default bg-background-full pl-7 text-body-2-regular" />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
+            <label className="mb-1 block text-caption-1-semibold text-text-tertiary">Status</label>
             <Select value={fStatus} onValueChange={setFStatus}>
-              <SelectTrigger size="sm" className="w-full border-[#1e2430] bg-[#0b0e14] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[#1e2430] bg-[#11151f]">
-                <SelectItem value="__all" className="text-xs">Semua status</SelectItem>
+              <SelectTrigger size="sm" className="w-full border-border-default bg-background-full text-body-2-regular"><SelectValue /></SelectTrigger>
+              <SelectContent className="border-border-default bg-background-primary shadow-dropdown">
+                <SelectItem value="__all" className="text-body-2-regular">Semua status</SelectItem>
                 {BOARD_COLUMNS.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                  <SelectItem key={s} value={s} className="text-body-2-regular">{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Agent</label>
+            <label className="mb-1 block text-caption-1-semibold text-text-tertiary">Agent</label>
             <Select value={fAgent} onValueChange={setFAgent}>
-              <SelectTrigger size="sm" className="w-full border-[#1e2430] bg-[#0b0e14] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[#1e2430] bg-[#11151f]">
+              <SelectTrigger size="sm" className="w-full border-border-default bg-background-full text-body-2-regular"><SelectValue /></SelectTrigger>
+              <SelectContent className="border-border-default bg-background-primary shadow-dropdown">
                 {PROFILE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value} className="text-body-2-regular">{o.label}</SelectItem>
                 ))}
                 {(profiles.data ?? []).map((p) => (
-                  <SelectItem key={p.name} value={p.name} className="text-xs">{p.name}</SelectItem>
+                  <SelectItem key={p.name} value={p.name} className="text-body-2-regular">{p.name}</SelectItem>
                 ))}
-                <SelectItem value="" className="text-xs">unassigned</SelectItem>
+                <SelectItem value="" className="text-body-2-regular">unassigned</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Workspace</label>
+            <label className="mb-1 block text-caption-1-semibold text-text-tertiary">Workspace</label>
             <Select value={fWorkspace} onValueChange={setFWorkspace}>
-              <SelectTrigger size="sm" className="w-full border-[#1e2430] bg-[#0b0e14] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[#1e2430] bg-[#11151f]">
+              <SelectTrigger size="sm" className="w-full border-border-default bg-background-full text-body-2-regular"><SelectValue /></SelectTrigger>
+              <SelectContent className="border-border-default bg-background-primary shadow-dropdown">
                 {WORKSPACE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value} className="text-body-2-regular">{o.label}</SelectItem>
                 ))}
                 {(workspaces.data ?? []).map((w) => (
-                  <SelectItem key={w.id} value={w.path} className="text-xs">{w.name}</SelectItem>
+                  <SelectItem key={w.id} value={w.path} className="text-body-2-regular">{w.name}</SelectItem>
                 ))}
-                <SelectItem value="" className="text-xs">scratch (no path)</SelectItem>
+                <SelectItem value="" className="text-body-2-regular">scratch (no path)</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Priority</label>
+            <label className="mb-1 block text-caption-1-semibold text-text-tertiary">Priority</label>
             <Select value={fPriority} onValueChange={setFPriority}>
-              <SelectTrigger size="sm" className="w-full border-[#1e2430] bg-[#0b0e14] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[#1e2430] bg-[#11151f]">
-                <SelectItem value="__all" className="text-xs">Semua</SelectItem>
-                <SelectItem value="0" className="text-xs">P0 normal</SelectItem>
-                <SelectItem value="1" className="text-xs">P1</SelectItem>
-                <SelectItem value="2" className="text-xs">P2 high</SelectItem>
-                <SelectItem value="3" className="text-xs">P3 urgent</SelectItem>
+              <SelectTrigger size="sm" className="w-full border-border-default bg-background-full text-body-2-regular"><SelectValue /></SelectTrigger>
+              <SelectContent className="border-border-default bg-background-primary shadow-dropdown">
+                <SelectItem value="__all" className="text-body-2-regular">Semua</SelectItem>
+                <SelectItem value="0" className="text-body-2-regular">P0 normal</SelectItem>
+                <SelectItem value="1" className="text-body-2-regular">P1</SelectItem>
+                <SelectItem value="2" className="text-body-2-regular">P2 high</SelectItem>
+                <SelectItem value="3" className="text-body-2-regular">P3 urgent</SelectItem>
               </SelectContent>
             </Select>
           </div>
