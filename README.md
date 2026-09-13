@@ -90,11 +90,9 @@ Tasks store human intent as `title` + `description`. Users pick an AI executor o
 {"executor": "commandcode"}
 ```
 
-Valid values: `auto`, `hermes`, `codex`, `commandcode`.
+Valid values: `auto`, `hermes`, `codex`, `commandcode`, `shell`.
 
-Shell is not a user-facing task input. It is used only by the orchestrator for internal operations that already produced a concrete command. Internal payloads may carry a `command` field, but that field is not user-supplied task data.
-
-> Migration note: the transport schema still keeps a `command` column so internal shell dispatches and legacy tasks remain compatible. It is not part of the task intent and will be removed from the task form in the next UI migration.
+`shell` is a normal task executor for direct remote commands. `command` is the only executed input; `body` is descriptive text and is never executed. Empty/whitespace `command` is rejected at task create (`400 shell executor requires command`) and by both dispatchers as `blocked`. Shell preflight (`NODE_AGENT_SHELL_PREFLIGHT=1`) and output compaction (`NODE_AGENT_SHELL_CAVEMAN=1`) are opt-in on the worker and use environment only — they never mutate `command`.
 
 ### CommandCode
 
@@ -204,11 +202,11 @@ All `/api/*` routes require the `kanban_session` HttpOnly cookie except `/api/au
 
 The execution pipeline has three context-reduction layers:
 
-1. **codegraph** — structural index of the codebase on the workspace host.
-2. **rtk** — reduces verbose command output before it enters agent context.
-3. **caveman** — compresses the result before it is sent back to the orchestrator.
+1. **codegraph** — structural index of the codebase on the workspace host. Used for `hermes`/`codex`/`commandcode` (and shell only when `NODE_AGENT_SHELL_PREFLIGHT=1`).
+2. **rtk** — reduces verbose shell command and output within bounded timeouts (hook check + rewrite `800 ms` each; `rtk pipe --ultra-compact` with `2 s` cap when `NODE_AGENT_SHELL_CAVEMAN=1`).
+3. **caveman** — optional compact output for shell (`NODE_AGENT_SHELL_CAVEMAN=1`, `>8 KiB`, fail-open). AI executors already produce their own structured result.
 
-Codegraph already runs as a node-agent preflight. RTK is wired on the shell rewrite path. The caveman adapter needs to be enabled on the result pipeline before it can be considered a required part of production.
+Shell default path avoids AGENTS/README/codegraph prompt injection. `body` is descriptive; `command` is the only executed input; empty/whitespace `command` is `400` / `blocked`. Workspace routing, hard-guard (`/Users/`/`C:\`) → `ssh`/`mac-tailscale`, flow tracking, and review gate remain as documented in `docs/execution-flow.md`.
 
 ## Configuration
 
@@ -241,6 +239,8 @@ go build -o bin/kanban-board ./cmd/server
 cd web && pnpm build
 pm2 restart kanban-board
 ```
+
+`pnpm` is build-time tooling only. Production serves static `web/dist` from the Go binary; no Node or Bun runtime stays alive. Bun migration is intentionally not needed for runtime memory reduction. Go remains the runtime for Switchyard and node-agent because both are compiled, low-RSS binaries.
 
 Deploying on the VPS does not automatically replace the agent binary running on Mac. Mac upgrades are separate via `scripts/install-mac.sh` in the [node-agent](https://github.com/adityahimaone/node-agent) repo.
 

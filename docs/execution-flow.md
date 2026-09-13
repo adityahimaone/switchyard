@@ -46,10 +46,10 @@ Parent path registration does not replace exact child path registration when rou
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + project prerequisites | task message | `provenance executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + project prerequisites | task message | `provenance executor=codex` |
-| `shell` | `bash -lc ...` | none | task body/command | `provenance executor=shell` |
+| `shell` | `bash -lc ...` | none (opt-in `NODE_AGENT_SHELL_PREFLIGHT=1` adds codegraph via env, never mutates command) | `command` only — `body` is description | `provenance executor=shell` |
 | `auto` | Hermes first, fallback Codex/CommandCode | resolved executor rules | task message | resolved provenance |
 
-Shell intentionally skips CodeGraph, README, AGENTS, and Hermes prompt injection. RTK may rewrite shell commands within its bounded timeout, then the resulting command runs directly in the remote workspace.
+Shell intentionally skips CodeGraph/README/AGENTS/Hermes prompt injection by default. `body` is never executed. `command` is the only executed input; empty/whitespace `command` is rejected at `CreateTask` (400) and at dispatcher as `blocked: shell executor requires command`. When `NODE_AGENT_SHELL_PREFLIGHT=1`, codegraph+prequest are exported as `NODE_AGENT_CODEGRAPH_STATUS` / `NODE_AGENT_PREQUEST` env, never injected into command text. RTK may rewrite shell commands within its bounded timeout (`rtk hook check` → `rtk rewrite`, 800 ms each), then the resulting command runs directly in the remote workspace. Output >8 KiB may be compacted via `rtk pipe --ultra-compact` when `NODE_AGENT_SHELL_CAVEMAN=1` (2 s cap, fail-open).
 
 ## Lifecycle
 
