@@ -15,7 +15,12 @@ func chatCommand(agent, profile, model, prompt string) ([]string, error) {
 	if agent != "hermes" {
 		return nil, fmt.Errorf("unsupported chat agent %q", agent)
 	}
-	args := []string{"chat", "-Q", "--reasoning", "minimal"}
+	reasoning := "minimal"
+	if fastChatPrompt(prompt) {
+		reasoning = "none"
+	}
+	args := []string{"chat", "-Q", "--reasoning", reasoning}
+
 	if profile != "" && profile != "default" {
 		args = append(args, "--profile", profile)
 	}
@@ -25,11 +30,38 @@ func chatCommand(agent, profile, model, prompt string) ([]string, error) {
 	return append(args, "--query-file", "-"), nil
 }
 
+func fastChatPrompt(prompt string) bool {
+	return len([]rune(strings.TrimSpace(prompt))) <= 30
+}
+
+func todayChatAnswer(prompt string, now time.Time) (string, bool) {
+	p := strings.ToLower(strings.TrimSpace(prompt))
+	switch p {
+	case "hari ini hari apa", "hari ini tanggal berapa", "what day is today", "what is today's date":
+		if strings.HasPrefix(p, "hari") {
+			weekdays := [...]string{"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+			months := [...]string{"Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"}
+			return fmt.Sprintf("Hari ini %s, %d %s %d.", weekdays[now.Weekday()], now.Day(), months[now.Month()-1], now.Year()), true
+		}
+		return fmt.Sprintf("Today is %s, %s.", now.Weekday(), now.Format("January 2, 2006")), true
+	default:
+		return "", false
+	}
+}
+
 // RunChat executes local agent fast path. Remote workspace stays task/node-agent path.
 // Output bounded, context cancellable. Assistant output persists after completion.
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
 	_ = UpdateChatRunState(runID, "running", "", "")
 	_ = AppendChatRunEvent(runID, "spawned", fmt.Sprintf(`{"agent":%q,"profile":%q}`, agent, profile))
+	if answer, ok := todayChatAnswer(prompt, time.Now()); ok && strings.TrimSpace(workspace) == "" {
+		_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"fast_path":true}`, len(answer)))
+		_ = UpdateChatRunState(runID, "done", answer, "")
+		if r, err := GetChatRun(runID); err == nil {
+			_, _ = CreateChatMessage(r.SessionID, "assistant", answer, r.ID)
+		}
+		return
+	}
 
 	if strings.TrimSpace(workspace) != "" && !isLocalWorkspace(workspace) {
 		res, err := DispatchRemote(NodeDispatchRequest{TaskID: runID, Title: "Chat: " + prompt, Board: "default", Message: prompt, Workspace: workspace, Model: model, Provider: profile, Executor: agent}, 10*time.Minute)

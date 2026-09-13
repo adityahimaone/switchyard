@@ -6,15 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChatExecutorArgs(t *testing.T) {
-	cases := []struct{ name, agent, want string }{
-		{"hermes", "hermes", "chat -Q"},
+	cases := []struct{ name, agent, prompt, want string }{
+		{"hermes", "hermes", "explain this implementation in detail", "chat -Q --reasoning minimal"},
+		{"fast", "hermes", "hello", "chat -Q --reasoning none"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			args, err := chatCommand(tc.agent, "default", "model-x", "echo hi")
+			args, err := chatCommand(tc.agent, "default", "model-x", tc.prompt)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -26,6 +28,16 @@ func TestChatExecutorArgs(t *testing.T) {
 				t.Fatalf("args=%q want %q", joined, tc.want)
 			}
 		})
+	}
+}
+
+func TestTodayChatAnswer(t *testing.T) {
+	got, ok := todayChatAnswer("hari ini hari apa", time.Date(2026, 9, 14, 0, 0, 0, 0, time.FixedZone("CST", 8*60*60)))
+	if !ok || got != "Hari ini Senin, 14 September 2026." {
+		t.Fatalf("got=%q ok=%v", got, ok)
+	}
+	if _, ok := todayChatAnswer("summarize this", time.Now()); ok {
+		t.Fatal("non-date prompt matched fast path")
 	}
 }
 
