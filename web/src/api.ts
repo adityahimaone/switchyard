@@ -143,7 +143,7 @@ export interface OverviewHealth {
 
 export interface ServerEvent {
   kind: string
-  data: { board?: string; task_id?: string }
+  data: { board?: string; task_id?: string; run_id?: string; session_id?: string }
   at: number
 }
 
@@ -153,7 +153,7 @@ export function openEventStream(onEvent: (event: ServerEvent) => void) {
     try { onEvent(JSON.parse(message.data) as ServerEvent) } catch { /* refetch remains fallback */ }
   }
   source.onmessage = handle
-  ;["task_created", "task_updated", "status_changed", "task_event", "workspace_ping", "node_health"].forEach((kind) => source.addEventListener(kind, handle))
+  ;["task_created", "task_updated", "status_changed", "task_event", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
   return () => source.close()
 }
 
@@ -230,6 +230,15 @@ export interface TaskComment {
   created_at: number
 }
 
+export interface CronSchedule { kind: string; expr?: string; minutes?: number; display?: string }
+export interface CronJob {
+  id: string; name: string; prompt: string; skills: string[]; schedule_display: string; deliver: string
+  enabled: boolean; state: string; next_run_at?: string | null; last_run_at?: string | null; last_status?: string | null
+  last_error?: string | null; last_delivery_error?: string | null; script?: string | null; no_agent: boolean; paused_reason?: string | null
+  workdir?: string | null; schedule?: CronSchedule | null
+}
+export interface CronExecution { id: string; job_id: string; source: string; status: string; claimed_at: string; started_at?: string | null; finished_at?: string | null; error?: string | null; delivery_outcome?: string | null; scheduled_instant?: string | null }
+
 export type Status =
   | "triage" | "todo" | "scheduled" | "ready" | "running"
   | "blocked" | "review" | "done" | "archived"
@@ -240,9 +249,14 @@ export const COLUMNS: Status[] = [
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...init,
   })
+  if (res.status === 401) {
+    window.location.reload()
+    throw new Error("Authentication expired")
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
     // Surface 401 as recoverable auth error so callers can gate login.
@@ -307,3 +321,20 @@ export function attemptGroups(events: TaskEvent[]): { attempt: number; events: T
 export function toastGlobal(message: string, tone: "success" | "error" | "info" = "info") {
   window.dispatchEvent(new CustomEvent("kb-toast", { detail: { message, tone } }))
 }
+
+export type ChatAgent = "hermes"
+export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
+export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; created_at: number; updated_at: number }
+export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string }
+export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
+export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
+export function listChatSessions() { return api<ChatSession[]>("/api/chat/sessions") }
+export function createChatSession(input: Partial<ChatSession>) { return api<ChatSession>("/api/chat/sessions", { method: "POST", body: JSON.stringify(input) }) }
+export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
+export function listChatMessages(id: string) { return api<ChatMessage[]>(`/api/chat/sessions/${id}/messages`) }
+export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
+export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
+export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
+export function listProviders() { return api<ProviderModel[]>("/api/providers") }
+export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }
+export function retryChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}/retry`, { method: "POST" }) }
