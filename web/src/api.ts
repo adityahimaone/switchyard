@@ -90,6 +90,17 @@ export function runControl(slug: string, taskId: string, action: RunControlActio
   return api<Task>(`/api/boards/${slug}/tasks/${taskId}/${action}`, { method: "POST" })
 }
 
+export interface WorkerLog {
+  text: string
+  offset: number
+  modified: number
+  available: boolean
+}
+
+export function workerLog(slug: string, taskId: string, offset = 0) {
+  return api<WorkerLog>(`/api/boards/${slug}/tasks/${taskId}/worker-log?offset=${offset}`)
+}
+
 export function taskHealth(slug: string, taskId: string) {
   return api<TaskHealth>(`/api/boards/${slug}/tasks/${taskId}/health`)
 }
@@ -143,7 +154,7 @@ export interface OverviewHealth {
 
 export interface ServerEvent {
   kind: string
-  data: { board?: string; task_id?: string; run_id?: string; session_id?: string }
+  data: { board?: string; task_id?: string; run_id?: string; session_id?: string; kind?: string; payload?: string | Record<string, unknown> }
   at: number
 }
 
@@ -153,7 +164,7 @@ export function openEventStream(onEvent: (event: ServerEvent) => void) {
     try { onEvent(JSON.parse(message.data) as ServerEvent) } catch { /* refetch remains fallback */ }
   }
   source.onmessage = handle
-  ;["task_created", "task_updated", "status_changed", "task_event", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
+  ;["task_created", "task_updated", "status_changed", "task_event", "commented", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
   return () => source.close()
 }
 
@@ -338,3 +349,5 @@ export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api
 export function listProviders() { return api<ProviderModel[]>("/api/providers") }
 export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }
 export function retryChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}/retry`, { method: "POST" }) }
+export function getChatActiveRun(sessionID: string) { return api<ChatRun | null>(`/api/chat/sessions/${sessionID}/active-run`) }
+export function listActiveChatRuns() { return api<ChatRun[]>(`/api/chat/active`) }

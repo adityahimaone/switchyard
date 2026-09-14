@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowUp, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Square, X } from "lucide-react"
+import { ArrowUp, ChevronDown, Plus, Search, Square, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { api, createChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listProviders, openEventStream, sendChatMessage, stopChatRun, type ChatAgent, type ChatMessage, type ChatRun, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { BorderBeam } from "@/components/ui/border-beam"
+import { StreamingResponse } from "@/components/ui/streaming-response"
+import { AgentProgress } from "@/components/agents/loading-states"
+import { api, createChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listProviders, openEventStream, sendChatMessage, stopChatRun, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void }
-const COLLAPSED_KEY = "kb-chat-sidebar-collapsed"
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
 
 function stateLabel(state?: ChatState) { return state ? state.toUpperCase() : "READY" }
 function stateTone(state?: ChatState) { return state === "done" ? "text-emerald-400" : state === "error" || state === "cancelled" ? "text-red-400" : state === "running" || state === "loading" ? "text-amber-300" : "text-neutral-500" }
@@ -44,23 +46,34 @@ function RunTimer({ run }: { run: ChatRun }) {
 function MessageFooter({ run, sessionModel, messageCreatedAt }: { run?: ChatRun; sessionModel?: string; messageCreatedAt?: number }) {
   const active = run?.state === "loading" || run?.state === "running"
   const isError = run?.state === "error" || run?.state === "cancelled"
-  const showState = active || isError
   const modelLabel = run?.model || sessionModel || "default"
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!active || !run) return
-    const t = window.setInterval(() => setNow(Date.now()), 500)
-    return () => window.clearInterval(t)
+    const timer = window.setInterval(() => setNow(Date.now()), 500)
+    return () => window.clearInterval(timer)
   }, [active, run])
-  // elapsed for active run, otherwise duration if ended
-  const elapsed = run ? elapsedLabel(run.started_at, run.ended_at, now) : messageCreatedAt ? new Date(messageCreatedAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] leading-none text-neutral-500">
-      <span className="font-mono text-[10px] text-neutral-400">{modelLabel}</span>
-      {elapsed && <><span className="text-neutral-600">·</span><span className="font-mono tabular-nums">{elapsed}</span></>}
-      {showState && run && <><span className="text-neutral-600">·</span><span className={stateTone(run.state)}>{stateLabel(run.state)}</span></>}
-    </div>
-  )
+  const timeLabel = active && run ? elapsedLabel(run.started_at, run.ended_at, now) : messageCreatedAt ? new Date(messageCreatedAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""
+  return <span className="inline-flex items-center gap-1.5 text-[10px] leading-none text-neutral-500">
+    <span className="font-mono text-[10px] text-neutral-400">{modelLabel}</span>
+    {timeLabel && <><span className="text-neutral-600">·</span><span className="font-mono tabular-nums">{timeLabel}</span></>}
+    {isError && run && <><span className="text-neutral-600">·</span><span className={stateTone(run.state)}>{stateLabel(run.state)}</span></>}
+  </span>
+}
+
+type PlanStatus = "pending" | "in-progress" | "completed" | "cancelled"
+function AgentTaskPlan({ events }: { events: ChatRunEvent[] }) {
+  const [open, setOpen] = useState(true)
+  const items = events.filter((event) => event.kind !== "tool_output").map((event, index, all) => {
+    const status: PlanStatus = event.kind === "completed" ? "completed" : event.kind === "cancelled" || event.kind === "error" ? "cancelled" : index === all.length - 1 ? "in-progress" : "completed"
+    return { id: String(event.id), status, label: event.kind === "spawned" ? `Spawned Agent Hermes` : event.kind.replaceAll("_", " "), detail: new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+  })
+  return <div className="agent-task-plan">
+    <button type="button" className="agent-task-plan__trigger" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+      <span className="agent-task-plan__title">Activity</span><span className="agent-task-plan__count">{items.length} steps</span><ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+    </button>
+    {open && <ol className="agent-task-plan__list">{items.length ? items.map((item) => <li key={item.id} className={`agent-task-plan__item is-${item.status}`}><span className="agent-task-plan__mark">{item.status === "completed" ? "✓" : item.status === "cancelled" ? "×" : item.status === "in-progress" ? "·" : "○"}</span><span className="min-w-0 flex-1 truncate">{item.label}</span><time className="shrink-0 text-[10px] text-neutral-600">{item.detail}</time></li>) : <li className="text-[11px] text-neutral-600">Waiting for agent activity</li>}</ol>}
+  </div>
 }
 
 const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task status", "Help me plan next step"]
@@ -99,7 +112,7 @@ function Markdown({ text }: { text: string }) {
   })}</div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
@@ -108,11 +121,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [model, setModel] = useState("")
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
-  const [expanded, setExpanded] = useState(false)
-  const [composerExpanded, setComposerExpanded] = useState(false)
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "false") } catch { return false }
-  })
+  const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
+  const streamBufferRef = useRef<Record<string, string>>({})
+  // sync ref for use in event handlers without re-binding effect
+  useEffect(() => { streamBufferRef.current = streamBuffer }, [streamBuffer])
+
   const agent: ChatAgent = "hermes"
   const initialCreate = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)  // ponytail: browser-owned file input, no upload API yet.
@@ -120,7 +133,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
   const messages = useQuery({ queryKey: ["chat-messages", sessionID], queryFn: () => listChatMessages(sessionID!), enabled: !!sessionID })
   const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders })
-  const activeRunQuery = useQuery({ queryKey: ["chat-active-run", sessionID], queryFn: () => getChatActiveRun(sessionID!), enabled: !!sessionID, refetchInterval: 5000 })
+  const activeRunQuery = useQuery({ queryKey: ["chat-active-run", sessionID], queryFn: () => getChatActiveRun(sessionID!), enabled: !!sessionID })
   const persistedActive = activeRunQuery.data ?? undefined
   const run = selectedRun && selectedRun.session_id === sessionID ? selectedRun : persistedActive
   const events = useQuery({ queryKey: ["chat-run-events", run?.id], queryFn: () => listChatRunEvents(run!.id), enabled: !!run?.id })
@@ -138,13 +151,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     if (onSessionChange) onSessionChange(id)
   }
 
-  function toggleCollapsed() {
-    setCollapsed((v) => {
-      const next = !v
-      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)) } catch {}
-      return next
-    })
-  }
 
   useEffect(() => {
     if (initialSessionID && initialSessionID !== sessionID) setSessionID(initialSessionID)
@@ -164,9 +170,32 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
-    if ((event.kind === "chat_run" || event.kind === "chat_run_event") && event.data?.run_id && runId && event.data.run_id === runId) { void getChatRun(runId).then(setSelectedRun).catch(() => undefined); void qc.invalidateQueries({ queryKey: ["chat-run-events", runId] }); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }) }
+    // accumulate tool_output lines into stream buffer for progressive rendering
+    if (event.kind === "chat_run_event" && event.data?.run_id && event.data.run_id === runId) {
+      try {
+        const payload = typeof event.data.payload === "string" ? JSON.parse(event.data.payload) : event.data.payload
+        if (payload?.kind === "tool_output" && typeof payload.text === "string") {
+          const rid = event.data.run_id
+          setStreamBuffer((prev) => ({ ...prev, [rid]: (prev[rid] ?? "") + payload.text + "\n" }))
+          return // don't double-invalidate queries for every line
+        }
+      } catch { /* parse error, fall through to standard handling */ }
+    }
+    if ((event.kind === "chat_run" || event.kind === "chat_run_event") && event.data?.run_id && runId && event.data.run_id === runId) {
+      void getChatRun(runId).then((fresh) => {
+        setSelectedRun(fresh)
+        // on terminal state, clear stream buffer (final output replaces it)
+        if (fresh.state === "done" || fresh.state === "error" || fresh.state === "cancelled") {
+          setStreamBuffer((prev) => { const n = { ...prev }; delete n[fresh.id]; return n })
+          void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] })
+          void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] })
+        }
+      }).catch(() => undefined)
+      void qc.invalidateQueries({ queryKey: ["chat-run-events", runId] })
+    }
     if (event.kind.startsWith("chat_")) { void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); if (event.data?.session_id) void qc.invalidateQueries({ queryKey: ["chat-active-run", event.data.session_id] }); if (event.data?.session_id === sessionID) void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }) }
   }), [qc, run?.id, sessionID])
+
 
   const filteredSessions = useMemo(() => (sessions.data ?? []).filter((item) => {
     const text = `${item.title} ${item.agent} ${item.profile} ${item.workspace} ${item.model}`.toLowerCase()
@@ -184,7 +213,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       if (model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
       return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
     },
-    onSuccess: (data) => { setPrompt(""); setSelectedRun(data.run); setExpanded(true); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
+    onSuccess: (data) => { setPrompt(""); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
   async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
@@ -193,28 +222,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const isRunning = run?.state === "loading" || run?.state === "running"
 
   return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--color-bg)]">
-    <aside className={`flex shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] transition-all duration-200 ${collapsed ? "w-14" : "w-[280px]"}`}>
+    {sidebarOpen && <aside className="flex w-[280px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)]">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] px-2">
-        {!collapsed && <span className="px-1 text-sm font-semibold tracking-tight">Chats</span>}
-        <div className="ml-auto flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} title="New chat"><Plus className="size-4" /></Button>
-          <Button size="icon" variant="ghost" className="size-7" onClick={toggleCollapsed} title={collapsed ? "Expand" : "Collapse"}>{collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>
-        </div>
+        <span className="px-1 text-sm font-semibold tracking-tight">Chats</span>
+        <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} title="New chat"><Plus className="size-4" /></Button>
       </div>
-      {!collapsed && (
-        <div className="border-b border-[var(--color-line)] p-2">
-          <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search chats" className="h-8 pl-7 text-xs" /></div>
-        </div>
-      )}
+      <div className="border-b border-[var(--color-line)] p-2">
+        <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search chats" className="h-8 pl-7 text-xs" /></div>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {filteredSessions.length === 0 ? (
-          <div className={collapsed ? "p-2 text-center text-[10px] text-muted-foreground" : "rounded-md border border-dashed border-[var(--color-line)] p-4 text-center text-xs text-muted-foreground"}>{collapsed ? "—" : "No chat for this filter"}</div>
-        ) : collapsed ? (
-          <div className="space-y-1">
-            {filteredSessions.map((item) => (
-              <button key={item.id} onClick={() => void selectSession(item)} title={item.title} className={`flex size-9 items-center justify-center rounded-lg border text-[10px] font-semibold transition-colors ${item.id === sessionID ? "border-[var(--color-accent)]/40 bg-[var(--color-accent)]/15 text-[var(--color-accent)]" : "border-transparent bg-white/[0.04] text-neutral-400 hover:bg-white/10"}`}>{item.title.slice(0, 1).toUpperCase()}</button>
-            ))}
-          </div>
+          <div className="rounded-md border border-dashed border-[var(--color-line)] p-4 text-center text-xs text-muted-foreground">No chat for this filter</div>
         ) : (
           GROUP_ORDER.map((key) => {
             const items = grouped[key]
@@ -238,8 +256,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           })
         )}
       </div>
-      {!collapsed && <div className="border-t border-[var(--color-line)] px-2 py-1.5 text-[10px] text-neutral-600">{filteredSessions.length} chats</div>}
-    </aside>
+      <div className="border-t border-[var(--color-line)] px-2 py-1.5 text-[10px] text-neutral-600">{filteredSessions.length} chats</div>
+    </aside>}
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] bg-[var(--color-surface)]/60 px-4 backdrop-blur">
         <div className="min-w-0">
@@ -261,24 +279,25 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">{message.content}</div>
             ) : (
               <div className="w-full min-w-0">
-                <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm leading-6 shadow-sm"><Markdown text={message.content} /></div>
-                <MessageFooter run={run} sessionModel={current.data?.model || model} messageCreatedAt={message.created_at} />
+                <StreamingResponse status={isRunning && message.id === activeMessages[activeMessages.length-1]?.id ? "streaming" : "complete"} copyText={isRunning && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content} footer={<MessageFooter run={isRunning ? run : undefined} sessionModel={current.data?.model || model} messageCreatedAt={message.created_at} />}><Markdown text={isRunning && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content} /></StreamingResponse>
               </div>
             )}
           </div>
         ))}
-        {run && <div className={`relative overflow-hidden rounded-xl border bg-[var(--color-surface)] ${isRunning ? "border-sky-500/30 running-loader" : "border-[var(--color-line)]"}`}>{isRunning && <span aria-hidden className="signal-loading__line" /> }<button className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs" onClick={() => setExpanded((value) => !value)}>{expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span className={stateTone(run.state)}>{stateLabel(run.state)}</span><span className="text-neutral-500 truncate">{run.profile}{run.model ? ` · ${run.model.split("/").pop()}` : ""} · {run.workspace || "local"}</span><span className="ml-auto shrink-0"><RunTimer run={run} /></span></button>{expanded && <div className="space-y-3 border-t border-[var(--color-line)] p-3 text-xs"><div className="rounded-lg border border-sky-500/20 bg-sky-950/30 p-3 font-mono text-sky-200"><div className="flex items-center justify-between text-[11px]">Worker Log{(events.data?.length ?? 0) > 0 ? ` · ${events.data?.length} events` : ""}<Button variant="ghost" size="icon" className="size-6 text-sky-200" onClick={() => void navigator.clipboard.writeText((events.data ?? []).map((e) => `[${e.kind}] ${e.payload}`).join("\n"))}><Copy className="size-3" /></Button></div><div className="mt-2 max-h-40 space-y-1 overflow-auto whitespace-pre-wrap text-[11px] text-sky-100">{events.data?.length ? events.data.map((e) => <div key={e.id} className="opacity-80">[{e.kind}] {e.payload.slice(0, 220)}</div>) : <div className="opacity-60">spawned · running · completed</div>}</div></div>{run.output && <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-3 text-emerald-200"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-medium">Result</span><Button variant="ghost" size="icon" className="size-6 text-emerald-200" onClick={() => void navigator.clipboard.writeText(run.output)}><Copy className="size-3" /></Button></div><Markdown text={run.output} /></div>}{run.error && <div className="rounded-md bg-red-950/30 p-2 text-red-300">{run.error}</div>}</div>}</div>}</div></div>
+        {run && isRunning && <div className="chat-agent-progress"><AgentProgress label={run.state === "loading" ? "Loading" : "Running"} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} /><AgentTaskPlan events={events.data ?? []} /></div>}
+      </div></div>
       <div className="border-t border-[var(--color-line)] bg-[var(--color-surface)]/40 p-3 backdrop-blur">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2 shadow-sm">
-          <div className="relative">
+        <BorderBeam size="md" colorVariant="colorful" strength={0.7} className="mx-auto max-w-3xl">
+          <div className="rounded-2xl bg-[var(--color-surface)] p-2">
+          <div>
             <Textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (prompt.trim() && sessionID && !send.isPending) send.mutate() } }}
               placeholder="Message agent..."
-              className={`resize-none border-0 bg-transparent pr-8 shadow-none focus-visible:ring-0 ${composerExpanded ? "max-h-64 min-h-24 overflow-y-auto" : "max-h-32 min-h-16 overflow-y-auto"}`}
+              rows={1}
+              className="field-sizing-content max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 shadow-none focus-visible:ring-0"
             />
-            <button type="button" onClick={() => setComposerExpanded((v) => !v)} className="absolute right-1 top-1 grid size-7 place-items-center rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] text-neutral-500 hover:text-neutral-200" title={composerExpanded ? "Collapse" : "Expand"}>{composerExpanded ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}</button>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Select value={profile} onValueChange={setProfile}>
@@ -299,8 +318,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             <Button size="icon" className="size-8 rounded-full" disabled={!prompt.trim() || !sessionID || send.isPending} onClick={() => send.mutate()}>{send.isPending ? <X className="size-4" /> : <ArrowUp className="size-4" />}</Button>
           </div>
           {send.isError && <div className="pt-2 text-xs text-red-400">{(send.error as Error).message}</div>}
-        </div>
-        <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between px-1 text-[10px] text-neutral-600"><span>Enter send · Shift+Enter newline</span><span className="flex items-center gap-1">{composerExpanded ? <Maximize2 className="size-3" /> : null} {prompt.length} chars</span></div>
+          </div>
+        </BorderBeam>
+        <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between px-1 text-[10px] text-neutral-600"><span>Enter send · Shift+Enter newline</span><span>{prompt.length} chars</span></div>
       </div>
     </main>
   </div>
