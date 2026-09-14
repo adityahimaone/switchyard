@@ -70,4 +70,23 @@ func TestChatContextCancel(t *testing.T) {
 	}
 }
 
+func TestGreetingChatAnswer(t *testing.T) {
+	cases := []string{"hello", "hi", "halo", "hey", "hai", "Hello!", "HALO"}
+	for _, c := range cases {
+		if _, ok := greetingChatAnswer(c); !ok {
+			t.Fatalf("greeting %q not matched", c)
+		}
+	}
+	if _, ok := greetingChatAnswer("summarize this workspace in detail"); ok {
+		t.Fatal("long prompt matched greeting")
+	}
+}
+
+func TestGreetingChatAnswerContent(t *testing.T) {
+	got, ok := greetingChatAnswer("hello")
+	if !ok || got == "" {
+		t.Fatalf("got=%q ok=%v", got, ok)
+	}
+}
+
 func contains(s, sub string) bool { return strings.Contains(s, sub) }

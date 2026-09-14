@@ -23,6 +23,8 @@ const SettingsPage = lazy(() => import("./features/settings/SettingsPage"))
 const OverviewPage = lazy(() => import("./features/overview/OverviewPage"))
 const AgentMappingPage = lazy(() => import("./features/flow/AgentMappingPage"))
 const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
+const CronPage = lazy(() => import("./features/cron/CronPage"))
+const ChatPage = lazy(() => import("./features/chat/ChatPage"))
 import { Archive, CheckSquare, Inbox, Plus, Pencil, Search, X } from "lucide-react"
 import { useSettings } from "./hooks/useSettings"
 import LoadingState from "./components/LoadingState"
@@ -62,6 +64,7 @@ export default function App() {
   const [editingBoard, setEditingBoard] = useState(false)
   const [detail, setDetail] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
+  const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
   const [filtersOpen, setFiltersOpen] = useState(true)
   const [q, setQ] = useState("")
   const [fStatus, setFStatus] = useState("__all")
@@ -96,6 +99,7 @@ export default function App() {
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
 
   const detailPage = detailId ? (tasks.data ?? []).find((task) => task.id === detailId) ?? null : null
+  const chatSessionID = chatRouteID
 
   useEffect(() => {
     window.localStorage.setItem("kb-last-board", slug)
@@ -111,6 +115,7 @@ export default function App() {
       setSlug(route.slug ?? window.localStorage.getItem("kb-last-board") ?? "default")
       setDetailId(route.taskId ?? null)
       setDetail(null)
+      setChatRouteID(route.chatSessionID ?? undefined)
     }
     window.addEventListener("popstate", onPopState)
     return () => window.removeEventListener("popstate", onPopState)
@@ -259,7 +264,12 @@ export default function App() {
     setDetail(null)
     setDetailId(null)
     setPage(p)
-    go(pagePath(p, slug))
+    if (p === "chat") {
+      setChatRouteID(undefined)
+      go("/chat")
+    } else {
+      go(pagePath(p, slug))
+    }
   }
 
   const boardBody =
@@ -535,6 +545,8 @@ export default function App() {
         {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
         {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
         {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
+        {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
+        {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
         {page === "board" && detailId && detailPage && (
           <TaskDetailPage
             slug={slug}

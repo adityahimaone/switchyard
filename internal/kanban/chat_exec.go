@@ -34,6 +34,15 @@ func fastChatPrompt(prompt string) bool {
 	return len([]rune(strings.TrimSpace(prompt))) <= 30
 }
 
+func greetingChatAnswer(prompt string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(prompt)) {
+	case "hello", "hi", "halo", "hey", "hai", "hello!", "hi!", "halo!", "hey!", "hai!":
+		return "Halo! Gw Hermes. Ada yang mau lu kerjain?", true
+	default:
+		return "", false
+	}
+}
+
 func todayChatAnswer(prompt string, now time.Time) (string, bool) {
 	p := strings.ToLower(strings.TrimSpace(prompt))
 	switch p {
@@ -54,7 +63,11 @@ func todayChatAnswer(prompt string, now time.Time) (string, bool) {
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
 	_ = UpdateChatRunState(runID, "running", "", "")
 	_ = AppendChatRunEvent(runID, "spawned", fmt.Sprintf(`{"agent":%q,"profile":%q}`, agent, profile))
-	if answer, ok := todayChatAnswer(prompt, time.Now()); ok && strings.TrimSpace(workspace) == "" {
+	answer, ok := greetingChatAnswer(prompt)
+	if !ok {
+		answer, ok = todayChatAnswer(prompt, time.Now())
+	}
+	if ok && strings.TrimSpace(workspace) == "" {
 		_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"fast_path":true}`, len(answer)))
 		_ = UpdateChatRunState(runID, "done", answer, "")
 		if r, err := GetChatRun(runID); err == nil {

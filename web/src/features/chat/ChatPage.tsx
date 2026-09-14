@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { api, createChatSession, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listProviders, openEventStream, sendChatMessage, stopChatRun, type ChatAgent, type ChatMessage, type ChatRun, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[] }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void }
 const agents: ChatAgent[] = ["hermes"]
 const states: ChatState[] = ["loading", "running", "done", "error", "cancelled"]
 const periods = ["all", "today", "yesterday", "7d", "month"] as const
@@ -67,9 +67,9 @@ function Markdown({ text }: { text: string }) {
   })}</div>
 }
 
-export default function ChatPage({ profiles, workspaces }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange }: Props) {
   const qc = useQueryClient()
-  const [sessionID, setSessionID] = useState<string>()
+  const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
   const [period, setPeriod] = useState<Period>("all")
   const [stateFilter, setStateFilter] = useState("all")
@@ -99,17 +99,28 @@ export default function ChatPage({ profiles, workspaces }: Props) {
     return Array.from(set).sort()
   }, [profiles, providers.data])
 
+  function setActive(id: string) {
+    setSessionID(id)
+    setRun(undefined)
+    if (onSessionChange) onSessionChange(id)
+  }
+
+  useEffect(() => {
+    if (initialSessionID && initialSessionID !== sessionID) setSessionID(initialSessionID)
+  }, [initialSessionID]) // ponytail: prop drives initial active session; internal setActive updates caller via onSessionChange
+
   useEffect(() => {
     if (sessions.isSuccess && sessions.data?.length === 0 && !initialCreate.current) {
       initialCreate.current = true
       void createChatSession({ title: "New chat", agent: "hermes", profile: "default", workspace: "", model: "" }).then((created) => {
-        setSessionID(created.id)
+        setActive(created.id)
         void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
       }).catch(() => { initialCreate.current = false })
       return
     }
-    if (!sessionID && sessions.data?.[0]) setSessionID(sessions.data[0].id)
+    if (!sessionID && sessions.data?.[0]) setActive(sessions.data[0].id)
   }, [qc, sessionID, sessions.data, sessions.isSuccess])
+
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
     if ((event.kind === "chat_run" || event.kind === "chat_run_event") && event.data?.run_id && runId && event.data.run_id === runId) { void getChatRun(runId).then(setRun).catch(() => undefined); void qc.invalidateQueries({ queryKey: ["chat-run-events", runId] }); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }) }
@@ -135,8 +146,8 @@ export default function ChatPage({ profiles, workspaces }: Props) {
     onSuccess: (data) => { setPrompt(""); setRun(data.run); setExpanded(true); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
-  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setSessionID(created.id); setRun(undefined); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
-  async function selectSession(item: ChatSession) { setSessionID(item.id); setRun(undefined); setAgent(item.agent); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model) }
+  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
+  async function selectSession(item: ChatSession) { setActive(item.id); setAgent(item.agent); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model) }
   const activeMessages: ChatMessage[] = messages.data ?? []
   const isRunning = run?.state === "loading" || run?.state === "running"
 
