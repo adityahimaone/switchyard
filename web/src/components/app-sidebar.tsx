@@ -34,7 +34,7 @@ export function AppSidebar({
 			<SidebarHeader className="h-14 justify-center">
 				<SidebarMenuButton asChild>
 					<button onClick={() => onSelectPage("overview")}>
-						<img src="/brand/switchyard-logo-white.png" alt="" aria-hidden="true" className="size-8 object-contain" />
+						<img src="/brand/mascot-switchyard.png" alt="" aria-hidden="true" className="size-8 object-contain" />
 						<div className="grid flex-1 text-left text-sm leading-tight">
 							<span className="truncate font-semibold">Switchyard</span>
 							<span className="truncate text-xs text-muted-foreground">Agent Control Plane</span>

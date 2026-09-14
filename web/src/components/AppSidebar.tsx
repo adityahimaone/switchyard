@@ -31,8 +31,8 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Switchyard" data-cuelume-hover="tick" data-cuelume-press data-cuelume-release onClick={() => onSelectPage("board")}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-slate-900 p-1.5">
-                <img src="/brand/switchyard-logo-white.png" alt="" aria-hidden="true" className="size-full object-contain" />
+              <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-slate-900 p-1">
+                <img src="/brand/mascot-switchyard.png" alt="" aria-hidden="true" className="size-full object-contain" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">Switchyard</span>

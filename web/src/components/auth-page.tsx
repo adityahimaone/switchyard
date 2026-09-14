@@ -26,7 +26,10 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: () => v
     <main className="relative grid min-h-screen overflow-hidden bg-[var(--color-bg)] lg:grid-cols-2">
       <section className="relative hidden overflow-hidden border-r border-[var(--color-line)] bg-[var(--color-surface)]/40 p-10 lg:flex lg:flex-col">
         <FloatingPaths position={1} />
-        <div className="relative z-10 text-xs font-semibold uppercase tracking-[.22em] text-[var(--color-accent)]">Switchyard</div>
+        <div className="relative z-10 flex items-center gap-3">
+          <img src="/brand/mascot-switchyard.png" alt="Switchyard" className="h-12 w-auto object-contain" />
+          <span className="text-xs font-semibold uppercase tracking-[.22em] text-[var(--color-accent)]">Switchyard</span>
+        </div>
         <div className="relative z-10 mt-auto max-w-md">
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-ink-3)]">Private workspace</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-[var(--color-ink-1)]">Your agents. Your board. Your control plane.</h1>
@@ -35,6 +38,10 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: () => v
       </section>
       <section className="relative flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-6">
+          <div className="flex items-center gap-3 lg:hidden">
+            <img src="/brand/mascot-switchyard.png" alt="Switchyard" className="h-12 w-auto object-contain" />
+            <span className="text-xs font-semibold uppercase tracking-[.22em] text-[var(--color-accent)]">Switchyard</span>
+          </div>
           <div className="flex size-11 items-center justify-center rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)]"><KeyRound className="size-5" /></div>
           <div><p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Protected app</p><h2 className="mt-2 text-2xl font-semibold text-[var(--color-ink-1)]">Welcome back</h2><p className="mt-2 text-sm text-[var(--color-ink-3)]">Enter workspace password to continue.</p></div>
           <form onSubmit={submit} className="space-y-4">
