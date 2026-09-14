@@ -23,26 +23,6 @@ function elapsedLabel(startedAt?: number, endedAt?: number | null, now = Date.no
   return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`
 }
 
-function escalationLabel(startedAt?: number, endedAt?: number | null, now = Date.now()) {
-  if (!startedAt) return "queued"
-  const seconds = Math.max(0, ((endedAt ? endedAt * 1000 : now) - startedAt * 1000) / 1000)
-  if (seconds >= 60) return "taking longer"
-  if (seconds >= 20) return "still working"
-  if (seconds >= 5) return "processing"
-  return "starting"
-}
-
-function RunTimer({ run }: { run: ChatRun }) {
-  const active = run.state === "loading" || run.state === "running"
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!active) return
-    const timer = window.setInterval(() => setNow(Date.now()), 100)
-    return () => window.clearInterval(timer)
-  }, [active])
-  return <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-neutral-400"><span className={active ? "chat-running-dot" : "size-1.5 rounded-full bg-emerald-400"} />{elapsedLabel(run.started_at, run.ended_at, now)}{active && <span className="font-sans text-neutral-500">· {escalationLabel(run.started_at, run.ended_at, now)}</span>}</span>
-}
-
 function MessageFooter({ run, sessionModel, messageCreatedAt }: { run?: ChatRun; sessionModel?: string; messageCreatedAt?: number }) {
   const active = run?.state === "loading" || run?.state === "running"
   const isError = run?.state === "error" || run?.state === "cancelled"
@@ -62,8 +42,8 @@ function MessageFooter({ run, sessionModel, messageCreatedAt }: { run?: ChatRun;
 }
 
 type PlanStatus = "pending" | "in-progress" | "completed" | "cancelled"
-function AgentTaskPlan({ events }: { events: ChatRunEvent[] }) {
-  const [open, setOpen] = useState(true)
+function AgentTaskPlan({ events, defaultOpen = true }: { events: ChatRunEvent[]; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const items = events.filter((event) => event.kind !== "tool_output").map((event, index, all) => {
     const status: PlanStatus = event.kind === "completed" ? "completed" : event.kind === "cancelled" || event.kind === "error" ? "cancelled" : index === all.length - 1 ? "in-progress" : "completed"
     return { id: String(event.id), status, label: event.kind === "spawned" ? `Spawned Agent Hermes` : event.kind.replaceAll("_", " "), detail: new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
@@ -262,7 +242,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] bg-[var(--color-surface)]/60 px-4 backdrop-blur">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</div>
-          <div className="flex items-center gap-2 text-[10px] font-medium"><span className={stateTone(run?.state)}>{stateLabel(run?.state)}</span><span className="text-neutral-500">· {run ? `${run.profile}` : `${profile}`}{run?.model || model ? ` · ${(run?.model || model).split("/").pop()}` : ""}</span>{run && <RunTimer run={run} />}</div>
         </div>
         {run && isRunning && <Button size="sm" variant="outline" onClick={() => void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))}><Square className="mr-1 size-3" /> Stop</Button>}
       </header>
@@ -284,7 +263,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             )}
           </div>
         ))}
-        {run && isRunning && <div className="chat-agent-progress"><AgentProgress label={run.state === "loading" ? "Loading" : "Running"} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} /><AgentTaskPlan events={events.data ?? []} /></div>}
+        {run && isRunning && <div className="chat-agent-progress"><AgentProgress label={run.state === "loading" ? "Loading" : "Running"} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} /><AgentTaskPlan events={events.data ?? []} defaultOpen={false} /></div>}
       </div></div>
       <div className="border-t border-[var(--color-line)] bg-[var(--color-surface)]/40 p-3 backdrop-blur">
         <BorderBeam size="md" colorVariant="colorful" strength={0.7} className="mx-auto max-w-3xl">
@@ -301,15 +280,15 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Select value={profile} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className="h-8 max-w-44 rounded-full border-[var(--color-line)] bg-transparent px-3 text-xs [&>span]:flex [&>span]:items-center [&>span]:gap-1.5"><SelectValue /></SelectTrigger>
+              <SelectTrigger size="sm" className="h-7 max-w-36 rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px] [&>span]:flex [&>span]:items-center [&>span]:gap-1.5"><SelectValue /></SelectTrigger>
               <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">{(profiles.length ? profiles : [{ name: "default", model: "", provider: "", active: true, valid: true } as Profile]).map((v) => <SelectItem key={v.name} value={v.name} className="text-sm"><span className="flex min-w-0 items-center gap-1.5"><Avatar className="size-4 shrink-0">{v.avatar_url && <AvatarImage src={v.avatar_url} alt={v.name} />}<AvatarFallback className="bg-[var(--color-inset)] text-[7px] text-[var(--color-accent)]">{v.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><span className="min-w-0 truncate">{v.name}{v.model ? ` — ${v.model.split("/").pop()}` : ""}{v.valid === false ? " (broken)" : ""}</span></span></SelectItem>)}</SelectContent>
             </Select>
             <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-8 max-w-44 truncate rounded-full border-[var(--color-line)] bg-transparent px-3 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger size="sm" className="h-7 max-w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue /></SelectTrigger>
               <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__local">local</SelectItem>{workspaces.map((v) => { const live = isLive(v); const ssh = isSshWorkspace(v); const os = (v.os || "").toLowerCase(); const osLabel = os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : ""; return <SelectItem key={v.id} value={v.path} className="min-w-0 text-sm" title={v.path}><span className="flex min-w-0 items-center gap-1.5">{live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" /> }<span className="min-w-0 flex-1 truncate">{v.name}</span>{ssh && <Badge variant="outline" className="shrink-0 border-violet-500/30 bg-violet-500/10 px-1 py-0 text-[9px] leading-none text-violet-300">ssh</Badge>}{osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-neutral-400">{osLabel}</Badge>}{live && <span className="size-1.5 shrink-0 rounded-full bg-emerald-400/60" />}</span></SelectItem> })}</SelectContent>
             </Select>
             <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-8 w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-3 text-xs"><SelectValue placeholder="model default" /></SelectTrigger>
+              <SelectTrigger size="sm" className="h-7 w-32 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="model default" /></SelectTrigger>
               <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__default">model default</SelectItem>{modelOptions.map((v) => <SelectItem key={v} value={v} className="max-w-72 truncate text-sm" title={v}>{v}</SelectItem>)}</SelectContent>
             </Select>
             <input ref={fileRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) setPrompt((prev) => `${prev}${prev ? "\n" : ""}[attach: ${file.name}]`); if (fileRef.current) fileRef.current.value = "" }} />
