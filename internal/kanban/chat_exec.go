@@ -127,46 +127,35 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		_ = UpdateChatRunState(runID, "error", "", err.Error())
 		return
 	}
-	cmd := exec.CommandContext(ctx, "hermes", args...)
-	if dir := strings.TrimSpace(localWorkspacePath(workspace)); dir != "" {
-		cmd.Dir = dir
+	var onLine = func(line string) {
+		_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf("{\"text\":%q}", line))
 	}
-	cmd.Stdin = strings.NewReader(prompt)
-
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = UpdateChatRunState(runID, "error", "", err.Error())
-		return
-	}
-	if err := cmd.Start(); err != nil {
-		_ = UpdateChatRunState(runID, "error", "", trimErr(err))
-		return
-	}
-	var output strings.Builder
-	scanner := bufio.NewScanner(pipe)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if output.Len() < 100000 {
-			output.WriteString(line)
-			output.WriteByte('\n')
+	var output string
+	output, err = runHermesProcess(ctx, args, workspace, prompt, onLine)
+	if err != nil && hermesSessionID != "" && ctx.Err() == nil {
+		if r, getErr := GetChatRun(runID); getErr == nil {
+			_ = ClearHermesSessionID(r.SessionID)
 		}
-		_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf(`{"text":%q}`, line))
+		_ = AppendChatRunEvent(runID, "session_reset", "{\"reason\":\"resume_failed\"}")
+		args, err = chatCommand(agent, profile, model, prompt, "")
+		if err == nil {
+			output, err = runHermesProcess(ctx, args, workspace, prompt, onLine)
+		}
 	}
-	err = cmd.Wait()
 	if ctx.Err() != nil {
-		_ = UpdateChatRunState(runID, "cancelled", output.String(), ctx.Err().Error())
+		_ = UpdateChatRunState(runID, "cancelled", output, ctx.Err().Error())
 		return
 	}
 	if err != nil {
-		_ = UpdateChatRunState(runID, "error", output.String(), trimErr(err))
+		_ = UpdateChatRunState(runID, "error", output, trimErr(err))
 		return
 	}
-	result := strings.TrimSpace(output.String())
+	result := strings.TrimSpace(output)
 	if result == "" {
 		_ = UpdateChatRunState(runID, "error", "", "agent returned empty response")
 		return
 	}
-	if sid := parseHermesSessionID(output.String()); sid != "" {
+	if sid := parseHermesSessionID(output); sid != "" {
 		if r, getErr := GetChatRun(runID); getErr == nil {
 			_ = SetHermesSessionID(r.SessionID, sid)
 		}
@@ -176,6 +165,35 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 	if r, err := GetChatRun(runID); err == nil {
 		_, _ = CreateChatMessage(r.SessionID, "assistant", result, r.ID)
 	}
+}
+
+// parseHermesSessionID extracts the session id printed by `hermes chat` on exit.
+func runHermesProcess(ctx context.Context, args []string, workspace, prompt string, onLine func(string)) (string, error) {
+	cmd := exec.CommandContext(ctx, "hermes", args...)
+	if dir := strings.TrimSpace(localWorkspacePath(workspace)); dir != "" {
+		cmd.Dir = dir
+	}
+	cmd.Stdin = strings.NewReader(prompt)
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if b.Len() < 100000 {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+		if onLine != nil {
+			onLine(line)
+		}
+	}
+	return b.String(), cmd.Wait()
 }
 
 // parseHermesSessionID extracts the session id printed by `hermes chat` on exit.
