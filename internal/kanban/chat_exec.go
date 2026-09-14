@@ -2,8 +2,14 @@ package kanban
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -116,6 +122,12 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		}
 		return
 	}
+	// Try warm daemon first (saves cold-start on repeat runs); fall back to CLI.
+	if daemonHealthy() {
+		if ok := runChatViaDaemon(ctx, runID, workspace, profile, model, prompt); ok {
+			return
+		}
+	}
 	hermesSessionID := ""
 	if r, getErr := GetChatRun(runID); getErr == nil {
 		if s, sessionErr := GetChatSession(r.SessionID); sessionErr == nil {
@@ -218,4 +230,120 @@ func filepathIsLocal(path string) bool {
 
 func chatContextTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 10*time.Minute)
+}
+
+const daemonSockPath = "/tmp/hermes-daemon.sock"
+
+func daemonSock() string {
+	if v := os.Getenv("HERMES_DAEMON_SOCK"); v != "" {
+		return v
+	}
+	return daemonSockPath
+}
+
+func daemonHealthy() bool {
+	c := &http.Client{Transport: &http.Transport{DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+		return net.Dial("unix", daemonSock())
+	}}, Timeout: 800 * time.Millisecond}
+	r, err := c.Get("http://localhost/health")
+	if err != nil {
+		return false
+	}
+	defer r.Body.Close()
+	return r.StatusCode == 200
+}
+
+// runChatViaDaemon streams the warm daemon's SSE response into chat run events.
+// Returns false on any failure before the first event so RunChat can fall back to CLI.
+func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, prompt string) bool {
+	body, _ := json.Marshal(map[string]string{
+		"prompt":    prompt,
+		"workspace": workspace,
+		"profile":   profile,
+		"model":     model,
+	})
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost/query", bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c := &http.Client{Transport: &http.Transport{DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+		return net.Dial("unix", daemonSock())
+	}}, Timeout: 10 * time.Minute}
+	resp, err := c.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		_, _ = io.ReadAll(resp.Body)
+		return false
+	}
+	dec := newSSEDecoder(resp.Body)
+	var result strings.Builder
+	got := false
+	for dec.Scan() {
+		got = true
+		ev := dec.Event()
+		switch ev["kind"] {
+		case "tool_output":
+			_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf(`{"text":%q}`, ev["text"]))
+		case "completed":
+			result.WriteString(ev["text"])
+		}
+	}
+	if !got {
+		return false
+	}
+	out := strings.TrimSpace(result.String())
+	if out == "" {
+		_ = UpdateChatRunState(runID, "error", "", "agent returned empty response")
+		return true
+	}
+	_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"daemon":true}`, len(out)))
+	_ = UpdateChatRunState(runID, "done", out, "")
+	if r, err := GetChatRun(runID); err == nil {
+		_, _ = CreateChatMessage(r.SessionID, "assistant", out, r.ID)
+	}
+	return true
+}
+
+// sseEvent reads Server-Sent-Events `data:` lines into a map of JSON fields per event.
+type sseEvent struct {
+	sc   *bufio.Scanner
+	last map[string]string
+}
+
+func newSSEDecoder(r io.Reader) *sseEvent {
+	return &sseEvent{sc: bufio.NewScanner(r)}
+}
+
+func (d *sseEvent) Scan() bool {
+	var data []string
+	for d.sc.Scan() {
+		line := d.sc.Text()
+		if line == "" {
+			if len(data) > 0 {
+				d.last = parseSSE(strings.Join(data, "\n"))
+				return true
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			data = append(data, strings.TrimPrefix(line, "data:"))
+		}
+	}
+	if len(data) > 0 {
+		d.last = parseSSE(strings.Join(data, "\n"))
+		return true
+	}
+	return false
+}
+
+func (d *sseEvent) Event() map[string]string { return d.last }
+
+func parseSSE(raw string) map[string]string {
+	out := map[string]string{}
+	_ = json.Unmarshal([]byte(raw), &out)
+	return out
 }

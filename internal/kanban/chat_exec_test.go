@@ -147,6 +147,13 @@ func TestParseHermesSessionID(t *testing.T) {
 	}
 }
 
+func TestDaemonHealthyMissingSocket(t *testing.T) {
+	t.Setenv("HERMES_DAEMON_SOCK", filepath.Join(t.TempDir(), "missing.sock"))
+	if daemonHealthy() {
+		t.Fatal("expected missing daemon socket to be unhealthy")
+	}
+}
+
 func TestClearHermesSessionIDFunc(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	s, err := CreateChatSession("t", "hermes", "default", "", "")
