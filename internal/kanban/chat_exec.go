@@ -5,12 +5,13 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // chatCommand — hermes-only (codex/shell remain task executors, not chat)
-func chatCommand(agent, profile, model, prompt string) ([]string, error) {
+func chatCommand(agent, profile, model, prompt, hermesSessionID string) ([]string, error) {
 	agent = strings.TrimSpace(agent)
 	if agent != "hermes" {
 		return nil, fmt.Errorf("unsupported chat agent %q", agent)
@@ -20,7 +21,9 @@ func chatCommand(agent, profile, model, prompt string) ([]string, error) {
 		reasoning = "none"
 	}
 	args := []string{"chat", "-Q", "--reasoning", reasoning}
-
+	if hermesSessionID != "" {
+		args = append(args, "--resume", hermesSessionID)
+	}
 	if profile != "" && profile != "default" {
 		args = append(args, "--profile", profile)
 	}
@@ -58,6 +61,15 @@ func todayChatAnswer(prompt string, now time.Time) (string, bool) {
 	}
 }
 
+func timeChatAnswer(prompt string, now time.Time) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(prompt)) {
+	case "jam berapa", "sekarang jam berapa", "what time is it", "what's the time":
+		return fmt.Sprintf("Sekarang %s.", now.Format("15:04 MST")), true
+	default:
+		return "", false
+	}
+}
+
 // RunChat executes local agent fast path. Remote workspace stays task/node-agent path.
 // Output bounded, context cancellable. Assistant output persists after completion.
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
@@ -66,6 +78,9 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 	answer, ok := greetingChatAnswer(prompt)
 	if !ok {
 		answer, ok = todayChatAnswer(prompt, time.Now())
+	}
+	if !ok {
+		answer, ok = timeChatAnswer(prompt, time.Now())
 	}
 	if ok && strings.TrimSpace(workspace) == "" {
 		_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"fast_path":true}`, len(answer)))
@@ -101,7 +116,13 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		}
 		return
 	}
-	args, err := chatCommand(agent, profile, model, prompt)
+	hermesSessionID := ""
+	if r, getErr := GetChatRun(runID); getErr == nil {
+		if s, sessionErr := GetChatSession(r.SessionID); sessionErr == nil {
+			hermesSessionID = s.HermesSessionID
+		}
+	}
+	args, err := chatCommand(agent, profile, model, prompt, hermesSessionID)
 	if err != nil {
 		_ = UpdateChatRunState(runID, "error", "", err.Error())
 		return
@@ -145,11 +166,27 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		_ = UpdateChatRunState(runID, "error", "", "agent returned empty response")
 		return
 	}
+	if sid := parseHermesSessionID(output.String()); sid != "" {
+		if r, getErr := GetChatRun(runID); getErr == nil {
+			_ = SetHermesSessionID(r.SessionID, sid)
+		}
+	}
 	_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d}`, len(result)))
 	_ = UpdateChatRunState(runID, "done", result, "")
 	if r, err := GetChatRun(runID); err == nil {
 		_, _ = CreateChatMessage(r.SessionID, "assistant", result, r.ID)
 	}
+}
+
+// parseHermesSessionID extracts the session id printed by `hermes chat` on exit.
+// hermes prints `Session: <id>` (e.g. "Session: 20260914_175347_076ded") to stdout.
+var hermesSessionIDRe = regexp.MustCompile(`Session:\s*(\S+)`)
+
+func parseHermesSessionID(out string) string {
+	if m := hermesSessionIDRe.FindStringSubmatch(out); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 func isLocalWorkspace(path string) bool {
