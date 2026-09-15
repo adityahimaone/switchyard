@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -57,7 +58,8 @@ func runGit(t *reviewTask, args string) (string, int) {
 }
 
 func reviewWorkspaceClean(t *reviewTask) (bool, string, int) {
-	out, code := runGit(t, `git diff --quiet HEAD -- .`)
+	// git diff --quiet ignores untracked files; review must treat new files as changes.
+	out, code := runGit(t, `git diff --quiet HEAD -- .; diff_code=$?; untracked=$(git ls-files --others --exclude-standard | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
 	if code == 0 {
 		return true, out, 0
 	}
@@ -82,8 +84,8 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("unsupported transport %q for diff", t.Transport), 400)
 		return
 	}
-	stat, code1 := runGit(t, `git diff --stat HEAD -- . | tail -20`)
-	diff, code2 := runGit(t, `git diff HEAD -- .`)
+	stat, code1 := runGit(t, `git diff --stat HEAD -- .; for f in $(git ls-files --others --exclude-standard); do git diff --no-index --stat /dev/null "$f" || true; done | tail -40`)
+	diff, code2 := runGit(t, `git diff HEAD -- .; for f in $(git ls-files --others --exclude-standard); do git diff --no-index /dev/null "$f" || true; done | head -8000`)
 	clean, _, code3 := reviewWorkspaceClean(t)
 	if code1 != 0 && code2 != 0 && code3 != 0 {
 		fail(w, fmt.Errorf("git diff failed: %s", truncate(stat, 300)), 500)
@@ -101,6 +103,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Action  string `json:"action"`            // done | commit | commit_push
 		Message string `json:"message,omitempty"` // optional commit message override
+		Files   []string `json:"files,omitempty"`   // per-file selective commit
 	}
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -147,9 +150,22 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	if msg == "" {
 		msg = t.Title
 	}
-	msg = strings.ReplaceAll(msg, "\"", "'") // shell-safe one level
+	msg = strings.ReplaceAll(msg, "'", "'\\''") // shell-safe
 
-	script := fmt.Sprintf("git add -A && git commit -m \"%s\"", msg)
+	var script string
+	if len(req.Files) > 0 {
+		if err := validateCommitFiles(req.Files); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		quoted := make([]string, len(req.Files))
+		for i, f := range req.Files {
+			quoted[i] = shellQuote(f)
+		}
+		script = fmt.Sprintf("git add -- %s && git commit -m %s", strings.Join(quoted, " "), shellQuote(msg))
+	} else {
+		script = fmt.Sprintf("git add -A && git commit -m %s", shellQuote(msg))
+	}
 	if req.Action == "commit_push" {
 		script += " && git push"
 	}
@@ -168,4 +184,23 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		db.Close()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000)})
+}
+
+func validateCommitFiles(files []string) error {
+	for _, f := range files {
+		if f == "" {
+			return fmt.Errorf("empty file path")
+		}
+		if strings.Contains(f, "..") {
+			return fmt.Errorf("path traversal rejected: %s", f)
+		}
+		if filepath.IsAbs(f) {
+			return fmt.Errorf("absolute path rejected: %s", f)
+		}
+	}
+	return nil
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
