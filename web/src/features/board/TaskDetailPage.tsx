@@ -1,14 +1,15 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { addTaskDependency, api, cancelRun, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
+import { addTaskDependency, api, cancelRun, openEventStream, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT } from "./eventCards"
-import { ArrowLeft, Loader2, Send, Square } from "lucide-react"
+import { ArrowLeft, Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus, Send, Square } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
+import { ResultEmpty, ResultStack, WorkerLogPanel } from "./OutputPanels"
 
 const STATUS_CHIP: Record<string, string> = {
   done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
@@ -18,10 +19,33 @@ const STATUS_CHIP: Record<string, string> = {
   archived: "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-400",
 }
 
+type ReplyState = "idle" | "sent" | "notified" | "replied"
+
+function ReplyStatus({ state }: { state: ReplyState }) {
+  if (state === "idle") return null
+  const steps = [
+    ["Sent", true],
+    ["Agent notified", state === "notified" || state === "replied"],
+    ["Agent replied", state === "replied"],
+  ] as const
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]" aria-live="polite">
+      {steps.map(([label, active], index) => (
+        <span key={label} className={`rounded-full border px-2 py-0.5 ${active ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-[var(--color-line)] text-neutral-600"}`}>
+          {active ? "✓ " : "○ "}{label}
+          {index < steps.length - 1 && <span className="ml-1.5 text-neutral-600">·</span>}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function CommentSection({ slug, task, profiles }: { slug: string; task: Task; profiles: Profile[] }) {
   const qc = useQueryClient()
   const [draft, setDraft] = useState("")
   const [err, setErr] = useState<string | null>(null)
+  const [replyState, setReplyState] = useState<ReplyState>("idle")
+  const [lastSentAt, setLastSentAt] = useState(0)
 
   const comments = useQuery({
     queryKey: ["comments", slug, task.id],
@@ -29,15 +53,32 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
     refetchInterval: 10_000,
   })
 
+  useEffect(() => {
+    const latest = comments.data?.[comments.data.length - 1]
+    if (!latest) return
+    if (replyState === "sent") setReplyState("notified")
+    if (lastSentAt && latest.created_at >= lastSentAt && latest.author !== "board-ui") setReplyState("replied")
+  }, [comments.data, lastSentAt, replyState])
+
+  useEffect(() => openEventStream((event) => {
+    if (event.data.task_id !== task.id) return
+    if (event.kind === "commented" || event.kind === "task_event" || event.kind === "task_updated" || event.kind === "status_changed") {
+      qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
+      qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
+    }
+  }), [qc, slug, task.id])
+
   const post = useMutation({
     mutationFn: (body: string) =>
-      api(`/api/boards/${slug}/tasks/${task.id}/comments`, {
+      api<TaskComment>(`/api/boards/${slug}/tasks/${task.id}/comments`, {
         method: "POST",
         body: JSON.stringify({ body, author: "board-ui" }),
       }),
-    onSuccess: () => {
+    onSuccess: (comment) => {
       setDraft("")
-      toastGlobal("Reply sent", "success")
+      setLastSentAt(comment.created_at)
+      setReplyState("sent")
+      toastGlobal("Reply sent · agent notified", "success")
       qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["tasks", slug] })
@@ -88,6 +129,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
         placeholder={`Tulis balasan… tag @${task.assignee || "agent"} buat minta dia respond`}
         className="mt-2 min-h-0 resize-none border-[var(--color-line)] bg-[var(--color-surface)] text-xs"
       />
+      <ReplyStatus state={replyState} />
       {err && <p className="mt-1 text-[11px] text-red-400">{err}</p>}
       <div className="mt-1.5 flex justify-end">
         <Button
@@ -107,10 +149,85 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
   )
 }
 
+type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
+type DiffFile = { name: string; lines: DiffLine[] }
+
+function parseDiffFiles(raw: string): DiffFile[] {
+  const files: DiffFile[] = []
+  let file: DiffFile | null = null
+  let oldLine = 0
+  let newLine = 0
+  for (const source of raw.split("\n")) {
+    if (source.startsWith("diff --git ")) {
+      const match = source.match(/ b\/(.+)$/)
+      file = { name: match?.[1] || "changed file", lines: [] }
+      files.push(file)
+      continue
+    }
+    if (!file) file = { name: "changed file", lines: [] }
+    const header = source.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+    if (header) {
+      const numbers = source.match(/^@@ -(\d+)/)
+      oldLine = Number(numbers?.[1] || 0)
+      newLine = Number(header[1])
+      continue
+    }
+    if (source.startsWith("--- ") || source.startsWith("+++ ") || source.startsWith("index ") || source.startsWith("new file")) continue
+    const type = source.startsWith("+") ? "added" : source.startsWith("-") ? "removed" : "context"
+    const content = type === "context" ? source : source.slice(1)
+    if (type === "removed") file.lines.push({ type, oldLine: oldLine++, content })
+    else if (type === "added") file.lines.push({ type, newLine: newLine++, content })
+    else if (source && (oldLine || newLine)) file.lines.push({ type, oldLine: oldLine++, newLine: newLine++, content })
+  }
+  return files.length ? files : [{ name: "workspace changes", lines: raw ? raw.split("\n").map((content) => ({ type: "context" as const, content })) : [] }]
+}
+
+function DiffDisclosure({ file, complete, copyText }: { file: DiffFile; complete: boolean; copyText: string }) {
+  const [open, setOpen] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const added = file.lines.filter((line) => line.type === "added").length
+  const removed = file.lines.filter((line) => line.type === "removed").length
+  async function copy() {
+    await navigator.clipboard.writeText(copyText)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+  return (
+    <section className="overflow-hidden rounded-lg border border-[var(--color-line)] bg-black/10">
+      <div className="flex items-center gap-2 border-b border-[var(--color-line)] bg-white/[0.025] px-3 py-2">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-neutral-200">
+          <ChevronDown className={`size-3.5 shrink-0 text-neutral-500 transition-transform ${open ? "" : "-rotate-90"}`} />
+          <FileCode2 className="size-3.5 shrink-0 text-violet-300" />
+          <span className="truncate font-mono" title={file.name}>{file.name}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
+            <span className="text-emerald-300">+{added}</span><span className="text-rose-300">-{removed}</span>
+          </span>
+        </button>
+        <button type="button" onClick={copy} className="rounded p-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200" title="Copy diff">
+          {copied ? <Check className="size-3.5 text-emerald-300" /> : <Copy className="size-3.5" />}
+        </button>
+      </div>
+      {open && <div className="max-h-72 overflow-auto py-1 font-mono text-[11px] leading-5">
+        {file.lines.map((line, index) => (
+          <div key={`${file.name}-${index}`} className={`grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] ${line.type === "added" ? "bg-emerald-500/10 text-emerald-100" : line.type === "removed" ? "bg-rose-500/10 text-rose-100" : "text-neutral-400"}`}>
+            <span className="select-none pr-2 text-right text-neutral-600">{line.oldLine ?? ""}</span>
+            <span className="select-none pr-2 text-right text-neutral-600">{line.newLine ?? ""}</span>
+            <span className={`select-none text-center ${line.type === "added" ? "text-emerald-300" : line.type === "removed" ? "text-rose-300" : "text-neutral-600"}`}>{line.type === "added" ? <Plus className="mx-auto size-3" /> : line.type === "removed" ? <Minus className="mx-auto size-3" /> : " "}</span>
+            <span className="whitespace-pre-wrap break-words pr-3">{line.content || " "}</span>
+          </div>
+        ))}
+        {!file.lines.length && <p className="px-3 py-4 text-neutral-600">No textual lines returned.</p>}
+      </div>}
+      {!open && complete && <div className="px-3 py-1.5 text-[10px] text-neutral-600">Diff collapsed · click file to expand</div>}
+    </section>
+  )
+}
+
 function ReviewSection({ slug, task, onDone }: { slug: string; task: Task; onDone: () => void }) {
   const qc = useQueryClient()
   const [action, setAction] = useState<"done" | "commit" | "commit_push" | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [open, setOpen] = useState(true)
 
   const diff = useQuery({
     queryKey: ["diff", slug, task.id],
@@ -135,14 +252,22 @@ function ReviewSection({ slug, task, onDone }: { slug: string; task: Task; onDon
   })
 
   if (task.status !== "review") return null
+  const files = parseDiffFiles(diff.data?.diff || "")
+  const complete = !diff.isLoading
+  const additions = files.flatMap((file) => file.lines).filter((line) => line.type === "added").length
+  const removals = files.flatMap((file) => file.lines).filter((line) => line.type === "removed").length
 
   return (
-    <div className="glass-inset-card rounded-lg border border-violet-500/40 p-3">
-      <div className="flex items-center gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-violet-300">Review changes</h3>
+    <div className="glass-inset-card overflow-hidden rounded-xl border border-violet-500/30">
+      <div className="flex items-center gap-3 border-b border-violet-500/15 bg-violet-500/[0.06] px-3 py-3">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <ChevronDown className={`size-4 shrink-0 text-violet-300 transition-transform ${open ? "" : "-rotate-90"}`} />
+          <div className="min-w-0"><h3 className="text-xs font-semibold text-violet-200">Review changes</h3><p className="mt-0.5 truncate font-mono text-[10px] text-neutral-500">{diff.data?.stat.split("\n")[0] || "workspace diff"}</p></div>
+        </button>
+        <span className="shrink-0 font-mono text-[10px] text-neutral-500">{files.length} files</span>
+        <span className="shrink-0 font-mono text-[10px] text-emerald-300">+{additions}</span><span className="shrink-0 font-mono text-[10px] text-rose-300">-{removals}</span>
         {diff.isLoading && <Loader2 className="size-3 animate-spin text-violet-300" />}
-        {diff.data && <span className="text-[10px] text-neutral-500">{diff.data.stat.split("\n").filter(Boolean).length} files</span>}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {diff.data?.clean ? <span className="text-[10px] text-neutral-500">No changes</span> : (
             <Select value={action ?? ""} onValueChange={(v) => setAction(v as "commit" | "commit_push")}>
               <SelectTrigger className="h-7 w-[150px] border-[var(--color-line)] bg-[var(--color-surface)] text-[11px]"><SelectValue placeholder="Pilih aksi…" /></SelectTrigger>
@@ -160,10 +285,11 @@ function ReviewSection({ slug, task, onDone }: { slug: string; task: Task; onDon
           </Button>
         </div>
       </div>
-      {err && <p className="mt-1 text-[11px] text-red-400">{err}</p>}
-      <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-[var(--color-line)] bg-[var(--color-surface)] p-2 font-mono text-[10px] leading-relaxed text-neutral-300">
-        {diff.isLoading ? "Loading diff…" : diff.error ? `Gagal load diff: ${(diff.error as Error).message}` : diff.data ? `${diff.data.stat}\n\n${diff.data.diff}` : "—"}
-      </pre>
+      {open && <div className="space-y-2 p-2">
+        {err && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">{err}</p>}
+        {diff.error && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">Gagal load diff: {(diff.error as Error).message}</p>}
+        {diff.isLoading ? <div className="flex items-center gap-2 px-2 py-8 font-mono text-[11px] text-neutral-500"><Loader2 className="size-3 animate-spin" /> Loading file changes…</div> : diff.data?.clean ? <p className="px-2 py-6 text-center text-[11px] text-neutral-500">No workspace changes.</p> : files.map((file) => <DiffDisclosure key={file.name} file={file} complete={complete} copyText={file.lines.map((line) => line.content).join("\n")} />)}
+      </div>}
     </div>
   )
 }
@@ -263,7 +389,6 @@ export default function TaskDetailPage({
   const healthTone = health.data?.health === "healthy" ? "text-emerald-300" : health.data?.health === "silent" ? "text-amber-300" : "text-red-300"
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const groups = events.data ? parseEventCards(events.data) : []
-  const [showWorking, setShowWorking] = useState(false)
   const resultSplit = task.result ? splitAgentResult(task.result) : null
 
   return (
@@ -340,24 +465,16 @@ export default function TaskDetailPage({
         {task.last_failure_error && (
           <p className="mt-2 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] leading-relaxed text-red-300">{task.last_failure_error}</p>
         )}
-        {resultSplit && resultSplit.working && (
-          <div className="glass-inset-card mt-2 rounded-lg p-2.5">
-            <button type="button" onClick={() => setShowWorking((v) => !v)} aria-expanded={showWorking}
-              className="flex w-full items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400 hover:text-neutral-200">
-              <span className={`transition-transform duration-200 ${showWorking ? "rotate-90" : ""}`}>▸</span>
-              Working log {showWorking ? "" : "(tap untuk buka)"}
-            </button>
-            {showWorking && (
-              <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-2 font-mono text-[10px] leading-relaxed text-neutral-400">{resultSplit.working}</pre>
-            )}
+        {task.status === "running" && (
+          <div className="mt-2">
+            <WorkerLogPanel text={resultSplit?.working ?? ""} running slug={slug} taskId={task.id} />
           </div>
         )}
-        {resultSplit && (
-          <div className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3">
-            <label className="block text-[10px] font-medium uppercase tracking-wider text-emerald-300">Result</label>
-            <pre className="mt-1.5 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded border border-emerald-500/20 bg-[var(--color-bg)] p-2.5 font-mono text-xs leading-relaxed text-emerald-100/90">{resultSplit.final || resultSplit.working}</pre>
+        {resultSplit ? (
+          <div className="mt-2">
+            <ResultStack task={task} events={events.data || []} />
           </div>
-        )}
+        ) : task.status !== "running" ? <ResultEmpty running={false} /> : null}
 
         {/* run-control */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
