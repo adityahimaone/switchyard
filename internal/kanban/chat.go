@@ -12,15 +12,15 @@ import (
 )
 
 type ChatSession struct {
-  ID        string `json:"id"`
-  Title     string `json:"title"`
-  Agent     string `json:"agent"`
-  Profile   string `json:"profile"`
-  Workspace string `json:"workspace"`
-  Model     string `json:"model"`
-  HermesSessionID string `json:"hermes_session_id"`
-  CreatedAt int64  `json:"created_at"`
-  UpdatedAt int64  `json:"updated_at"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Agent           string `json:"agent"`
+	Profile         string `json:"profile"`
+	Workspace       string `json:"workspace"`
+	Model           string `json:"model"`
+	HermesSessionID string `json:"hermes_session_id"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
 }
 
 type ChatMessage struct {
@@ -72,6 +72,7 @@ func ensureChatDB() (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'hermes', profile TEXT NOT NULL DEFAULT 'default', workspace TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', hermes_session_id TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0)`,
+		`ALTER TABLE chat_sessions ADD COLUMN hermes_session_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, run_id TEXT, FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS chat_runs (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, message_id TEXT NOT NULL, agent TEXT NOT NULL, profile TEXT NOT NULL, workspace TEXT NOT NULL, model TEXT NOT NULL, state TEXT NOT NULL, prompt TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL, ended_at INTEGER, FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS chat_run_events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY(run_id) REFERENCES chat_runs(id) ON DELETE CASCADE)`,
@@ -80,7 +81,7 @@ func ensureChatDB() (*sql.DB, error) {
 		`CREATE INDEX IF NOT EXISTS idx_chat_run_events_run ON chat_run_events(run_id, id)`,
 	}
 	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
+		if _, err := db.Exec(s); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			db.Close()
 			return nil, err
 		}
@@ -119,13 +120,17 @@ func CreateChatSession(title, agent, profile, workspace, model string) (*ChatSes
 	return s, nil
 }
 
-func ListChatSessions() ([]ChatSession, error) {
+func ListChatSessions(archived bool) ([]ChatSession, error) {
 	db, err := ensureChatDB()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at FROM chat_sessions WHERE archived=0 ORDER BY updated_at DESC, created_at DESC LIMIT 200`)
+	archivedValue := 0
+	if archived {
+		archivedValue = 1
+	}
+	rows, err := db.Query(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at FROM chat_sessions WHERE archived=? ORDER BY updated_at DESC, created_at DESC LIMIT 200`, archivedValue)
 	if err != nil {
 		return nil, err
 	}
@@ -185,9 +190,15 @@ func UpdateChatSession(id string, title, agent, profile, workspace, model *strin
 	if model != nil {
 		cur.Model = *model
 	}
-	cur.UpdatedAt = time.Now().Unix()
-	if _, err := db.Exec(`UPDATE chat_sessions SET title=?,agent=?,profile=?,workspace=?,model=?,updated_at=? WHERE id=?`, cur.Title, cur.Agent, cur.Profile, cur.Workspace, cur.Model, cur.UpdatedAt, cur.ID); err != nil {
-		return nil, err
+	if agent == nil && profile == nil && workspace == nil && model == nil {
+		if _, err := db.Exec(`UPDATE chat_sessions SET title=? WHERE id=?`, cur.Title, cur.ID); err != nil {
+			return nil, err
+		}
+	} else {
+		cur.UpdatedAt = time.Now().Unix()
+		if _, err := db.Exec(`UPDATE chat_sessions SET title=?,agent=?,profile=?,workspace=?,model=?,updated_at=? WHERE id=?`, cur.Title, cur.Agent, cur.Profile, cur.Workspace, cur.Model, cur.UpdatedAt, cur.ID); err != nil {
+			return nil, err
+		}
 	}
 	broadcastEvent("chat_session_updated", map[string]any{"session_id": cur.ID})
 	return &cur, nil
@@ -199,10 +210,58 @@ func DeleteChatSession(id string) error {
 		return err
 	}
 	defer db.Close()
-	if _, err := db.Exec(`UPDATE chat_sessions SET archived=1, updated_at=? WHERE id=?`, time.Now().Unix(), id); err != nil {
+	result, err := db.Exec(`DELETE FROM chat_run_events WHERE run_id IN (SELECT id FROM chat_runs WHERE session_id=?)`, id)
+	if err != nil {
 		return err
 	}
+	if _, err := db.Exec(`DELETE FROM chat_runs WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DELETE FROM chat_messages WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	result, err = db.Exec(`DELETE FROM chat_sessions WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
 	broadcastEvent("chat_session_deleted", map[string]any{"session_id": id})
+	return nil
+}
+
+func ArchiveChatSession(id string) error {
+	db, err := ensureChatDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.Exec(`UPDATE chat_sessions SET archived=1, updated_at=? WHERE id=?`, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
+	broadcastEvent("chat_session_archived", map[string]any{"session_id": id})
+	return nil
+}
+
+func UnarchiveChatSession(id string) error {
+	db, err := ensureChatDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.Exec(`UPDATE chat_sessions SET archived=0 WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
+	broadcastEvent("chat_session_unarchived", map[string]any{"session_id": id})
 	return nil
 }
 

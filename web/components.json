@@ -20,6 +20,7 @@
   "iconLibrary": "lucide",
   "registries": {
     "@efferd": "https://efferd.com/r/{style}/{name}.json",
-    "@sona-ui": "https://sonaui.com/r/{name}.json"
+    "@sona-ui": "https://sonaui.com/r/{name}.json",
+    "@beui": "https://beui.dev/r/{name}.json"
   }
 }

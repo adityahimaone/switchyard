@@ -335,13 +335,17 @@ export function toastGlobal(message: string, tone: "success" | "error" | "info" 
 
 export type ChatAgent = "hermes"
 export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
-export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; created_at: number; updated_at: number }
+export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number }
 export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string }
 export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
 export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
-export function listChatSessions() { return api<ChatSession[]>("/api/chat/sessions") }
+export function listChatSessions(archived = false) { return api<ChatSession[]>(`/api/chat/sessions${archived ? "?archived=1" : ""}`) }
 export function createChatSession(input: Partial<ChatSession>) { return api<ChatSession>("/api/chat/sessions", { method: "POST", body: JSON.stringify(input) }) }
 export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
+export function updateChatSession(id: string, input: { title?: string }) { return api<ChatSession>(`/api/chat/sessions/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+export function archiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/archive`, { method: "POST" }) }
+export function unarchiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/unarchive`, { method: "POST" }) }
+export function deleteChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }) }
 export function listChatMessages(id: string) { return api<ChatMessage[]>(`/api/chat/sessions/${id}/messages`) }
 export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }

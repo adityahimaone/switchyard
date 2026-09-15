@@ -19,7 +19,7 @@ var chatRuns = struct {
 
 func registerChatRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/chat/sessions", func(w http.ResponseWriter, r *http.Request) {
-		items, err := kanban.ListChatSessions()
+		items, err := kanban.ListChatSessions(r.URL.Query().Get("archived") == "1")
 		if err != nil {
 			fail(w, err, 500)
 			return
@@ -75,6 +75,20 @@ func registerChatRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
+	mux.HandleFunc("POST /api/chat/sessions/{id}/archive", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.ArchiveChatSession(r.PathValue("id")); err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/chat/sessions/{id}/unarchive", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.UnarchiveChatSession(r.PathValue("id")); err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("POST /api/chat/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Content, Agent, Profile, Workspace, Model string }
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
@@ -111,6 +125,7 @@ func registerChatRoutes(mux *http.ServeMux) {
 			fail(w, err, 400)
 			return
 		}
+		_ = kanban.AutoTitleChatSession(s.ID, req.Content)
 		run, err := kanban.CreateChatRun(s.ID, m.ID, req.Agent, req.Profile, req.Workspace, req.Model, req.Content)
 		if err != nil {
 			fail(w, err, 400)
@@ -179,5 +194,25 @@ func registerChatRoutes(mux *http.ServeMux) {
 			kanban.RunChat(ctx, run.ID, old.Agent, old.Profile, old.Workspace, old.Model, old.Prompt)
 		}()
 		writeJSON(w, 202, run)
+	})
+	mux.HandleFunc("GET /api/chat/active", func(w http.ResponseWriter, r *http.Request) {
+		runs, err := kanban.ListActiveChatRuns()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, 200, runs)
+	})
+	mux.HandleFunc("GET /api/chat/sessions/{id}/active-run", func(w http.ResponseWriter, r *http.Request) {
+		run, err := kanban.ActiveChatRun(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		if run == nil {
+			writeJSON(w, 200, nil)
+			return
+		}
+		writeJSON(w, 200, run)
 	})
 }
