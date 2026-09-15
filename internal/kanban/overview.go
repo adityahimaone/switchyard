@@ -2,6 +2,8 @@ package kanban
 
 import (
 	"bufio"
+	"database/sql"
+	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -28,6 +30,7 @@ type Overview struct {
 	RunningTasks   int            `json:"running_tasks"`
 	CompletedTasks int            `json:"completed_tasks"`
 	FailedTasks    int            `json:"failed_tasks"`
+	QueueDepth     int            `json:"queue_depth"`
 	Profiles       int            `json:"profiles"`
 	Workspaces     int            `json:"workspaces"`
 	UsageMode      string         `json:"usage_mode"`
@@ -136,5 +139,89 @@ func OverviewData() (Overview, error) {
 	}
 	m, total := memoryUsage()
 	o.Metrics = OverviewMetric{CPUPercent: cpuPercent(), MemoryUsedMB: m, MemoryTotalMB: total, Goroutines: runtime.NumGoroutine()}
+	o.QueueDepth = o.TotalTasks - o.RunningTasks - o.CompletedTasks - o.FailedTasks
+	if o.QueueDepth < 0 {
+		o.QueueDepth = 0
+	}
 	return o, nil
+}
+
+// ActivityDay is one daily bucket of chat + task activity.
+type ActivityDay struct {
+	Date            string `json:"date"`             // YYYY-MM-DD (local)
+	ChatMessages    int    `json:"chat_messages"`
+	TaskDispatches  int    `json:"task_dispatches"`
+	Total           int    `json:"total"`
+}
+
+// ActivitySummary aggregates daily activity for the last `days` days (inclusive
+// of today). Chat counts come from chat.db messages; task dispatches from
+// task_events (claimed/spawned/dispatched kinds) across all boards.
+func ActivitySummary(days int) ([]ActivityDay, error) {
+	if days < 1 {
+		days = 1
+	}
+	if days > 365 {
+		days = 365
+	}
+	buckets := make(map[string]*ActivityDay)
+	var order []string
+	now := time.Now()
+	for i := days - 1; i >= 0; i-- {
+		d := now.AddDate(0, 0, -i)
+		key := d.Format("2006-01-02")
+		buckets[key] = &ActivityDay{Date: key}
+		order = append(order, key)
+	}
+
+	// chat.db messages
+	if db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&mode=ro", chatDBPath())); err == nil {
+		rows, err := db.Query(`SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day, COUNT(*) FROM chat_messages GROUP BY day`)
+		if err == nil {
+			for rows.Next() {
+				var day string
+				var n int
+				if rows.Scan(&day, &n) == nil {
+					if b, ok := buckets[day]; ok {
+						b.ChatMessages += n
+						b.Total += n
+					}
+				}
+			}
+			rows.Close()
+		}
+		db.Close()
+	}
+
+	// task_events across every board
+	boards, err := ListBoards()
+	if err == nil {
+		for _, b := range boards {
+			db, derr := openDB(b.Slug)
+			if derr != nil {
+				continue
+			}
+			rows, rerr := db.Query(`SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day, COUNT(*) FROM task_events WHERE kind IN ('claimed','spawned','dispatched','status_changed') GROUP BY day`)
+			if rerr == nil {
+				for rows.Next() {
+					var day string
+					var n int
+					if rows.Scan(&day, &n) == nil {
+						if bk, ok := buckets[day]; ok {
+							bk.TaskDispatches += n
+							bk.Total += n
+						}
+					}
+				}
+				rows.Close()
+			}
+			db.Close()
+		}
+	}
+
+	out := make([]ActivityDay, 0, len(order))
+	for _, k := range order {
+		out = append(out, *buckets[k])
+	}
+	return out, nil
 }

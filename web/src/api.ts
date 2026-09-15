@@ -354,4 +354,7 @@ export function listProviders() { return api<ProviderModel[]>("/api/providers") 
 export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }
 export function retryChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}/retry`, { method: "POST" }) }
 export function getChatActiveRun(sessionID: string) { return api<ChatRun | null>(`/api/chat/sessions/${sessionID}/active-run`) }
-export function listActiveChatRuns() { return api<ChatRun[]>(`/api/chat/active`) }
+export function listActiveChatRuns() { return api<ChatRun[]>("/api/chat/active") }
+
+export interface ActivityDay { date: string; chat_messages: number; task_dispatches: number; total: number }
+export function getOverviewActivity(days = 180) { return api<ActivityDay[]>(`/api/overview/activity?days=${days}`) }
