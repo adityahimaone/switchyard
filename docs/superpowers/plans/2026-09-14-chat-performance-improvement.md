@@ -44,7 +44,7 @@
 - Modify: `web/src/features/chat/ChatPage.tsx` (activeRunQuery refetchInterval, useEffect 5s getChatRun)
 - Test: manual `pnpm -C web build`
 
-- [ ] **Step 1: Remove `refetchInterval` from activeRunQuery**
+- [x] **Step 1: Remove `refetchInterval` from activeRunQuery**
 
 In `ChatPage.tsx`, change:
 ```tsx
@@ -55,7 +55,7 @@ to (drop `refetchInterval`):
 const activeRunQuery = useQuery({ queryKey: ["chat-active-run", sessionID], queryFn: () => getChatActiveRun(sessionID!), enabled: !!sessionID })
 ```
 
-- [ ] **Step 2: Remove the 5s getChatRun polling useEffect**
+- [x] **Step 2: Remove the 5s getChatRun polling useEffect**
 
 Delete this block (currently lines ~174-186):
 ```tsx
@@ -74,7 +74,7 @@ useEffect(() => {
 }, [qc, run?.id, run?.state, sessionID])
 ```
 
-- [ ] **Step 3: Add SSE-failure fallback — single getChatRun on reconnect**
+- [x] **Step 3: Add SSE-failure fallback — single getChatRun on reconnect**
 
 In the `openEventStream` effect, after the existing handlers, add a reconnect readback: on event-stream close/error, do one `getChatRun` + invalidate. Keep it minimal:
 ```tsx
@@ -94,11 +94,11 @@ useEffect(() => openEventStream((event) => {
 ```
 (If `openEventStream` has no `onClose` option, wrap the underlying EventSource instead — confirm signature in `web/src/api.ts` first.)
 
-- [ ] **Step 4: Build + verify**
+- [x] **Step 4: Build + verify**
 Run: `pnpm -C web build`
 Expected: build passes, no TS errors. Bundle hash changes vs previous.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/features/chat/ChatPage.tsx
 git commit -m "feat: chat SSE-primary polling, drop redundant 2s/5s intervals (chat-perf)"
@@ -110,14 +110,14 @@ git commit -m "feat: chat SSE-primary polling, drop redundant 2s/5s intervals (c
 - Modify: `web/src/features/chat/ChatPage.tsx`
 - Test: manual `pnpm -C web build`
 
-- [ ] **Step 1: Add a streaming buffer state for the active run's last assistant message**
+- [x] **Step 1: Add a streaming buffer state for the active run's last assistant message**
 
 Add near other state:
 ```tsx
 const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
 ```
 
-- [ ] **Step 2: Accumulate `tool_output` events into the buffer**
+- [x] **Step 2: Accumulate `tool_output` events into the buffer**
 
 In the `openEventStream` handler, when `event.kind === "chat_run_event"` and `event.data?.kind === "tool_output"`, append `event.data.payload.text`:
 ```tsx
@@ -130,11 +130,11 @@ if (event.kind === "chat_run_event" && event.data?.run_id === run?.id) {
 ```
 (Confirm exact event shape from `listChatRunEvents`/`ChatRunEvent` in `web/src/api.ts` — payload may be a JSON string, parse it.)
 
-- [ ] **Step 3: Render buffer while running, final output when done**
+- [x] **Step 3: Render buffer while running, final output when done**
 
 In the message map, for the assistant message whose `run_id === run?.id` and `isRunning`, render `streamBuffer[run.id] || "Starting agent…"` instead of `message.content`. Keep `StreamingResponse` (no bubble) and pass `status="streaming"`.
 
-- [ ] **Step 4: Clear buffer on completion**
+- [x] **Step 4: Clear buffer on completion**
 
 When run transitions to `done`/`error`/`cancelled`, the effect that already invalidates `chat-messages` should also clear the buffer for that run:
 ```tsx
@@ -143,11 +143,11 @@ if (fresh.state === "done" || fresh.state === "error" || fresh.state === "cancel
 }
 ```
 
-- [ ] **Step 5: Build + verify**
+- [x] **Step 5: Build + verify**
 Run: `pnpm -C web build`
 Expected: passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add web/src/features/chat/ChatPage.tsx
 git commit -m "feat: render streaming tool_output buffer inline in chat (chat-perf)"
@@ -159,11 +159,11 @@ git commit -m "feat: render streaming tool_output buffer inline in chat (chat-pe
 - Modify: `web/src/features/chat/ChatPage.tsx`, `web/src/components/ui/streaming-response.tsx` (verify footer API)
 - Test: manual `pnpm -C web build`
 
-- [ ] **Step 1: Confirm `StreamingResponse` footer prop shape**
+- [x] **Step 1: Confirm `StreamingResponse` footer prop shape**
 
 Read `web/src/components/ui/streaming-response.tsx`. It should accept `copyText` and `footer`. Keep using `footer={<MessageFooter .../>}`. Ensure `MessageFooter` shows model + elapsed (running) or `HH:MM` (done) + Copy/Retry. Already present per skill; verify no bubble chrome.
 
-- [ ] **Step 2: Collapse `AgentTaskPlan` by default, hide when done**
+- [x] **Step 2: Collapse `AgentTaskPlan` by default, hide when done**
 
 Change `AgentTaskPlan` usage: pass `defaultOpen={false}`. If component has no such prop, wrap it in a `<details>` default-closed, or add `defaultOpen` prop to `AgentTaskPlan`. Hide the whole progress block when `run.state` is `done`/`error`/`cancelled`:
 ```tsx
@@ -171,15 +171,15 @@ Change `AgentTaskPlan` usage: pass `defaultOpen={false}`. If component has no su
 ```
 (No change needed to hide-on-done since `isRunning` already gates it; just add `defaultOpen={false}`.)
 
-- [ ] **Step 3: Compact selector pills below input**
+- [x] **Step 3: Compact selector pills below input**
 
 In the composer footer, replace the three large `<Select>` (profile/workspace/model) with compact pill buttons that open the same selects on click, OR keep Select triggers but shrink them (`h-7 rounded-full text-[11px]`). Minimal: add `className="h-7 rounded-full text-[11px]"` to each `SelectTrigger` and move them into a single `flex gap-1` row. Keep functionality identical.
 
-- [ ] **Step 4: Build + verify**
+- [x] **Step 4: Build + verify**
 Run: `pnpm -C web build`
 Expected: passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/features/chat/ChatPage.tsx web/src/components/ui/streaming-response.tsx
 git commit -m "feat: chat footer-bar actions, collapsed activity, compact selectors (chat-perf)"
@@ -195,7 +195,7 @@ git commit -m "feat: chat footer-bar actions, collapsed activity, compact select
 - Modify: `internal/kanban/chat.go`
 - Test: `internal/kanban/chat_test.go` (add column round-trip)
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 In `chat_test.go`:
 ```go
@@ -212,11 +212,11 @@ func TestChatSessionHermesID(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test, expect fail (field/func missing)**
+- [x] **Step 2: Run test, expect fail (field/func missing)**
 Run: `go test ./internal/kanban/ -run TestChatSessionHermesID -v`
 Expected: compile/FAIL — `ChatSession.HermesSessionID` undefined, `SetHermesSessionID` undefined.
 
-- [ ] **Step 3: Add field + migration + functions in chat.go**
+- [x] **Step 3: Add field + migration + functions in chat.go**
 
 In `ChatSession` struct add:
 ```go
@@ -240,11 +240,11 @@ func SetHermesSessionID(id, sid string) error {
 }
 ```
 
-- [ ] **Step 4: Run test, expect pass**
+- [x] **Step 4: Run test, expect pass**
 Run: `go test ./internal/kanban/ -run TestChatSessionHermesID -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add internal/kanban/chat.go internal/kanban/chat_test.go
 git commit -m "feat: persist hermes_session_id on chat_sessions for --resume (chat-perf)"
@@ -256,7 +256,7 @@ git commit -m "feat: persist hermes_session_id on chat_sessions for --resume (ch
 - Modify: `internal/kanban/chat_exec.go`
 - Test: `internal/kanban/chat_exec_test.go`
 
-- [ ] **Step 1: Write failing test for resume flag**
+- [x] **Step 1: Write failing test for resume flag**
 
 ```go
 func TestChatCommandResume(t *testing.T) {
@@ -271,11 +271,11 @@ func TestChatCommandResume(t *testing.T) {
 ```
 Note: current `chatCommand` signature is `chatCommand(agent, profile, model, prompt)`. Add a `hermesSessionID string` param — update all callers.
 
-- [ ] **Step 2: Run test, expect fail**
+- [x] **Step 2: Run test, expect fail**
 Run: `go test ./internal/kanban/ -run TestChatCommandResume -v`
 Expected: compile/FAIL.
 
-- [ ] **Step 3: Update chatCommand + caller**
+- [x] **Step 3: Update chatCommand + caller**
 
 `chat_exec.go`:
 ```go
@@ -313,15 +313,15 @@ func parseHermesSessionID(out string) string {
 ```
 (Confirm exact printed format with `hermes chat -Q --pass-session-id "hi" 2>&1 | tail -5` before finalizing regex.)
 
-- [ ] **Step 4: Run test, expect pass**
+- [x] **Step 4: Run test, expect pass**
 Run: `go test ./internal/kanban/ -run TestChatCommandResume -v`
 Expected: PASS.
 
-- [ ] **Step 5: Full suite + vet**
+- [x] **Step 5: Full suite + vet**
 Run: `go vet ./... && go test ./...`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add internal/kanban/chat_exec.go internal/kanban/chat_exec_test.go
 git commit -m "feat: chat RunChat passes --resume and persists session id (chat-perf)"
@@ -333,7 +333,7 @@ git commit -m "feat: chat RunChat passes --resume and persists session id (chat-
 - Modify: `internal/kanban/chat_exec.go`
 - Test: `internal/kanban/chat_exec_test.go`
 
-- [ ] **Step 1: Write test**
+- [x] **Step 1: Write test**
 
 ```go
 func TestResumeFailureClears(t *testing.T) {
@@ -349,13 +349,13 @@ func TestResumeFailureClears(t *testing.T) {
 ```
 Add `clearHermesSessionID` that calls `SetHermesSessionID(id, "")`.
 
-- [ ] **Step 2: Run test, expect fail**
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run test, expect fail**
+- [x] **Step 3: Implement**
 
 Add `clearHermesSessionID(id string) error { return SetHermesSessionID(id, "") }`. In `RunChat`, on hermes exit error AND `hermesSID != ""`, clear it and re-run once fresh (guard against infinite loop with a `retried` bool).
 
-- [ ] **Step 4: Run test, expect pass + full suite**
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run test, expect pass + full suite**
+- [x] **Step 5: Commit**
 ```bash
 git add internal/kanban/chat_exec.go internal/kanban/chat_exec_test.go
 git commit -m "fix: clear stale hermes_session_id and retry fresh on resume failure (chat-perf)"
@@ -370,7 +370,7 @@ git commit -m "fix: clear stale hermes_session_id and retry fresh on resume fail
 **Files:**
 - Create: `cmd/hermes-daemon/main.py`, `cmd/hermes-daemon/README.md`
 
-- [ ] **Step 1: Write daemon (stdlib only)**
+- [x] **Step 1: Write daemon (stdlib only)**
 
 `cmd/hermes-daemon/main.py`:
 - Bind HTTP server to `/tmp/hermes-daemon.sock` (override with env `HERMES_DAEMON_SOCK`).
@@ -380,11 +380,11 @@ git commit -m "fix: clear stale hermes_session_id and retry fresh on resume fail
 - Apply RTK rewrite to prompt before passing (call `rtk` if on PATH, else pass through).
 - `GET /shutdown` graceful.
 
-- [ ] **Step 2: Smoke test daemon locally**
+- [x] **Step 2: Smoke test daemon locally**
 Run: `python3 cmd/hermes-daemon/main.py &` then `curl --unix-socket /tmp/hermes-daemon.sock http://localhost/health`
 Expected: `{"status":"ready"}`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add cmd/hermes-daemon/main.py cmd/hermes-daemon/README.md
 git commit -m "feat: hermes-chat-daemon (Unix socket, persistent sessions, CLI fallback) (chat-perf)"
@@ -396,7 +396,7 @@ git commit -m "feat: hermes-chat-daemon (Unix socket, persistent sessions, CLI f
 - Modify: `internal/kanban/chat_exec.go`
 - Test: `internal/kanban/chat_exec_test.go` (health check + fallback)
 
-- [ ] **Step 1: Add Unix-socket HTTP client + health check**
+- [x] **Step 1: Add Unix-socket HTTP client + health check**
 
 ```go
 func daemonSock() string {
@@ -412,7 +412,7 @@ func daemonHealthy() bool {
 }
 ```
 
-- [ ] **Step 2: Add daemon query path with SSE parse + CLI fallback**
+- [x] **Step 2: Add daemon query path with SSE parse + CLI fallback**
 
 `runChatViaDaemon(ctx, runID, ...)`:
 - POST `/query` over unix socket with JSON body.
@@ -429,7 +429,7 @@ if strings.TrimSpace(workspace) == "" || isLocalWorkspace(workspace) {
 }
 ```
 
-- [ ] **Step 3: Test health check + fallback**
+- [x] **Step 3: Test health check + fallback**
 ```go
 func TestDaemonFallback(t *testing.T) {
   if daemonHealthy() { t.Skip("daemon unexpectedly running") }
@@ -438,11 +438,11 @@ func TestDaemonFallback(t *testing.T) {
 ```
 Keep test lightweight: assert `daemonHealthy()` returns false when sock absent.
 
-- [ ] **Step 4: Vet + test**
+- [x] **Step 4: Vet + test**
 Run: `go vet ./... && go test ./...`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add internal/kanban/chat_exec.go internal/kanban/chat_exec_test.go
 git commit -m "feat: RunChat uses warm daemon with CLI fallback (chat-perf)"
@@ -450,53 +450,9 @@ git commit -m "feat: RunChat uses warm daemon with CLI fallback (chat-perf)"
 
 ---
 
-## Phase 4 — RTK prompt rewrite (local path)
+## Phase 4 — RTK prompt rewrite (local path) — SKIPPED (not applicable)
 
-### Task 9: RTK rewrite on local prompt
-
-**Files:**
-- Modify: `internal/kanban/chat_exec.go`
-- Test: `internal/kanban/chat_exec_test.go`
-
-- [ ] **Step 1: Add rtk rewrite helper**
-
-```go
-func rtkRewrite(prompt string) string {
-  if _, err := exec.LookPath("rtk"); err != nil { return prompt }
-  cmd := exec.Command("rtk", "rewrite", "--plugin", "hermes")
-  cmd.Stdin = strings.NewReader(prompt)
-  out, err := cmd.Output()
-  if err != nil { return prompt }
-  return string(out)
-}
-```
-
-- [ ] **Step 2: Use it in local exec path**
-
-Before `cmd.Stdin = strings.NewReader(prompt)`, set:
-```go
-rewritten := rtkRewrite(prompt)
-cmd.Stdin = strings.NewReader(rewritten)
-```
-(Keep daemon path separate — daemon does its own RTK.)
-
-- [ ] **Step 3: Test (rtk absent → passthrough)**
-
-```go
-func TestRtkRewritePassthrough(t *testing.T) {
-  // if rtk not on PATH, must return input unchanged
-  if _, err := exec.LookPath("rtk"); err != nil {
-    if got := rtkRewrite("hello world"); got != "hello world" { t.Fatalf("got %q", got) }
-  }
-}
-```
-
-- [ ] **Step 4: Vet + test**
-- [ ] **Step 5: Commit**
-```bash
-git add internal/kanban/chat_exec.go internal/kanban/chat_exec_test.go
-git commit -m "feat: RTK rewrite prompt on local chat path (chat-perf)"
-```
+`rtk` is a shell-command rewriter (`rtk rewrite "git status"` → compact equivalent) and an output filter (`rtk pipe`), NOT a freeform prompt token optimizer. Freeform chat prompts would be corrupted by `rtk rewrite`. The node-agent shell executor already uses RTK on the shell path; wiring it into the chat prompt path was a plan error, corrected during implementation. All plan steps above marked complete; this phase intentionally has no code. See `references/chat-feature.md` pitfall note.
 
 ---
 
