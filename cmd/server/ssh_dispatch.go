@@ -104,16 +104,16 @@ func dispatchSSHTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
 		if err != nil {
 			db.Close()
 			continue
 		}
-		type row struct{ id, title, body, ws, transport, sshTarget, executor, command string }
+		type row struct{ id, title, body, result, ws, transport, sshTarget, executor, command string }
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -128,16 +128,43 @@ func dispatchSSHTasks() {
 				continue
 			}
 
-			// claim: persist start time so every UI surface measures same run
-			startedAt := time.Now().Unix()
-			_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL, consecutive_failures=0 WHERE id=? AND status IN ('todo','ready')`, startedAt, r.id)
-			claimed = true
-			db.Close()
-
+			// build continuation message BEFORE claim/close — needs result + comments
 			msg := r.body
 			if msg == "" {
 				msg = r.title
 			}
+			if r.result != "" {
+				trunc := r.result
+				if len(trunc) > 800 {
+					trunc = trunc[:800] + "\n... [truncated]"
+				}
+				msg = fmt.Sprintf("[CONTINUATION] This task was previously completed and requeued for follow-up.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nUser comments requested a follow-up. Continue from where you left off:\n\n%s", trunc, msg)
+			}
+			// recent comments (reuse open db handle before claim)
+			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT 5`, r.id); cr != nil {
+				var cmt []string
+				for cr.Next() {
+					var author, body string
+					if err := cr.Scan(&author, &body); err == nil {
+						cmt = append(cmt, fmt.Sprintf("@%s: %s", author, body))
+					}
+				}
+				cr.Close()
+				if len(cmt) > 0 {
+					for i, j := 0, len(cmt)-1; i < j; i, j = i+1, j-1 {
+						cmt[i], cmt[j] = cmt[j], cmt[i]
+					}
+					msg += "\n\n--- Recent Comments ---\n" + strings.Join(cmt, "\n")
+				}
+			}
+
+			// claim: persist start time so every UI surface measures same run
+			// ponytail: don't reset consecutive_failures here (preserve retry count)
+			// reset only on success below; otherwise todo->running->fail loops never hit blocked
+			startedAt := time.Now().Unix()
+			_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL WHERE id=? AND status IN ('todo','ready')`, startedAt, r.id)
+			claimed = true
+			db.Close()
 			target := r.sshTarget
 			if target == "" {
 				target = "mac-tailscale"
@@ -154,15 +181,22 @@ func dispatchSSHTasks() {
 			var output string
 			var success bool
 			if r.executor == "shell" {
-				// Shell executor: body IS the command, dispatch via node-agent for RTK + codegraph
-				cmd := r.body
+				cmd := strings.TrimSpace(r.command)
 				if cmd == "" {
-					cmd = r.title
+					now := time.Now().Unix()
+					db2, _ := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+					if db2 != nil {
+						_, _ = db2.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=?`, now, "shell executor requires command (set Command, not Body)", r.id)
+						db2.Close()
+					}
+					kanban.FlowTrackExecutor(r.id, r.title, b.Slug, node, r.executor, kanban.FlowFailed)
+					log.Printf("ssh-dispatcher: %s blocked: missing command for shell executor", r.id)
+					continue
 				}
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
-					TaskID: r.id, Title: r.title, Board: b.Slug, Message: r.body,
+					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: "shell", Command: cmd,
-				}, 10*time.Minute)
+				}, 25*time.Minute)
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -175,7 +209,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: r.executor, Command: r.command,
-				}, 10*time.Minute)
+				}, 25*time.Minute)
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -190,7 +224,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: "auto", Command: r.command,
-				}, 10*time.Minute)
+				}, 25*time.Minute)
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -214,7 +248,7 @@ func dispatchSSHTasks() {
 				log.Printf("ssh-dispatcher: %s stopped by user", r.id)
 			} else if success {
 				// review gate: success NEVER lands done — approve flow moves it
-				_, _ = db2.Exec(`UPDATE tasks SET status='review', completed_at=?, result=? WHERE id=?`, now, output, r.id)
+				_, _ = db2.Exec(`UPDATE tasks SET status='review', completed_at=?, result=?, consecutive_failures=0, last_failure_error='' WHERE id=?`, now, output, r.id)
 				kanban.FlowTrackExecutor(r.id, r.title, b.Slug, node, r.executor, kanban.FlowDone)
 				log.Printf("ssh-dispatcher: %s completed -> review", r.id)
 			} else {
