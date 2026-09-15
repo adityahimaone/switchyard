@@ -358,3 +358,9 @@ export function listActiveChatRuns() { return api<ChatRun[]>("/api/chat/active")
 
 export interface ActivityDay { date: string; chat_messages: number; task_dispatches: number; total: number }
 export function getOverviewActivity(days = 180) { return api<ActivityDay[]>(`/api/overview/activity?days=${days}`) }
+
+export interface ReviewMetrics { approved: number; reopened: number; now_in_review: number; avg_latency_s: number }
+export function getOverviewReview() { return api<ReviewMetrics>("/api/overview/review") }
+
+export interface QueueTrendPoint { date: string; queue_size: number; completed: number; failed: number }
+export function getOverviewQueueTrend(days = 30) { return api<QueueTrendPoint[]>(`/api/overview/queue-trend?days=${days}`) }

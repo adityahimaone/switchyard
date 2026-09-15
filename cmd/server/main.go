@@ -887,6 +887,23 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, data)
 	})
+	mux.HandleFunc("GET /api/overview/review", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, kanban.ReviewMetricsSummary())
+	})
+	mux.HandleFunc("GET /api/overview/queue-trend", func(w http.ResponseWriter, r *http.Request) {
+		days := 30
+		if s := r.URL.Query().Get("days"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				days = n
+			}
+		}
+		data, err := kanban.QueueTrend(days)
+		if err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, data)
+	})
 	mux.HandleFunc("POST /api/flow/seed", func(w http.ResponseWriter, r *http.Request) {
 		var tasks []kanban.FlowTask
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&tasks); err != nil {

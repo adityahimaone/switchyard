@@ -148,10 +148,10 @@ func OverviewData() (Overview, error) {
 
 // ActivityDay is one daily bucket of chat + task activity.
 type ActivityDay struct {
-	Date            string `json:"date"`             // YYYY-MM-DD (local)
-	ChatMessages    int    `json:"chat_messages"`
-	TaskDispatches  int    `json:"task_dispatches"`
-	Total           int    `json:"total"`
+	Date           string `json:"date"` // YYYY-MM-DD (local)
+	ChatMessages   int    `json:"chat_messages"`
+	TaskDispatches int    `json:"task_dispatches"`
+	Total          int    `json:"total"`
 }
 
 // ActivitySummary aggregates daily activity for the last `days` days (inclusive
@@ -220,6 +220,145 @@ func ActivitySummary(days int) ([]ActivityDay, error) {
 	}
 
 	out := make([]ActivityDay, 0, len(order))
+	for _, k := range order {
+		out = append(out, *buckets[k])
+	}
+	return out, nil
+}
+
+// ReviewMetrics holds aggregated review-gate stats across all boards.
+type ReviewMetrics struct {
+	Approved    int     `json:"approved"`      // total approvals (review->done via /approve)
+	Reopened    int     `json:"reopened"`      // tasks that went review->todo (comment requeue)
+	NowInReview int     `json:"now_in_review"` // current review-lane depth
+	AvgLatencyS float64 `json:"avg_latency_s"` // avg seconds in review (review start -> done/approve)
+}
+
+// ReviewMetricsSummary scans task_events across all boards for review gate activity.
+func ReviewMetricsSummary() ReviewMetrics {
+	var m ReviewMetrics
+	boards, err := ListBoards()
+	if err != nil {
+		return m
+	}
+	var totalLatency float64
+	var latencyCount int
+	for _, b := range boards {
+		db, derr := openDB(b.Slug)
+		if derr != nil {
+			continue
+		}
+		// Current review-lane count
+		var cnt int
+		if db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE status='review'`).Scan(&cnt) == nil {
+			m.NowInReview += cnt
+		}
+		// Approvals: status_changed payload with from=review to=done
+		var approvals int
+		if db.QueryRow(`SELECT COUNT(*) FROM task_events WHERE kind='status_changed' AND payload LIKE '%"from":"review"%' AND payload LIKE '%"to":"done"%'`).Scan(&approvals) == nil {
+			m.Approved += approvals
+		}
+		// Reopened: status_changed from=review to=todo
+		var reopened int
+		if db.QueryRow(`SELECT COUNT(*) FROM task_events WHERE kind='status_changed' AND payload LIKE '%"from":"review"%' AND payload LIKE '%"to":"todo"%'`).Scan(&reopened) == nil {
+			m.Reopened += reopened
+		}
+		// Avg latency: for done tasks that entered review, compute time delta
+		rows, rerr := db.Query(`
+			SELECT
+				(SELECT created_at FROM task_events WHERE task_id=t.id AND kind='status_changed' AND payload LIKE '%"to":"review"%' ORDER BY created_at ASC LIMIT 1) AS review_start,
+				t.completed_at
+			FROM tasks t
+			WHERE t.status='done' AND t.completed_at IS NOT NULL
+		`)
+		if rerr == nil {
+			for rows.Next() {
+				var reviewStart, completedAt int64
+				if rows.Scan(&reviewStart, &completedAt) == nil && reviewStart > 0 && completedAt > reviewStart {
+					totalLatency += float64(completedAt - reviewStart)
+					latencyCount++
+				}
+			}
+			rows.Close()
+		}
+		db.Close()
+	}
+	if latencyCount > 0 {
+		m.AvgLatencyS = totalLatency / float64(latencyCount)
+	}
+	return m
+}
+
+// QueueTrendPoint is one daily snapshot of queue depth.
+type QueueTrendPoint struct {
+	Date      string `json:"date"`       // YYYY-MM-DD
+	QueueSize int    `json:"queue_size"` // tasks created that day that are NOT running/done/failed
+	Completed int    `json:"completed"`  // tasks done that day
+	Failed    int    `json:"failed"`     // tasks failed that day
+}
+
+// QueueTrend builds daily queue trend for the last `days` days.
+// QueueSize = tasks whose created_at falls on that day and status is
+// not running/done/failed (i.e. todo/ready/scheduled/blocked/review).
+func QueueTrend(days int) ([]QueueTrendPoint, error) {
+	if days < 1 {
+		days = 1
+	}
+	if days > 365 {
+		days = 365
+	}
+	buckets := make(map[string]*QueueTrendPoint)
+	var order []string
+	now := time.Now()
+	for i := days - 1; i >= 0; i-- {
+		d := now.AddDate(0, 0, -i)
+		key := d.Format("2006-01-02")
+		buckets[key] = &QueueTrendPoint{Date: key}
+		order = append(order, key)
+	}
+
+	boards, err := ListBoards()
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range boards {
+		db, derr := openDB(b.Slug)
+		if derr != nil {
+			continue
+		}
+		// Completed on a given day
+		rows, rerr := db.Query(`SELECT strftime('%Y-%m-%d', completed_at, 'unixepoch', 'localtime') AS day, SUM(CASE WHEN status='done' THEN 1 ELSE 0 END), SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) FROM tasks WHERE completed_at IS NOT NULL GROUP BY day`)
+		if rerr == nil {
+			for rows.Next() {
+				var day string
+				var done, failed int
+				if rows.Scan(&day, &done, &failed) == nil {
+					if bk, ok := buckets[day]; ok {
+						bk.Completed += done
+						bk.Failed += failed
+					}
+				}
+			}
+			rows.Close()
+		}
+		// Queue = tasks created on that day whose status is not terminal
+		rows2, rerr2 := db.Query(`SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day, COUNT(*) FROM tasks WHERE status NOT IN ('done','failed','running','archived') GROUP BY day`)
+		if rerr2 == nil {
+			for rows2.Next() {
+				var day string
+				var cnt int
+				if rows2.Scan(&day, &cnt) == nil {
+					if bk, ok := buckets[day]; ok {
+						bk.QueueSize += cnt
+					}
+				}
+			}
+			rows2.Close()
+		}
+		db.Close()
+	}
+
+	out := make([]QueueTrendPoint, 0, len(order))
 	for _, k := range order {
 		out = append(out, *buckets[k])
 	}

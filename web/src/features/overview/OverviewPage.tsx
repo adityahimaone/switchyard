@@ -1,10 +1,21 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Activity, CheckCircle2, Cpu, Database, Gauge, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
+import { Activity, CheckCircle2, Cpu, Database, Gauge, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
 import { LabelList, Pie, PieChart } from "recharts"
-import { api, getOverviewActivity } from "@/api"
-import type { ActivityDay } from "@/api"
+import { api, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
+import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/LoadingState"
+import {
+  HeatmapChart,
+  HeatmapCells,
+  HeatmapXAxis,
+  HeatmapYAxis,
+  HeatmapTooltip,
+  type HeatmapColumn,
+  type HeatmapBin,
+} from "@/components/charts/heatmap"
+import { AreaChart } from "@/components/charts/area-chart"
+import { Area } from "@/components/charts/area"
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -50,74 +61,33 @@ function statusRows(data: Overview) {
   ]
 }
 
-// ── activity heatmap ───────────────────────────────────────────────────────
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`
+  return `${(seconds / 86400).toFixed(1)}d`
+}
 
-const HEATMAP_LEVELS = [0, 0.12, 0.28, 0.52, 0.80] as const
+// ── bklit heatmap data transform ───────────────────────────────────────────
 
-function heatmapLevel(total: number, max: number): number {
-  if (total === 0 || max === 0) return 0
-  const ratio = total / max
-  for (let i = HEATMAP_LEVELS.length - 1; i >= 1; i--) {
-    if (ratio >= HEATMAP_LEVELS[i]) return i
+function activityToHeatmap(data: ActivityDay[]): HeatmapColumn[] {
+  // group days into week columns, bin 0=Sun, 1=Mon, ... 6=Sat
+  const byWeek = new Map<string, HeatmapBin[]>()
+  const weekOrder: string[] = []
+  for (const d of data) {
+    const date = new Date(d.date + "T00:00")
+    const dayOfWeek = date.getDay() // 0=Sun
+    // week key = ISO week start (Mon) — use date - dayOfWeek + 1
+    const weekStart = new Date(date)
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + (weekStart.getDay() === 0 ? -6 : 1))
+    const wk = weekStart.toISOString().slice(0, 10)
+    if (!byWeek.has(wk)) { byWeek.set(wk, []); weekOrder.push(wk) }
+    byWeek.get(wk)!.push({ bin: dayOfWeek, count: d.total, date })
   }
-  return 1
-}
-
-function HeatmapCell({ day, max }: { day: ActivityDay; max: number }) {
-  const level = heatmapLevel(day.total, max)
-  const cellColor = level === 0
-    ? "var(--color-inset)"
-    : level <= 1
-      ? "color-mix(in srgb, var(--color-accent) 18%, var(--color-inset))"
-      : level === 2
-        ? "color-mix(in srgb, var(--color-accent) 36%, var(--color-inset))"
-        : level === 3
-          ? "color-mix(in srgb, var(--color-accent) 60%, var(--color-inset))"
-          : "var(--color-accent)"
-  const tooltip = `${day.date}: ${day.chat_messages} chat, ${day.task_dispatches} tasks`
-  return (
-    <div
-      className="size-2.5 rounded-sm transition-shadow hover:shadow-[0_0_6px_var(--color-accent)]"
-      style={{ background: cellColor }}
-      title={tooltip}
-    />
-  )
-}
-
-function ActivityHeatmap({ data }: { data: ActivityDay[] }) {
-  const max = useMemo(() => Math.max(1, ...data.map((d) => d.total)), [data])
-
-  // group by week rows: fill partial weeks, pad leading days
-  const weeks = useMemo(() => {
-    const result: ActivityDay[][] = []
-    let row: ActivityDay[] = []
-    // pad first row with empties to align to week start
-    if (data.length > 0) {
-      const firstDow = new Date(data[0].date + "T00:00").getDay() // 0=Sun
-      for (let i = 0; i < firstDow; i++) row.push({ date: "", chat_messages: 0, task_dispatches: 0, total: 0 })
-    }
-    for (const d of data) {
-      row.push(d)
-      if (row.length === 7) { result.push(row); row = [] }
-    }
-    if (row.length > 0) {
-      while (row.length < 7) row.push({ date: "", chat_messages: 0, task_dispatches: 0, total: 0 })
-      result.push(row)
-    }
-    return result
-  }, [data])
-
-  return (
-    <div className="flex gap-1 overflow-x-auto">
-      {weeks.map((wk, wi) => (
-        <div key={wi} className="flex flex-col gap-1">
-          {wk.map((d, di) =>
-            d.date ? <HeatmapCell key={d.date} day={d} max={max} /> : <div key={di} className="size-2.5" />
-          )}
-        </div>
-      ))}
-    </div>
-  )
+  return weekOrder.map((_, i) => ({
+    bin: i,
+    bins: byWeek.get(weekOrder[i]) ?? [],
+  }))
 }
 
 // ── stat card ──────────────────────────────────────────────────────────────
@@ -237,6 +207,80 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
   )
 }
 
+// ── review gate metrics ────────────────────────────────────────────────────
+
+function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: boolean }) {
+  return (
+    <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Review gate</p>
+          <h2 className="mt-1 text-sm font-semibold">Approval pipeline</h2>
+        </div>
+        <GitPullRequest className="size-4 text-[var(--color-accent)]" />
+      </div>
+      {loading || !data ? (
+        <p className="mt-6 text-xs text-[var(--color-ink-4)]">Loading review metrics…</p>
+      ) : (
+        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+          {[
+            { label: "Approved", value: data.approved, tone: "text-[var(--color-success)]" },
+            { label: "Reopened", value: data.reopened, tone: "text-[var(--color-warning)]" },
+            { label: "In review", value: data.now_in_review, tone: "text-[var(--color-accent)]" },
+            { label: "Avg latency", value: data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "—", tone: "text-[var(--color-ink-2)]" },
+          ].map((cell) => (
+            <div key={cell.label} className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-2">
+              <p className="text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">{cell.label}</p>
+              <p className={`mt-1 font-mono text-sm ${cell.tone}`}>{cell.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── queue trend sparkline (bklit area chart) ───────────────────────────────
+
+function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading: boolean }) {
+  const chartData = useMemo(() => (data ?? []).map((d) => ({
+    date: new Date(d.date + "T12:00"),
+    queue_size: d.queue_size,
+    completed: d.completed,
+    failed: d.failed,
+  })), [data])
+
+  return (
+    <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Dispatcher</p>
+          <h2 className="mt-1 text-sm font-semibold">Queue trend — 30 days</h2>
+        </div>
+        <Database className="size-4 text-[var(--color-accent)]" />
+      </div>
+      <div className="mt-4 min-h-[200px]">
+        {loading ? (
+          <p className="text-xs text-[var(--color-ink-4)]">Loading queue trend…</p>
+        ) : chartData.length === 0 ? (
+          <p className="text-xs text-[var(--color-ink-4)]">No queue data yet — dispatch some tasks</p>
+        ) : (
+          <AreaChart
+            data={chartData}
+            xDataKey="date"
+            aspectRatio="3 / 1"
+            status="ready"
+          >
+            <Area dataKey="completed" fill="var(--color-success)" fillOpacity={0.25} stroke="var(--color-success)" showLine />
+            <Area dataKey="failed" fill="var(--color-danger)" fillOpacity={0.2} stroke="var(--color-danger)" showLine />
+            <Area dataKey="queue_size" fill="var(--color-accent)" fillOpacity={0.35} stroke="var(--color-accent)" showLine showHighlight />
+          </AreaChart>
+        )}
+      </div>
+    </section>
+  )
+}
+
 // ── main page ──────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
@@ -244,7 +288,11 @@ export default function OverviewPage() {
   const daemon = useQuery({ queryKey: ["chat-daemon-health"], queryFn: () => api<DaemonHealth>("/api/chat/daemon-health"), refetchInterval: 10_000 })
   const nodes = useQuery({ queryKey: ["nodes"], queryFn: () => api<NodeHealth>("/api/nodes"), refetchInterval: 10_000 })
   const activity = useQuery({ queryKey: ["overview-activity"], queryFn: () => getOverviewActivity(180), refetchInterval: 60_000 })
+  const review = useQuery({ queryKey: ["overview-review"], queryFn: () => getOverviewReview(), refetchInterval: 30_000 })
+  const queueTrend = useQuery({ queryKey: ["overview-queue-trend"], queryFn: () => getOverviewQueueTrend(30), refetchInterval: 60_000 })
   const data = overview.data
+
+  const heatmapData = useMemo(() => activity.data ? activityToHeatmap(activity.data) : [], [activity.data])
 
   if (overview.isLoading) return <LoadingState label="Memuat overview" />
   if (overview.isError || !data) return <LoadingState label="Gagal load overview" description={(overview.error as Error)?.message} />
@@ -276,23 +324,33 @@ export default function OverviewPage() {
           <StatCard icon={Minus} label="Queue" value={data.queue_depth} note="Pending / ready / waiting" tone="warning" />
         </div>
 
-        {/* ── Activity heatmap (chat + task) ── */}
+        {/* ── Activity heatmap (bklit) ── */}
         <section className="mt-3 decorative-card rounded-xl border border-[var(--color-line)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Activity</p>
               <h2 className="mt-1 text-sm font-semibold">Chat + task heatmap — 6 months</h2>
-              <p className="mt-0.5 text-[10px] text-[var(--color-ink-4)]">Daily buckets: hover for chat / task breakdown</p>
             </div>
             <Database className="size-4 text-[var(--color-accent)]" />
           </div>
-          <div className="mt-4 flex min-h-[80px] items-start overflow-x-auto pb-1">
+          <div className="mt-4 min-h-[140px]">
             {activity.isLoading ? (
-              <p className="text-xs text-[var(--color-ink-4)]">Loading activity data…</p>
-            ) : (activity.data?.length ?? 0) === 0 ? (
+              <p className="text-xs text-[var(--color-ink-4)]">Loading activity…</p>
+            ) : heatmapData.length === 0 ? (
               <p className="text-xs text-[var(--color-ink-4)]">No activity data yet — start chatting or dispatching tasks</p>
             ) : (
-              <ActivityHeatmap data={activity.data!} />
+              <HeatmapChart
+                data={heatmapData}
+                layout="fluid"
+                weekStartDay={1}
+                animate
+                levelColors={["var(--color-inset)", "color-mix(in srgb, var(--color-accent) 20%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 40%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 65%, var(--color-inset))", "var(--color-accent)"]}
+              >
+                <HeatmapCells />
+                <HeatmapXAxis />
+                <HeatmapYAxis />
+                <HeatmapTooltip formatLabel={(count, date) => `${count} total · ${date.toLocaleDateString("en-ID", { weekday: "short", day: "numeric", month: "short" })}`} />
+              </HeatmapChart>
             )}
           </div>
         </section>
@@ -309,27 +367,36 @@ export default function OverviewPage() {
             <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Task health</p><h2 className="mt-1 text-sm font-semibold">Status distribution</h2></div><Workflow className="size-4 text-[var(--color-accent)]" /></div>
             <TaskHealthChart data={data} />
             <div className="mt-6 rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><div className="flex items-center justify-between text-xs"><span className="text-[var(--color-ink-3)]">Completion rate</span><b className="font-mono text-[var(--color-success)]">{completionRate}%</b></div><div className="mt-2 h-1.5 rounded-full bg-[var(--color-bg)]"><div className="h-full rounded-full bg-[var(--color-success)]" style={{ width: `${completionRate}%` }} /></div></div>
-            {/* 5-cell grid: healthy / silent / stuck / lost / unknown — fix: include unknown bucket */}
             <div className="mt-3 grid grid-cols-5 gap-2 text-center">
               {(["healthy", "silent", "stuck", "lost", "unknown"] as const).map((health) => <div key={health} className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-2"><p className="text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">{health}</p><p className="mt-1 font-mono text-sm text-[var(--color-ink)]">{data.task_health?.[health] ?? 0}</p></div>)}
             </div>
           </section>
         </div>
 
-        {/* ── Profiles + Workspaces (2 cards — Runtime mode removed) ── */}
+        {/* ── Profiles + Workspaces ── */}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <StatCard icon={Users} label="Agent profiles" value={data.profiles} note="Configured execution profiles" tone="accent" />
           <StatCard icon={Server} label="Workspaces" value={data.workspaces} note="Connected execution targets" tone="info" />
         </div>
 
-        {/* ── Hermes daemon + Node fleet (memory source removed) ── */}
+        {/* ── Hermes daemon + Node fleet ── */}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <HealthCard icon={Activity} label="Hermes daemon" status={daemon.data?.status === "ready" ? "ready" : daemon.isLoading ? "checking" : "down"} detail={daemon.data?.socket ?? "Local Unix socket"} />
           <NodeFleetCard nodes={nodes.data} loading={nodes.isLoading} />
         </div>
 
+        {/* ── Review gate metrics ── */}
+        <div className="mt-3">
+          <ReviewGateCard data={review.data} loading={review.isLoading} />
+        </div>
+
+        {/* ── Queue trend ── */}
+        <div className="mt-3">
+          <QueueTrendChart data={queueTrend.data} loading={queueTrend.isLoading} />
+        </div>
+
         {/* ── footer ── */}
-        <footer className="mt-4 flex items-center gap-2 text-[10px] text-[var(--color-ink-4)]"><Radio className="size-3.5 text-[var(--color-accent)]" />Live data from Hermes API · refresh interval 5 seconds</footer>
+        <footer className="mt-4 pb-4 flex items-center gap-2 text-[10px] text-[var(--color-ink-4)]"><Radio className="size-3.5 text-[var(--color-accent)]" />Live data from Hermes API · refresh interval 5 seconds</footer>
       </div>
     </div>
   )

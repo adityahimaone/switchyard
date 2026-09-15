@@ -21,6 +21,7 @@
   "registries": {
     "@efferd": "https://efferd.com/r/{style}/{name}.json",
     "@sona-ui": "https://sonaui.com/r/{name}.json",
-    "@beui": "https://beui.dev/r/{name}.json"
+    "@beui": "https://beui.dev/r/{name}.json",
+    "@bklit": "https://ui.bklit.com/r/{name}.json"
   }
 }
