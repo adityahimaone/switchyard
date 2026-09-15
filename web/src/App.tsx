@@ -66,6 +66,8 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
   const [filtersOpen, setFiltersOpen] = useState(true)
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [q, setQ] = useState("")
   const [fStatus, setFStatus] = useState("__all")
   const [fAgent, setFAgent] = useState("__all")
@@ -265,6 +267,11 @@ export default function App() {
     setDetailId(null)
     setPage(p)
     if (p === "chat") {
+      if (page === "chat") {
+        setChatSidebarOpen((value) => !value)
+        return
+      }
+      setChatSidebarOpen(true)
       setChatRouteID(undefined)
       go("/chat")
     } else {
@@ -506,12 +513,15 @@ export default function App() {
         <AppHeader
           breadcrumb={breadcrumb}
           right={headerControls}
+          onOpenPalette={() => setPaletteOpen(true)}
           onSettings={() => handleSelectPage("settings")}
           onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
         />
       }
     >
       <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
         board={currentBoard}
         boards={boards.data ?? []}
         tasks={tasks.data ?? []}
@@ -546,7 +556,7 @@ export default function App() {
         {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
         {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
         {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
-        {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
+        {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
         {page === "board" && detailId && detailPage && (
           <TaskDetailPage
             slug={slug}

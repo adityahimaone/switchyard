@@ -81,11 +81,12 @@ func AddComment(slug, taskID, author, body string) (*TaskComment, error) {
 	// done/review task we nudge it back to todo so the dispatcher respawns.
 	mentioned := assignee != "" && strings.Contains(body, "@"+assignee)
 	if mentioned && (status == "done" || status == "review" || status == "blocked") {
-		if _, err := db.Exec(`UPDATE tasks SET status='todo' WHERE id=?`, taskID); err == nil {
+		if _, err := db.Exec(`UPDATE tasks SET status='todo', completed_at=NULL WHERE id=?`, taskID); err == nil {
 			ev, _ := json.Marshal(map[string]any{"from": status, "to": "todo", "source": "board-ui-comment"})
 			_, _ = db.Exec(`INSERT INTO task_events (task_id, kind, payload, created_at) VALUES (?,?,?,?)`,
 				taskID, "status_changed", string(ev), now)
 		}
 	}
+	broadcastEvent("commented", map[string]any{"board": slug, "task_id": taskID, "author": author})
 	return &TaskComment{ID: id, TaskID: taskID, Author: author, Body: body, CreatedAt: now}, nil
 }

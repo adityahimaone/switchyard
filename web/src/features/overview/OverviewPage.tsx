@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { Activity, CheckCircle2, Cpu, Database, Gauge, Layers3, MemoryStick, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
 import { LabelList, Pie, PieChart } from "recharts"
-import { api } from "../../api"
+import { api } from "@/api"
+import LoadingState from "@/components/LoadingState"
+
+interface DaemonHealth { status: string; socket?: string }
+interface NodeHealth { status: string; nodes?: { node_id: string; hostname: string; status: string; last_seen: string }[]; error?: string }
 
 type Overview = {
   metrics: { cpu_percent: number; memory_used_mb: number; memory_total_mb: number; goroutines: number }
@@ -98,10 +102,12 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
 
 export default function OverviewPage() {
   const overview = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/api/overview"), refetchInterval: 5000 })
+  const daemon = useQuery({ queryKey: ["chat-daemon-health"], queryFn: () => api<DaemonHealth>("/api/chat/daemon-health"), refetchInterval: 10_000 })
+  const nodes = useQuery({ queryKey: ["nodes"], queryFn: () => api<NodeHealth>("/api/nodes"), refetchInterval: 10_000 })
   const data = overview.data
 
-  if (overview.isLoading) return <div className="flex h-full items-center justify-center text-sm text-[var(--color-ink-3)]">Memuat overview…</div>
-  if (overview.isError || !data) return <div className="flex h-full items-center justify-center text-sm text-[var(--color-danger)]">Gagal load overview: {(overview.error as Error)?.message}</div>
+  if (overview.isLoading) return <LoadingState label="Memuat overview" />
+  if (overview.isError || !data) return <LoadingState label="Gagal load overview" description={(overview.error as Error)?.message} />
 
   const memoryPct = data.metrics.memory_total_mb > 0 ? (data.metrics.memory_used_mb / data.metrics.memory_total_mb) * 100 : 0
   const finished = data.completed_tasks + data.failed_tasks
@@ -150,8 +156,22 @@ export default function OverviewPage() {
           <StatCard icon={Database} label="Runtime mode" value="Activity" note="Live task telemetry" tone="success" />
         </div>
 
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <HealthCard icon={Activity} label="Hermes daemon" status={daemon.data?.status === "ready" ? "ready" : daemon.isLoading ? "checking" : "down"} detail={daemon.data?.socket ?? "Local Unix socket"} />
+          <HealthCard icon={Server} label="Node agent" status={nodes.data?.status === "up" ? "up" : nodes.isLoading ? "checking" : "down"} detail={nodes.data?.error || `${nodes.data?.nodes?.length ?? 0} registered node(s)`} />
+          <HealthCard icon={CheckCircle2} label="Memory source" status={overview.data ? "ready" : "checking"} detail="Read-only Hermes context snapshot" />
+        </div>
+
         <footer className="mt-4 flex items-center gap-2 text-[10px] text-[var(--color-ink-4)]"><Radio className="size-3.5 text-[var(--color-accent)]" />Live data from Hermes API · refresh interval 5 seconds</footer>
       </div>
     </div>
   )
+}
+
+function HealthCard({ icon: Icon, label, status, detail }: { icon: typeof Activity; label: string; status: string; detail: string }) {
+  const ready = status === "ready" || status === "up"
+  return <section className="flex min-w-0 items-start gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+    <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${ready ? "bg-[var(--color-success-tint)] text-[var(--color-success)]" : status === "down" ? "bg-[var(--color-danger-tint)] text-[var(--color-danger)]" : "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"}`}><Icon className="size-4" /></span>
+    <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="text-xs font-medium text-[var(--color-ink-2)]">{label}</p><span className={`size-1.5 rounded-full ${ready ? "bg-[var(--color-success)]" : status === "down" ? "bg-[var(--color-danger)]" : "bg-[var(--color-accent)] animate-pulse"}`} /><span className="font-mono text-[10px] uppercase text-[var(--color-ink-3)]">{status}</span></div><p className="mt-1 truncate text-[11px] text-[var(--color-ink-4)]" title={detail}>{detail}</p></div>
+  </section>
 }

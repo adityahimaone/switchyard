@@ -85,6 +85,16 @@ func TestCreateTaskDefaults(t *testing.T) {
 	}
 }
 
+func TestCreateShellTaskRequiresCommand(t *testing.T) {
+	slug := testBoard(t)
+	if err := CreateTask(slug, &Task{Title: "shell", Executor: "shell", Body: "natural language"}); err == nil {
+		t.Fatal("shell task without command accepted")
+	}
+	if err := CreateTask(slug, &Task{Title: "shell", Executor: "shell", Body: "description", Command: "printf ok"}); err != nil {
+		t.Fatalf("shell task with command rejected: %v", err)
+	}
+}
+
 func TestCreateTaskRejectsInvalidStatus(t *testing.T) {
 	slug := testBoard(t)
 	for _, s := range []string{"running", "nonsense"} {

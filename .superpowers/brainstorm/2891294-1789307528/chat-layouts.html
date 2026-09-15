@@ -1,0 +1,46 @@
+<h2>Chat with Hermes agents</h2>
+<p class="subtitle">Pick layout direction. Focus: fast prompt response, agent controls, chat history.</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">A — Focused workspace</div>
+    <div class="mockup-body" style="padding:12px;background:#0d1117;min-height:300px;color:#d7dee8;font-family:system-ui">
+      <div style="display:flex;gap:10px;height:276px">
+        <div style="width:112px;border-right:1px solid #27303b;padding-right:8px">
+          <button class="mock-button" style="width:100%;font-size:11px">+ New chat</button>
+          <div style="font-size:10px;color:#8b98a8;margin:14px 0 6px">TODAY</div>
+          <div style="font-size:11px;padding:7px;border-radius:6px;background:#1b2633">Deploy agent API</div>
+          <div style="font-size:11px;padding:7px;color:#8b98a8">Review task flow</div>
+          <div style="font-size:11px;padding:7px;color:#8b98a8">Fix remote runner</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid #27303b;padding-bottom:9px;font-size:12px"><b>Deploy agent API</b><span style="color:#8b98a8">Hermes · default · development</span></div>
+          <div style="flex:1;padding:18px 8px;font-size:11px;line-height:1.6"><div style="color:#8b98a8">You</div><div style="margin-bottom:14px">Check current API health and fix failing routes.</div><div style="color:#7dd3a7">Hermes · running</div><div>Inspecting service health…<span style="color:#8b98a8"> 2s</span></div></div>
+          <div style="border:1px solid #3a4653;border-radius:9px;padding:8px;font-size:11px;color:#8b98a8">Ask Hermes anything… <span style="float:right;color:#d7dee8">↑</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>Focused workspace</h3><p>History stays internal. Main canvas gives maximum room for streaming output. Recommended for fast daily use.</p></div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">B — Agent command center</div>
+    <div class="mockup-body" style="padding:12px;background:#0d1117;min-height:300px;color:#d7dee8;font-family:system-ui">
+      <div style="display:flex;gap:8px;height:276px">
+        <div style="width:92px;border-right:1px solid #27303b;padding-right:8px;font-size:10px"><b>CHATS</b><div style="margin-top:16px;color:#7dd3a7">● Hermes</div><div style="margin-top:10px;color:#8b98a8">○ Codex</div><div style="margin-top:10px;color:#8b98a8">○ Shell</div><div style="margin-top:24px;color:#8b98a8">History</div></div>
+        <div style="flex:1;display:flex;flex-direction:column">
+          <div style="display:flex;gap:5px;font-size:10px"><span class="mock-button" style="padding:5px">Hermes</span><span class="mock-button" style="padding:5px">default</span><span class="mock-button" style="padding:5px">development</span></div>
+          <div style="flex:1;padding:18px 5px;font-size:11px"><div style="color:#7dd3a7">● READY</div><div style="margin-top:12px">Direct agent session. Switch model/profile/workspace before send.</div><div style="margin-top:16px;color:#f0b66b">▣ execution · 00:04</div></div>
+          <div style="display:flex;gap:5px;border:1px solid #3a4653;border-radius:9px;padding:8px;font-size:10px;color:#8b98a8"><span style="flex:1">Run command or prompt…</span><span>+</span><span style="color:#d7dee8">↑</span></div>
+        </div>
+        <div style="width:72px;border-left:1px solid #27303b;padding-left:8px;font-size:10px;color:#8b98a8"><b>STATE</b><div style="margin-top:15px;color:#7dd3a7">READY</div><div style="margin-top:10px">Latency<br><span style="color:#d7dee8">184ms</span></div><div style="margin-top:10px">Tokens<br><span style="color:#d7dee8">—</span></div></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>Agent command center</h3><p>Agent and runtime state always visible. Strong control, but less space for long responses. Best for power users.</p></div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:18px">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)"><div class="letter">A</div><div class="content"><h3>Focused workspace</h3><p>Choose this if chat reading and fast prompt loop matter most.</p></div></div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)"><div class="letter">B</div><div class="content"><h3>Agent command center</h3><p>Choose this if runtime controls and state visibility matter most.</p></div></div>
+</div>

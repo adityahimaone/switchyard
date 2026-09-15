@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
 	Sidebar,
 	SidebarContent,
@@ -12,7 +11,7 @@ import {
 import { NavGroup } from "@/components/nav-group";
 import { buildNavGroups, buildFooterNavLinks } from "@/components/app-shared";
 import { LatestChange } from "@/components/latest-change";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import type { Page } from "@/lib/sidebar-preferences";
 
 export function AppSidebar({
@@ -33,7 +32,7 @@ export function AppSidebar({
 		>
 			<SidebarHeader className="h-14 justify-center">
 				<SidebarMenuButton asChild>
-					<button onClick={() => onSelectPage("overview")}>
+					<button onClick={() => onSelectPage("chat")}>
 						<img src="/brand/mascot-switchyard.png" alt="" aria-hidden="true" className="size-8 object-contain" />
 						<div className="grid flex-1 text-left text-sm leading-tight">
 							<span className="truncate font-semibold">Switchyard</span>
@@ -48,21 +47,12 @@ export function AppSidebar({
 						<SidebarMenuButton
 							className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
 							tooltip="Quick Create"
-							onClick={() => onSelectPage("board")}
+							onClick={() => onSelectPage("chat")}
 						>
 							<PlusIcon />
-							<span>New Task</span>
+							<span>New Chat</span>
 						</SidebarMenuButton>
-						<Button
-							aria-label="Search"
-							className="size-8 group-data-[collapsible=icon]:opacity-0"
-							size="icon"
-							variant="outline"
-						>
-							<SearchIcon />
-							<span className="sr-only">Search</span>
-						</Button>
-					</SidebarMenuItem>
+						</SidebarMenuItem>
 				</SidebarGroup>
 				{navGroups.map((group, index) => (
 					<NavGroup

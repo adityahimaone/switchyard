@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import App from "./App"
 import AuthPage from "./components/auth-page"
+import LoadingState from "./components/LoadingState"
 
 export default function AuthGate() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
@@ -12,6 +13,12 @@ export default function AuthGate() {
       .catch(() => setAuthenticated(false))
   }, [])
 
-  if (authenticated === null) return <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] text-xs text-neutral-500">Checking…</div>
+  if (authenticated === null) {
+    return (
+      <div className="flex min-h-screen bg-[var(--color-bg)]">
+        <LoadingState label="Memeriksa sesi" description="Menyiapkan akses ke workspace." />
+      </div>
+    )
+  }
   return authenticated ? <App /> : <AuthPage onAuthenticated={() => setAuthenticated(true)} />
 }

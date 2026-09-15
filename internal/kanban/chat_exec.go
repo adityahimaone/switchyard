@@ -122,16 +122,26 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		}
 		return
 	}
-	// Try warm daemon first (saves cold-start on repeat runs); fall back to CLI.
-	if daemonHealthy() {
-		if ok := runChatViaDaemon(ctx, runID, workspace, profile, model, prompt); ok {
-			return
-		}
-	}
 	hermesSessionID := ""
+	switchyardSessionID := ""
 	if r, getErr := GetChatRun(runID); getErr == nil {
+		switchyardSessionID = r.SessionID
 		if s, sessionErr := GetChatSession(r.SessionID); sessionErr == nil {
 			hermesSessionID = s.HermesSessionID
+		}
+	}
+	_ = AppendChatRunEvent(runID, "phase", fmt.Sprintf(`{"phase":"profile_context","label":"Loading profile context: %s"}`, profile))
+	_ = AppendChatRunEvent(runID, "phase", `{"phase":"loading_context","label":"Loading workspace context"}`)
+	if hermesSessionID != "" {
+		_ = AppendChatRunEvent(runID, "phase", `{"phase":"resuming_session","label":"Resuming conversation"}`)
+	} else {
+		_ = AppendChatRunEvent(runID, "phase", `{"phase":"new_session","label":"Starting a new conversation"}`)
+	}
+
+	// Try warm daemon first (saves cold-start on repeat runs); fall back to CLI.
+	if daemonHealthy() {
+		if ok := runChatViaDaemonRetry(ctx, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID); ok {
+			return
 		}
 	}
 	args, err := chatCommand(agent, profile, model, prompt, hermesSessionID)
@@ -139,8 +149,9 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		_ = UpdateChatRunState(runID, "error", "", err.Error())
 		return
 	}
+	_ = AppendChatRunEvent(runID, "phase", `{"phase":"model_call_started","label":"Running Hermes"}`)
 	var onLine = func(line string) {
-		_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf("{\"text\":%q}", line))
+		appendHermesOutputEvents(runID, line)
 	}
 	var output string
 	output, err = runHermesProcess(ctx, args, workspace, prompt, onLine)
@@ -162,7 +173,7 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		_ = UpdateChatRunState(runID, "error", output, trimErr(err))
 		return
 	}
-	result := strings.TrimSpace(output)
+	result := strings.TrimSpace(stripHermesMetadata(output))
 	if result == "" {
 		_ = UpdateChatRunState(runID, "error", "", "agent returned empty response")
 		return
@@ -210,13 +221,53 @@ func runHermesProcess(ctx context.Context, args []string, workspace, prompt stri
 
 // parseHermesSessionID extracts the session id printed by `hermes chat` on exit.
 // hermes prints `Session: <id>` (e.g. "Session: 20260914_175347_076ded") to stdout.
-var hermesSessionIDRe = regexp.MustCompile(`Session:\s*(\S+)`)
+var hermesSessionIDRe = regexp.MustCompile(`(?i)(?:Session|session_id):\s*(\S+)`)
 
 func parseHermesSessionID(out string) string {
 	if m := hermesSessionIDRe.FindStringSubmatch(out); m != nil {
 		return m[1]
 	}
 	return ""
+}
+
+func stripHermesMetadata(out string) string {
+	kept := make([]string, 0)
+	for _, line := range strings.Split(out, "\n") {
+		if parseHermesSessionID(line) == "" {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func appendHermesOutputEvents(runID, line string) {
+	if parseHermesSessionID(line) != "" {
+		return
+	}
+	_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf(`{"text":%q}`, line))
+	if phase, label := hermesOutputPhase(line); phase != "" {
+		_ = AppendChatRunEvent(runID, "phase", fmt.Sprintf(`{"phase":%q,"label":%q}`, phase, label))
+	}
+}
+
+func hermesOutputPhase(line string) (string, string) {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	switch {
+	case strings.Contains(lower, "session_id:"):
+		return "session_created", "Session context updated"
+	case strings.Contains(lower, "reading skill"), strings.Contains(lower, "loading skill"), strings.Contains(lower, "skill:"):
+		return "reading_skill", "Reading agent skill"
+	case strings.Contains(lower, "agents.md"), strings.Contains(lower, "readme.md"), strings.Contains(lower, "project instructions"):
+		return "reading_instructions", "Reading project instructions"
+	case strings.Contains(lower, "codegraph"):
+		return "codegraph_check", "Checking workspace structure"
+	case strings.Contains(lower, "shell"), strings.Contains(lower, "execute command"), strings.Contains(lower, "running command"), strings.Contains(lower, "terminal"):
+		return "shell_command", "Using shell command"
+	case strings.Contains(lower, "reading file"), strings.Contains(lower, "read file"), strings.Contains(lower, "opening file"), strings.Contains(lower, "writing file"):
+		return "file_operation", "Working with workspace files"
+	default:
+		return "", ""
+	}
 }
 
 func isLocalWorkspace(path string) bool {
@@ -253,14 +304,24 @@ func daemonHealthy() bool {
 	return r.StatusCode == 200
 }
 
+// ChatDaemonHealth reports whether the local warm Hermes bridge is reachable.
+func ChatDaemonHealth() map[string]any {
+	if daemonHealthy() {
+		return map[string]any{"status": "ready", "socket": daemonSock()}
+	}
+	return map[string]any{"status": "down", "socket": daemonSock()}
+}
+
 // runChatViaDaemon streams the warm daemon's SSE response into chat run events.
 // Returns false on any failure before the first event so RunChat can fall back to CLI.
-func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, prompt string) bool {
+func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID string) bool {
 	body, _ := json.Marshal(map[string]string{
-		"prompt":    prompt,
-		"workspace": workspace,
-		"profile":   profile,
-		"model":     model,
+		"prompt":                prompt,
+		"workspace":             workspace,
+		"profile":               profile,
+		"model":                 model,
+		"session_id":            hermesSessionID,
+		"switchyard_session_id": switchyardSessionID,
 	})
 	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost/query", bytes.NewReader(body))
 	if err != nil {
@@ -282,23 +343,40 @@ func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, pro
 	dec := newSSEDecoder(resp.Body)
 	var result strings.Builder
 	got := false
+	sid := ""
+	failed := ""
 	for dec.Scan() {
 		got = true
 		ev := dec.Event()
 		switch ev["kind"] {
 		case "tool_output":
-			_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf(`{"text":%q}`, ev["text"]))
+			appendHermesOutputEvents(runID, ev["text"])
+		case "phase":
+			phasePayload, _ := json.Marshal(map[string]string{"phase": ev["phase"], "label": ev["label"]})
+			_ = AppendChatRunEvent(runID, "phase", string(phasePayload))
+		case "error":
+			failed = ev["error"]
 		case "completed":
 			result.WriteString(ev["text"])
+			if s := daemonSessionID(ev); s != "" {
+				sid = s
+			}
 		}
 	}
-	if !got {
+	if !got || failed != "" {
 		return false
 	}
-	out := strings.TrimSpace(result.String())
+	out := strings.TrimSpace(stripHermesMetadata(result.String()))
 	if out == "" {
 		_ = UpdateChatRunState(runID, "error", "", "agent returned empty response")
 		return true
+	}
+	// Persist new hermes session id before creating the assistant message so the
+	// next turn in this room resumes context. On resume-failure, clear and retry once.
+	if sid != "" && switchyardSessionID != "" {
+		if cur, err := GetChatSession(switchyardSessionID); err == nil && cur.HermesSessionID != sid {
+			_ = SetHermesSessionID(switchyardSessionID, sid)
+		}
 	}
 	_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"daemon":true}`, len(out)))
 	_ = UpdateChatRunState(runID, "done", out, "")
@@ -306,6 +384,28 @@ func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, pro
 		_, _ = CreateChatMessage(r.SessionID, "assistant", out, r.ID)
 	}
 	return true
+}
+
+// daemonSessionID returns the hermes session id from a completed SSE event, if present.
+func daemonSessionID(ev map[string]string) string {
+	return ev["session_id"]
+}
+
+// runChatViaDaemonRetry resumes once with a cleared session on resume failure.
+func runChatViaDaemonRetry(ctx context.Context, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID string) bool {
+	if hermesSessionID == "" || switchyardSessionID == "" {
+		return runChatViaDaemon(ctx, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID)
+	}
+	if ok := runChatViaDaemon(ctx, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID); ok {
+		return true
+	}
+	// Resume likely failed mid-stream: clear and retry fresh (best-effort daemon).
+	if cur, err := GetChatSession(switchyardSessionID); err == nil {
+		if cur.HermesSessionID == hermesSessionID {
+			_ = ClearHermesSessionID(switchyardSessionID)
+		}
+	}
+	return runChatViaDaemon(ctx, runID, workspace, profile, model, prompt, "", switchyardSessionID)
 }
 
 // sseEvent reads Server-Sent-Events `data:` lines into a map of JSON fields per event.

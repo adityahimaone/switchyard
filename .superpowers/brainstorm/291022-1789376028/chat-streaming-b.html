@@ -1,0 +1,123 @@
+<div class="mockup" style="max-width:1100px;margin:0 auto">
+  <div class="mockup-header">Option B — Streaming + Bottom Info Bar (BeUI-inspired)</div>
+  <div class="mockup-body" style="display:flex;height:600px;background:#0a0a0a;border-radius:8px;overflow:hidden;font-family:system-ui;color:#e5e5e5">
+
+    <!-- Sidebar -->
+    <div style="width:260px;border-right:1px solid #222;display:flex;flex-direction:column;flex-shrink:0">
+      <div style="padding:12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222">
+        <span style="font-size:13px;font-weight:600">Chats</span>
+        <span style="font-size:18px;color:#888;cursor:pointer">+</span>
+      </div>
+      <div style="padding:8px 12px;border-bottom:1px solid #222">
+        <div style="background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:6px 10px;font-size:11px;color:#777">Search chats</div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:8px">
+        <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px">Today</div>
+        <div style="background:#1a1a2e;border:1px solid #334;border-radius:8px;padding:8px 12px;margin-bottom:4px;cursor:pointer">
+          <div style="font-size:12px;font-weight:500">Improve chat performance</div>
+          <div style="font-size:10px;color:#666;margin-top:2px">default · local</div>
+        </div>
+        <div style="padding:6px 12px;border-radius:6px;cursor:pointer">
+          <div style="font-size:12px;color:#aaa">Debug deploy pipeline</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #222;padding:6px 12px;font-size:10px;color:#555">3 chats</div>
+    </div>
+
+    <!-- Main -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+
+      <!-- Header — minimal, no state info -->
+      <div style="height:48px;border-bottom:1px solid #222;padding:0 16px;display:flex;align-items:center;background:rgba(20,20,20,0.8)">
+        <div style="font-size:13px;font-weight:600">Improve chat performance</div>
+      </div>
+
+      <!-- Messages -->
+      <div style="flex:1;overflow-y:auto;padding:20px 24px">
+
+        <!-- User message -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <div style="max-width:70%;background:#2563eb;color:white;padding:10px 16px;border-radius:16px;font-size:13px">
+            sunset jam berapa
+          </div>
+        </div>
+
+        <!-- Streaming response — no bubble, direct text -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#ddd">
+Sekarang 17:04 WIB.
+          </div>
+          <!-- Info bar below response — shows model, elapsed, copy, actions -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:6px;border-top:1px solid #1a1a1a">
+            <span style="font-family:monospace;font-size:10px;color:#666">sonnet-4</span>
+            <span style="color:#333">·</span>
+            <span style="font-family:monospace;font-size:10px;color:#666">0.8s</span>
+            <span style="color:#333">·</span>
+            <span style="font-size:10px;color:#555;cursor:pointer">Copy</span>
+            <span style="font-size:10px;color:#555;cursor:pointer">Retry</span>
+            <span style="font-size:10px;color:#555;cursor:pointer">Thread</span>
+          </div>
+        </div>
+
+        <!-- Second message pair — active run -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px;margin-top:24px">
+          <div style="max-width:70%;background:#2563eb;color:white;padding:10px 16px;border-radius:16px;font-size:13px">
+            explain the RunChat function
+          </div>
+        </div>
+
+        <!-- Streaming in progress -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#ddd">
+`RunChat` is the main execution function in chat_exec.go. It:
+
+1. Updates run state to "running"
+2. Checks fast-path shortcuts (greeting, time, date)
+3. For remote workspaces → DispatchRemote()
+4. For local → spawns `hermes chat -Q` subprocess
+5. Pipes stdout line-by-line, writing each line as a
+   chat_run_event to SQLite
+<span style="color:#f59e0b;font-size:11px">█</span>
+          </div>
+          <!-- Streaming info bar — elapsed time + current activity -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:6px;border-top:1px solid #1a1a1a">
+            <span style="font-family:monospace;font-size:10px;color:#666">sonnet-4</span>
+            <span style="color:#333">·</span>
+            <span style="font-family:monospace;font-size:10px;color:#888">14.2s</span>
+            <span style="color:#333">·</span>
+            <span style="font-size:10px;color:#f59e0b">still working</span>
+            <span style="margin-left:auto;font-size:10px;color:#555;cursor:pointer">Stop</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Input bar — clean, no controls mixed in -->
+      <div style="border-top:1px solid #222;padding:12px 16px;background:rgba(20,20,20,0.6)">
+        <div style="max-width:768px;margin:0 auto">
+          <div style="background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:10px 14px">
+            <div style="font-size:13px;color:#666">Message agent...</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:10px;color:#555">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="background:#1a1a1a;border:1px solid #333;padding:2px 8px;border-radius:4px;font-size:10px">default</span>
+              <span style="background:#1a1a1a;border:1px solid #333;padding:2px 8px;border-radius:4px;font-size:10px">local</span>
+              <span style="background:#1a1a1a;border:1px solid #333;padding:2px 8px;border-radius:4px;font-size:10px">sonnet-4</span>
+            </div>
+            <span>Enter send · Shift+Enter newline</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top:12px;font-size:12px;color:#888;line-height:1.6">
+    <strong style="color:#aaa">Key differences from Option A:</strong><br>
+    • Header is clean — no state/model info (simpler)<br>
+    • Model + elapsed + copy/retry/thread shown below EACH response as a "footer bar"<br>
+    • Profile/workspace/model selectors as compact pills below input (not dropdowns above)<br>
+    • Elapsed timer + stop button appear only during active run, replaced by copy/retry on completion<br>
+    • More like BeUI chat layout — response first, metadata second
+  </div>
+</div>

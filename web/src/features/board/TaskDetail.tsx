@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -6,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api, runControl, taskHealth, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
 import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
+import { ResultEmpty, ResultPanel, WorkerLogPanel } from "./OutputPanels"
 
 const STATUS_CHIP: Record<string, string> = {
   done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
@@ -78,7 +78,6 @@ export default function TaskDetail({
   })
   const healthTone = health.data?.health === "healthy" ? "text-emerald-300" : health.data?.health === "silent" ? "text-amber-300" : "text-red-300"
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
-  const [showWorking, setShowWorking] = useState(false)
   const resultSplit = task.result ? splitAgentResult(task.result) : null
 
   return (
@@ -93,7 +92,7 @@ export default function TaskDetail({
           <Button variant="outline" size="sm" className="shrink-0 px-2" onClick={onClose}>✕</Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
           <Badge variant="outline" className={`px-1.5 py-0 text-[9px] leading-none ${STATUS_CHIP[task.status] ?? "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-300"}`}>{task.status}</Badge>
           {task.priority > 0 && (
             <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[9px] leading-none text-amber-300">P{task.priority}</Badge>
@@ -168,28 +167,20 @@ export default function TaskDetail({
             <p className="mt-1 max-h-20 overflow-y-auto break-words text-[11px] leading-relaxed text-red-300">{task.last_failure_error}</p>
           </div>
         )}
-        {resultSplit?.working && (
-          <div className="glass-inset-card rounded-lg p-2.5">
-            <button
-              type="button"
-              onClick={() => setShowWorking((v) => !v)}
-              aria-expanded={showWorking}
-              className="flex w-full items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400 hover:text-neutral-200"
-            >
-              <span className={`transition-transform duration-200 ${showWorking ? "rotate-90" : ""}`}>▸</span>
-              Working log{showWorking ? "" : " (tap untuk buka)"}
-            </button>
-            {showWorking && (
-              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-2 font-mono text-[10px] leading-relaxed text-neutral-400">{resultSplit.working}</pre>
-            )}
-          </div>
-        )}
-        {resultSplit && (
-          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-2.5">
-            <label className="block text-[10px] uppercase tracking-wider text-emerald-300">Result</label>
-            <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-emerald-500/20 bg-[var(--color-bg)] p-2 font-mono text-[11px] leading-relaxed text-emerald-100/90">{resultSplit.final || resultSplit.working}</pre>
-          </div>
-        )}
+        <div className="space-y-2">
+          {task.status === "running" ? (
+            <WorkerLogPanel text={resultSplit?.working ?? ""} running slug={slug} taskId={task.id} />
+          ) : resultSplit?.final ? (
+            <>
+              <WorkerLogPanel text={resultSplit.working} slug={slug} taskId={task.id} />
+              <ResultPanel text={resultSplit.final} hasWorking={!!resultSplit.working} />
+            </>
+          ) : resultSplit?.working ? (
+            <ResultPanel text={resultSplit.working} hasWorking={false} />
+          ) : (
+            <ResultEmpty />
+          )}
+        </div>
 
         {/* run-control */}
         <div className="flex flex-wrap items-center gap-1.5">

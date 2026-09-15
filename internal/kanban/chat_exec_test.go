@@ -134,6 +134,7 @@ func TestParseHermesSessionID(t *testing.T) {
 	}{
 		{"found", "some header\nSession: 20260914_175347_076ded\nShutting down…", "20260914_175347_076ded"},
 		{"found_multiline", "│  Session: abc123_def      │", "abc123_def"},
+		{"found_runtime_format", "session_id: 20260915_125120_01cdde", "20260915_125120_01cdde"},
 		{"empty", "no session here", ""},
 		{"empty_str", "", ""},
 	}
@@ -151,6 +152,16 @@ func TestDaemonHealthyMissingSocket(t *testing.T) {
 	t.Setenv("HERMES_DAEMON_SOCK", filepath.Join(t.TempDir(), "missing.sock"))
 	if daemonHealthy() {
 		t.Fatal("expected missing daemon socket to be unhealthy")
+	}
+}
+
+func TestDaemonSessionIDFromCompletedEvent(t *testing.T) {
+	got := daemonSessionID(map[string]string{"kind": "completed", "session_id": "sess_room_2"})
+	if got != "sess_room_2" {
+		t.Fatalf("session id=%q", got)
+	}
+	if got := daemonSessionID(map[string]string{"kind": "tool_output"}); got != "" {
+		t.Fatalf("unexpected session id=%q", got)
 	}
 }
 

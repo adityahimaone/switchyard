@@ -6,12 +6,13 @@ import os
 import re
 import socketserver
 import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler
 
 SOCKET_PATH = os.environ.get("HERMES_DAEMON_SOCK", "/tmp/hermes-daemon.sock")
 MAX_OUTPUT = 100_000
-SESSION_RE = re.compile(r"Session:\s*(\S+)")
+SESSION_RE = re.compile(r"(?:Session|session_id):\s*(\S+)", re.IGNORECASE)
 
 sessions = {}
 sessions_lock = threading.Lock()
@@ -22,13 +23,29 @@ def rewrite_prompt(prompt):
     return prompt
 
 
-def query(payload):
+def query(payload, emit=None):
     workspace = str(payload.get("workspace") or "")
     prompt = str(payload.get("prompt") or "")
     profile = str(payload.get("profile") or "")
     model = str(payload.get("model") or "")
+    # Prefer explicit hermes session from Switchyard room; fallback to workspace bucket.
+    session_key = str(payload.get("switchyard_session_id") or "")
+    if not session_key:
+        session_key = str(payload.get("session_id") or payload.get("hermes_session_id") or workspace)
+    else:
+        # Retry with empty session_id means "clear stale and start fresh" (Go retry path).
+        if "session_id" in payload and str(payload.get("session_id") or "") == "":
+            with sessions_lock:
+                sessions.pop(session_key, None)
+        # Also handle legacy key.
+        if "hermes_session_id" in payload and str(payload.get("hermes_session_id") or "") == "":
+            with sessions_lock:
+                sessions.pop(session_key, None)
+    explicit_session_id = str(payload.get("session_id") or payload.get("hermes_session_id") or "")
     with sessions_lock:
-        session_id = sessions.get(workspace, "")
+        session_id = sessions.get(session_key, "") or explicit_session_id
+        if session_id:
+            sessions[session_key] = session_id
 
     args = ["hermes", "chat", "-Q", "--reasoning", "minimal"]
     if session_id:
@@ -54,27 +71,51 @@ def query(payload):
 
     output = []
     events = []
+
+    def publish(event):
+        events.append(event)
+        if emit is not None:
+            emit(event)
+
     try:
-        stdout, _ = proc.communicate(rewrite_prompt(prompt), timeout=600)
+        proc.stdin.write(rewrite_prompt(prompt))
+        proc.stdin.close()
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line = line.rstrip("\r\n")
+            if sum(len(part) for part in output) < MAX_OUTPUT:
+                output.append(line + "\n")
+            if SESSION_RE.search(line):
+                continue
+            publish({"kind": "tool_output", "text": line})
+        proc.wait(timeout=600)
     except subprocess.TimeoutExpired:
         proc.kill()
-        stdout, _ = proc.communicate()
-        return {"error": "hermes daemon query timeout", "events": []}
-
-    for line in stdout.splitlines():
-        if sum(len(part) for part in output) < MAX_OUTPUT:
-            output.append(line + "\n")
-        events.append({"kind": "tool_output", "text": line})
+        proc.wait()
+        return {"error": "hermes daemon query timeout", "events": events}
+    except OSError as exc:
+        return {"error": str(exc), "events": events}
 
     result = "".join(output).strip()
+    result = "\n".join(line for line in result.splitlines() if not SESSION_RE.search(line)).strip()
+    stdout = "".join(output)
     match = SESSION_RE.search(stdout)
     if proc.returncode == 0 and match:
         with sessions_lock:
-            sessions[workspace] = match.group(1)
+            sessions[session_key] = match.group(1)
     if proc.returncode != 0:
         return {"error": result or f"hermes exited with {proc.returncode}", "events": events}
-    events.append({"kind": "completed", "text": result})
-    events.append({"kind": "done"})
+    # Include new session_id so Go can persist per-room resume.
+    sid = ""
+    with sessions_lock:
+        sid = sessions.get(session_key, "")
+    completed = {"kind": "completed", "text": result}
+    if sid:
+        completed["session_id"] = sid
+    publish(completed)
+    publish({"kind": "done"})
     return {"events": events}
 
 
@@ -83,7 +124,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         if os.environ.get("HERMES_DAEMON_LOG"):
-            super().log_message(format, *args)
+            print(format % args, file=sys.stderr, flush=True)
 
     def send_json(self, status, value):
         body = json.dumps(value).encode()
@@ -113,20 +154,21 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as exc:
             self.send_json(400, {"error": f"invalid JSON: {exc}"})
             return
-        result = query(payload)
-        if result.get("error"):
-            self.send_json(502, result)
-            return
-        body = b"".join(
-            (b"data: " + json.dumps(event).encode() + b"\n\n")
-            for event in result["events"]
-        )
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.flush()
+
+        def emit(event):
+            body = b"data: " + json.dumps(event).encode() + b"\n\n"
+            self.wfile.write(body)
+            self.wfile.flush()
+
+        result = query(payload, emit=emit)
+        if result.get("error"):
+            emit({"kind": "error", "error": result["error"]})
 
 
 class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):

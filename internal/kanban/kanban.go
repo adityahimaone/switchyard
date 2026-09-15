@@ -232,7 +232,9 @@ func CreateTask(slug string, t *Task) error {
 	if !ValidExecutors[t.Executor] {
 		return fmt.Errorf("invalid executor %q", t.Executor)
 	}
-	// ponytail: shell executor command comes from task body (orchestrator sets it), not a separate field
+	if t.Executor == "shell" && strings.TrimSpace(t.Command) == "" {
+		return fmt.Errorf("shell executor requires command")
+	}
 	if t.WorkspaceKind == "" {
 		t.WorkspaceKind = "dir"
 	}

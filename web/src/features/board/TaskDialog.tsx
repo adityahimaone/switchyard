@@ -44,6 +44,7 @@ export default function TaskDialog({
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
+  const [command, setCommand] = useState("")
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "shell">("auto")
@@ -90,15 +91,16 @@ export default function TaskDialog({
 
   async function submit() {
     if (!title.trim()) { setErr("Title required"); return }
+    if (executor === "shell" && !command.trim()) { setErr("Command required for shell executor"); return }
     setBusy(true); setErr(null)
     try {
       await onCreate({
         title: title.trim(),
         body: body.trim(),
+        ...(executor === "shell" ? { command: command.trim() } : {}),
         workspace_path: ws,
         assignee,
         executor,
-        ...(executor === "shell" ? { command: body.trim() } : {}),
         priority: Number(priority),
         status: "todo",
       })
@@ -141,6 +143,13 @@ export default function TaskDialog({
         </div>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} placeholder="Deskripsi (opsional) — klik AI improve biar prompt-nya dirapikan"
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] text-sm" />
+        {executor === "shell" && <>
+          <Label className="mt-3 block text-xs text-neutral-400">Shell Command</Label>
+          <Textarea value={command} onChange={(e) => setCommand(e.target.value)} rows={4}
+            placeholder="Command yang dieksekusi langsung di remote workspace"
+            className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs" />
+          <p className="mt-1 text-[11px] text-neutral-500">Body jadi deskripsi. Command jadi satu-satunya input yang dijalankan.</p>
+        </>}
         <Label className="mt-3 block text-xs text-neutral-400">Agent Profile</Label>
         <Select value={assignee} onValueChange={setAssignee}>
           <SelectTrigger className={`mt-1 ${selCls}`}>

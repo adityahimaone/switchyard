@@ -6,8 +6,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { addTaskDependency, api, cancelRun, openEventStream, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
-import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT } from "./eventCards"
-import { ArrowLeft, Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus, Send, Square } from "lucide-react"
+import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Copy, FileCode2, Loader2, Minus, Plus, Send, Square } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultStack, WorkerLogPanel } from "./OutputPanels"
 
@@ -294,6 +294,88 @@ function ReviewSection({ slug, task, onDone }: { slug: string; task: Task; onDon
   )
 }
 
+/* Truncatable value — shows full text, collapse button when > FIELD_TRUNCATE_LEN */
+function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone?: string }) {
+  const long = value.length > FIELD_TRUNCATE_LEN
+  const [expanded, setExpanded] = useState(false)
+  const toneCls = tone === "danger" ? "text-red-300" : tone === "warning" ? "text-amber-300" : "text-neutral-200"
+  if (!long) return <dd className={`break-all text-[11px] ${mono ? "font-mono" : ""} ${toneCls}`}>{value}</dd>
+  return (
+    <dd className={`break-all text-[11px] ${mono ? "font-mono" : ""} ${toneCls}`}>
+      {expanded ? value : value.slice(0, FIELD_TRUNCATE_LEN) + "…"}
+      <button type="button" onClick={() => setExpanded(v => !v)} className="ml-1 inline text-[10px] text-sky-400 hover:text-sky-300">
+        {expanded ? "collapse" : "expand"}
+      </button>
+    </dd>
+  )
+}
+
+/* Single event card — with collapsible fields for long values */
+function EventCardNode({ card }: { card: EventCard }) {
+  const [open, setOpen] = useState(true)
+  const hasContent = !!card.note || card.fields.length > 0
+  return (
+    <article className={`rounded-md border p-2 ${TONE_BORDER[card.tone]}`}>
+      <div className="flex items-center gap-2">
+        {hasContent && (
+          <button type="button" onClick={() => setOpen(v => !v)} className="shrink-0 text-neutral-500 hover:text-neutral-300">
+            {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          </button>
+        )}
+        {!hasContent && <span className="size-3" />}
+        <span className="text-sm">{card.icon}</span>
+        <span className={`text-xs font-medium ${TONE_TEXT[card.tone]}`}>{card.label}</span>
+        <span className="ml-auto text-[10px] text-neutral-500">
+          {new Date(card.at * 1000).toLocaleTimeString()}
+        </span>
+      </div>
+      {open && hasContent && (
+        <>
+          {card.note && (
+            <p className="mt-1 ml-5 break-words font-mono text-[11px] leading-relaxed text-neutral-300">{card.note}</p>
+          )}
+          {card.fields.length > 0 && (
+            <dl className="mt-1 ml-5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5">
+              {card.fields.map((f, i) => (
+                <div key={i} className="col-span-2 grid grid-cols-subgrid">
+                  <dt className="text-[10px] text-neutral-500">{f.label}</dt>
+                  <TruncValue value={f.value} mono={f.mono} tone={f.tone} />
+                </div>
+              ))}
+            </dl>
+          )}
+        </>
+      )}
+    </article>
+  )
+}
+
+/* Collapsible event group (Outcome/Problem etc) — collapsed by default for Problem */
+function CollapsibleGroup({ group }: { group: EventGroup }) {
+  const isProblem = group.title === "Problem"
+  const [open, setOpen] = useState(!isProblem)
+  return (
+    <section className="glass-inset-card min-w-0 rounded-lg p-3">
+      <button type="button" onClick={() => setOpen(v => !v)} className="flex w-full items-center gap-2 text-left hover:opacity-80">
+        {open ? <ChevronDown className="size-3.5 shrink-0 text-neutral-500" /> : <ChevronRight className="size-3.5 shrink-0 text-neutral-500" />}
+        <span className={`size-2 rounded-full ${TONE_DOT[group.tone]}`} />
+        <h4 className={`text-[11px] font-semibold uppercase tracking-wider ${TONE_TEXT[group.tone]}`}>
+          {group.title}
+        </h4>
+        <span className="h-px flex-1 bg-[var(--color-line)]" />
+        <span className="text-[10px] text-neutral-600">{group.cards.length}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {group.cards.map((c) => (
+            <EventCardNode key={`${c.kind}-${c.at}-${c.fields.map((f) => f.value).join("|")}`} card={c} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function TaskDetailPage({
   slug,
   task,
@@ -392,7 +474,7 @@ export default function TaskDetailPage({
   const resultSplit = task.result ? splitAgentResult(task.result) : null
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
       {/* top bar: back + title */}
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack} className="gap-1 border-[var(--color-line)] bg-[var(--color-surface)] text-neutral-300">
@@ -402,8 +484,8 @@ export default function TaskDetailPage({
       </div>
 
       {/* header card */}
-      <div className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
+      <div className="mt-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
           <Badge variant="outline" className="px-1.5 py-0 font-mono text-[9px] leading-none text-neutral-400">{task.id}</Badge>
           <Badge variant="outline" className={`px-1.5 py-0 text-[9px] leading-none ${STATUS_CHIP[task.status] ?? "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-300"}`}>{task.status}</Badge>
           {task.priority > 0 && (
@@ -415,7 +497,7 @@ export default function TaskDetailPage({
         <AgentTaskStatus task={task} events={events.data ?? []} />
 
         {/* meta grid */}
-        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="glass-inset-card rounded-lg p-2.5">
             <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Agent</label>
             <Select
@@ -532,11 +614,11 @@ export default function TaskDetailPage({
       <ReviewSection slug={slug} task={task} onDone={onBack} />
 
       {/* reply */}
-      <div className="mt-3">
+      <div className="mt-4">
         <CommentSection slug={slug} task={task} profiles={profiles} />
       </div>
 
-      <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <section className="mt-4 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         <div className="glass-inset-card rounded-lg p-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Dependencies</h3>
           <div className="mt-2 space-y-1">
@@ -567,57 +649,17 @@ export default function TaskDetailPage({
       </section>
 
       {/* history — grouped columns */}
-      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
         History {events.data ? `· ${events.data.length} event` : ""}
       </h3>
-      <div className="mt-2 grid grid-cols-1 gap-3 pb-4 lg:grid-cols-3">
+      <div className="mt-2.5 grid grid-cols-1 gap-3.5 pb-5 lg:grid-cols-3">
         {events.isLoading ? (
           <p className="text-xs text-neutral-500">Loading…</p>
         ) : !events.data?.length ? (
           <p className="text-xs text-neutral-500">No events</p>
         ) : (
           groups.map((g) => (
-            <section key={g.title} className="glass-inset-card min-w-0 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <span className={`size-2 rounded-full ${TONE_DOT[g.tone]}`} />
-                <h4 className={`text-[11px] font-semibold uppercase tracking-wider ${TONE_TEXT[g.tone]}`}>
-                  {g.title}
-                </h4>
-                <span className="h-px flex-1 bg-[var(--color-line)]" />
-                <span className="text-[10px] text-neutral-600">{g.cards.length}</span>
-              </div>
-              <div className="mt-2 space-y-1.5">
-                {g.cards.map((c) => (
-                  <article key={`${c.kind}-${c.at}-${c.fields.map((f) => f.value).join("|")}`}
-                    className={`rounded-md border p-2 ${TONE_BORDER[c.tone]}`}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{c.icon}</span>
-                      <span className={`text-xs font-medium ${TONE_TEXT[c.tone]}`}>{c.label}</span>
-                      <span className="ml-auto text-[10px] text-neutral-500">
-                        {new Date(c.at * 1000).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    {c.note && (
-                      <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-neutral-300">{c.note}</p>
-                    )}
-                    {c.fields.length > 0 && (
-                      <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1">
-                        {c.fields.map((f, i) => (
-                          <div key={i} className="col-span-2 grid grid-cols-subgrid">
-                            <dt className="text-[11px] text-neutral-500">{f.label}</dt>
-                            <dd className={`break-all text-[11px] ${f.mono ? "font-mono" : ""} ${
-                              f.tone === "danger" ? "text-red-300" : f.tone === "warning" ? "text-amber-300" : "text-neutral-200"
-                            }`}>
-                              {f.value}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </section>
+            <CollapsibleGroup key={g.title} group={g} />
           ))
         )}
       </div>

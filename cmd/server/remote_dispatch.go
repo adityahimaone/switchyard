@@ -56,8 +56,9 @@ func dispatchPendingRemoteTasks() {
 				msg = r.title
 			}
 			command := r.command
-			if r.executor == "shell" {
-				command = r.body
+			if r.executor == "shell" && command == "" {
+				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
+				continue
 			}
 			req := kanban.NodeDispatchRequest{
 				TaskID:    r.id,
@@ -69,7 +70,7 @@ func dispatchPendingRemoteTasks() {
 				Command:   command,
 			}
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent", r.id, b.Slug)
-			_, err := kanban.DispatchRemote(req, 10*time.Minute)
+			_, err := kanban.DispatchRemote(req, 25*time.Minute)
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {

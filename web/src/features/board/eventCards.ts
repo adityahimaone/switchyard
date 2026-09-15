@@ -31,6 +31,9 @@ export type EventGroup = {
   cards: EventCard[]
 }
 
+/* Maximum characters before a field value is truncated + collapsible */
+export const FIELD_TRUNCATE_LEN = 120
+
 const KIND_META: Record<string, { label: string; icon: string; tone: EventTone; group: string }> = {
   created:     { label: "Task dibuat",        icon: "✦", tone: "accent",  group: "Creation" },
   updated:     { label: "Task diupdate",      icon: "✎", tone: "neutral", group: "Creation" },

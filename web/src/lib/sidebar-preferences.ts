@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react"
-import { Activity, BookOpen, Bot, Brain, FolderGit2, LayoutDashboard, Network, Puzzle, ScrollText, Server } from "lucide-react"
+import { Activity, BookOpen, Bot, Brain, Clock3, FolderGit2, LayoutDashboard, MessageSquare, Network, Puzzle, ScrollText, Server } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "agent-mapping" | "knowledge" | "settings"
+export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "agent-mapping" | "knowledge" | "cron" | "chat" | "settings"
 
 export type SidebarItem = {
   id: Exclude<Page, "settings">
@@ -12,20 +12,22 @@ export type SidebarItem = {
 }
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
-  { id: "overview", label: "Overview", tooltip: "Overview", icon: Activity },
-  { id: "board", label: "Task Board", tooltip: "Task Board", icon: LayoutDashboard },
+  { id: "chat", label: "Chat", tooltip: "Chat", icon: MessageSquare },
+  { id: "board", label: "Kanban", tooltip: "Kanban", icon: LayoutDashboard },
   { id: "workspaces", label: "Workspaces", tooltip: "Workspaces", icon: FolderGit2 },
-  { id: "profiles", label: "Agent Profiles", tooltip: "Agent Profiles", icon: Bot },
+  { id: "profiles", label: "Profiles", tooltip: "Profiles", icon: Bot },
+  { id: "cron", label: "Cron Jobs", tooltip: "Cron Jobs", icon: Clock3 },
+  { id: "agent-mapping", label: "Flow Map", tooltip: "Flow Map", icon: Network },
   { id: "providers", label: "Providers", tooltip: "Providers", icon: Server },
-  { id: "logs", label: "Logs", tooltip: "Hermes Logs", icon: ScrollText },
   { id: "skills", label: "Skills", tooltip: "Skills", icon: Puzzle },
   { id: "memory", label: "Memory", tooltip: "Memory", icon: Brain },
-  { id: "agent-mapping", label: "Flow Map", tooltip: "Flow Map", icon: Network },
+  { id: "overview", label: "Overview", tooltip: "Overview", icon: Activity },
+  { id: "logs", label: "Logs", tooltip: "Hermes Logs", icon: ScrollText },
   { id: "knowledge", label: "Knowledge", tooltip: "Execution Knowledge", icon: BookOpen },
 ]
 
 export const DEFAULT_SIDEBAR_ORDER = SIDEBAR_ITEMS.map((item) => item.id)
-export const SIDEBAR_ORDER_KEY = "kb-sidebar-order"
+export const SIDEBAR_ORDER_KEY = "kb-sidebar-order-v2"
 export const SIDEBAR_VISIBILITY_KEY = "kb-sidebar-visibility"
 const CHANGE_EVENT = "kb-sidebar-preferences-change"
 
@@ -46,7 +48,14 @@ function read<T>(key: string, fallback: T): T {
 function normalizeOrder(value: unknown): SidebarId[] {
   const known = new Set(DEFAULT_SIDEBAR_ORDER)
   const input = Array.isArray(value) ? value.filter((id): id is SidebarId => typeof id === "string" && known.has(id as SidebarId)) : []
-  return [...new Set(input), ...DEFAULT_SIDEBAR_ORDER.filter((id) => !input.includes(id))]
+  const result = [...new Set(input), ...DEFAULT_SIDEBAR_ORDER.filter((id) => !input.includes(id))]
+  const overviewIndex = result.indexOf("overview")
+  const memoryIndex = result.indexOf("memory")
+  if (overviewIndex >= 0 && memoryIndex >= 0 && overviewIndex < memoryIndex) {
+    result.splice(overviewIndex, 1)
+    result.splice(result.indexOf("memory") + 1, 0, "overview")
+  }
+  return result
 }
 
 function normalizeVisibility(value: unknown): Visibility {

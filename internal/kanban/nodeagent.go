@@ -86,8 +86,17 @@ type NodeAgentStatus struct {
 
 // NodeAgentHealth proxies node-agent /health.
 func NodeAgentHealth() (*NodeAgentStatus, error) {
-	c := &http.Client{Timeout: 2 * time.Second}
-	resp, err := c.Get(nodeAgentBase() + "/health")
+	c := &http.Client{Timeout: 5 * time.Second}
+	hreq, err := http.NewRequest("GET", nodeAgentBase()+"/health", nil)
+	if err != nil {
+		st := &NodeAgentStatus{Status: "down", Error: err.Error()}
+		broadcastEvent("node_health", st)
+		return st, nil
+	}
+	if tok := nodeAgentToken(); tok != "" {
+		hreq.Header.Set("X-Node-Agent-Token", tok)
+	}
+	resp, err := c.Do(hreq)
 	if err != nil {
 		st := &NodeAgentStatus{Status: "down", Error: err.Error()}
 		broadcastEvent("node_health", st)
@@ -154,11 +163,17 @@ func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchR
 		db.Close()
 	}
 
-	// poll result
+	// poll result + live progress tail
 	deadline := time.Now().Add(wait)
 	pc := &http.Client{Timeout: 5 * time.Second}
+	off := 0
 	for time.Now().Before(deadline) {
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
+		// tail progress before checking result so live log appears even before completion
+		if poff, txt := fetchProgress(pc, req.TaskID, off); txt != "" {
+			_ = AppendWorkerLog(req.Board, req.TaskID, txt)
+			off = poff
+		}
 		preq, err := http.NewRequest("GET", nodeAgentBase()+"/api/results/"+req.TaskID, nil)
 		if err != nil {
 			continue
@@ -198,7 +213,7 @@ func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchR
 			if res.Success {
 				newStatus = "review"
 			}
-			_, _ = db.Exec(`UPDATE tasks SET status=?, completed_at=?, result=? WHERE id=?`,
+			_, _ = db.Exec(`UPDATE tasks SET status=?, completed_at=?, result=? WHERE id=? AND status='running'`,
 				newStatus, now, res.Output, req.TaskID)
 			db.Close()
 		}
@@ -208,7 +223,7 @@ func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchR
 	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowFailed})
 	if db, err := openDB(req.Board); err == nil {
 		_ = insertEvent(db, req.TaskID, "failed", map[string]any{"reason": "timeout"})
-		_, _ = db.Exec(`UPDATE tasks SET status='blocked' WHERE id=?`, req.TaskID)
+		_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status='running'`, time.Now().Unix(), "remote watcher timeout", req.TaskID)
 		db.Close()
 	}
 	return nil, fmt.Errorf("timeout after %s waiting for result of %s (node %s)", wait, req.TaskID, ack.NodeID)
@@ -220,4 +235,34 @@ func trimErrStr(s string) string {
 		s = s[:200] + "..."
 	}
 	return s
+}
+func fetchProgress(c *http.Client, taskID string, off int) (int, string) {
+	url := fmt.Sprintf("%s/api/progress/%s?offset=%d", nodeAgentBase(), taskID, off)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return off, ""
+	}
+	if tok := nodeAgentToken(); tok != "" {
+		req.Header.Set("X-Node-Agent-Token", tok)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return off, ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return off, ""
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var data struct {
+		Text   string `json:"text"`
+		Offset int    `json:"offset"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return off, ""
+	}
+	if data.Text == "" {
+		return data.Offset, ""
+	}
+	return data.Offset, data.Text
 }
