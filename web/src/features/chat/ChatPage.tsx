@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUp, ChevronDown, Plus, Search, Square, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,20 +22,22 @@ function elapsedLabel(startedAt?: number, endedAt?: number | null, now = Date.no
   return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`
 }
 
-function MessageFooter({ run, sessionModel, messageCreatedAt }: { run?: ChatRun; sessionModel?: string; messageCreatedAt?: number }) {
-  const active = run?.state === "loading" || run?.state === "running"
+function MessageFooter({ run, messageCreatedAt, isStreaming }: { run?: ChatRun; messageCreatedAt?: number; isStreaming?: boolean }) {
+  const active = !!isStreaming && (run?.state === "loading" || run?.state === "running")
   const isError = run?.state === "error" || run?.state === "cancelled"
-  const modelLabel = run?.model || sessionModel || "default"
+  const modelLabel = run?.model || "default"
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!active || !run) return
     const timer = window.setInterval(() => setNow(Date.now()), 500)
     return () => window.clearInterval(timer)
   }, [active, run])
-  const timeLabel = active && run ? elapsedLabel(run.started_at, run.ended_at, now) : messageCreatedAt ? new Date(messageCreatedAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""
+  const elapsed = run ? elapsedLabel(run.started_at, run.ended_at, now) : ""
+  const clockTime = messageCreatedAt ? new Date(messageCreatedAt * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : ""
   return <span className="inline-flex items-center gap-1.5 text-[10px] leading-none text-neutral-500">
-    <span className="font-mono text-[10px] text-neutral-400">{modelLabel}</span>
-    {timeLabel && <><span className="text-neutral-600">·</span><span className="font-mono tabular-nums">{timeLabel}</span></>}
+    <span className="font-mono text-[10px] text-neutral-400 truncate max-w-[110px]" title={modelLabel}>{modelLabel}</span>
+    {run && elapsed && <><span className="text-neutral-600">·</span><span className="font-mono tabular-nums" title={active ? "elapsed" : "total time"}>{elapsed}</span></>}
+    {!active && clockTime && <><span className="text-neutral-600">·</span><span className="font-mono tabular-nums">{clockTime}</span></>}
     {isError && run && <><span className="text-neutral-600">·</span><span className={stateTone(run.state)}>{stateLabel(run.state)}</span></>}
   </span>
 }
@@ -201,6 +202,26 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const activeMessages: ChatMessage[] = messages.data ?? []
   const isRunning = run?.state === "loading" || run?.state === "running"
 
+  // ponytail: fetch historical runs per-message so footer shows original model/time, not current selector state. add batch endpoint when >50 messages.
+  const messageRunIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const m of activeMessages) { if (m.role === "assistant" && m.run_id) ids.add(m.run_id) }
+    if (run?.id) ids.add(run.id)
+    return Array.from(ids)
+  }, [activeMessages, run?.id])
+  const messageRuns = useQuery({
+    queryKey: ["chat-runs-batch", messageRunIds],
+    queryFn: async () => {
+      const map: Record<string, ChatRun> = {}
+      await Promise.all(messageRunIds.map(async (rid) => {
+        try { map[rid] = await getChatRun(rid) } catch {}
+      }))
+      return map
+    },
+    enabled: messageRunIds.length > 0,
+  })
+  const runMap = messageRuns.data ?? {}
+
   return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--color-bg)]">
     {sidebarOpen && <aside className="flex w-[280px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)]">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] px-2">
@@ -225,7 +246,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                     <button key={item.id} onClick={() => void selectSession(item)} title={item.title} className={`flex w-full flex-col rounded-lg border px-2.5 py-2 text-left transition-colors ${item.id === sessionID ? "border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10" : "border-transparent bg-transparent hover:bg-white/[0.04]"}`}>
                       <div className="max-w-full truncate text-xs font-medium leading-none">{item.title}</div>
                       <div className="mt-1 flex max-w-full items-center gap-1 truncate text-[10px] text-neutral-500">
-                        <span className="truncate">{item.profile} · {item.workspace || "local"}</span>
+                        <span className="truncate">{item.workspace || "local"}</span>
                         {item.model && <><span className="text-neutral-600">·</span><span className="truncate font-mono text-[9px]">{item.model.split("/").pop()}</span></>}
                       </div>
                     </button>
@@ -258,7 +279,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">{message.content}</div>
             ) : (
               <div className="w-full min-w-0">
-                <StreamingResponse status={isRunning && message.id === activeMessages[activeMessages.length-1]?.id ? "streaming" : "complete"} copyText={isRunning && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content} footer={<MessageFooter run={isRunning ? run : undefined} sessionModel={current.data?.model || model} messageCreatedAt={message.created_at} />}><Markdown text={isRunning && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content} /></StreamingResponse>
+                {(() => {
+                  const messageStreaming = isRunning && message.id === activeMessages[activeMessages.length - 1]?.id
+                  const visibleText = messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content
+                  const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
+                  return <StreamingResponse status={messageStreaming ? "streaming" : "complete"} copyText={visibleText} footer={<MessageFooter run={msgRun} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={visibleText} /></StreamingResponse>
+                })()}
               </div>
             )}
           </div>
@@ -279,10 +305,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <Select value={profile} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className="h-7 max-w-36 rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px] [&>span]:flex [&>span]:items-center [&>span]:gap-1.5"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">{(profiles.length ? profiles : [{ name: "default", model: "", provider: "", active: true, valid: true } as Profile]).map((v) => <SelectItem key={v.name} value={v.name} className="text-sm"><span className="flex min-w-0 items-center gap-1.5"><Avatar className="size-4 shrink-0">{v.avatar_url && <AvatarImage src={v.avatar_url} alt={v.name} />}<AvatarFallback className="bg-[var(--color-inset)] text-[7px] text-[var(--color-accent)]">{v.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><span className="min-w-0 truncate">{v.name}{v.model ? ` — ${v.model.split("/").pop()}` : ""}{v.valid === false ? " (broken)" : ""}</span></span></SelectItem>)}</SelectContent>
-            </Select>
             <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
               <SelectTrigger size="sm" className="h-7 max-w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue /></SelectTrigger>
               <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__local">local</SelectItem>{workspaces.map((v) => { const live = isLive(v); const ssh = isSshWorkspace(v); const os = (v.os || "").toLowerCase(); const osLabel = os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : ""; return <SelectItem key={v.id} value={v.path} className="min-w-0 text-sm" title={v.path}><span className="flex min-w-0 items-center gap-1.5">{live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" /> }<span className="min-w-0 flex-1 truncate">{v.name}</span>{ssh && <Badge variant="outline" className="shrink-0 border-violet-500/30 bg-violet-500/10 px-1 py-0 text-[9px] leading-none text-violet-300">ssh</Badge>}{osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-neutral-400">{osLabel}</Badge>}{live && <span className="size-1.5 shrink-0 rounded-full bg-emerald-400/60" />}</span></SelectItem> })}</SelectContent>
