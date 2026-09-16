@@ -14,8 +14,8 @@ func setCodeGraphTestHome(t *testing.T) {
 
 func TestValidRelativeCodeGraphPath(t *testing.T) {
 	cases := map[string]bool{
-		"gadjian": true, "a/b": true, "a b": true,
-		"": false, ".": false, "..": false, "../etc": false, "/abs": false, "a\\b": false,
+		"gadjian": true, "a/b": true, "a b": true, ".": true,
+		"": false, "..": false, "../etc": false, "/abs": false, "a\\b": false,
 	}
 	for in, want := range cases {
 		if got := validRelativeCodeGraphPath(in); got != want {

@@ -58,7 +58,10 @@ func codeGraphStatusHealthy(output string) bool {
 
 func validRelativeCodeGraphPath(path string) bool {
 	path = filepath.ToSlash(strings.TrimSpace(path))
-	return path != "" && path != "." && !filepath.IsAbs(path) && path != ".." && !strings.HasPrefix(path, "../") && !strings.Contains(path, "\\")
+	if path == "." {
+		return true
+	}
+	return path != "" && path != ".." && !filepath.IsAbs(path) && !strings.HasPrefix(path, "../") && !strings.Contains(path, "\\")
 }
 
 func codeGraphCommand(w Workspace, command string) ([]byte, error) {
@@ -130,7 +133,17 @@ func CodeGraphReportForWorkspace(w *Workspace) (*CodeGraphReport, error) {
 			app.Path = p
 			app.Manual = true
 			if app.Name == "" {
-				app.Name = filepath.Base(p)
+				if p == "." {
+					app.Name = filepath.Base(strings.TrimRight(w.Path, "/"))
+					if app.Name == "." || app.Name == "" {
+						app.Name = w.Name
+					}
+					if app.Name == "" {
+						app.Name = w.ID
+					}
+				} else {
+					app.Name = filepath.Base(p)
+				}
 			}
 			entries[p] = app
 		}
@@ -148,7 +161,17 @@ func CodeGraphReportForWorkspace(w *Workspace) (*CodeGraphReport, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if !manual[rel] {
-			entries[rel] = CodeGraphApp{Path: rel, Name: filepath.Base(rel)}
+			name := filepath.Base(rel)
+			if rel == "." {
+				name = filepath.Base(strings.TrimRight(w.Path, "/"))
+				if name == "." || name == "" {
+					name = w.Name
+				}
+				if name == "" {
+					name = w.ID
+				}
+			}
+			entries[rel] = CodeGraphApp{Path: rel, Name: name}
 		}
 	}
 	apps := make([]CodeGraphEntry, 0, len(entries))

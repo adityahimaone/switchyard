@@ -34,6 +34,11 @@ export function buildCodeGraphTree(apps: CodeGraphEntry[]): CGTreeNode[] {
   const roots: CGTreeNode[] = []
   const find = (nodes: CGTreeNode[], name: string): CGTreeNode | undefined => nodes.find((n) => n.name === name && !n.app)
   for (const app of apps) {
+    // "." means workspace-root index — render as single leaf at top level (ponytail: map "." -> display name, upgrade path: dedicated root node type)
+    if (app.path === ".") {
+      roots.push({ name: app.name, path: ".", children: [], app })
+      continue
+    }
     const segs = app.path.split("/").filter(Boolean)
     let level = roots
     let prefix = ""
