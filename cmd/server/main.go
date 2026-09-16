@@ -865,6 +865,12 @@ func main() {
 
 	registerChatRoutes(mux)
 
+	// attachments + vision (shared store, local first, R2 later)
+	if _, err := kanban.EnsureAttachmentsDBPublic(); err != nil {
+		log.Printf("warning: attachments db init: %v", err)
+	}
+	registerAttachmentRoutes(mux)
+
 	mux.HandleFunc("GET /api/overview", func(w http.ResponseWriter, r *http.Request) {
 		o, err := kanban.OverviewData()
 		if err != nil {

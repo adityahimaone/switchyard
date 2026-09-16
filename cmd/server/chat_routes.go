@@ -90,7 +90,10 @@ func registerChatRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("POST /api/chat/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Content, Agent, Profile, Workspace, Model string }
+		var req struct {
+			Content, Agent, Profile, Workspace, Model string
+			AttachmentIDs []string `json:"attachment_ids"`
+		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
@@ -124,6 +127,12 @@ func registerChatRoutes(mux *http.ServeMux) {
 		if err != nil {
 			fail(w, err, 400)
 			return
+		}
+		for _, attachmentID := range req.AttachmentIDs {
+			if err := kanban.LinkChatAttachment(m.ID, attachmentID); err != nil {
+				fail(w, err, 400)
+				return
+			}
 		}
 		_ = kanban.AutoTitleChatSession(s.ID, req.Content)
 		run, err := kanban.CreateChatRun(s.ID, m.ID, req.Agent, req.Profile, req.Workspace, req.Model, req.Content)
