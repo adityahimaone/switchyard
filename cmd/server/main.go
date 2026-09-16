@@ -865,7 +865,10 @@ func main() {
 
 	registerChatRoutes(mux)
 
-	// attachments + vision (shared store, local first, R2 later)
+	// attachments + vision (R2 when configured, local fallback)
+	if err := kanban.ConfigureAttachmentStore(); err != nil {
+		log.Fatalf("attachment storage configuration failed: %v", err)
+	}
 	if _, err := kanban.EnsureAttachmentsDBPublic(); err != nil {
 		log.Printf("warning: attachments db init: %v", err)
 	}

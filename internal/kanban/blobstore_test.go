@@ -40,12 +40,11 @@ func TestLocalStorePutGetDelete(t *testing.T) {
 	}
 }
 
-func TestR2StoreReturnsNotImplemented(t *testing.T) {
-	r := &R2Store{Bucket: "test", Endpoint: "https://example.com"}
-	if err := r.Put("k", []byte("x")); err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("expected not implemented, got %v", err)
+func TestR2ConfigRequiresCredentials(t *testing.T) {
+	for _, key := range []string{"R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"} {
+		t.Setenv(key, "")
 	}
-	if _, err := r.Get("k"); err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("expected not implemented, got %v", err)
+	if _, err := NewR2StoreFromEnv(); err == nil || !strings.Contains(err.Error(), "required") {
+		t.Fatalf("expected missing credentials error, got %v", err)
 	}
 }
