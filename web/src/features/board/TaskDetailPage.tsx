@@ -351,6 +351,9 @@ export default function TaskDetailPage({
         </div>
         <AgentTaskStatus task={task} events={events.data ?? []} />
 
+        {/* review gate stays near task state, before long result output */}
+        <ReviewSection slug={slug} task={task} onDone={onBack} />
+
         {/* meta grid */}
         <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="glass-inset-card rounded-lg p-2.5">
@@ -464,9 +467,6 @@ export default function TaskDetailPage({
           ))}
         </div>
       </div>
-
-      {/* review gate: diff + approve */}
-      <ReviewSection slug={slug} task={task} onDone={onBack} />
 
       {/* reply */}
       <div className="mt-4">
