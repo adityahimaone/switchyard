@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +28,6 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 			fail(w, err, 400)
 			return
 		}
-		// Re-wrap bytes for StoreAttachment (expects reader)
 		att, err := kanban.StoreAttachmentBytes(data, hdr.Filename)
 		if err != nil {
 			fail(w, err, 400)
@@ -74,6 +73,8 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 		_, _ = w.Write(data)
 	})
 
+	// --- Link / Unlink endpoints ---
+
 	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/attachments", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			AttachmentID string `json:"attachment_id"`
@@ -96,6 +97,14 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, list)
+	})
+
+	mux.HandleFunc("DELETE /api/boards/{slug}/tasks/{id}/attachments/{attId}", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.UnlinkTaskAttachment(r.PathValue("slug"), r.PathValue("id"), r.PathValue("attId")); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
 
 	mux.HandleFunc("POST /api/chat/messages/{id}/attachments", func(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +130,35 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, list)
 	})
+
+	mux.HandleFunc("DELETE /api/chat/messages/{id}/attachments/{attId}", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.UnlinkChatAttachment(r.PathValue("id"), r.PathValue("attId")); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
+
+	// --- Delete + Orphans ---
+
+	mux.HandleFunc("DELETE /api/attachments/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.DeleteAttachment(r.PathValue("id")); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
+
+	mux.HandleFunc("GET /api/attachments/orphans", func(w http.ResponseWriter, r *http.Request) {
+		list, err := kanban.OrphanAttachments()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, 200, list)
+	})
+
+	// --- Analyze ---
 
 	mux.HandleFunc("POST /api/attachments/{id}/analyze", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

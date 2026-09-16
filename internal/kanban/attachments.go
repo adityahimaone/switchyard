@@ -70,19 +70,17 @@ func sniffAllow(data []byte) (string, bool) {
 	if len(data) >= 4 && string(data[:4]) == "%PDF" {
 		return "application/pdf", true
 	}
-	// PNG magic (Go's DetectContentType returns application/octet-stream for PNG in some versions)
+	// PNG magic
 	if len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n" {
 		return "image/png", true
 	}
 	mime := http.DetectContentType(data[:minInt(len(data), 512)])
-	// DetectContentType may append "; charset=..." — strip
 	if idx := strings.Index(mime, ";"); idx != -1 {
 		mime = strings.TrimSpace(mime[:idx])
 	}
 	if allowedMIME[mime] {
 		return mime, true
 	}
-	// Map known substrings
 	switch {
 	case strings.HasPrefix(mime, "image/png"):
 		return "image/png", true
@@ -108,19 +106,16 @@ func minInt(a, b int) int {
 // EnsureAttachmentsDBPublic opens/migrates attachments tables. Call at server boot.
 func EnsureAttachmentsDBPublic() (*sql.DB, error) { return ensureAttachmentsDB() }
 
-func localDir() string { return filepath.Join(hermesHome(), "attachments") }
-
 func sanitizeName(n string) string {
 	n = filepath.Base(strings.TrimSpace(n))
 	if n == "" || n == "." || n == "/" {
 		n = "file"
 	}
-	// strip path separators just in case
 	n = strings.ReplaceAll(n, string(os.PathSeparator), "_")
 	return n
 }
 
-func StoreAttachmentBytes(data []byte, filename string) (*Attachment, error) {
+func storeBlob(data []byte, filename string, provider string) (*Attachment, error) {
 	if int64(len(data)) > 10<<20 {
 		return nil, fmt.Errorf("file too large (max 10MB)")
 	}
@@ -138,6 +133,7 @@ func StoreAttachmentBytes(data []byte, filename string) (*Attachment, error) {
 		return nil, err
 	}
 	defer db.Close()
+	// Dedup by SHA
 	var existing Attachment
 	err = db.QueryRow(`SELECT id,filename,mime,size,sha256,storage_provider,storage_key,created_at FROM attachments WHERE sha256=?`, sha).Scan(&existing.ID, &existing.Filename, &existing.MIME, &existing.Size, &existing.SHA256, &existing.StorageProvider, &existing.StorageKey, &existing.CreatedAt)
 	if err == nil {
@@ -147,18 +143,18 @@ func StoreAttachmentBytes(data []byte, filename string) (*Attachment, error) {
 		return nil, err
 	}
 	key := filepath.Join(sha, sanitizeName(filename))
-	full := filepath.Join(localDir(), key)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+	if err := GetStore().Put(key, data); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(full, data, 0o600); err != nil {
-		return nil, err
-	}
-	a := &Attachment{ID: newChatID("att"), Filename: sanitizeName(filename), MIME: mime, Size: int64(len(data)), SHA256: sha, StorageProvider: "local", StorageKey: key, CreatedAt: time.Now().Unix()}
+	a := &Attachment{ID: newChatID("att"), Filename: sanitizeName(filename), MIME: mime, Size: int64(len(data)), SHA256: sha, StorageProvider: provider, StorageKey: key, CreatedAt: time.Now().Unix()}
 	if _, err := db.Exec(`INSERT INTO attachments (id,filename,mime,size,sha256,storage_provider,storage_key,created_at) VALUES (?,?,?,?,?,?,?,?)`, a.ID, a.Filename, a.MIME, a.Size, a.SHA256, a.StorageProvider, a.StorageKey, a.CreatedAt); err != nil {
 		return nil, err
 	}
 	return a, nil
+}
+
+func StoreAttachmentBytes(data []byte, filename string) (*Attachment, error) {
+	return storeBlob(data, filename, "local")
 }
 
 func StoreAttachment(r io.Reader, filename string, size int64) (*Attachment, error) {
@@ -167,44 +163,7 @@ func StoreAttachment(r io.Reader, filename string, size int64) (*Attachment, err
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(buf)) > 10<<20 {
-		return nil, fmt.Errorf("file too large (max 10MB)")
-	}
-	if len(buf) == 0 {
-		return nil, fmt.Errorf("empty file")
-	}
-	sum := sha256.Sum256(buf)
-	sha := hex.EncodeToString(sum[:])
-	mime, ok := sniffAllow(buf)
-	if !ok {
-		return nil, fmt.Errorf("unsupported file type")
-	}
-	db, err := ensureAttachmentsDB()
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	var existing Attachment
-	err = db.QueryRow(`SELECT id,filename,mime,size,sha256,storage_provider,storage_key,created_at FROM attachments WHERE sha256=?`, sha).Scan(&existing.ID, &existing.Filename, &existing.MIME, &existing.Size, &existing.SHA256, &existing.StorageProvider, &existing.StorageKey, &existing.CreatedAt)
-	if err == nil {
-		return &existing, nil
-	}
-	if err != sql.ErrNoRows {
-		return nil, err
-	}
-	key := filepath.Join(sha, sanitizeName(filename))
-	full := filepath.Join(localDir(), key)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(full, buf, 0o600); err != nil {
-		return nil, err
-	}
-	a := &Attachment{ID: newChatID("att"), Filename: sanitizeName(filename), MIME: mime, Size: int64(len(buf)), SHA256: sha, StorageProvider: "local", StorageKey: key, CreatedAt: time.Now().Unix()}
-	if _, err := db.Exec(`INSERT INTO attachments (id,filename,mime,size,sha256,storage_provider,storage_key,created_at) VALUES (?,?,?,?,?,?,?,?)`, a.ID, a.Filename, a.MIME, a.Size, a.SHA256, a.StorageProvider, a.StorageKey, a.CreatedAt); err != nil {
-		return nil, err
-	}
-	return a, nil
+	return storeBlob(buf, filename, "local")
 }
 
 func GetAttachment(id string) (*Attachment, error) {
@@ -226,10 +185,7 @@ func ReadAttachment(id string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if a.StorageProvider != "local" {
-		return nil, fmt.Errorf("unsupported storage provider %q", a.StorageProvider)
-	}
-	return os.ReadFile(filepath.Join(localDir(), a.StorageKey))
+	return GetStore().Get(a.StorageKey)
 }
 
 func LinkTaskAttachment(board, taskID, attID string) error {
@@ -241,7 +197,6 @@ func LinkTaskAttachment(board, taskID, attID string) error {
 		return err
 	}
 	defer db.Close()
-	// verify attachment exists
 	var dummy string
 	if err := db.QueryRow(`SELECT id FROM attachments WHERE id=?`, attID).Scan(&dummy); err != nil {
 		return fmt.Errorf("attachment not found")
@@ -265,6 +220,95 @@ func LinkChatAttachment(messageID, attID string) error {
 	}
 	_, err = db.Exec(`INSERT OR IGNORE INTO chat_message_attachments (message_id,attachment_id,created_at) VALUES (?,?,?)`, messageID, attID, time.Now().Unix())
 	return err
+}
+
+// UnlinkTaskAttachment removes the link between task and attachment.
+func UnlinkTaskAttachment(board, taskID, attID string) error {
+	db, err := ensureAttachmentsDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(`DELETE FROM task_attachments WHERE task_id=? AND attachment_id=? AND board_slug=?`, taskID, attID, board)
+	return err
+}
+
+// UnlinkChatAttachment removes the link between chat message and attachment.
+func UnlinkChatAttachment(messageID, attID string) error {
+	db, err := ensureAttachmentsDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(`DELETE FROM chat_message_attachments WHERE message_id=? AND attachment_id=?`, messageID, attID)
+	return err
+}
+
+// AttachmentReferenceCount returns how many task + chat links reference this attachment.
+func AttachmentReferenceCount(attID string) (int, error) {
+	db, err := ensureAttachmentsDB()
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	var taskCount, chatCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM task_attachments WHERE attachment_id=?`, attID).Scan(&taskCount); err != nil {
+		return 0, err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message_attachments WHERE attachment_id=?`, attID).Scan(&chatCount); err != nil {
+		return 0, err
+	}
+	return taskCount + chatCount, nil
+}
+
+// DeleteAttachment removes DB record + blob only when zero references remain.
+func DeleteAttachment(id string) error {
+	refs, err := AttachmentReferenceCount(id)
+	if err != nil {
+		return err
+	}
+	if refs > 0 {
+		return fmt.Errorf("attachment %s has %d references — unlink first", id, refs)
+	}
+	a, err := GetAttachment(id)
+	if err != nil {
+		return err
+	}
+	db, err := ensureAttachmentsDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`DELETE FROM attachments WHERE id=?`, id); err != nil {
+		return err
+	}
+	return GetStore().Delete(a.StorageKey)
+}
+
+// OrphanAttachments lists attachments with zero task or chat references.
+func OrphanAttachments() ([]Attachment, error) {
+	db, err := ensureAttachmentsDB()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT a.id,a.filename,a.mime,a.size,a.sha256,a.storage_provider,a.storage_key,a.created_at FROM attachments a LEFT JOIN task_attachments ta ON ta.attachment_id=a.id LEFT JOIN chat_message_attachments ca ON ca.attachment_id=a.id WHERE ta.attachment_id IS NULL AND ca.attachment_id IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Attachment
+	for rows.Next() {
+		var a Attachment
+		if err := rows.Scan(&a.ID, &a.Filename, &a.MIME, &a.Size, &a.SHA256, &a.StorageProvider, &a.StorageKey, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	if out == nil {
+		out = []Attachment{}
+	}
+	return out, rows.Err()
 }
 
 func ListTaskAttachments(board, taskID string) ([]Attachment, error) {
@@ -318,13 +362,20 @@ func CanAnalyze(model, mime string) bool {
 		return false
 	}
 	lower := strings.ToLower(model)
+	// Longest prefix match — prefer "gpt-4o-mini" over "gpt-4o"
+	bestLen := 0
+	var best struct{ vision, pdf bool }
 	for k, c := range modelCaps {
-		if strings.Contains(lower, k) {
-			if mime == "application/pdf" {
-				return c.pdf
-			}
-			return c.vision
+		if strings.Contains(lower, k) && len(k) > bestLen {
+			bestLen = len(k)
+			best = c
 		}
 	}
-	return false
+	if bestLen == 0 {
+		return false
+	}
+	if mime == "application/pdf" {
+		return best.pdf
+	}
+	return best.vision
 }
