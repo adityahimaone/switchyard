@@ -163,30 +163,6 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
             <span className="text-rose-300">-{removals}</span>
           </div>
         </div>
-        {!diff.data?.clean && (
-          <div className="mt-2.5 flex items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <Select value={action ?? ""} onValueChange={(v) => setAction(v as "commit" | "commit_push")}>
-                <SelectTrigger className="h-8 w-full border-[var(--color-line)] bg-[var(--color-surface)] text-[11px]"><SelectValue placeholder="Pilih aksi…" /></SelectTrigger>
-                <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="commit" className="text-xs">Commit</SelectItem><SelectItem value="commit_push" className="text-xs">Commit & Push</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <Button
-              size="sm"
-              disabled={!action || approve.isPending || selectedCount === 0}
-              onClick={() => { setErr(null); approve.mutate(action!) }}
-              className="h-8 shrink-0 gap-1 bg-violet-500 text-white hover:bg-violet-400"
-            >
-              {approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null}
-              {selectedCount > 0 && selectedCount < files.length ? `Commit (${selectedCount})` : "Approve"}
-            </Button>
-          </div>
-        )}
-        {diff.data?.clean && (
-          <div className="mt-2.5 flex justify-end">
-            <Button size="sm" disabled={approve.isPending} onClick={() => { setErr(null); approve.mutate("done") }} className="h-8 gap-1 bg-violet-500 text-white hover:bg-violet-400">{approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null} Mark done</Button>
-          </div>
-        )}
       </div>
       {open && <div className="space-y-2 p-2">
         {!diff.data?.clean && !diff.isLoading && files.length > 1 && (
@@ -201,6 +177,33 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         {diff.error && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">Gagal load diff: {(diff.error as Error).message}</p>}
         {diff.isLoading ? <div className="flex items-center gap-2 px-2 py-8 font-mono text-[11px] text-neutral-500"><Loader2 className="size-3 animate-spin" /> Loading file changes…</div> : diff.data?.clean ? <p className="px-2 py-6 text-center text-[11px] text-neutral-500">No workspace changes.</p> : files.map((file) => <DiffDisclosure key={file.name} file={file} complete={complete} copyText={file.lines.map((line) => line.content).join("\n")} selected={selected.has(file.name)} onToggle={() => toggle(file.name)} />)}
       </div>}
+      {/* approve bar at card bottom — matches /prototype foot */}
+      <div className="flex items-center gap-1.5 border-t border-violet-500/15 bg-violet-500/[0.04] px-3 py-2.5">
+        {diff.data?.clean ? (
+          <>
+            <span className="font-mono text-[10px] text-neutral-500">No workspace changes — ready to close.</span>
+            <Button size="sm" disabled={approve.isPending || diff.isLoading} onClick={() => { setErr(null); approve.mutate("done") }} className="ml-auto h-8 gap-1 bg-violet-500 text-white hover:bg-violet-400">{approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null} Mark done</Button>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <Select value={action ?? ""} onValueChange={(v) => setAction(v as "commit" | "commit_push")}>
+                <SelectTrigger className="h-8 w-full border-[var(--color-line)] bg-[var(--color-surface)] text-[11px]"><SelectValue placeholder="Pilih aksi…" /></SelectTrigger>
+                <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="commit" className="text-xs">Commit</SelectItem><SelectItem value="commit_push" className="text-xs">Commit & Push</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              disabled={!action || approve.isPending || selectedCount === 0 || diff.isLoading}
+              onClick={() => { setErr(null); approve.mutate(action!) }}
+              className="h-8 shrink-0 gap-1 bg-violet-500 text-white hover:bg-violet-400"
+            >
+              {approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null}
+              {selectedCount > 0 && selectedCount < files.length ? `Commit (${selectedCount})` : "Approve"}
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
