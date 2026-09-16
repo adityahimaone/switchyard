@@ -2,13 +2,13 @@ import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs"
-import { Bell, XCircle, Eye, EyeOff, ArrowDown, ArrowUp, GripVertical, RotateCcw, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore } from "lucide-react"
-import { setEnabled as setCuelumeEnabled, setVolume } from "cuelume"
+import { Bell, XCircle, Eye, EyeOff, ArrowDown, ArrowUp, GripVertical, RotateCcw, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse } from "lucide-react"
 import { useSidebarPreferences } from "@/lib/sidebar-preferences"
-import { useTheme, type ThemePreference } from "@/hooks/useSettings"
+import { useTheme, useSoundSettings, type ThemePreference } from "@/hooks/useSettings"
 import { Button } from "@/components/ui/button"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, archiveBoard, type Board } from "@/api"
+import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
 
 const TABS = [
   { id: "general", label: "General" },
@@ -20,9 +20,6 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"]
 
-// ponytail: localStorage-only settings. Add backend API + user table when multi-device sync needed.
-const SOUND_KEY = "kb-sound-enabled"
-const VOLUME_KEY = "kb-sound-volume"
 const REFRESH_KEY = "kb-refresh-interval"
 const COMPACT_KEY = "kb-compact-cards"
 const PING_KEY = "kb-ping-interval"
@@ -49,9 +46,8 @@ function useLocalStorage<T>(key: string, fallback: T) {
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("general")
   const [q, setQ] = useState("")
+  const sound = useSoundSettings()
 
-  const [soundOn, setSoundOn] = useLocalStorage(SOUND_KEY, true)
-  const [volume, setVol] = useLocalStorage(VOLUME_KEY, 0.6)
   const [refreshMs, setRefresh] = useLocalStorage(REFRESH_KEY, 15000)
   const [compact, setCompact] = useLocalStorage(COMPACT_KEY, false)
   const [pingMs, setPing] = useLocalStorage(PING_KEY, 30000)
@@ -65,11 +61,15 @@ export default function SettingsPage() {
   const { items, isVisible, move, toggle, reset } = useSidebarPreferences()
   const { theme, setTheme } = useTheme()
 
-  // Sync cuelume engine with stored prefs on mount/change
+  // Sync cuelume engine on any sound pref change
   useEffect(() => {
-    setCuelumeEnabled(soundOn)
-    setVolume(volume)
-  }, [soundOn, volume])
+    syncSoundEngine()
+  }, [sound.enabled, sound.volume])
+
+  // Re-scan attrs when per-type toggles change
+  useEffect(() => {
+    applySoundPreferences()
+  }, [sound.hover, sound.click])
 
   const needle = q.trim().toLowerCase()
   const show = (...labels: string[]) => !needle || labels.some((l) => l.toLowerCase().includes(needle))
@@ -136,27 +136,56 @@ export default function SettingsPage() {
             <TabsList className="hidden">{/* nav sidebar replaces visual tabs */}</TabsList>
 
             <TabsContent value="general" className="mt-0 space-y-6">
-              {show("Sound Effects", "Audio") && (
+              {/* Sound effects — master + granular + volume */}
+              {show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome") && (
                 <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {soundOn ? <Volume2 className="size-4 text-[var(--color-accent)]" /> : <VolumeX className="size-4 text-neutral-500" />}
+                      {sound.enabled ? <Volume2 className="size-4 text-[var(--color-accent)]" /> : <VolumeX className="size-4 text-neutral-500" />}
                       <div>
                         <p className="text-sm font-medium text-neutral-200">Sound Effects</p>
-                        <p className="text-xs text-neutral-500">Interaction feedback via cuelume</p>
+                        <p className="text-xs text-neutral-500">Mute all interface sounds globally</p>
                       </div>
                     </div>
-                    <Switch checked={soundOn} onCheckedChange={setSoundOn} />
+                    <Switch checked={sound.enabled} onCheckedChange={sound.setEnabled} />
                   </div>
-                  {soundOn && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-neutral-400">
-                        <span>Volume</span>
-                        <span>{Math.round(volume * 100)}%</span>
+                  {sound.enabled && (
+                    <div className="space-y-3">
+                      {/* Volume */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-neutral-400">
+                          <span>Volume</span>
+                          <span>{Math.round(sound.volume * 100)}%</span>
+                        </div>
+                        <input type="range" min={0} max={1} step={0.05} value={sound.volume}
+                          onChange={(e) => sound.setVolume(Number(e.target.value))}
+                          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--color-line)] accent-[var(--color-accent)]" />
                       </div>
-                      <input type="range" min={0} max={1} step={0.05} value={volume}
-                        onChange={(e) => setVol(Number(e.target.value))}
-                        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--color-line)] accent-[var(--color-accent)]" />
+                      {/* Granular toggles */}
+                      <div className="space-y-2 rounded-lg border border-[var(--color-line)]/40 bg-[var(--color-bg)]/40 p-3">
+                        <p className="text-[10px] uppercase tracking-wider text-neutral-500">Sound Categories</p>
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-2">
+                            <Mouse className="size-3.5 text-neutral-500" />
+                            <span className="text-xs text-neutral-300">Hover tick</span>
+                          </div>
+                          <Switch checked={sound.hover} onCheckedChange={sound.setHover} />
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-2">
+                            <MousePointerClick className="size-3.5 text-neutral-500" />
+                            <span className="text-xs text-neutral-300">Click / press</span>
+                          </div>
+                          <Switch checked={sound.click} onCheckedChange={sound.setClick} />
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-2">
+                            <Bell className="size-3.5 text-neutral-500" />
+                            <span className="text-xs text-neutral-300">Outcome feedback</span>
+                          </div>
+                          <Switch checked={sound.outcome} onCheckedChange={sound.setOutcome} />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -191,7 +220,7 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {!show("Sound Effects", "Audio", "Auto Refresh", "Polling", "Board", "Password", "Security", "Login", "Auth") && (
+              {!show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome", "Auto Refresh", "Polling", "Board", "Password", "Security", "Login", "Auth") && (
                 <p className="text-xs text-neutral-600">No match.</p>
               )}
             </TabsContent>
@@ -347,7 +376,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <button onClick={() => {
-                    const blob = new Blob([JSON.stringify({ soundOn, volume, refreshMs, compact, pingMs }, null, 2)], { type: "application/json" })
+                    const blob = new Blob([JSON.stringify({ soundOn: sound.enabled, volume: sound.volume, refreshMs, compact, pingMs }, null, 2)], { type: "application/json" })
                     const a = document.createElement("a")
                     a.href = URL.createObjectURL(blob)
                     a.download = "kanban-settings.json"

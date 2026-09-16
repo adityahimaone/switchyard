@@ -41,7 +41,7 @@ export function useTheme() {
   return { theme, setTheme: (value: ThemePreference) => { saveTheme(value); setTheme(value) } }
 }
 
-function readNum(key: string, fallback: number): number {
+export function readNum(key: string, fallback: number): number {
   try {
     const raw = localStorage.getItem(key)
     return raw !== null ? Number(raw) : fallback
@@ -50,7 +50,7 @@ function readNum(key: string, fallback: number): number {
   }
 }
 
-function readBool(key: string, fallback: boolean): boolean {
+export function readBool(key: string, fallback: boolean): boolean {
   try {
     const raw = localStorage.getItem(key)
     return raw !== null ? JSON.parse(raw) : fallback
@@ -58,6 +58,12 @@ function readBool(key: string, fallback: boolean): boolean {
     return fallback
   }
 }
+
+export const SOUND_KEY = "kb-sound-enabled"
+export const VOLUME_KEY = "kb-sound-volume"
+export const SOUND_HOVER_KEY = "kb-sound-hover"
+export const SOUND_CLICK_KEY = "kb-sound-click"
+export const SOUND_OUTCOME_KEY = "kb-sound-outcome"
 
 export function useSettings() {
   const [refreshMs, setRefreshMs] = useState(() => readNum(REFRESH_KEY, 15000))
@@ -76,5 +82,26 @@ export function useSettings() {
   }, [])
 
   return { refreshMs, compact, pingMs }
+}
+
+export function useSoundSettings() {
+  const [enabled, setEnabled] = useState(() => readBool(SOUND_KEY, true))
+  const [volume, setVolume] = useState(() => readNum(VOLUME_KEY, 0.6))
+  const [hover, setHover] = useState(() => readBool(SOUND_HOVER_KEY, true))
+  const [click, setClick] = useState(() => readBool(SOUND_CLICK_KEY, true))
+  const [outcome, setOutcome] = useState(() => readBool(SOUND_OUTCOME_KEY, true))
+
+  const write = (key: string, value: boolean | number) => {
+    try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
+  }
+
+  return {
+    enabled, volume, hover, click, outcome,
+    setEnabled: (v: boolean) => { setEnabled(v); write(SOUND_KEY, v) },
+    setVolume: (v: number) => { setVolume(v); write(VOLUME_KEY, v) },
+    setHover: (v: boolean) => { setHover(v); write(SOUND_HOVER_KEY, v) },
+    setClick: (v: boolean) => { setClick(v); write(SOUND_CLICK_KEY, v) },
+    setOutcome: (v: boolean) => { setOutcome(v); write(SOUND_OUTCOME_KEY, v) },
+  }
 }
 

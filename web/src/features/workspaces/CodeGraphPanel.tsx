@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { play } from "cuelume"
+import { playOutcome } from "@/lib/sound"
 import { api, codeGraphIndex, codeGraphJob, codeGraphReport, type CodeGraphEntry, type CodeGraphJob as CodeGraphJobData, type Workspace } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -112,25 +112,25 @@ export function CodeGraphPanel({ ws, open, onToggle }: { ws: Workspace; open: bo
     setAddErr(null)
     try {
       await saveApps.mutateAsync({ ...ws, codegraph_apps: [...(ws.codegraph_apps ?? []), { path: p, name: p.split("/").pop() ?? p }] })
-      setNewAppPath(""); setAddingApp(false); play("success")
-    } catch (e) { setAddErr((e as Error).message); play("error") }
+      setNewAppPath(""); setAddingApp(false); playOutcome("success")
+    } catch (e) { setAddErr((e as Error).message); playOutcome("error") }
   }
 
   async function hideApp(path: string, manual: boolean) {
     const nextHidden = manual ? ws.codegraph_hidden ?? [] : [...(ws.codegraph_hidden ?? []), path]
     const nextApps = manual ? (ws.codegraph_apps ?? []).filter((a) => a.path !== path) : ws.codegraph_apps
     await saveApps.mutateAsync({ ...ws, codegraph_apps: nextApps as never, codegraph_hidden: nextHidden as never })
-    play("success")
+    playOutcome("success")
   }
 
   async function restoreHidden(path: string) {
     const nextHidden = (ws.codegraph_hidden ?? []).filter((h) => h !== path)
-    await saveApps.mutateAsync({ ...ws, codegraph_hidden: nextHidden as never }); play("success")
+    await saveApps.mutateAsync({ ...ws, codegraph_hidden: nextHidden as never }); playOutcome("success")
   }
 
   async function reindex(path: string) {
     try { const job = await codeGraphIndex(ws.id, path); setJobs((o) => ({ ...o, [job.id]: job })) }
-    catch (e) { play("error"); setJobs((o) => ({ ...o, [`err_${Date.now()}`]: { id: `err`, path, state: "failed", message: (e as Error).message } })) }
+    catch (e) { playOutcome("error"); setJobs((o) => ({ ...o, [`err_${Date.now()}`]: { id: `err`, path, state: "failed", message: (e as Error).message } })) }
   }
 
   const apps = report.data?.apps ?? []

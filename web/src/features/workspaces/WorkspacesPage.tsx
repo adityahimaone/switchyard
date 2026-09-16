@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { play } from "cuelume"
+import { playOutcome } from "@/lib/sound"
 import { api, type PingPoint, type Workspace } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -401,8 +401,8 @@ export default function WorkspacesPage() {
       qc.setQueryData<Workspace[]>(["workspaces"], (old) =>
         old ? old.map((w) => (w.id === ws.id ? { ...w, ...updated } : w)) : old)
       qc.invalidateQueries({ queryKey: ["ws-ping-history"] })
-      play(updated.status === "connected" ? "success" : "error")
-    } catch { play("error") }
+      playOutcome(updated.status === "connected" ? "success" : "error")
+    } catch { playOutcome("error") }
     setPinging(null)
   }
 
@@ -412,8 +412,8 @@ export default function WorkspacesPage() {
       const updated = await api<Workspace[]>("/api/workspaces/ping", { method: "POST" })
       qc.setQueryData<Workspace[]>(["workspaces"], updated)
       qc.invalidateQueries({ queryKey: ["ws-ping-history"] })
-      play(updated.every((w) => w.status === "connected" || w.status === "local") ? "success" : "error")
-    } catch { play("error") }
+      playOutcome(updated.every((w) => w.status === "connected" || w.status === "local") ? "success" : "error")
+    } catch { playOutcome("error") }
     setPinging(null)
   }
 
