@@ -3,80 +3,216 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Kanban Detail — prototype A stack</title>
+<title>Kanban — Attachment + Vision Prototype</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 :root{--c-accent:#6be6d9;--c-violet:#a89cff;--c-green:#72d79a}
 body{background:#0a0e14;color:#e5e7eb;font-family:ui-sans-system,sans-serif}
 .card{border:1px solid #1e2430;border-radius:12px;background:#0b0e14}
 .mono{font-family:ui-monospace,monospace}
+.pill{border:1px solid #1e2430;border-radius:9999px;padding:2px 8px;font-size:10px}
 </style>
 </head>
-<body class="p-4 max-w-5xl mx-auto">
-<h1 class="text-sm font-semibold tracking-widest uppercase text-zinc-500">Prototype — Detail page (A stack) — 2 variants</h1>
-<p class="text-xs text-zinc-500 mt-1">Variant 1 = Result stack + Diff per-file checkbox (recommended). Variant 2 = Result timeline horizontal.</p>
-
-<!-- VARIANT 1 -->
-<section class="mt-6">
-<h2 class="text-xs font-bold text-violet-300 uppercase tracking-widest">Variant 1 — Stack (recommended, lu pilih A)</h2>
-<div class="card p-3 mt-2">
-  <div class="text-xs font-semibold">Agent progress <span class="text-zinc-500">· review · 2 runs</span></div>
-  <div class="mt-2 text-[11px] text-zinc-400">Run 2 live 12.4s · Run 1 completed 17:26</div>
-</div>
-
-<!-- worker logs stacked -->
-<div class="card p-3 mt-3 border-sky-500/20">
-  <div class="flex items-center gap-2 text-xs font-semibold text-sky-300">Worker log <span class="ml-auto text-[10px] text-zinc-500">live tail 256KB</span></div>
-  <details open class="mt-2">
-    <summary class="mono text-[11px] cursor-pointer text-zinc-300">Run 2 — running <span class="text-zinc-500">· 482 lines</span></summary>
-    <pre class="mono text-[11px] bg-black/40 rounded p-2 mt-1 max-h-32 overflow-auto">ssh mac "hermes chat -q ..." — streaming …</pre>
-  </details>
-  <details class="mt-2">
-    <summary class="mono text-[11px] cursor-pointer text-zinc-400">Run 1 — completed 17:26 <span class="text-zinc-500">· 1.2k lines</span></summary>
-    <pre class="mono text-[11px] bg-black/20 rounded p-2 mt-1 max-h-24 overflow-auto text-zinc-500">previous run tail …</pre>
-  </details>
-</div>
-
-<!-- results stacked -->
-<div class="card p-3 mt-3 border-emerald-500/20">
-  <div class="text-xs font-semibold text-emerald-300">Results <span class="text-zinc-500">· 2</span></div>
-  <details open class="mt-2 border border-emerald-500/20 rounded">
-    <summary class="flex items-center gap-2 px-2 py-1.5 cursor-pointer mono text-[11px]"><span class="text-emerald-300">Result 2</span> <span class="text-zinc-500">· completed 17:26 · 13KB</span> <span class="ml-auto text-[10px] border rounded px-1">copy</span></summary>
-    <pre class="mono text-[11px] p-2 whitespace-pre-wrap">Modified cs/www/controller/Programinsentif.php (+142 -8)
-Summary: Early Renewal modal + ADP insentif logic …</pre>
-  </details>
-  <details class="mt-2 border border-zinc-800 rounded">
-    <summary class="flex items-center gap-2 px-2 py-1.5 cursor-pointer mono text-[11px] text-zinc-400"><span>Result 1</span> <span class="text-zinc-500">· completed 16:46 · 13KB</span> <span class="ml-auto text-[10px] border rounded px-1">copy</span></summary>
-    <pre class="mono text-[11px] p-2 whitespace-pre-wrap text-zinc-400">Previous result truncated 800 chars …</pre>
-  </details>
-</div>
-
-<!-- diff per-file checkbox -->
-<div class="card p-3 mt-3 border-violet-500/30">
-  <div class="flex items-center gap-2 text-xs font-semibold text-violet-200">Review changes <span class="mono text-[10px] text-zinc-500">11 files · +642 -31</span></div>
-  <div class="mt-2 flex gap-2 text-[10px]">
-    <button class="border rounded px-2 py-1">Select all</button><button class="border rounded px-2 py-1">Invert</button><span class="ml-auto text-zinc-500">3 selected → 5 files would be committed</span>
+<body class="p-4 max-w-6xl mx-auto">
+<header class="flex flex-wrap items-center gap-3">
+  <div class="flex items-center gap-2">
+    <img src="/brand/mascot-switchyard.png" alt="" class="size-7 object-contain"/>
+    <span class="text-xs font-bold tracking-widest uppercase text-zinc-400">Kanban Board</span>
   </div>
-  <div class="mt-2 space-y-1 mono text-[11px]">
-    <label class="flex items-center gap-2 border border-emerald-500/20 rounded px-2 py-1 bg-emerald-500/5"><input type="checkbox" checked/> cs/www/controller/controller.Programinsentif.php <span class="ml-auto text-emerald-300">+142 -8</span></label>
-    <label class="flex items-center gap-2 border border-zinc-800 rounded px-2 py-1"><input type="checkbox" checked/> cs/www/model/model.Programinsentif.php <span class="ml-auto">+88 -4</span></label>
-    <label class="flex items-center gap-2 border border-zinc-800 rounded px-2 py-1"><input type="checkbox"/> FILE_INDEX.json <span class="ml-auto text-zinc-600">untracked, skip</span></label>
-    <label class="flex items-center gap-2 border border-zinc-800 rounded px-2 py-1"><input type="checkbox"/> .watch_index.log <span class="ml-auto text-zinc-600">untracked, skip</span></label>
+  <span class="pill bg-violet-500/10 text-violet-300 border-violet-500/20">prototype /prototype</span>
+  <span class="pill text-zinc-500">C · Shared store · A→R2 · Analyze B</span>
+  <span class="ml-auto mono text-[10px] text-zinc-600">kanban.adityahimaone.space/prototype</span>
+</header>
+
+<h1 class="mt-4 text-sm font-semibold">Attachment + Vision — shared for Task & Chat</h1>
+<p class="text-xs text-zinc-500 mt-1">Upload image/PDF to task or chat → same file (dedup SHA-256) → preview → Analyze via vision-capable model. Storage local now, R2 later via adapter.</p>
+
+<!-- decisions summary -->
+<div class="grid md:grid-cols-3 gap-2 mt-4">
+  <div class="card p-3 border-emerald-500/20">
+    <div class="text-[10px] tracking-widest uppercase text-emerald-300 font-bold">Scope C ✓</div>
+    <div class="text-xs font-semibold mt-1">Shared store</div>
+    <div class="mono text-[10px] text-zinc-500 mt-1">attachments + task_attachments + chat_message_attachments</div>
+    <div class="mono text-[10px] text-zinc-600 mt-1">dedup by sha256 · delete only if refcount 0</div>
   </div>
-  <div class="mt-3 flex gap-2"><button class="bg-violet-500 text-white rounded px-3 py-1.5 text-xs">Commit (2 files)</button><button class="border rounded px-3 py-1.5 text-xs">Commit & Push</button><button class="ml-auto border rounded px-3 py-1.5 text-xs">Mark done (if clean)</button></div>
-  <p class="mono text-[10px] text-zinc-600 mt-2">Commit adds only checked files: git add -- &lt;checked&gt; && git commit</p>
+  <div class="card p-3 border-sky-500/20">
+    <div class="text-[10px] tracking-widest uppercase text-sky-300 font-bold">Storage A→R2 ✓</div>
+    <div class="text-xs font-semibold mt-1">Local now, R2 later</div>
+    <div class="mono text-[10px] text-zinc-500 mt-1">~/.hermes/attachments/&lt;sha&gt;/&lt;file&gt;</div>
+    <div class="mono text-[10px] text-zinc-600 mt-1">Storage interface: Put/Open/Delete · migration: local→R2 + verify</div>
+  </div>
+  <div class="card p-3 border-violet-500/20">
+    <div class="text-[10px] tracking-widest uppercase text-violet-300 font-bold">Analyze B ✓</div>
+    <div class="text-xs font-semibold mt-1">Preview + vision analyze</div>
+    <div class="mono text-[10px] text-zinc-500 mt-1">image → vision input · PDF → text + page image if scanned</div>
+    <div class="mono text-[10px] text-zinc-600 mt-1">capability registry per model · fail clear if no vision</div>
+  </div>
 </div>
-</section>
 
-<!-- VARIANT 2 -->
-<section class="mt-8 opacity-70">
-<h2 class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Variant 2 — Timeline (alternative, bukan pilihan lu)</h2>
-<div class="card p-3 mt-2">
-  <div class="flex gap-2 mono text-[10px]"><span class="bg-emerald-500/20 rounded px-2 py-1">Run 1 done</span><span class="bg-sky-500/20 rounded px-2 py-1">Run 2 live</span></div>
-  <p class="text-[11px] text-zinc-500 mt-2">Klik dot → expand result/log di bawah. Lebih compact tapi butuh klik.</p>
+<!-- side-by-side: Task vs Chat -->
+<div class="grid lg:grid-cols-2 gap-4 mt-5">
+  <!-- Task dialog -->
+  <div class="card p-3">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold text-violet-300 uppercase tracking-widest">Task dialog</span>
+      <span class="pill bg-zinc-800 text-zinc-400">New task</span>
+      <span class="ml-auto mono text-[10px] text-zinc-500">POST /api/attachments → task</span>
+    </div>
+    <div class="mt-3 space-y-2">
+      <input placeholder="Title — e.g. Fix early renewal modal" class="w-full rounded-lg border border-[#1e2430] bg-black/40 px-3 py-2 text-xs"/>
+      <textarea rows="2" placeholder="Body — describe intent, attach screenshot/PDF as context…" class="w-full rounded-lg border border-[#1e2430] bg-black/40 px-3 py-2 text-xs"></textarea>
+
+      <!-- dropzone -->
+      <div class="rounded-lg border border-dashed border-violet-500/30 bg-violet-500/5 p-3 text-center">
+        <div class="text-xs font-medium text-violet-200">Drop image/PDF or click to upload</div>
+        <div class="mono text-[10px] text-zinc-500 mt-1">PNG JPG WebP GIF · PDF · max 10MB · multi-file</div>
+        <div class="mt-2 flex justify-center gap-2">
+          <button class="rounded-full bg-violet-500 text-white px-3 py-1 text-xs">Choose files</button>
+          <button class="rounded-full border border-zinc-800 px-3 py-1 text-xs">Paste (⌘V)</button>
+        </div>
+      </div>
+
+      <!-- chips -->
+      <div class="space-y-1.5">
+        <div class="flex items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-2 py-1.5">
+          <img src="https://picsum.photos/seed/a1/64/48" class="size-10 rounded object-cover border border-white/10"/>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs truncate">error-modal.png <span class="text-zinc-500">· 842KB · image/png</span></div>
+            <div class="mono text-[10px] text-zinc-500 truncate">sha256: 7f…a3 · local · ready</div>
+          </div>
+          <span class="pill bg-emerald-500/15 text-emerald-300 border-emerald-500/20">image</span>
+          <button class="pill bg-violet-500 text-white">Analyze</button>
+          <button class="text-zinc-500 text-xs">✕</button>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-2 py-1.5">
+          <div class="size-10 rounded bg-red-500/20 border border-red-500/20 flex items-center justify-center text-[10px] text-red-300">PDF</div>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs truncate">spec-renewal.pdf <span class="text-zinc-500">· 2.1MB · 6 pages</span></div>
+            <div class="mono text-[10px] text-zinc-500 truncate">sha256: 9c…e1 · local · parsed</div>
+          </div>
+          <span class="pill bg-zinc-800 text-zinc-400">pdf</span>
+          <button class="pill border border-zinc-700 text-zinc-300">Analyze</button>
+          <button class="text-zinc-500 text-xs">✕</button>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button class="flex-1 rounded-lg bg-[var(--c-accent)] text-black py-2 text-xs font-semibold">Create task</button>
+        <button class="rounded-lg border border-zinc-800 px-3 py-2 text-xs">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat composer -->
+  <div class="card p-3">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold text-sky-300 uppercase tracking-widest">Chat composer</span>
+      <span class="pill bg-zinc-800 text-zinc-400">Any model</span>
+      <span class="ml-auto mono text-[10px] text-zinc-500">POST /api/chat/:id/messages + attachments</span>
+    </div>
+
+    <!-- messages preview -->
+    <div class="mt-3 rounded-lg border border-[#1e2430] bg-black/30 p-2 space-y-2">
+      <div class="flex gap-2">
+        <div class="size-6 rounded-full bg-zinc-800 flex items-center justify-center text-[10px]">U</div>
+        <div class="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 p-2">
+          <div class="text-xs">Analyze this screenshot — where is the bug? <span class="text-zinc-500">+ 1 image</span></div>
+          <div class="mt-1 flex gap-1">
+            <img src="https://picsum.photos/seed/a2/96/64" class="h-14 rounded border border-white/10 object-cover"/>
+            <span class="pill self-end bg-emerald-500/15 text-emerald-300 border-emerald-500/20">attached</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <div class="size-6 rounded-full bg-violet-500 flex items-center justify-center text-[10px] text-white">A</div>
+        <div class="flex-1 rounded-lg bg-violet-500/10 border border-violet-500/20 p-2">
+          <div class="mono text-[10px] text-violet-300">vision analyze · gpt-4o (via 9router)</div>
+          <div class="text-xs mt-1">Modal overlaps table on 375px viewport — missing <span class="mono text-[10px]">overflow-auto</span> on container. Suggest fix in Programinsentif.php.</div>
+          <div class="mono text-[10px] text-zinc-500 mt-1">source: error-modal.png (sha 7f…a3)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- composer -->
+    <div class="mt-3 rounded-xl border border-[#1e2430] bg-black/40 p-2">
+      <div class="flex flex-wrap gap-1 mb-2">
+        <span class="pill bg-sky-500/10 text-sky-300 border-sky-500/20 flex items-center gap-1">error-modal.png <button class="text-sky-300">✕</button></span>
+        <span class="pill bg-zinc-800 text-zinc-400">spec-renewal.pdf · 6p</span>
+      </div>
+      <textarea rows="2" placeholder="Message — attach image/PDF, then /analyze or click Analyze" class="w-full bg-transparent text-xs outline-none placeholder:text-zinc-600"></textarea>
+      <div class="mt-2 flex items-center gap-2">
+        <button class="pill border border-zinc-700">📎 Attach</button>
+        <button class="pill bg-violet-500 text-white">Analyze (vision)</button>
+        <span class="mono text-[10px] text-zinc-600">model must support vision — registry checks</span>
+        <button class="ml-auto size-7 rounded-full bg-[var(--c-accent)] text-black flex items-center justify-center">↑</button>
+      </div>
+    </div>
+  </div>
 </div>
-</section>
 
-<p class="mono text-[10px] text-zinc-600 mt-8">Prototype served from <span class="text-zinc-400">/prototype/</span> — this is Variant 1 (stack) yang lu pilih.</p>
+<!-- vision/mime gating + storage -->
+<div class="grid lg:grid-cols-3 gap-3 mt-4">
+  <div class="card p-3">
+    <div class="text-xs font-semibold">Allowlist & limits</div>
+    <div class="mono text-[11px] text-zinc-400 mt-2 space-y-1">
+      <div>✓ image/png, jpeg, webp, gif</div>
+      <div>✓ application/pdf</div>
+      <div>✗ no svg/exe/zip (XSS/magic bypass)</div>
+      <div class="text-zinc-500">sniff MIME bytes · sanitized filename · random storage key · max 10MB default</div>
+    </div>
+  </div>
+  <div class="card p-3">
+    <div class="text-xs font-semibold">Model capability</div>
+    <div class="mono text-[11px] text-zinc-400 mt-2 space-y-1">
+      <div>registry: <span class="text-violet-300">vision</span>, pdf, max_bytes, input_format</div>
+      <div>if model lacks vision → 400 + suggest vision model</div>
+      <div>via 9router OpenAI-compat (your existing base_url)</div>
+      <div class="text-zinc-500">no hardcode provider names</div>
+    </div>
+  </div>
+  <div class="card p-3 border-amber-500/20">
+    <div class="text-xs font-semibold text-amber-300">Storage adapter (Local → R2)</div>
+    <div class="mono text-[11px] text-zinc-400 mt-2 space-y-1">
+      <div>interface Storage { Put, Open, Delete }</div>
+      <div>local: ~/.hermes/attachments/&lt;sha&gt;/</div>
+      <div>r2: S3 compat · Cloudflare R2</div>
+      <div class="text-zinc-500">migrate cmd: copy local→R2, verify sha, flip metadata</div>
+    </div>
+  </div>
+</div>
+
+<!-- API sketch -->
+<div class="card p-3 mt-4">
+  <div class="text-xs font-bold tracking-widest uppercase text-zinc-500">API sketch (server Go)</div>
+  <div class="grid md:grid-cols-2 gap-3 mono text-[11px] mt-2">
+    <div class="rounded bg-black/40 p-2 border border-zinc-800">
+      <div class="text-zinc-300">Upload</div>
+      <div class="text-zinc-500 mt-1">POST /api/attachments (multipart)</div>
+      <div class="text-zinc-500">→ { id, filename, mime, size, sha256, storage_provider }</div>
+      <div class="text-zinc-500 mt-2">GET /api/attachments/:id (auth, inline)</div>
+      <div class="text-zinc-500">GET /api/attachments/:id?download=1</div>
+    </div>
+    <div class="rounded bg-black/40 p-2 border border-zinc-800">
+      <div class="text-zinc-300">Link + Analyze</div>
+      <div class="text-zinc-500 mt-1">POST /api/boards/:slug/tasks/:id/attachments { attachment_id }</div>
+      <div class="text-zinc-500">POST /api/chat/sessions/:id/messages { content, attachment_ids[] }</div>
+      <div class="text-zinc-500 mt-2">POST /api/attachments/:id/analyze { prompt?, model? }</div>
+      <div class="text-zinc-500">→ vision call via 9router · result saved to message/task</div>
+    </div>
+  </div>
+  <p class="mono text-[10px] text-zinc-600 mt-2">Shared store = same attachment id can link to many tasks/messages (dedup). Quota + orphan GC.</p>
+</div>
+
+<!-- recommendation -->
+<div class="card p-3 mt-4 border-emerald-500/20 bg-emerald-500/5">
+  <div class="text-xs font-semibold text-emerald-300">Rekomendasi</div>
+  <div class="text-xs text-zinc-300 mt-1">MVP: inline upload di Task dialog + Chat composer (gambar di atas) → paling simpel, 1 endpoint upload, 2 link endpoints. Phase 2: attachment drawer (/attachments) buat reuse/search + bulk migrate Local→R2.</div>
+  <div class="mono text-[10px] text-zinc-500 mt-2">Minimal deps: Go stdlib mime/multipart + SQLite; no new npm dep. Cloudflare R2 only when you need — adapter ready.</div>
+</div>
+
+<div class="flex gap-2 mt-4">
+  <button onclick="navigator.clipboard.writeText(location.href)" class="pill bg-zinc-900 border-zinc-800 text-zinc-300">Copy link</button>
+  <a href="/api/auth/status" class="pill bg-zinc-900 border-zinc-800 text-zinc-500">auth: /api/auth/status</a>
+  <span class="ml-auto mono text-[10px] text-zinc-600">Old prototype replaced — this is Attachment+Vision (C · A→R2 · B). Refresh if cached.</span>
+</div>
 </body>
 </html>
