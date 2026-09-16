@@ -183,6 +183,13 @@ export default function TaskDetail({
           )}
         </div>
 
+        {/* prototype stack: review follows result */}
+        {task.status === "review" && (
+          <div className="mt-3">
+            <ReviewSection slug={slug} task={task} onDone={onOpenPage} />
+          </div>
+        )}
+
         {/* run-control */}
         <div className="flex flex-wrap items-center gap-1.5">
           {task.status === "running" && health.data && (
@@ -227,11 +234,6 @@ export default function TaskDetail({
           ))}
         </div>
 
-        {task.status === "review" && (
-          <div className="pt-1">
-            <ReviewSection slug={slug} task={task} onDone={onOpenPage} />
-          </div>
-        )}
         <div className="mt-auto pt-1">
           <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5 bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
             <ExternalLink className="size-3.5" /> Buka detail page

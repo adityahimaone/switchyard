@@ -351,9 +351,6 @@ export default function TaskDetailPage({
         </div>
         <AgentTaskStatus task={task} events={events.data ?? []} />
 
-        {/* review gate stays near task state, before long result output */}
-        <ReviewSection slug={slug} task={task} onDone={onBack} />
-
         {/* meta grid */}
         <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="glass-inset-card rounded-lg p-2.5">
@@ -397,24 +394,34 @@ export default function TaskDetailPage({
         </div>
 
         {task.body && (
-          <div className="glass-inset-card mt-2 max-h-28 overflow-y-auto rounded-lg p-2.5">
+          <div className="glass-inset-card mt-3 max-h-28 overflow-y-auto rounded-lg p-2.5">
             <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Deskripsi</label>
             <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-300">{task.body}</p>
           </div>
         )}
         {task.last_failure_error && (
-          <p className="mt-2 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] leading-relaxed text-red-300">{task.last_failure_error}</p>
+          <p className="mt-3 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] leading-relaxed text-red-300">{task.last_failure_error}</p>
         )}
         {task.status === "running" && (
-          <div className="mt-2">
+          <div className="mt-3">
             <WorkerLogPanel text={resultSplit?.working ?? ""} running slug={slug} taskId={task.id} />
           </div>
         )}
         {resultSplit ? (
-          <div className="mt-2">
+          <div className="mt-3">
             <ResultStack task={task} events={events.data || []} />
           </div>
-        ) : task.status !== "running" ? <ResultEmpty running={false} /> : null}
+        ) : task.status !== "running" ? (
+          <div className="mt-3">
+            <ResultEmpty running={false} />
+          </div>
+        ) : null}
+
+        {task.status === "review" && (
+          <div className="mt-3">
+            <ReviewSection slug={slug} task={task} onDone={onBack} />
+          </div>
+        )}
 
         {/* run-control */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
