@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"kanban-board/internal/kanban"
 )
@@ -142,10 +144,12 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 			fail(w, fmt.Errorf("model %q cannot analyze %s — use vision-capable model (gpt-4o, claude-3, gemini)", req.Model, a.MIME), 400)
 			return
 		}
-		// Stub: wire to 9router vision later. Return marker now.
-		result := fmt.Sprintf("[analyze %s via %s] vision wire TODO — file %s (%s) ready for OpenAI-compat vision call through 9router", a.MIME, req.Model, a.Filename, a.ID)
-		if req.Prompt != "" {
-			result += " — prompt: " + req.Prompt
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+		result, err := kanban.AnalyzeAttachment(ctx, r.PathValue("id"), req.Model, req.Prompt)
+		if err != nil {
+			fail(w, err, 400)
+			return
 		}
 		writeJSON(w, 200, map[string]string{"result": result, "model": req.Model, "mime": a.MIME})
 	})
