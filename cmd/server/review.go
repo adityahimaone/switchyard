@@ -146,11 +146,30 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := req.Message
-	if msg == "" {
-		msg = t.Title
+	// Build commit message: subject + bullet changes + Refs footer.
+	subject := req.Message
+	if subject == "" {
+		subject = t.Title
 	}
-	msg = strings.ReplaceAll(msg, "'", "'\\''") // shell-safe
+
+	// Files listed in the body: selective set when given, else all changed files.
+	commitFiles := req.Files
+	if len(commitFiles) == 0 {
+		commitFiles = changedFiles(t)
+	}
+	const maxBullet = 100
+	var msgBuilder strings.Builder
+	msgBuilder.WriteString(subject)
+	msgBuilder.WriteString("\n\n")
+	for i, f := range commitFiles {
+		if i >= maxBullet {
+			fmt.Fprintf(&msgBuilder, "  - … (+%d more)\n", len(commitFiles)-maxBullet)
+			break
+		}
+		msgBuilder.WriteString("  - " + f + "\n")
+	}
+	msgBuilder.WriteString("\nRefs: " + t.ID + "\n")
+	msg := msgBuilder.String()
 
 	var script string
 	if len(req.Files) > 0 {
@@ -184,6 +203,27 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		db.Close()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000)})
+}
+
+func changedFiles(t *reviewTask) []string {
+	out, code := runGit(t, `git diff --name-only HEAD -- .; git ls-files --others --exclude-standard`)
+	if code != 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	files := make([]string, 0)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		files = append(files, line)
+	}
+	return files
 }
 
 func validateCommitFiles(files []string) error {
