@@ -1,43 +1,53 @@
-import { CheckCircle2, GitBranch, KeyRound, Terminal, Workflow, XCircle } from "lucide-react"
+import { BookOpen, CheckCircle2, GitBranch, KeyRound, MessageSquare, Terminal, Workflow, XCircle } from "lucide-react"
 
-const sections = [
+const kanbanSections = [
   {
-    title: "Execution flow",
+    title: "A–H · Intent and dispatch",
     icon: Workflow,
-    body: "Kanban creates task row → dispatcher claims todo/ready → exact workspace route resolves → node-agent sends job to Mac → executor runs in workspace → result and events return to board.",
+    body: "Board task stores intent/title/body, workspace exact, profile, executor, dan priority. Validation di API, bukan sekadar UI. Dispatcher claim todo/ready → running, route exact workspace via SSH/node-agent, bukan tebakan path.",
   },
   {
-    title: "Workspace routing",
+    title: "I–Q · Execution to review",
     icon: GitBranch,
-    body: "Remote Mac paths must be registered as exact child workspaces with host mac-tailscale. SSH/node-agent transport prevents VPS from treating /Users paths as local directories.",
+    body: "Worker jalankan hermes/codex/shell di cwd exact. Live progress lewat progress buffer → worker log. Result guarded ke review, diff gabungkan tracked + untracked, selection files lalu commit/commit_push atau mark done jika clean.",
   },
   {
-    title: "Executor separation",
-    icon: Terminal,
-    body: "Hermes runs hermes chat. Codex runs codex exec --full-auto. Shell runs bash -lc directly with optional RTK rewrite. Shell skips AI preflight and prompt context.",
-  },
-  {
-    title: "Proof and evidence",
+    title: "R–Z · Retry, safety, proof",
     icon: CheckCircle2,
-    body: "Trust provenance executor, requested, bin, args, ws from node-agent result; then verify Mac worker run.log, task row, events, and final artifact. Sisyphus text alone proves nothing.",
-  },
-  {
-    title: "Failure handling",
-    icon: XCircle,
-    body: "Permission denied /Users means wrong routing. blocker_auth means stale or real auth/quota state. executor_unavailable means missing binary. Exit code 3 requires raw result and artifact inspection before recovery.",
-  },
-  {
-    title: "Security boundary",
-    icon: KeyRound,
-    body: "Validate profile, workspace, transport, and executor before dispatch. Keep credentials out of task bodies and reports. Browser gaps must be marked NOT VERIFIED, never fabricated as PASS.",
+    body: "Retry bounded, blocked jika threshold, continuation lewat @mention. Fail-closed untuk executor/profile/workspace unknown. Done hanya jika intent + provenance + artifact + diff + approval lengkap.",
   },
 ]
 
-const matrix = [
+const chatSections = [
+  {
+    title: "A–K · Session and streaming",
+    icon: MessageSquare,
+    body: "Chat pakai session/room /chat/:sessionID dengan hermes_session_id durable. Composer kirim 202, run loading→running→done/error, SSE chat_run_event untuk tool_output dan invalidasi messages.",
+  },
+  {
+    title: "L–R · Context and identity",
+    icon: Terminal,
+    body: "Context dirakit dari profile/model/workspace + session messages + memory/skills. Resume key selalu kirim ke daemon/CLI, persist kembali dari completed. Remote workspace tetap via node-agent exact path.",
+  },
+  {
+    title: "S–Z · Stop, failure, boundary",
+    icon: XCircle,
+    body: "Stop cancel run terminal, late output tidak boleh balikkan state. Chat tidak pakai Kanban dispatcher/review gate. Page history chat dan board tetap terpisah.",
+  },
+]
+
+const kanbanMatrix = [
   ["hermes", "hermes chat -q", "CodeGraph + prerequisites"],
   ["codex", "codex exec --full-auto", "CodeGraph + prerequisites"],
   ["shell", "bash -lc", "RTK only; no AI preflight"],
   ["auto", "Hermes first; fallback", "Resolved executor decides"],
+]
+
+const chatMatrix = [
+  ["loading", "run created", "SSE + streamBuffer"],
+  ["running", "hermes process/daemon", "elapsed + Stop"],
+  ["done", "assistant message", "footer model · HH:MM"],
+  ["error/cancelled", "terminal failure", "retry explicit"],
 ]
 
 export default function KnowledgePage() {
@@ -47,31 +57,76 @@ export default function KnowledgePage() {
         <header>
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">System Knowledge</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Execution Knowledge</h1>
-          <p className="mt-1 max-w-3xl text-xs text-[var(--color-ink-3)]">Flow map, executor boundaries, remote routing, proof rules, and recovery paths.</p>
+          <p className="mt-1 max-w-3xl text-xs text-[var(--color-ink-3)]">Kanban board flow dan Chat flow terpisah. Kanban untuk tracked task execution, Chat untuk direct agent conversation.</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+            <a href="#kanban" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">kanban-board-flow.md</a>
+            <a href="#chat" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">chat-flow.md</a>
+          </div>
         </header>
 
-        <section className="mt-5 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
-          <div>Kanban UI</div><div className="pl-4">↓ dispatcher + validation</div><div className="pl-4">↓ mac-tailscale / node-agent</div><div className="pl-4">↓ hermes | codex | shell</div><div className="pl-4">↓ provenance + result + events</div><div className="pl-4">↓ review → done / blocked</div>
+        <section id="kanban" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+          <div className="flex items-center gap-2"><Workflow className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Kanban Board Flow — A sampai Z</h2></div>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Intent → board/task → validate → exact workspace → dispatcher → node-agent → executor → live progress → result → diff review → approve.</p>
+          <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
+            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claim todo/ready → running</div><div className="pl-4">↓ mac-tailscale / node-agent</div><div className="pl-4">↓ hermes | codex | shell</div><div className="pl-4">↓ provenance + worker log + events</div><div className="pl-4">↓ review diff → commit / commit_push → done / blocked</div>
+          </div>
         </section>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          {sections.map(({ title, icon: Icon, body }) => (
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {kanbanSections.map(({ title, icon: Icon, body }) => (
             <section key={title} className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
-              <div className="flex items-center gap-2"><Icon className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">{title}</h2></div>
+              <div className="flex items-center gap-2"><Icon className="size-4 text-[var(--color-accent)]" /><h2 className="text-xs font-semibold">{title}</h2></div>
               <p className="mt-2 text-xs leading-5 text-[var(--color-ink-3)]">{body}</p>
             </section>
           ))}
         </div>
 
         <section className="mt-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
-          <h2 className="text-sm font-semibold">Executor matrix</h2>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Mode</th><th className="pb-2">Process</th><th className="pb-2">Preflight</th></tr></thead><tbody>{matrix.map(([mode, process, preflight]) => <tr key={mode} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{mode}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{process}</td><td className="py-2 text-[var(--color-ink-3)]">{preflight}</td></tr>)}</tbody></table></div>
+          <h2 className="text-sm font-semibold">Kanban executor matrix</h2>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Mode</th><th className="pb-2">Process</th><th className="pb-2">Preflight</th></tr></thead><tbody>{kanbanMatrix.map(([mode, process, preflight]) => <tr key={mode} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{mode}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{process}</td><td className="py-2 text-[var(--color-ink-3)]">{preflight}</td></tr>)}</tbody></table></div>
         </section>
 
+        <section id="chat" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+          <div className="flex items-center gap-2"><MessageSquare className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Chat Flow — A sampai Z</h2></div>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Direct chat ke agent (hermes-only saat ini) dengan room/session, bukan board task. Tidak lewat dispatcher Kanban.</p>
+          <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
+            <div>/chat/:sessionID → session + profile/model/workspace</div><div className="pl-4">↓ POST message → run loading</div><div className="pl-4">↓ validate → fast-path | daemon → CLI fallback | remote node-agent</div><div className="pl-4">↓ SSE chat_run_event → progressive rendering</div><div className="pl-4">↓ persist assistant message + hermes_session_id → resume next turn</div>
+          </div>
+        </section>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {chatSections.map(({ title, icon: Icon, body }) => (
+            <section key={title} className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+              <div className="flex items-center gap-2"><Icon className="size-4 text-[var(--color-accent)]" /><h2 className="text-xs font-semibold">{title}</h2></div>
+              <p className="mt-2 text-xs leading-5 text-[var(--color-ink-3)]">{body}</p>
+            </section>
+          ))}
+        </div>
+
         <section className="mt-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
-          <h2 className="text-sm font-semibold">Verification checklist</h2>
-          <ul className="mt-3 grid gap-2 text-xs text-[var(--color-ink-3)] sm:grid-cols-2"><li>□ exact remote workspace registered</li><li>□ SSH/node-agent route reachable</li><li>□ requested executor advertised</li><li>□ provenance header present</li><li>□ Mac worker run.log inspected</li><li>□ result, events, artifact verified</li></ul>
-          <p className="mt-4 text-[11px] text-[var(--color-ink-3)]">Full reference: <code className="text-[var(--color-accent)]">docs/execution-flow.md</code></p>
+          <h2 className="text-sm font-semibold">Chat run matrix</h2>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">State</th><th className="pb-2">What</th><th className="pb-2">UI</th></tr></thead><tbody>{chatMatrix.map(([state, what, ui]) => <tr key={state} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{state}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{what}</td><td className="py-2 text-[var(--color-ink-3)]">{ui}</td></tr>)}</tbody></table></div>
+        </section>
+
+        <section className="mt-3 grid gap-3 md:grid-cols-2">
+          <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+            <div className="flex items-center gap-2"><KeyRound className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Boundary penting</h2></div>
+            <ul className="mt-2 list-disc pl-5 text-xs leading-5 text-[var(--color-ink-3)]">
+              <li>Chat tidak pakai dispatcher/board claim/review gate.</li>
+              <li>Kanban tidak pakai chat session sebagai task state.</li>
+              <li>Remote path fail-closed; register exact workspace dulu.</li>
+              <li>Proof executor dari provenance, bukan dari teks output.</li>
+            </ul>
+          </section>
+          <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+            <div className="flex items-center gap-2"><BookOpen className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Full reference</h2></div>
+            <ul className="mt-2 space-y-1 font-mono text-xs text-[var(--color-ink-3)]">
+              <li><span className="text-[var(--color-accent)]">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>
+              <li><span className="text-[var(--color-accent)]">docs/features/chat-flow.md</span> — Chat A–Z</li>
+              <li><span className="text-[var(--color-accent)]">docs/features/chat-flow-architecture.md</span> — Current chat internals</li>
+              <li><span className="text-[var(--color-accent)]">docs/execution-flow.md</span> — Legacy execution flow</li>
+            </ul>
+          </section>
         </section>
       </div>
     </div>
