@@ -6,6 +6,7 @@ import { api, runControl, taskHealth, toastGlobal, COLUMNS, type Profile, type S
 import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultPanel, WorkerLogPanel } from "./OutputPanels"
+import { ReviewSection } from "./ReviewSection"
 
 const STATUS_CHIP: Record<string, string> = {
   done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
@@ -226,6 +227,11 @@ export default function TaskDetail({
           ))}
         </div>
 
+        {task.status === "review" && (
+          <div className="pt-1">
+            <ReviewSection slug={slug} task={task} onDone={onOpenPage} />
+          </div>
+        )}
         <div className="mt-auto pt-1">
           <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5 bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
             <ExternalLink className="size-3.5" /> Buka detail page
