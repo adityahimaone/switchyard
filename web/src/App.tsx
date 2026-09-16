@@ -577,13 +577,15 @@ export default function App() {
       <Suspense fallback={<LoadingState variant="detail" label="Memuat dialog" />}>
       {creating && (
         <TaskDialog
+          slug={slug}
           workspaces={workspaces.data ?? []}
           profiles={profiles.data ?? []}
           onClose={() => setCreating(false)}
           onCreate={(payload) =>
-            api(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(() => {
+            api<Task>(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(async (created) => {
               qc.invalidateQueries({ queryKey: ["tasks", slug] })
               setCreating(false)
+              return created
             })
           }
         />

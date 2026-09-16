@@ -15,7 +15,7 @@ import { TaskList, type TaskListTask } from "@/TodoList"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
-import { api, archiveChatSession, createChatSession, deleteChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, openEventStream, sendChatMessage, stopChatRun, unarchiveChatSession, updateChatSession, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, openEventStream, sendChatMessage, stopChatRun, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
 type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
@@ -183,7 +183,36 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
   const agent: ChatAgent = "hermes"
   const initialCreate = useRef(false)
-  const fileRef = useRef<HTMLInputElement>(null)  // ponytail: browser-owned file input, no upload API yet.
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pendingAtts, setPendingAtts] = useState<Attachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState("")
+  const [analyzeBusy, setAnalyzeBusy] = useState<string | null>(null)
+  const [analyzeResult, setAnalyzeResult] = useState<string | null>(null)
+  async function handleFiles(files: FileList | File[]) {
+    const list = Array.from(files as FileList)
+    if (!list.length) return
+    setUploadErr("")
+    setUploading(true)
+    for (const f of list) {
+      try {
+        const att = await uploadAttachment(f)
+        setPendingAtts((prev) => [...prev, att])
+      } catch (e) { setUploadErr((e as Error).message) }
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ""
+  }
+  async function analyzePending(id: string) {
+    const targetModel = model || profiles.find((p) => p.name === profile)?.model || ""
+    if (!targetModel) { setUploadErr("Pick a model first (vision-capable: gpt-4o / claude-3 / gemini)"); return }
+    setAnalyzeBusy(id); setAnalyzeResult(null); setUploadErr("")
+    try {
+      const res = await analyzeAttachment(id, targetModel, prompt.trim() || "Analyze this attachment")
+      setAnalyzeResult(res.result)
+    } catch (e) { setUploadErr((e as Error).message) }
+    finally { setAnalyzeBusy(null) }
+  }
   const sessions = useQuery({ queryKey: ["chat-sessions", false], queryFn: () => listChatSessions(false) })
   const archivedSessions = useQuery({ queryKey: ["chat-sessions", true], queryFn: () => listChatSessions(true), enabled: showArchived })
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
@@ -285,9 +314,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     },
     mutationFn: () => {
       if (model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
-      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
+      const ids = pendingAtts.map((a) => a.id)
+      if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
+      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model, attachment_ids: ids })
     },
-    onSuccess: (data) => { setPrompt(""); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); window.setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 120) },
+    onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); window.setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 120) },
   })
 
   async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
@@ -489,8 +520,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               <SelectTrigger size="sm" className="h-7 w-32 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="model default" /></SelectTrigger>
               <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__default">model default</SelectItem>{modelOptions.map((v) => <SelectItem key={v} value={v} className="max-w-72 truncate text-sm" title={v}>{v}</SelectItem>)}</SelectContent>
             </Select>
-            <input ref={fileRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) setPrompt((prev) => `${prev}${prev ? "\n" : ""}[attach: ${file.name}]`); if (fileRef.current) fileRef.current.value = "" }} />
-            <Button size="sm" variant="outline" className="ml-auto h-8 rounded-full" onClick={() => fileRef.current?.click()}><Plus className="mr-1 size-3" /> Attach</Button>
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(event) => void handleFiles(event.target.files ?? [])} />
+            {uploading ? <Button size="sm" variant="outline" className="ml-auto h-8 rounded-full" disabled><Plus className="mr-1 size-3 animate-spin" /> Uploading…</Button> : <Button size="sm" variant="outline" className="ml-auto h-8 rounded-full" onClick={() => fileRef.current?.click()}><Plus className="mr-1 size-3" /> Attach {pendingAtts.length ? `(${pendingAtts.length})` : ""}</Button>}
+            {pendingAtts.length > 0 && <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={!model && !profiles.find((p) => p.name === profile)?.model || analyzeBusy !== null} onClick={() => { const first = pendingAtts[0]; if (first) void analyzePending(first.id) }}>{analyzeBusy ? "Analyzing…" : "Analyze"}</Button>}
+            {uploadErr && <span className="text-[11px] text-red-400">{uploadErr}</span>}
+            {analyzeResult && <p className="ml-2 max-w-md truncate text-[11px] text-emerald-400" title={analyzeResult}>✓ {analyzeResult}</p>}
+            {pendingAtts.length > 0 && <div className="ml-2 flex gap-1.5">{pendingAtts.map((a) => <span key={a.id} className="flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px]">{a.mime.startsWith("image/") ? "🖼" : "📄"} {a.filename}<button type="button" className="ml-0.5 text-neutral-400 hover:text-red-400" onClick={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))}>×</button></span>)}</div>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button size="sm" variant="outline" className="h-8 rounded-full"><CircleHelp className="size-3.5" /> Commands</Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64 border-[var(--color-line)] bg-[var(--color-surface-raised)]">

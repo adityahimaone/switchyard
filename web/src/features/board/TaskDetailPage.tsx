@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { addTaskDependency, api, cancelRun, openEventStream, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react"
+import { AttachmentChip } from "@/components/AttachmentChip"
+import type { Attachment } from "../../api"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultStack, WorkerLogPanel } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
@@ -251,6 +253,10 @@ export default function TaskDetailPage({
   onReassign: (a: string) => Promise<void>
 }) {
   const qc = useQueryClient()
+  const attachments = useQuery<Attachment[]>({
+    queryKey: ["attachments", slug, task.id],
+    queryFn: () => api<Attachment[]>(`/api/boards/${slug}/tasks/${task.id}/attachments`),
+  })
   const events = useQuery({
     queryKey: ["events", slug, task.id],
     queryFn: () => api<TaskEvent[]>(`/api/boards/${slug}/tasks/${task.id}/events`),
@@ -397,6 +403,14 @@ export default function TaskDetailPage({
           <div className="glass-inset-card mt-3 max-h-28 overflow-y-auto rounded-lg p-2.5">
             <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Deskripsi</label>
             <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-300">{task.body}</p>
+          </div>
+        )}
+        {(attachments.data ?? []).length > 0 && (
+          <div className="glass-inset-card mt-3 rounded-lg p-2.5">
+            <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Attachments</label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {attachments.data!.map((a) => <AttachmentChip key={a.id} att={a} showPreview />)}
+            </div>
           </div>
         )}
         {task.last_failure_error && (

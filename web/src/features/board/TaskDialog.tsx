@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sparkles, Loader2 } from "lucide-react"
+import { Sparkles, Loader2, Paperclip } from "lucide-react"
+import { AttachmentChip } from "@/components/AttachmentChip"
+import { uploadAttachment, type Attachment } from "../../api"
 
 function isRemoteWorkspace(w: Workspace): boolean {
   if (w.host && w.host !== "localhost" && w.host !== "127.0.0.1") return true
@@ -32,11 +34,13 @@ function defaultWorkspacePath(workspaces: Workspace[]): string {
 }
 
 export default function TaskDialog({
+  slug,
   workspaces,
   profiles,
   onClose,
   onCreate,
 }: {
+  slug: string
   workspaces: Workspace[]
   profiles: Profile[]
   onClose: () => void
@@ -53,6 +57,9 @@ export default function TaskDialog({
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMode, setAiMode] = useState<"fast" | "deep" | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [pendingAtts, setPendingAtts] = useState<Attachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const improveCache = useRef(new Map<string, string>())
 
   async function improveBody(mode: "fast" | "deep") {
@@ -89,12 +96,27 @@ export default function TaskDialog({
     }
   }
 
+  async function handleFiles(files: FileList | File[]) {
+    const list = Array.from(files as FileList)
+    if (!list.length) return
+    setUploading(true)
+    for (const f of list) {
+      try {
+        const att = await uploadAttachment(f as File)
+        setPendingAtts((prev) => [...prev, att])
+      } catch (e) { setErr((e as Error).message) }
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ""
+  }
+
   async function submit() {
     if (!title.trim()) { setErr("Title required"); return }
     if (executor === "shell" && !command.trim()) { setErr("Command required for shell executor"); return }
     setBusy(true); setErr(null)
+    let created: unknown = null
     try {
-      await onCreate({
+      created = await onCreate({
         title: title.trim(),
         body: body.trim(),
         ...(executor === "shell" ? { command: command.trim() } : {}),
@@ -104,7 +126,15 @@ export default function TaskDialog({
         priority: Number(priority),
         status: "todo",
       })
-    } catch (e) { setErr((e as Error).message); setBusy(false) }
+    } catch (e) { setErr((e as Error).message); setBusy(false); return }
+    // link pending attachments to the created task
+    if (pendingAtts.length > 0) {
+      const rec = created as { id?: string } | null
+      const taskId = rec?.id ? String(rec.id) : ""
+      if (taskId && slug) {
+        await Promise.all(pendingAtts.map((a) => api(`/api/boards/${slug}/tasks/${taskId}/attachments`, { method: "POST", body: JSON.stringify({ attachment_id: a.id }) }).catch(() => undefined)))
+      }
+    }
   }
 
   const selCls = "w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9"
@@ -224,6 +254,14 @@ export default function TaskDialog({
           </div>
         </div>
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
+        <div className="mt-3">
+          <Label className="block text-xs text-neutral-400">Attachments (image / PDF)</Label>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files ?? [])} />
+          <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Paperclip className="mr-1 size-3" /> {uploading ? "Uploading…" : "Attach file"}
+          </Button>
+          {pendingAtts.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{pendingAtts.map((a) => <AttachmentChip key={a.id} att={a} onRemove={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))} />)}</div>}
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={submit} disabled={busy} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">

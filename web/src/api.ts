@@ -337,6 +337,7 @@ export type ChatAgent = "hermes"
 export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
 export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number }
 export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string }
+export interface Attachment { id: string; filename: string; mime: string; size: number; sha256: string; storage_provider: string; storage_key: string; created_at: number }
 export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
 export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
 export function listChatSessions(archived = false) { return api<ChatSession[]>(`/api/chat/sessions${archived ? "?archived=1" : ""}`) }
@@ -347,7 +348,16 @@ export function archiveChatSession(id: string) { return api<{ ok: boolean }>(`/a
 export function unarchiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/unarchive`, { method: "POST" }) }
 export function deleteChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }) }
 export function listChatMessages(id: string) { return api<ChatMessage[]>(`/api/chat/sessions/${id}/messages`) }
-export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
+export async function uploadAttachment(file: File) {
+  const body = new FormData()
+  body.append("file", file)
+  const res = await fetch("/api/attachments", { method: "POST", body, credentials: "include" })
+  if (!res.ok) { const data = await res.json().catch(() => ({ error: res.statusText })); throw new Error((data as { error?: string }).error ?? res.statusText) }
+  return res.json() as Promise<Attachment>
+}
+export function attachmentURL(id: string) { return `/api/attachments/${id}` }
+export function analyzeAttachment(id: string, model: string, prompt = "") { return api<{ result: string; model: string; mime: string }>(`/api/attachments/${id}/analyze`, { method: "POST", body: JSON.stringify({ model, prompt }) }) }
+export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string; attachment_ids?: string[] }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
 export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
 export function listProviders() { return api<ProviderModel[]>("/api/providers") }
