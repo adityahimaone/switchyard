@@ -138,6 +138,7 @@ func CreateChatProject(name, color string) (*ChatProject, error) {
 	if _, err = db.Exec(`INSERT INTO chat_projects(id,name,color,created_at) VALUES(?,?,?,?)`, p.ID, p.Name, p.Color, p.CreatedAt); err != nil {
 		return nil, err
 	}
+	broadcastEvent("chat_project_created", map[string]any{"project_id": p.ID})
 	return p, nil
 }
 func UpdateChatProject(id string, name, color *string) (*ChatProject, error) {
