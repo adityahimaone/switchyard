@@ -562,7 +562,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
             <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
               <SelectTrigger size="sm" className="h-7 w-32 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="model default" /></SelectTrigger>
-              <SelectContent className="w-72 max-w-[calc(100vw-1rem)] border-[var(--color-line)] bg-[var(--color-surface)]">
+              <SelectContent position="popper" align="start" className="h-[300px] max-h-[300px] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
                 <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
                   <Input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
                 </div>
