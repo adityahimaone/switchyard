@@ -734,16 +734,17 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/profiles", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Name         string `json:"name"`
-			Model        string `json:"model"`
-			Provider     string `json:"provider"`
-			SystemPrompt string `json:"system_prompt"`
+			Name         string   `json:"name"`
+			Model        string   `json:"model"`
+			Provider     string   `json:"provider"`
+			SystemPrompt string   `json:"system_prompt"`
+			Skills       []string `json:"skills"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		in := kanban.ProfileInput{Model: req.Model, Provider: req.Provider}
+		in := kanban.ProfileInput{Model: req.Model, Provider: req.Provider, Skills: req.Skills}
 		sp := req.SystemPrompt
 		// treat empty string as "no prompt" only if key missing; JSON can't tell — assume always present
 		in.SystemPrompt = &sp
@@ -756,9 +757,10 @@ func main() {
 	})
 	mux.HandleFunc("PUT /api/profiles/{name}", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Model        *string `json:"model"`
-			Provider     *string `json:"provider"`
-			SystemPrompt *string `json:"system_prompt"`
+			Model        *string   `json:"model"`
+			Provider     *string   `json:"provider"`
+			SystemPrompt *string   `json:"system_prompt"`
+			Skills       *[]string `json:"skills"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 			fail(w, err, 400)
@@ -772,6 +774,10 @@ func main() {
 			in.Provider = *req.Provider
 		}
 		in.SystemPrompt = req.SystemPrompt
+		if req.Skills != nil {
+			in.Skills = *req.Skills
+			in.SkillsSet = true
+		}
 		if err := kanban.PatchProfile(r.PathValue("name"), in); err != nil {
 			fail(w, err, 400)
 			return

@@ -1,0 +1,3 @@
+{"type":"server-started","port":63401,"host":"0.0.0.0","url_host":"localhost","url":"http://localhost:63401","screen_dir":"/home/adityahimaone/apps/kanban-board/.superpowers/brainstorm/148287-1789626246"}
+{"type":"screen-added","file":"/home/adityahimaone/apps/kanban-board/.superpowers/brainstorm/148287-1789626246/select-combobox.html"}
+{"type":"server-stopped","reason":"idle timeout"}

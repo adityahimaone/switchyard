@@ -76,6 +76,12 @@ func TestListSkillsAndContent(t *testing.T) {
 	if skills[0].Name != "caveman" || skills[0].Category != "caveman" {
 		t.Errorf("bad meta: %+v", skills[0])
 	}
+	if err := os.MkdirAll(filepath.Join(hermesHome(), "skills", ".hub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if hidden, err := ListSkills(); err != nil || len(hidden) != 1 {
+		t.Fatalf("hidden skill directory leaked: %v err=%v", hidden, err)
+	}
 	got, err := SkillContent("caveman")
 	if err != nil || !strings.Contains(got["content"], "Ultra-compressed") {
 		t.Errorf("content lookup failed: %v err=%v", got, err)

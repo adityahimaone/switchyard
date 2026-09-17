@@ -29,9 +29,11 @@ function ProfileForm({
 }) {
   const editing = !!initial
   const [name, setName] = useState(initial?.name ?? "")
-  const [model, setModel] = useState(initial?.model ?? "")
+  const [model, setModel] = useState(initial?.model?.trim() ?? "")
   const [provider, setProvider] = useState(initial?.provider || "custom")
   const [prompt, setPrompt] = useState(initial?.system_prompt ?? "")
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(initial?.skills ?? [])
+  const [skillQ, setSkillQ] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [modelQ, setModelQ] = useState("")
@@ -41,6 +43,10 @@ function ProfileForm({
   const [avatarErr, setAvatarErr] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const profileQueries = useQueryClient()
+  const skillsQ = useQuery({
+    queryKey: ["skills"],
+    queryFn: () => api<{ name: string; description: string }[]>("/api/skills"),
+  })
   const providersQ = useQuery({
     queryKey: ["providers"],
     queryFn: () => api<{ name: string; base_url: string; default_model: string; models: string[] }[]>("/api/providers"),
@@ -57,7 +63,7 @@ function ProfileForm({
     providerRoster.find((p) => p.default_model === model) ??
     providerRoster.find((p) => p.base_url === "https://9router.adityahimaone.space/v1") ??
     providerRoster[0]
-  const modelOptions: string[] = activeProvider?.models?.length ? [...activeProvider.models].sort() : []
+  const modelOptions: string[] = Array.from(new Set([...(activeProvider?.models ?? []), ...(model ? [model] : [])])).sort()
   const filteredModels = modelQ ? modelOptions.filter((m) => m.toLowerCase().includes(modelQ.toLowerCase())).slice(0, 80) : modelOptions.slice(0, 80)
 
   async function onAvatarPicked(f: File) {
@@ -113,10 +119,15 @@ function ProfileForm({
     }
     setBusy(true); setErr(null)
     try {
-      if (editing) {
-        await onSave({ model: model.trim(), provider, system_prompt: prompt })
-      } else {
-        await onSave({ name: name.trim(), model: model.trim(), provider, system_prompt: prompt })
+      const skills = [...new Set(selectedSkills.map((skill) => skill.trim()).filter(Boolean))].sort()
+      const saved = editing
+        ? await onSave({ model: model.trim(), provider, system_prompt: prompt, skills })
+        : await onSave({ name: name.trim(), model: model.trim(), provider, system_prompt: prompt, skills })
+      if (saved && typeof saved === "object" && "skills" in saved) {
+        const returnedSkills = (saved as { skills?: unknown }).skills
+        if (JSON.stringify(returnedSkills) !== JSON.stringify([...selectedSkills].sort())) {
+          throw new Error("Profile saved with different skills; reload and try again")
+        }
       }
       onClose()
     } catch (e) { setErr((e as Error).message); setBusy(false) }
@@ -195,27 +206,40 @@ function ProfileForm({
             </div>
             <div>
               <Label className="block text-xs text-neutral-400">Model</Label>
-              {modelOptions.length > 0 ? (
-                <>
-                  <Input
-                    value={model} onChange={(e) => { setModel(e.target.value); setModelQ(e.target.value) }}
-                    onFocus={() => setModelQ(model)} placeholder={activeProvider?.default_model || "codex"}
-                    className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" list="model-options"
-                  />
-                  <div className="mt-1 max-h-28 overflow-y-auto rounded-md border border-[var(--color-line)] bg-[var(--color-bg)]">
-                    {filteredModels.map((m) => (
-                      <button key={m} onClick={() => { setModel(m); setModelQ("") }}
-                        className={`block w-full px-2 py-1 text-left font-mono text-[11px] hover:bg-[var(--color-line)] ${m === model ? "bg-[var(--color-line)] text-[var(--color-accent)]" : "text-neutral-400"}`}>
-                        {m}
-                      </button>
-                    ))}
-                    {!filteredModels.length && <p className="px-2 py-1 text-[11px] text-neutral-600">No match</p>}
+              <Select value={model || "__default"} onValueChange={(value) => setModel(value === "__default" ? "" : value)}>
+                <SelectTrigger size="sm" className="mt-1 w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9"><SelectValue>{model || "model default"}</SelectValue></SelectTrigger>
+                <SelectContent position="popper" align="start" className="h-[300px] max-h-[300px] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
+                  <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
+                    <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
                   </div>
-                </>
-              ) : (
-                <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="codex" className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-              )}
+                  <SelectItem value="__default">model default</SelectItem>
+                  {filteredModels.length === 0 && <p className="px-2 py-1.5 text-xs text-neutral-500">No model found</p>}
+                  {filteredModels.map((value) => <SelectItem key={value} value={value} className="max-w-72 truncate text-sm" title={value}>{value}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+          <Label className="mt-3 block text-xs text-neutral-400">Skills</Label>
+          <div className="mt-1 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-2">
+            <div className="flex flex-wrap gap-1.5">
+              {selectedSkills.map((skill) => (
+                <Badge key={skill} variant="secondary" className="gap-1 text-[11px]">
+                  {skill}
+                  <button type="button" aria-label={`Remove ${skill}`} onClick={() => setSelectedSkills((items) => items.filter((item) => item !== skill))}>×</button>
+                </Badge>
+              ))}
+              {!selectedSkills.length && <span className="text-[11px] text-neutral-600">No skills selected</span>}
+            </div>
+            <Input value={skillQ} onChange={(e) => setSkillQ(e.target.value)} placeholder="Add global skill…" className="mt-2 h-8 border-[var(--color-line)] bg-[var(--color-surface)] text-xs" />
+            {skillQ.trim() && (
+              <div className="mt-1 max-h-28 overflow-y-auto">
+                {(skillsQ.data ?? []).filter((skill) => !selectedSkills.includes(skill.name) && skill.name.toLowerCase().includes(skillQ.trim().toLowerCase())).slice(0, 20).map((skill) => (
+                  <button key={skill.name} type="button" className="block w-full px-2 py-1 text-left text-xs text-neutral-300 hover:bg-[var(--color-line)]" onClick={() => { setSelectedSkills((items) => [...items, skill.name].sort()); setSkillQ("") }}>
+                    {skill.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <Label className="mt-3 block text-xs text-neutral-400">
             System prompt <span className="text-neutral-600">(SOUL.md)</span>
@@ -225,12 +249,6 @@ function ProfileForm({
             placeholder="You are an expert full-stack developer…"
             className="mt-1 h-64 min-h-40 resize-y overflow-y-auto border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs leading-relaxed"
           />
-          {editing && (
-            <p className="mt-2 text-[11px] text-neutral-500">
-              Skills ({initial?.skills.length ?? 0}) dikelola via hermes CLI (read-only di sini):{" "}
-              <span className="text-neutral-400">{initial?.skills.join(", ") || "—"}</span>
-            </p>
-          )}
           {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         </div>
         <Separator className="my-3" />

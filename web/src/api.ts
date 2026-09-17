@@ -183,6 +183,23 @@ export interface Workspace {
   ping_ms?: number | null
 }
 
+export interface NodeAgent {
+  node_id: string
+  hostname: string
+  workspaces: string[]
+  executors?: string[]
+  status: string
+  last_seen: string
+}
+
+export interface NodeAgentStatus {
+  status: string
+  nodes?: NodeAgent[]
+  error?: string
+}
+
+export function nodeAgentHealth() { return api<NodeAgentStatus>("/api/nodes") }
+
 export interface CodeGraphEntry {
   path: string
   name: string

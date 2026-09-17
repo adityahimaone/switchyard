@@ -13,6 +13,7 @@ import type { Attachment } from "../../api"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultStack, WorkerLogPanel } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
+import TaskRuntimeStatus from "./TaskRuntimeStatus"
 
 const STATUS_CHIP: Record<string, string> = {
   done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
@@ -356,6 +357,7 @@ export default function TaskDetailPage({
           {task.completed_at && <span>· selesai {new Date(task.completed_at * 1000).toLocaleString()}</span>}
         </div>
         <AgentTaskStatus task={task} events={events.data ?? []} />
+        <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} tasks={boardTasks.data ?? []} />
 
         {/* meta grid */}
         <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">

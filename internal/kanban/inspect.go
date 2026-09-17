@@ -116,7 +116,7 @@ type SkillMeta struct {
 const skillMaxDescription = 200
 
 var skillExcludedDirs = map[string]bool{
-	".git": true, "__pycache__": true, "node_modules": true, ".venv": true, "venv": true,
+	".git": true, ".archive": true, "__pycache__": true, "node_modules": true, ".venv": true, "venv": true,
 }
 
 // ListSkills walks <hermes>/skills for SKILL.md files and returns
@@ -128,7 +128,7 @@ func ListSkills() ([]SkillMeta, error) {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() && skillExcludedDirs[d.Name()] {
+		if d.IsDir() && (skillExcludedDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || d.Name() != "SKILL.md" {

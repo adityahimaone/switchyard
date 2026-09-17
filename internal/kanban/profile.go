@@ -30,6 +30,107 @@ type ProfileInput struct {
 	Provider     string   `json:"provider"`
 	SystemPrompt *string  `json:"system_prompt"` // nil = leave untouched
 	Skills       []string `json:"skills"`
+	SkillsSet    bool     `json:"-"`
+}
+
+func profileSkillsPath(name string) string { return filepath.Join(profileDir(name), "skills.json") }
+
+func normalizeProfileSkills(skills []string) ([]string, error) {
+	available, _ := ListSkills()
+	known := map[string]string{}
+	for _, skill := range available {
+		known[skill.Name] = skill.Path
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, raw := range skills {
+		name := strings.TrimSpace(raw)
+		if name == "" || strings.Contains(name, "..") || strings.ContainsAny(name, `/\\$`) {
+			return nil, fmt.Errorf("invalid skill name %q", raw)
+		}
+		if _, ok := known[name]; !ok {
+			return nil, fmt.Errorf("unknown skill %q", name)
+		}
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func readProfileSkills(name string) []string {
+	var skills []string
+	if raw, err := os.ReadFile(profileSkillsPath(name)); err == nil && json.Unmarshal(raw, &skills) == nil {
+		return filterKnownProfileSkills(skills)
+	}
+	return filterKnownProfileSkills(listProfileSkills(profileDir(name)))
+}
+
+func filterKnownProfileSkills(skills []string) []string {
+	available, _ := ListSkills()
+	if len(available) == 0 {
+		return skills
+	}
+	known := make(map[string]bool, len(available))
+	for _, skill := range available {
+		known[skill.Name] = true
+	}
+	out := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		if known[skill] {
+			out = append(out, skill)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func writeProfileSkills(name string, skills []string) error {
+	raw, err := json.Marshal(skills)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(profileSkillsPath(name), append(raw, '\n'), 0o600); err != nil {
+		return err
+	}
+	dir := filepath.Join(profileDir(name), "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	selected := map[string]bool{}
+	available, _ := ListSkills()
+	paths := map[string]string{}
+	for _, skill := range available {
+		paths[skill.Name] = skill.Path
+	}
+	for _, skill := range skills {
+		selected[skill] = true
+		link := filepath.Join(dir, skill)
+		if info, err := os.Lstat(link); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				_ = os.Remove(link)
+			} else {
+				continue
+			}
+		}
+		if err := os.Symlink(filepath.Join(hermesHome(), "skills", paths[skill]), link); err != nil {
+			return err
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		link := filepath.Join(dir, entry.Name())
+		info, err := os.Lstat(link)
+		if err == nil && info.Mode()&os.ModeSymlink != 0 && !selected[entry.Name()] {
+			_ = os.Remove(link)
+		}
+	}
+	return nil
 }
 
 func profileDir(name string) string {
@@ -58,7 +159,7 @@ func listProfileSkills(dir string) []string {
 		return out
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && e.Name() != "archive" && e.Name() != "backup_before_archive" {
 			out = append(out, e.Name())
 		}
 	}
@@ -91,7 +192,7 @@ func GetProfile(name string) (*AgentProfile, error) {
 	if raw, err := os.ReadFile(filepath.Join(dir, "SOUL.md")); err == nil {
 		p.SystemPrompt = string(raw)
 	}
-	p.Skills = listProfileSkills(dir)
+	p.Skills = readProfileSkills(name)
 	return p, nil
 }
 
@@ -146,6 +247,15 @@ func CreateProfile(name string, in ProfileInput) error {
 	if err := PatchProfile(name, ProfileInput{Model: in.Model, Provider: in.Provider}); err != nil {
 		return err
 	}
+	if in.Skills != nil {
+		skills, err := normalizeProfileSkills(in.Skills)
+		if err != nil {
+			return err
+		}
+		if err := writeProfileSkills(name, skills); err != nil {
+			return err
+		}
+	}
 	if in.SystemPrompt != nil && strings.TrimSpace(*in.SystemPrompt) != "" {
 		if err := os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte(*in.SystemPrompt), 0o644); err != nil {
 			return err
@@ -154,8 +264,7 @@ func CreateProfile(name string, in ProfileInput) error {
 	return nil
 }
 
-// PatchProfile edits model/provider in config.yaml and/or rewrites SOUL.md.
-// Skills list is read-only here (skill dirs are managed by hermes CLI).
+// PatchProfile edits model/provider, SOUL.md, and selected global skills.
 func PatchProfile(name string, in ProfileInput) error {
 	if !profileExists(name) {
 		return fmt.Errorf("profile %q not found", name)
@@ -178,6 +287,15 @@ func PatchProfile(name string, in ProfileInput) error {
 	}
 	if in.SystemPrompt != nil {
 		if err := os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte(*in.SystemPrompt), 0o644); err != nil {
+			return err
+		}
+	}
+	if in.SkillsSet {
+		skills, err := normalizeProfileSkills(in.Skills)
+		if err != nil {
+			return err
+		}
+		if err := writeProfileSkills(name, skills); err != nil {
 			return err
 		}
 	}

@@ -7,6 +7,7 @@ import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square } from "lucide-
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultPanel, WorkerLogPanel } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
+import TaskRuntimeStatus from "./TaskRuntimeStatus"
 
 const STATUS_CHIP: Record<string, string> = {
   done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
@@ -105,6 +106,7 @@ export default function TaskDetail({
         </div>
 
         <AgentTaskStatus task={task} events={events.data ?? []} />
+        <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} compact />
 
         {/* agent */}
         <div className="glass-inset-card rounded-lg p-2.5">

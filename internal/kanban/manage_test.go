@@ -90,6 +90,48 @@ func TestCreateAndPatchProfile(t *testing.T) {
 	}
 }
 
+func TestProfileSkillsCreateReplaceAndClear(t *testing.T) {
+	home := patchProfilesHome(t)
+	os.MkdirAll(filepath.Join(home, "skills", "global-one"), 0o755)
+	os.WriteFile(filepath.Join(home, "skills", "global-one", "SKILL.md"), []byte("---\nname: global-one\ndescription: test\n---\n"), 0o644)
+	os.MkdirAll(filepath.Join(home, "skills", "global-two"), 0o755)
+	os.WriteFile(filepath.Join(home, "skills", "global-two", "SKILL.md"), []byte("---\nname: global-two\ndescription: test\n---\n"), 0o644)
+
+	if err := CreateProfile("skills-user", ProfileInput{Provider: "custom", Skills: []string{"global-one", "global-one"}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := GetProfile("skills-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Skills) != 1 || p.Skills[0] != "global-one" {
+		t.Fatalf("created skills: %v", p.Skills)
+	}
+	if _, err := os.Stat(filepath.Join(home, "profiles", "skills-user", "skills", "global-one", "SKILL.md")); err != nil {
+		t.Fatalf("worker skill link missing: %v", err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(home, "profiles", "skills-user", "skills.json")); err != nil || !strings.Contains(string(raw), "global-one") {
+		t.Fatalf("skills metadata missing: %s %v", raw, err)
+	}
+	if err := PatchProfile("skills-user", ProfileInput{Skills: []string{"global-two"}, SkillsSet: true}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = GetProfile("skills-user")
+	if len(p.Skills) != 1 || p.Skills[0] != "global-two" {
+		t.Fatalf("replaced skills: %v", p.Skills)
+	}
+	if err := PatchProfile("skills-user", ProfileInput{Skills: []string{}, SkillsSet: true}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = GetProfile("skills-user")
+	if len(p.Skills) != 0 {
+		t.Fatalf("cleared skills: %v", p.Skills)
+	}
+	if err := PatchProfile("skills-user", ProfileInput{Skills: []string{"missing"}, SkillsSet: true}); err == nil {
+		t.Fatal("unknown skill accepted")
+	}
+}
+
 // helper: second call returns profiles dir of temp home (keeps test independent)
 func patchProfilesHome2(t *testing.T) string {
 	return filepath.Join(profileDir("newguy"))
