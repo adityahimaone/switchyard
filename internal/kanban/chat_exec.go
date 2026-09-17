@@ -22,7 +22,7 @@ func chatCommand(agent, profile, model, prompt, hermesSessionID string) ([]strin
 	if agent != "hermes" {
 		return nil, fmt.Errorf("unsupported chat agent %q", agent)
 	}
-	reasoning := "minimal"
+	reasoning := "low"
 	if fastChatPrompt(prompt) {
 		reasoning = "none"
 	}
@@ -41,6 +41,62 @@ func chatCommand(agent, profile, model, prompt, hermesSessionID string) ([]strin
 
 func fastChatPrompt(prompt string) bool {
 	return len([]rune(strings.TrimSpace(prompt))) <= 30
+}
+
+func formatChatAttachmentPrompt(prompt string, analyses []string) string {
+	clean := make([]string, 0, len(analyses))
+	for _, analysis := range analyses {
+		if value := strings.TrimSpace(analysis); value != "" {
+			clean = append(clean, "- "+value)
+		}
+	}
+	if len(clean) == 0 {
+		return prompt
+	}
+	return "Attached image analysis:\n" + strings.Join(clean, "\n") + "\n\nUser request:\n" + prompt
+}
+
+func chatProfileModel(profile string) string {
+	profiles, _ := ListProfiles()
+	for _, item := range profiles {
+		if item.Name == profile {
+			return item.Model
+		}
+	}
+	return ""
+}
+
+func prepareChatAttachmentPrompt(ctx context.Context, runID, profile, model, prompt string) (string, error) {
+	run, err := GetChatRun(runID)
+	if err != nil {
+		return "", err
+	}
+	attachments, err := ListChatAttachments(run.MessageID)
+	if err != nil {
+		return "", err
+	}
+	if len(attachments) == 0 {
+		return prompt, nil
+	}
+	if strings.TrimSpace(model) == "" {
+		model = chatProfileModel(profile)
+	}
+	if strings.TrimSpace(model) == "" {
+		return "", fmt.Errorf("image attachment requires vision-capable model")
+	}
+	analyses := make([]string, 0, len(attachments))
+	for _, attachment := range attachments {
+		resolved, resolveErr := ResolveAttachmentModel(model, attachment.MIME)
+		if resolveErr != nil {
+			return "", resolveErr
+		}
+		analysis, analyzeErr := AnalyzeAttachment(ctx, attachment.ID, resolved.Model, prompt)
+		if analyzeErr != nil {
+			return "", fmt.Errorf("analyze %s: %w", attachment.Filename, analyzeErr)
+		}
+		analyses = append(analyses, analysis)
+	}
+	return formatChatAttachmentPrompt(prompt, analyses), nil
 }
 
 func greetingChatAnswer(prompt string) (string, bool) {
@@ -81,6 +137,12 @@ func timeChatAnswer(prompt string, now time.Time) (string, bool) {
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
 	_ = UpdateChatRunState(runID, "running", "", "")
 	_ = AppendChatRunEvent(runID, "spawned", fmt.Sprintf(`{"agent":%q,"profile":%q}`, agent, profile))
+	preparedPrompt, err := prepareChatAttachmentPrompt(ctx, runID, profile, model, prompt)
+	if err != nil {
+		_ = UpdateChatRunState(runID, "error", "", err.Error())
+		return
+	}
+	prompt = preparedPrompt
 	answer, ok := greetingChatAnswer(prompt)
 	if !ok {
 		answer, ok = todayChatAnswer(prompt, time.Now())

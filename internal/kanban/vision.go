@@ -36,7 +36,11 @@ func AnalyzeAttachment(ctx context.Context, id, model, prompt string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if !CanAnalyze(model, a.MIME) {
+	analysisCfg, err := LoadAttachmentAnalysisConfig()
+	if err != nil {
+		return "", err
+	}
+	if !CanAnalyzeWithConfig(model, a.MIME, analysisCfg) {
 		return "", fmt.Errorf("model %q cannot analyze %s", model, a.MIME)
 	}
 	cfg, err := loadVisionProvider(model)

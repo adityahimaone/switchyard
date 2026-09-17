@@ -584,7 +584,6 @@ export default function App() {
           onCreate={(payload) =>
             api<Task>(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(async (created) => {
               qc.invalidateQueries({ queryKey: ["tasks", slug] })
-              setCreating(false)
               return created
             })
           }

@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+func TestChatPromptIncludesAttachmentAnalysisBeforeUserIntent(t *testing.T) {
+	got := formatChatAttachmentPrompt("Review this screenshot and tell me next step", []string{"image shows login error", "image contains stack trace"})
+	want := "Attached image analysis:\n- image shows login error\n- image contains stack trace\n\nUser request:\nReview this screenshot and tell me next step"
+	if got != want {
+		t.Fatalf("prompt=%q, want %q", got, want)
+	}
+}
+
+func TestChatPromptWithoutAttachmentAnalysisKeepsUserPrompt(t *testing.T) {
+	if got := formatChatAttachmentPrompt("Continue with task", nil); got != "Continue with task" {
+		t.Fatalf("prompt=%q", got)
+	}
+}
+
 func TestChatSessionAutoTitleUsesFirstPrompt(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	s, err := CreateChatSession("New chat", "hermes", "default", "", "")
@@ -82,6 +96,13 @@ func TestChatSessionMessageRunLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	a, err := StoreAttachmentBytes([]byte("\x89PNG\r\n\x1a\nchat-attachment"), "check.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := LinkChatAttachment(m.ID, a.ID); err != nil {
+		t.Fatal(err)
+	}
 	r, err := CreateChatRun(s.ID, m.ID, "hermes", "default", "development", "", m.Content)
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +136,9 @@ func TestChatSessionMessageRunLifecycle(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].Content != "Check health" {
 		t.Fatalf("messages=%+v", messages)
+	}
+	if len(messages[0].Attachments) != 1 || messages[0].Attachments[0].Filename != "check.png" {
+		t.Fatalf("message attachments=%+v", messages[0].Attachments)
 	}
 }
 

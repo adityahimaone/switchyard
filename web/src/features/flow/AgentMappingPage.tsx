@@ -4,6 +4,7 @@ import { NODES, EDGES, type FlowNodeId, type Point } from "./layout"
 import { elbowPath, elbowPathV, pathLength } from "./elbow"
 import { TravelingDot } from "./TravelingDot"
 import { useFlowTasks, type FlowStage, type FlowTask } from "./useFlowTasks"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const CARD_W = 188
 const CARD_H = 52
@@ -112,7 +113,10 @@ export default function AgentMappingPage() {
     <div className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
       <div className="mr-auto flex items-center gap-2"><Network className="size-4 text-[var(--color-accent)]" /><div><h1 className="text-sm font-semibold tracking-tight">Flow Map</h1><p className="text-[10px] text-[var(--color-ink-3)]">Live task routing and execution map</p></div></div>
       <div className="relative w-full sm:w-48"><Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--color-ink-3)]" /><input aria-label="Search active tasks" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks" className="h-8 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] pl-7 pr-2 text-xs outline-none placeholder:text-[var(--color-ink-4)] focus:border-[var(--color-accent)]/70 focus:ring-1 focus:ring-[var(--color-accent)]/20" /></div>
-      <select aria-label="Filter task stage" value={stage} onChange={(e) => setStage(e.target.value as FlowStage | "all")} className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-xs outline-none focus:border-[var(--color-accent)]/70 focus:ring-1 focus:ring-[var(--color-accent)]/20"><option value="all">All stages</option><option value="dispatched">Dispatched</option><option value="running">Running</option><option value="done">Done</option><option value="failed">Failed</option></select>
+      <Select value={stage} onValueChange={(value) => setStage(value as FlowStage | "all")}>
+        <SelectTrigger size="sm" aria-label="Filter task stage" className="h-8 w-32 bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All stages</SelectItem><SelectItem value="dispatched">Dispatched</SelectItem><SelectItem value="running">Running</SelectItem><SelectItem value="done">Done</SelectItem><SelectItem value="failed">Failed</SelectItem></SelectContent>
+      </Select>
       <span className="border-l border-[var(--color-line)] pl-3 font-mono text-[10px] text-[var(--color-ink-3)]">{activeCount} active</span><span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-300"><i className="size-1.5 rounded-full bg-current" /> connected</span>
     </div>
     {isError && <div className="border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs text-[var(--color-danger)]">Flow Map could not load /api/flow/active.</div>}

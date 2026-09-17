@@ -13,7 +13,8 @@ import (
 
 func registerAttachmentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/attachments", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(10 << 20); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+		if err := r.ParseMultipartForm(12 << 20); err != nil {
 			fail(w, fmt.Errorf("invalid multipart: %w", err), 400)
 			return
 		}
@@ -178,17 +179,25 @@ func registerAttachmentRoutes(mux *http.ServeMux) {
 			fail(w, fmt.Errorf("model required"), 400)
 			return
 		}
-		if !kanban.CanAnalyze(req.Model, a.MIME) {
-			fail(w, fmt.Errorf("model %q cannot analyze %s — use vision-capable model (gpt-4o, claude-3, gemini)", req.Model, a.MIME), 400)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-		defer cancel()
-		result, err := kanban.AnalyzeAttachment(ctx, r.PathValue("id"), req.Model, req.Prompt)
+		resolved, err := kanban.ResolveAttachmentModel(req.Model, a.MIME)
 		if err != nil {
 			fail(w, err, 400)
 			return
 		}
-		writeJSON(w, 200, map[string]string{"result": result, "model": req.Model, "mime": a.MIME})
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+		result, err := kanban.AnalyzeAttachment(ctx, r.PathValue("id"), resolved.Model, req.Prompt)
+		usedModel := resolved.Model
+		if err != nil {
+			if fallback, fallbackErr := kanban.ResolveAttachmentFallbackModel(resolved.Model, a.MIME); fallbackErr == nil {
+				result, err = kanban.AnalyzeAttachment(ctx, r.PathValue("id"), fallback.Model, req.Prompt)
+				usedModel = fallback.Model
+			}
+		}
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 200, map[string]string{"result": result, "model": usedModel, "mime": a.MIME})
 	})
 }

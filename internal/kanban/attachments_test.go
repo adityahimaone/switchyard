@@ -19,6 +19,18 @@ func TestEnsureAttachmentsSchema(t *testing.T) {
 	}
 }
 
+func TestLargePNGIsAccepted(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	data := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 2*1024*1024)...)
+	a, err := StoreAttachmentBytes(data, "large.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.MIME != "image/png" || a.Size != int64(len(data)) {
+		t.Fatalf("attachment=%+v", a)
+	}
+}
+
 func TestSniffAllowed(t *testing.T) {
 	cases := []struct {
 		data []byte
@@ -105,6 +117,12 @@ func TestLinkAndFetch(t *testing.T) {
 }
 
 func TestCapabilityGating(t *testing.T) {
+	if CanAnalyze("codex", "image/png") != true {
+		t.Fatal("codex combo should analyze png")
+	}
+	if CanAnalyze("gpt-5.6-luna", "image/png") != true {
+		t.Fatal("gpt-5.6-luna combo should analyze png")
+	}
 	if CanAnalyze("gpt-4o", "image/png") != true {
 		t.Fatal("gpt-4o should analyze png")
 	}

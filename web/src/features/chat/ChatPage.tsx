@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Archive, ArrowUp, CircleHelp, MoreHorizontal, Pencil, Plus, Search, Square, Trash2, X } from "lucide-react"
+import { Archive, ArrowUp, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Square, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +15,8 @@ import { TaskList, type TaskListTask } from "@/TodoList"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
-import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, openEventStream, sendChatMessage, stopChatRun, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { AttachmentChip } from "@/components/AttachmentChip"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
 type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
@@ -97,7 +98,6 @@ function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
 const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task status", "Help me plan next step"]
 const CHAT_COMMANDS = [
   { command: "/clear", label: "Clear draft", description: "Remove the text in the composer." },
-  { command: "/attach", label: "Attach file", description: "Open the file picker." },
   { command: "/stop", label: "Stop run", description: "Stop the active agent run." },
   { command: "/new", label: "New chat", description: "Start a separate chat room." },
 ]
@@ -166,6 +166,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [profile, setProfile] = useState("default")
   const [workspace, setWorkspace] = useState("")
   const [model, setModel] = useState("")
+  const [modelSearch, setModelSearch] = useState("")
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
   const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
@@ -189,6 +190,21 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [uploadErr, setUploadErr] = useState("")
   const [analyzeBusy, setAnalyzeBusy] = useState<string | null>(null)
   const [analyzeResult, setAnalyzeResult] = useState<string | null>(null)
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+  const skills = useQuery({ queryKey: ["chat-skills"], queryFn: () => listSkills() })
+  const commandQuery = prompt.match(/(?:^|\s)(\/[^\s]*)$/)?.[1] ?? ""
+  const skillQuery = prompt.match(/(?:^|\s)(\$[^\s]*)$/)?.[1].slice(1) ?? ""
+  const commandMatches = CHAT_COMMANDS.filter((item) => item.command.startsWith(commandQuery))
+  const skillMatches = (skills.data ?? []).filter((item) => item.name.toLowerCase().startsWith(skillQuery.toLowerCase()))
+  const autocompleteOpen = commandQuery.length > 0 || skillQuery.length > 0
+  function insertSkill(name: string) {
+    setPrompt((value) => value.replace(/(?:^|\s)\$[^\s]*$/, (match) => `${match.startsWith(" ") ? " " : ""}$${name} `))
+  }
+  function executeCommand(command: string) {
+    if (command === "/clear") setPrompt("")
+    if (command === "/stop" && run && isRunning) void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))
+    if (command === "/new") void newChat()
+  }
   async function handleFiles(files: FileList | File[]) {
     const list = Array.from(files as FileList)
     if (!list.length) return
@@ -231,6 +247,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     providers.data?.forEach((p) => p.models.forEach((m) => set.add(m)))
     return Array.from(set).sort()
   }, [profiles, providers.data])
+  const filteredModelOptions = useMemo(() => {
+    const needle = modelSearch.trim().toLowerCase()
+    if (!needle) return modelOptions
+    return modelOptions.filter((option) => option.toLowerCase().includes(needle))
+  }, [modelOptions, modelSearch])
 
   function setActive(id: string) {
     setSessionID(id)
@@ -313,6 +334,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       window.setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 80)
     },
     mutationFn: () => {
+      if (uploading) throw new Error("Wait for attachment upload to finish")
       if (model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
       const ids = pendingAtts.map((a) => a.id)
       if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
@@ -465,7 +487,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         ) : activeMessages.map((message) => (
           <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
             {message.role === "user" ? (
-              <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">{message.content}</div>
+              <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+                <div>{message.content}</div>
+                {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
+              </div>
             ) : (
               <div className="w-full min-w-0">
                 {(() => {
@@ -489,17 +514,36 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       <div className="border-t border-[var(--color-line)] bg-[var(--color-surface)]/40 p-3 backdrop-blur">
         <BorderBeam size="md" colorVariant="colorful" strength={0.7} className="mx-auto max-w-3xl">
           <div className="rounded-2xl bg-[var(--color-surface)] p-2">
-          <div>
+          <div className="relative overflow-visible">
+            {autocompleteOpen && (commandMatches.length > 0 || skillMatches.length > 0) && <div className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-full overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1 shadow-lg">
+              {commandMatches.map((item) => <button key={item.command} type="button" className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.06]" onMouseDown={(event) => event.preventDefault()} onClick={() => { setPrompt((value) => value.replace(/(?:^|\s)\/[^\s]*$/, `${item.command} `)); if (item.command === "/clear" || item.command === "/stop" || item.command === "/new") executeCommand(item.command) }}><span className="w-14 shrink-0 font-mono text-[11px] text-[var(--color-accent)]">{item.command}</span><span className="text-xs"><span className="block">{item.label}</span><span className="text-[10px] text-[var(--color-ink-3)]">{item.description}</span></span></button>)}
+              {skillMatches.slice(0, 12).map((item) => <button key={item.name} type="button" className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.06]" onMouseDown={(event) => event.preventDefault()} onClick={() => insertSkill(item.name)}><Puzzle className="mt-0.5 size-3.5 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 text-xs"><span className="block font-mono">${item.name}</span><span className="block truncate text-[10px] text-[var(--color-ink-3)]">{item.description}</span></span></button>)}
+            </div>}
             <Textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (prompt.trim() && sessionID && !send.isPending && !isRunning) send.mutate() } }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && autocompleteOpen) { event.preventDefault(); setPrompt((value) => value.replace(/(?:^|\s)[/$][^\s]*$/, "")); return }
+                if (event.key === "Enter" && !event.shiftKey) {
+                  if (commandMatches.length > 0 && commandQuery) { event.preventDefault(); const item = commandMatches[0]; setPrompt((value) => value.replace(/(?:^|\s)\/[^\s]*$/, `${item.command} `)); executeCommand(item.command); return }
+                  if (skillMatches.length > 0 && skillQuery) { event.preventDefault(); insertSkill(skillMatches[0].name); return }
+                  event.preventDefault(); if (prompt.trim() && sessionID && !send.isPending && !isRunning && !uploading) send.mutate()
+                }
+              }}
               placeholder="Message agent..."
               rows={1}
-              className="field-sizing-content max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 shadow-none focus-visible:ring-0"
+              className="field-sizing-content max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 pr-12 shadow-none focus-visible:ring-0"
             />
+
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="relative mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+            <DropdownMenu open={composerMenuOpen} onOpenChange={setComposerMenuOpen}>
+              <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="outline" className="size-8 rounded-full" aria-label="Add to message"><Plus className="size-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56 border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+                <DropdownMenuItem onSelect={() => fileRef.current?.click()}><FileImage className="size-4" /> Attach image</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}$`)}><Puzzle className="size-4" /> Use skill</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Select value={profile || "default"} onValueChange={setProfile}>
               <SelectTrigger size="sm" className="h-7 w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="profile" /></SelectTrigger>
               <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]">{profiles.map((item) => <SelectItem key={item.name} value={item.name} disabled={!item.valid} className="text-sm">
@@ -518,27 +562,24 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
             <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
               <SelectTrigger size="sm" className="h-7 w-32 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="model default" /></SelectTrigger>
-              <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__default">model default</SelectItem>{modelOptions.map((v) => <SelectItem key={v} value={v} className="max-w-72 truncate text-sm" title={v}>{v}</SelectItem>)}</SelectContent>
+              <SelectContent className="w-72 max-h-[min(28rem,calc(100dvh-1rem))] border-[var(--color-line)] bg-[var(--color-surface)]">
+                <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
+                  <Input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+                </div>
+                <SelectItem value="__default">model default</SelectItem>
+                {filteredModelOptions.length === 0 && <p className="px-2 py-1.5 text-xs text-neutral-500">No model found</p>}
+                {filteredModelOptions.map((v) => <SelectItem key={v} value={v} className="max-w-72 truncate text-sm" title={v}>{v}</SelectItem>)}
+              </SelectContent>
             </Select>
-            <input ref={fileRef} type="file" multiple className="hidden" onChange={(event) => void handleFiles(event.target.files ?? [])} />
-            {uploading ? <Button size="sm" variant="outline" className="ml-auto h-8 rounded-full" disabled><Plus className="mr-1 size-3 animate-spin" /> Uploading…</Button> : <Button size="sm" variant="outline" className="ml-auto h-8 rounded-full" onClick={() => fileRef.current?.click()}><Plus className="mr-1 size-3" /> Attach {pendingAtts.length ? `(${pendingAtts.length})` : ""}</Button>}
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple className="hidden" onChange={(event) => void handleFiles(event.target.files ?? [])} />
+            {uploading && <span className="text-[11px] text-[var(--color-ink-3)]">Uploading…</span>}
             {pendingAtts.length > 0 && <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={!model && !profiles.find((p) => p.name === profile)?.model || analyzeBusy !== null} onClick={() => { const first = pendingAtts[0]; if (first) void analyzePending(first.id) }}>{analyzeBusy ? "Analyzing…" : "Analyze"}</Button>}
             {uploadErr && <span className="text-[11px] text-red-400">{uploadErr}</span>}
             {analyzeResult && <p className="ml-2 max-w-md truncate text-[11px] text-emerald-400" title={analyzeResult}>✓ {analyzeResult}</p>}
-            {pendingAtts.length > 0 && <div className="ml-2 flex gap-1.5">{pendingAtts.map((a) => <span key={a.id} className="flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px]">{a.mime.startsWith("image/") ? "🖼" : "📄"} {a.filename}<button type="button" className="ml-0.5 text-neutral-400 hover:text-red-400" onClick={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))}>×</button></span>)}</div>}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="sm" variant="outline" className="h-8 rounded-full"><CircleHelp className="size-3.5" /> Commands</Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 border-[var(--color-line)] bg-[var(--color-surface-raised)]">
-                <div className="px-2 py-1.5 text-[11px] text-[var(--color-ink-3)]">Shortcuts supported by this chat</div>
-                {CHAT_COMMANDS.map((item) => <DropdownMenuItem key={item.command} onSelect={() => {
-                  if (item.command === "/clear") setPrompt("")
-                  if (item.command === "/attach") fileRef.current?.click()
-                  if (item.command === "/stop" && run && isRunning) void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))
-                  if (item.command === "/new") void newChat()
-                }} className="items-start py-2"><span className="w-14 shrink-0 font-mono text-[11px] text-[var(--color-accent)]">{item.command}</span><span className="min-w-0"><span className="block text-xs">{item.label}</span><span className="block text-[10px] text-[var(--color-ink-3)]">{item.description}</span></span></DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {isRunning && run ? <Button type="button" size="icon" aria-label="Stop agent" title="Stop agent" className="size-8 rounded-full bg-[var(--color-danger)] text-white hover:bg-[var(--color-danger)]/85" onClick={() => void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))}><Square className="size-3.5 fill-current" /></Button> : <Button type="button" size="icon" aria-label="Send message" className="size-8 rounded-full" disabled={!prompt.trim() || !sessionID || send.isPending} onClick={() => send.mutate()}>{send.isPending ? <X className="size-4" /> : <ArrowUp className="size-4" />}</Button>}
+            {pendingAtts.length > 0 && <div className="mt-2 flex w-full flex-wrap items-center gap-1.5">{pendingAtts.map((a) => <span key={a.id} className="flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px]">{a.mime.startsWith("image/") ? "🖼" : "📄"} {a.filename}<button type="button" className="ml-0.5 text-neutral-400 hover:text-red-400" onClick={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))}>×</button></span>)}</div>}
+            <div className="ml-auto shrink-0 rounded-full bg-[var(--color-surface)] p-0.5">
+              {isRunning && run ? <Button type="button" size="icon" aria-label="Stop agent" title="Stop agent" className="relative z-10 size-9 rounded-full border border-[var(--color-line)] bg-[var(--color-danger)] text-white shadow-md hover:bg-[var(--color-danger)]/85" onClick={() => void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))}><Square className="size-3.5 fill-current" /></Button> : <Button type="button" size="icon" aria-label="Send message" className="relative z-10 size-9 rounded-full border border-[var(--color-line)] bg-primary text-primary-foreground shadow-md hover:bg-primary/90" disabled={!prompt.trim() || !sessionID || send.isPending || uploading} onClick={() => send.mutate()}>{send.isPending ? <X className="size-4" /> : <ArrowUp className="size-4" />}</Button>}
+            </div>
           </div>
           {send.isError && <div className="pt-2 text-xs text-red-400">{(send.error as Error).message}</div>}
           </div>

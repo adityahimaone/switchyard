@@ -10,11 +10,12 @@ import (
 // ProviderItem is one entry from config.yaml custom_providers (model roster
 // behind a "custom" provider id). APIKeySet hides the secret value.
 type ProviderItem struct {
-	Name         string   `json:"name"`
-	BaseURL      string   `json:"base_url"`
-	DefaultModel string   `json:"default_model"`
-	Models       []string `json:"models"` // sorted ids for picker
-	APIKeySet    bool     `json:"api_key_set"`
+	Name         string                     `json:"name"`
+	BaseURL      string                     `json:"base_url"`
+	DefaultModel string                     `json:"default_model"`
+	Models       []string                   `json:"models"` // sorted ids for picker
+	Capabilities map[string]ModelCapability `json:"capabilities"`
+	APIKeySet    bool                       `json:"api_key_set"`
 }
 
 type providerRaw struct {
@@ -46,9 +47,17 @@ func ListProviders() ([]ProviderItem, error) {
 			mids = append(mids, k)
 		}
 		sort.Strings(mids)
+		caps := map[string]ModelCapability{}
+		cfg, _ := LoadAttachmentAnalysisConfig()
+		for _, model := range mids {
+			caps[model] = ModelCapabilityFor(model, cfg)
+			if meta, ok := p.Models[model].(map[string]any); ok {
+				caps[model] = capabilityFromMetadata(meta, caps[model])
+			}
+		}
 		out = append(out, ProviderItem{
 			Name: p.Name, BaseURL: p.BaseURL, DefaultModel: p.Model,
-			Models: mids, APIKeySet: p.APIKey != "",
+			Models: mids, Capabilities: caps, APIKeySet: p.APIKey != "",
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

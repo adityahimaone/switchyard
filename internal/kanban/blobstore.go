@@ -1,6 +1,7 @@
 package kanban
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -68,7 +69,7 @@ func (r *R2Store) Put(key string, data []byte) error {
 	_, err := r.client.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: aws.String(r.bucket),
 		Key:    aws.String(key),
-		Body:   strings.NewReader(string(data)),
+		Body:   bytes.NewReader(data),
 	})
 	return err
 }

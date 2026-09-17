@@ -794,6 +794,26 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, providers)
 	})
+	mux.HandleFunc("GET /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
+		cfg, err := kanban.LoadAttachmentAnalysisConfig()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, http.StatusOK, cfg)
+	})
+	mux.HandleFunc("PUT /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
+		var cfg kanban.AttachmentAnalysisConfig
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&cfg); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		if err := kanban.SaveAttachmentAnalysisConfig(cfg); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, cfg)
+	})
 	mux.HandleFunc("POST /api/ai/improve-prompt", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Title string `json:"title"`

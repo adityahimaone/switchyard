@@ -24,12 +24,13 @@ type ChatSession struct {
 }
 
 type ChatMessage struct {
-	ID        string `json:"id"`
-	SessionID string `json:"session_id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
-	RunID     string `json:"run_id,omitempty"`
+	ID          string       `json:"id"`
+	SessionID   string       `json:"session_id"`
+	Role        string       `json:"role"`
+	Content     string       `json:"content"`
+	CreatedAt   int64        `json:"created_at"`
+	RunID       string       `json:"run_id,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 type ChatRun struct {
@@ -308,6 +309,11 @@ func ListChatMessages(sessionID string) ([]ChatMessage, error) {
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.CreatedAt, &m.RunID); err != nil {
 			return nil, err
 		}
+		attachments, err := ListChatAttachments(m.ID)
+		if err != nil {
+			return nil, err
+		}
+		m.Attachments = attachments
 		out = append(out, m)
 	}
 	if out == nil {

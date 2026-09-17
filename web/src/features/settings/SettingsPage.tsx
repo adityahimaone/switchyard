@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, archiveBoard, type Board } from "@/api"
 import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
+import AttachmentAnalysisSettings from "./AttachmentAnalysisSettings"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const TABS = [
   { id: "general", label: "General" },
@@ -16,6 +18,7 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "boards", label: "Boards" },
   { id: "advanced", label: "Advanced" },
+  { id: "ai", label: "AI / Vision" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -200,10 +203,10 @@ export default function SettingsPage() {
                       <p className="text-xs text-neutral-500">Task polling interval</p>
                     </div>
                   </div>
-                  <select value={refreshMs} onChange={(e) => setRefresh(Number(e.target.value))}
-                    className="h-8 rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-xs text-neutral-200 outline-none focus:border-[var(--color-accent)]">
-                    {refreshOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <Select value={String(refreshMs)} onValueChange={(value) => setRefresh(Number(value))}>
+                    <SelectTrigger size="sm" aria-label="Board auto-refresh interval" className="h-8 w-20 bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{refreshOpts.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -235,15 +238,10 @@ export default function SettingsPage() {
                       <p className="text-xs text-ink-4">System mengikuti OS · dark default</p>
                     </div>
                   </div>
-                  <select
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value as ThemePreference)}
-                    className="h-8 rounded border border-line bg-inset px-2 text-xs text-ink-2 outline-none focus:border-accent"
-                  >
-                    <option value="system">System</option>
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                  </select>
+                  <Select value={theme} onValueChange={(value) => setTheme(value as ThemePreference)}>
+                    <SelectTrigger size="sm" aria-label="Theme" className="h-8 w-24 bg-inset text-xs text-ink-2"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="system">System</SelectItem><SelectItem value="dark">Dark</SelectItem><SelectItem value="light">Light</SelectItem></SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -359,10 +357,10 @@ export default function SettingsPage() {
                       <p className="text-xs text-neutral-500">Auto-ping frequency for workspace health</p>
                     </div>
                   </div>
-                  <select value={pingMs} onChange={(e) => setPing(Number(e.target.value))}
-                    className="h-8 rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-xs text-neutral-200 outline-none focus:border-[var(--color-accent)]">
-                    {pingOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <Select value={String(pingMs)} onValueChange={(value) => setPing(Number(value))}>
+                    <SelectTrigger size="sm" aria-label="Workspace ping interval" className="h-8 w-20 bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{pingOpts.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -393,6 +391,10 @@ export default function SettingsPage() {
               {!show("Ping", "Workspace", "Heartbeat", "Export", "Backup", "Data") && (
                 <p className="text-xs text-neutral-600">No match.</p>
               )}
+            </TabsContent>
+
+            <TabsContent value="ai" className="mt-0 space-y-6">
+              <AttachmentAnalysisSettings show={show} />
             </TabsContent>
           </Tabs>
         </main>

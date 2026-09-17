@@ -349,6 +349,8 @@ var modelCaps = map[string]struct {
 	vision bool
 	pdf    bool
 }{
+	"codex":       {true, true},
+	"gpt-5":       {true, true},
 	"gpt-4o":      {true, true},
 	"gpt-4o-mini": {true, true},
 	"claude-3":    {true, true},

@@ -11,7 +11,7 @@ import (
 
 func TestChatExecutorArgs(t *testing.T) {
 	cases := []struct{ name, agent, prompt, want string }{
-		{"hermes", "hermes", "explain this implementation in detail", "chat -Q --reasoning minimal"},
+		{"hermes", "hermes", "explain this implementation in detail", "chat -Q --reasoning low"},
 		{"fast", "hermes", "hello", "chat -Q --reasoning none"},
 	}
 	for _, tc := range cases {

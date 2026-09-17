@@ -225,12 +225,21 @@ export interface ProfileDetail {
   avatar_url?: string
 }
 
+export interface ModelCapability { vision: boolean; pdf: boolean }
 export interface ProviderModel {
   name: string
   base_url: string
   default_model: string
   models: string[]
+  capabilities: Record<string, ModelCapability>
   api_key_set: boolean
+}
+export interface AttachmentAnalysisConfig {
+  mode: "auto" | "dedicated"
+  dedicated_model: string
+  dedicated_provider: string
+  fallback_on_error: boolean
+  model_capabilities: Record<string, ModelCapability>
 }
 
 export interface TaskComment {
@@ -336,10 +345,11 @@ export function toastGlobal(message: string, tone: "success" | "error" | "info" 
 export type ChatAgent = "hermes"
 export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
 export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number }
-export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string }
+export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string; attachments?: Attachment[] }
 export interface Attachment { id: string; filename: string; mime: string; size: number; sha256: string; storage_provider: string; storage_key: string; created_at: number }
 export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
 export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
+export interface SkillMeta { name: string; description: string; category?: string; path?: string }
 export function listChatSessions(archived = false) { return api<ChatSession[]>(`/api/chat/sessions${archived ? "?archived=1" : ""}`) }
 export function createChatSession(input: Partial<ChatSession>) { return api<ChatSession>("/api/chat/sessions", { method: "POST", body: JSON.stringify(input) }) }
 export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
@@ -348,7 +358,15 @@ export function archiveChatSession(id: string) { return api<{ ok: boolean }>(`/a
 export function unarchiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/unarchive`, { method: "POST" }) }
 export function deleteChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }) }
 export function listChatMessages(id: string) { return api<ChatMessage[]>(`/api/chat/sessions/${id}/messages`) }
+const attachmentMaxBytes = 10 * 1024 * 1024
+const attachmentMIMEs = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"])
+const attachmentExtensions = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf"])
+
 export async function uploadAttachment(file: File) {
+  if (file.size === 0) throw new Error(`${file.name}: file kosong`)
+  if (file.size > attachmentMaxBytes) throw new Error(`${file.name}: ukuran maksimal 10 MB`)
+  const extension = file.name.toLowerCase().split(".").pop() ?? ""
+  if (!attachmentMIMEs.has(file.type) && !attachmentExtensions.has(extension)) throw new Error(`${file.name}: format tidak didukung. Gunakan PNG, JPEG, WEBP, GIF, atau PDF`)
   const body = new FormData()
   body.append("file", file)
   const res = await fetch("/api/attachments", { method: "POST", body, credentials: "include" })
@@ -361,6 +379,9 @@ export function sendChatMessage(id: string, input: { content: string; agent?: st
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
 export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
 export function listProviders() { return api<ProviderModel[]>("/api/providers") }
+export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
+export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }
+export function saveAttachmentAnalysisConfig(config: AttachmentAnalysisConfig) { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis", { method: "PUT", body: JSON.stringify(config) }) }
 export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }
 export function retryChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}/retry`, { method: "POST" }) }
 export function getChatActiveRun(sessionID: string) { return api<ChatRun | null>(`/api/chat/sessions/${sessionID}/active-run`) }

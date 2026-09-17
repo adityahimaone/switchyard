@@ -111,6 +111,7 @@ export default function TaskDialog({
   }
 
   async function submit() {
+    if (uploading) { setErr("Wait for attachment upload to finish"); return }
     if (!title.trim()) { setErr("Title required"); return }
     if (executor === "shell" && !command.trim()) { setErr("Command required for shell executor"); return }
     setBusy(true); setErr(null)
@@ -132,9 +133,16 @@ export default function TaskDialog({
       const rec = created as { id?: string } | null
       const taskId = rec?.id ? String(rec.id) : ""
       if (taskId && slug) {
-        await Promise.all(pendingAtts.map((a) => api(`/api/boards/${slug}/tasks/${taskId}/attachments`, { method: "POST", body: JSON.stringify({ attachment_id: a.id }) }).catch(() => undefined)))
+        try {
+          await Promise.all(pendingAtts.map((a) => api(`/api/boards/${slug}/tasks/${taskId}/attachments`, { method: "POST", body: JSON.stringify({ attachment_id: a.id }) })))
+        } catch (e) {
+          setErr(`Task created, but attachment link failed: ${(e as Error).message}`)
+          setBusy(false)
+          return
+        }
       }
     }
+    onClose()
   }
 
   const selCls = "w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9"
@@ -256,7 +264,7 @@ export default function TaskDialog({
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-3">
           <Label className="block text-xs text-neutral-400">Attachments (image / PDF)</Label>
-          <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files ?? [])} />
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files ?? [])} />
           <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
             <Paperclip className="mr-1 size-3" /> {uploading ? "Uploading…" : "Attach file"}
           </Button>
@@ -264,7 +272,7 @@ export default function TaskDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
+          <Button size="sm" onClick={submit} disabled={busy || uploading} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
             {busy ? "…" : "Create"}
           </Button>
         </div>
