@@ -145,3 +145,16 @@ Rule: finding #1 (default password `123456`) explicitly skipped. Tick each item 
 - [x] `go build ./cmd/server`
 - [x] `pnpm build`
 - [x] Acceptance smoke checks for each checked feature — domain/API tests plus authenticated status smoke
+
+## Active roadmap — Hermes WebUI parity
+
+Design: `docs/superpowers/specs/2026-09-17-hermes-webui-parity-roadmap-design.md`
+Phase 1 design: `docs/superpowers/specs/2026-09-17-chat-workspace-v1-design.md`
+Program index: `docs/superpowers/plans/2026-09-17-parity-program-index.md`
+
+Status: planning complete; implementation not started.
+
+- [ ] Phase 1 — Chat Workspace: `docs/superpowers/plans/2026-09-17-chat-workspace-v1.md`
+- [ ] Phase 2 — Agent Workspace: `docs/superpowers/plans/2026-09-17-agent-workspace-parity.md`
+- [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md`
+- [ ] Phase 4 — MCP/extensions/gateway: separate design approval required
