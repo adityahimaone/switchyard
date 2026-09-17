@@ -890,6 +890,7 @@ func main() {
 	})
 
 	registerChatRoutes(mux)
+	registerWorkspaceFileRoutes(mux)
 
 	// attachments + vision (R2 when configured, local fallback)
 	if err := kanban.ConfigureAttachmentStore(); err != nil {
