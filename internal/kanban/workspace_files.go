@@ -34,7 +34,7 @@ func cleanWorkspaceRelative(path string) (string, error) {
 		return "", fmt.Errorf("invalid workspace path")
 	}
 	clean := filepath.ToSlash(filepath.Clean(path))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+	if clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", fmt.Errorf("workspace path escapes root")
 	}
 	return clean, nil
