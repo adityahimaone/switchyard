@@ -16,7 +16,9 @@ import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
 import { AttachmentChip } from "@/components/AttachmentChip"
-import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { EventCards } from "@/components/chat/EventCard"
+import { SessionMenu } from "@/components/chat/SessionMenu"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
 type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
@@ -375,6 +377,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       setActionBusy(false)
     }
   }
+  async function duplicateSession(item: ChatSession) { const dup = await duplicateChatSession(item.id); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); setActive(dup.id); toastGlobal("Chat duplicated") }
+  async function forkSession(item: ChatSession, messageId: string) { const fork = await forkChatSession(item.id, messageId); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); setActive(fork.id); toastGlobal("Fork created") }
   const activeMessages: ChatMessage[] = messages.data ?? []
   const isRunning = run?.state === "loading" || run?.state === "running"
   useEffect(() => {
@@ -475,6 +479,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</div>
         </div>
+        {current.data && <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />}
       </header>
       <MessageScroller busy={isRunning} showJump={showJumpToLatest} onFollowChange={(following) => { shouldFollowChatRef.current = following; setShowJumpToLatest(!following) }} onJump={() => { shouldFollowChatRef.current = true; setShowJumpToLatest(false); bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }) }}>
         <div className="mx-auto max-w-3xl space-y-6">
@@ -492,14 +497,16 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
               </div>
             ) : (
-              <div className="w-full min-w-0">
+              <div className="relative w-full min-w-0">
                 {(() => {
                   const messageStreaming = isRunning && message.id === activeMessages[activeMessages.length - 1]?.id
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{!messageStreaming && msgEvents.length > 0 && <AgentTaskPlan events={msgEvents} title="Context activity" defaultOpen={false} complete={msgRun?.state === "done"} />}</StreamingText></>
+                  const cardEvents = msgEvents.filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{!messageStreaming && msgEvents.length > 0 && <AgentTaskPlan events={msgEvents} title="Context activity" defaultOpen={false} complete={msgRun?.state === "done"} />}<EventCards events={cardEvents} /></StreamingText></>
                 })()}
+                {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
@@ -507,6 +514,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         {run && isRunning && <div className="chat-agent-progress">
           <AgentProgress label={progressLabelForEvents(events.data ?? [], run.state)} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} />
           <AgentTaskPlan events={events.data ?? []} title="Context activity" defaultOpen />
+          <EventCards events={(events.data ?? []).filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")} />
         </div>}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
