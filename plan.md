@@ -171,4 +171,8 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [ ] Phase 3 browser-rendered acceptance (browser tool blocks private local URL)
 - [x] Phase 3 — Operations and Trust: local implementation + authenticated API acceptance complete
 - [ ] Phase 3 — browser acceptance closeout (requires non-private authenticated URL)
-- [ ] Phase 4 — MCP/extensions/gateway: separate design approval required
+- [x] Phase 4 design approved: constrained ecosystem registry, no arbitrary plugin execution
+- [x] Phase 4 backend: profile-scoped MCP and extension registries, validation, atomic writes, fail-closed gateway status
+- [x] Phase 4 frontend: Ecosystem page, registry CRUD, capability allowlist display
+- [ ] Phase 4 authenticated live smoke + browser-rendered acceptance (isolated smoke command blocked by execution guard; browser private URL blocked)
+- [ ] Phase 4 MCP invocation, extension execution, gateway sessions: separate auth/transport design required before implementation
