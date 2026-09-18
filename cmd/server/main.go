@@ -1166,6 +1166,28 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, mem)
 	})
+	mux.HandleFunc("GET /api/profiles/{profile}/memory/{scope}", func(w http.ResponseWriter, r *http.Request) {
+		content, mtime, err := kanban.ReadProfileMemory(r.PathValue("profile"), r.PathValue("scope"))
+		if err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"profile": r.PathValue("profile"), "scope": r.PathValue("scope"), "content": content, "mtime": mtime})
+	})
+	mux.HandleFunc("PUT /api/profiles/{profile}/memory/{scope}", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 512<<10)).Decode(&body); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		if err := kanban.WriteProfileMemory(r.PathValue("profile"), r.PathValue("scope"), body.Content); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+	})
 
 	mux.Handle("/", spa(dist))
 
