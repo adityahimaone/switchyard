@@ -11,6 +11,7 @@ import { BorderBeam } from "@/components/ui/border-beam"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
 import { AgentProgress } from "@/components/agents/loading-states"
+import { TaskList, type TaskListTask } from "@/TodoList"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
@@ -123,16 +124,20 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
   if (!run) return null
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
   const elapsed = elapsedLabel(run.started_at, run.ended_at, now)
-  return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)]/45 px-3 py-2 text-xs">
-    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[var(--color-ink-2)]">
-      <span className="flex min-w-0 items-center gap-2"><span className={stateTone(run.state)}>{stateLabel(run.state)}</span><span className="truncate text-[var(--color-ink-3)]">{phase?.label ?? progressLabelForEvents(events, run.state)}</span></span>
-      <span className="shrink-0 font-mono tabular-nums text-[var(--color-ink-3)]">{elapsed} · {events.length} events</span>
-    </summary>
-    <div className="mt-2 border-t border-[var(--color-line)] pt-2">
-      {active && <div className="mb-2"><AgentProgress label={progressLabelForEvents(events, run.state)} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} /></div>}
-      <ActivityTimeline run={run} events={events} />
-    </div>
-  </details>
+  const rows = events.length ? events : [{ id: -1, run_id: run.id, kind: run.state, payload: JSON.stringify({ state: run.state }), created_at: run.started_at }]
+  const tasks: TaskListTask[] = rows.map((event, index) => {
+    const payload = eventPayload(event)
+    const state = (payload.state ?? event.kind) as ChatState
+    const isState = ["loading", "running", "done", "error", "cancelled"].includes(event.kind)
+    return {
+      id: `${event.kind}-${event.id}-${index}`,
+      label: isState ? `${stateLabel(state)} · ${progressLabelForEvents(events, state)}` : activityLabel(event),
+      detail: event.created_at ? new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : undefined,
+      status: event.kind === "error" || event.kind === "cancelled" ? "error" : isState && active ? "active" : "done",
+      tone: event.kind === "tool_output" ? "tool" : isState ? "session" : "model",
+    }
+  })
+  return <TaskList title="Context activity" tasks={tasks} defaultOpen={open} leading={active ? <div className="mb-2 border-b border-[var(--color-line)]/50 pb-2"><AgentProgress label={phase?.label ?? progressLabelForEvents(events, run.state)} elapsedSeconds={Math.max(0, (now - run.started_at * 1000) / 1000)} /></div> : undefined} />
 }
 
 function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
@@ -544,18 +549,19 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             ) : (
               <div className="relative w-full min-w-0">
                 {(() => {
-                  const messageStreaming = isRunning && message.id === activeMessages[activeMessages.length - 1]?.id
+                  const isLiveRunMessage = !!run && (message.id === run.message_id || message.run_id === run.id || (isRunning && message.id === activeMessages[activeMessages.length - 1]?.id))
+                  const messageStreaming = isRunning && isLiveRunMessage
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
-                  const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
-                  const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{!messageStreaming && msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
+                  const msgEvents = isLiveRunMessage ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
         ))}
-        {run && isRunning && !activeMessages.some((message) => message.id === run.message_id) && <ActivityContext run={run} events={events.data ?? []} />}
+        {run && isRunning && (!run.message_id || !activeMessages.some((message) => message.id === run.message_id || message.run_id === run.id)) && <ActivityContext run={run} events={events.data ?? []} />}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>
