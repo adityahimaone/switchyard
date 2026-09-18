@@ -174,5 +174,6 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [x] Phase 4 design approved: constrained ecosystem registry, no arbitrary plugin execution
 - [x] Phase 4 backend: profile-scoped MCP and extension registries, validation, atomic writes, fail-closed gateway status
 - [x] Phase 4 frontend: Ecosystem page, registry CRUD, capability allowlist display
-- [ ] Phase 4 authenticated live smoke + browser-rendered acceptance (isolated smoke command blocked by execution guard; browser private URL blocked)
+- [x] Phase 4 isolated registry lifecycle tests + read-only live smoke: validation, profile isolation, gateway disabled, manifest/service worker
+- [ ] Phase 4 browser-rendered acceptance (browser provider unavailable; public HTTPS returns `200` via curl)
 - [ ] Phase 4 MCP invocation, extension execution, gateway sessions: separate auth/transport design required before implementation
