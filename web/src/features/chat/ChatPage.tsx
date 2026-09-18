@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { BorderBeam } from "@/components/ui/border-beam"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
+import { AgentProgress } from "@/components/agents/loading-states"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
@@ -127,7 +128,10 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
       <span className="flex min-w-0 items-center gap-2"><span className={stateTone(run.state)}>{stateLabel(run.state)}</span><span className="truncate text-[var(--color-ink-3)]">{phase?.label ?? progressLabelForEvents(events, run.state)}</span></span>
       <span className="shrink-0 font-mono tabular-nums text-[var(--color-ink-3)]">{elapsed} · {events.length} events</span>
     </summary>
-    <div className="mt-2 border-t border-[var(--color-line)] pt-2"><ActivityTimeline run={run} events={events} /></div>
+    <div className="mt-2 border-t border-[var(--color-line)] pt-2">
+      {active && <div className="mb-2"><AgentProgress label={progressLabelForEvents(events, run.state)} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} /></div>}
+      <ActivityTimeline run={run} events={events} />
+    </div>
   </details>
 }
 
