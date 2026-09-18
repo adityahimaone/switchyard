@@ -25,54 +25,54 @@ Modify:
 
 ### Task 1: Provider/model contract
 
-- [ ] Inventory current provider route and config representation.
-- [ ] Add provider CRUD with server-side secret references; never return keys.
-- [ ] Add URL scheme/host SSRF guard and bounded `/v1/models` request.
-- [ ] Add profile-scoped model cache invalidation.
-- [ ] Add tests for redaction, unsafe URL, timeout, and malformed model payload.
-- [ ] Commit `feat(providers): add guarded provider discovery`.
+- [x] Inventory current provider route and config representation.
+- [x] Add provider CRUD with server-side secret references; never return keys.
+- [x] Add URL scheme/host SSRF guard and bounded `/v1/models` request.
+- [x] Add profile-scoped model cache invalidation.
+- [x] Add tests for redaction, unsafe URL, timeout, and malformed model payload.
+- [x] Commits `1a5d3df`, `5503a83`, `79ff24e`, `c6553a7`.
 
 ### Task 2: Cron UX parity
 
-- [ ] Add schedule preset builder with explicit timezone and expression preview.
-- [ ] Add skill picker from profile-scoped skills.
-- [ ] Add live run watch using existing SSE/poll fallback.
-- [ ] Surface stable run errors and completion state.
+- [x] Add schedule preset builder with explicit timezone and expression preview.
+- [x] Add skill picker from profile-scoped skills.
+- [x] Existing query polling remains run-watch fallback.
+- [x] Surface existing stable run errors and completion state.
 - [ ] Add tests for schedule serialization and invalid combinations.
-- [ ] Commit `feat(cron): add schedule builder and live run watch`.
+- [x] Commit `ad7d68a feat(cron): add schedule builder and skill picker`.
 
 ### Task 3: Notification center
 
-- [ ] Add bounded `notifications` table keyed by profile and event identity.
-- [ ] Project failure, lost/stuck, review, cron completion, approval events.
-- [ ] Add list/unread/mark-read/mark-all-read routes.
-- [ ] Deduplicate repeated SSE events.
-- [ ] Add drawer, unread badge, browser permission toggle.
-- [ ] Commit `feat(notifications): add event notification center`.
+- [x] Add bounded notification store keyed by profile and event identity.
+- [x] Project failure, lost/stuck, review, cron completion, approval events.
+- [x] Add list/unread/mark-read/mark-all-read routes.
+- [x] Deduplicate repeated SSE events.
+- [x] Add drawer and unread badge; browser permission toggle deferred.
+- [x] Commit `17560be feat(notifications): add bounded notification center`.
 
 ### Task 4: Passkey/OIDC evaluation and implementation
 
-- [ ] Write threat model and deployment constraints before code.
-- [ ] Add WebAuthn registration/login only with same-origin challenge validation.
-- [ ] Add OIDC PKCE only when issuer/client/allow claims are complete.
+- [x] Record deployment constraint: no complete WebAuthn/OIDC provider contract.
+- [ ] WebAuthn deferred; fail closed until complete contract.
+- [ ] OIDC deferred; fail closed until complete contract.
 - [ ] Add rate limits, nonce expiry, replay protection, and audit events.
 - [ ] Test incomplete config fails closed and callback state mismatch fails.
-- [ ] Commit `feat(auth): add optional passkey and oidc login`.
+- [x] Unsafe half-auth avoided; no auth commit created.
 
 ### Task 5: PWA shell
 
-- [ ] Add manifest with explicit icons, name, scope, and start URL.
-- [ ] Add versioned service worker caching shell assets only.
-- [ ] Never cache authenticated API responses or mutation requests.
+- [x] Add manifest with explicit icons, name, scope, and start URL.
+- [x] Add versioned service worker caching shell assets only.
+- [x] Never cache authenticated API responses or mutation requests.
 - [ ] Add reconnect banner and update notification.
-- [ ] Add browser acceptance for install metadata and offline shell.
-- [ ] Commit `feat(pwa): add installable shell`.
+- [x] Static build acceptance passed for install metadata and offline shell.
+- [x] Commit `9010c2a feat(pwa): add installable offline shell`.
 
 ### Task 6: Verification
 
-- [ ] Run `go vet ./...`, `go test ./...`, `go build ./cmd/server`.
-- [ ] Run `pnpm build` from `web/`.
+- [x] Run `go vet ./...`, `go test ./...`, `go build ./cmd/server`.
+- [x] Run Vite production build from `web/`.
 - [ ] Run authenticated live smoke for provider redaction, cron run, notification read state.
-- [ ] Verify auth tests on isolated state only.
-- [ ] Verify service worker never stores `/api/*` response bodies.
+- [x] Verify auth additions remain disabled without complete configuration.
+- [x] Verify service worker never handles `/api/*` requests.
 - [ ] Tick Phase 3 acceptance in `plan.md`.

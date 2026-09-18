@@ -166,5 +166,7 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [x] Phase 2 remote Mac canary through node-agent: dispatch ack `node_id=mac`; result `success=true`; `CANARY_HOST=Adityas-MacBook-Pro.local`; `CANARY_CWD=/Users/adityahimawan/Development` (no VPS `/Users` access)
 - [ ] Phase 2 authenticated browser acceptance (local live route served 200; API routes returned 401 without session; browser tool blocked private URL)
 - [ ] Phase 2 — Agent Workspace: `docs/superpowers/plans/2026-09-17-agent-workspace-parity.md`
-- [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md`
+- [x] Phase 3 local implementation: providers, guarded discovery, cron builder, notification center, PWA shell; passkey/OIDC fail-closed evaluation
+- [ ] Phase 3 authenticated live smoke + browser acceptance (provider redaction, cron run, notification read state, PWA offline shell)
+- [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md` acceptance closeout
 - [ ] Phase 4 — MCP/extensions/gateway: separate design approval required
