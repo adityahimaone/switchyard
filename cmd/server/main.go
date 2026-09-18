@@ -800,6 +800,14 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, providers)
 	})
+	mux.HandleFunc("POST /api/providers/{name}/models/discover", func(w http.ResponseWriter, r *http.Request) {
+		models, err := kanban.DiscoverConfiguredProviderModels(r.PathValue("name"))
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": r.PathValue("name"), "models": models})
+	})
 	mux.HandleFunc("GET /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
 		cfg, err := kanban.LoadAttachmentAnalysisConfig()
 		if err != nil {

@@ -420,6 +420,7 @@ export function sendChatMessage(id: string, input: { content: string; agent?: st
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
 export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
 export function listProviders() { return api<ProviderModel[]>("/api/providers") }
+export function discoverProviderModels(name: string) { return api<{ name: string; models: string[] }>(`/api/providers/${encodeURIComponent(name)}/models/discover`, { method: "POST" }) }
 export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
 export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }
 export function saveAttachmentAnalysisConfig(config: AttachmentAnalysisConfig) { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis", { method: "PUT", body: JSON.stringify(config) }) }
