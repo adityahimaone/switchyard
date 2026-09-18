@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { api, type ProfileDetail } from "@/api"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { api, createProvider, deleteProvider, discoverProviderModels, type ProfileDetail } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,13 @@ import LoadingState from "@/components/LoadingState"
 export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (name: string, model: string) => void }) {
   const [q, setQ] = useState("")
   const [active, setActive] = useState<string | null>(null)
+  const [name, setName] = useState("")
+  const [baseURL, setBaseURL] = useState("")
+  const [apiKey, setAPIKey] = useState("")
+  const [defaultModel, setDefaultModel] = useState("")
+  const [actionError, setActionError] = useState("")
+  const [busy, setBusy] = useState(false)
+  const queryClient = useQueryClient()
 
   const providers = useQuery({
     queryKey: ["providers"],
@@ -24,6 +31,47 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
 
   const list = (providers.data ?? []).filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.base_url.toLowerCase().includes(q.toLowerCase()))
   const selected = (providers.data ?? []).find((p) => p.name === active)
+
+  async function refreshProviders() {
+    await queryClient.invalidateQueries({ queryKey: ["providers"] })
+  }
+
+  async function handleCreate() {
+    setBusy(true)
+    setActionError("")
+    try {
+      await createProvider({ name, base_url: baseURL, api_key: apiKey || undefined, default_model: defaultModel || undefined })
+      setName(""); setBaseURL(""); setAPIKey(""); setDefaultModel("")
+      await refreshProviders()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Provider save failed")
+    } finally { setBusy(false) }
+  }
+
+  async function handleDiscover(providerName: string) {
+    setBusy(true)
+    setActionError("")
+    try {
+      const result = await discoverProviderModels(providerName)
+      await refreshProviders()
+      setActionError(`${result.models.length} models discovered for ${providerName}`)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Model discovery failed")
+    } finally { setBusy(false) }
+  }
+
+  async function handleDelete(providerName: string) {
+    if (!window.confirm(`Delete provider ${providerName}?`)) return
+    setBusy(true)
+    setActionError("")
+    try {
+      await deleteProvider(providerName)
+      if (active === providerName) setActive(null)
+      await refreshProviders()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Provider delete failed")
+    } finally { setBusy(false) }
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl p-4">
@@ -48,6 +96,16 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
           </div>
         </div>
       </div>
+      <Card className="mt-4 border-[var(--color-line)] bg-[var(--color-surface)]">
+        <CardHeader className="p-3.5 pb-1"><CardTitle className="text-xs uppercase tracking-wider text-neutral-400">Add provider</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 p-3.5 pt-2 md:grid-cols-4">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
+          <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.example.com/v1" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
+          <input value={apiKey} onChange={(e) => setAPIKey(e.target.value)} placeholder="API key (server-side)" type="password" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
+          <div className="flex gap-2"><input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="default model" className="min-w-0 flex-1 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" /><Button size="sm" disabled={busy || !name.trim() || !baseURL.trim()} onClick={handleCreate}>Save</Button></div>
+        </CardContent>
+      </Card>
+      {actionError && <p className="mt-2 text-xs text-[var(--color-accent)]">{actionError}</p>}
       {providers.isLoading ? (
         <LoadingState label="Memuat providers" />
       ) : (
@@ -100,6 +158,12 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
                       </div>
                     </div>
                   </>
+                )}
+                {active === p.name && (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => handleDiscover(p.name)}>Discover models</Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => handleDelete(p.name)} className="text-red-300">Delete</Button>
+                  </div>
                 )}
               </CardContent>
             </Card>
