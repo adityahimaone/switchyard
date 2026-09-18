@@ -261,7 +261,7 @@ body { background: var(--color-bg); color: var(--color-foreground); }
 .chat-agent-progress { display: flex; flex-direction: column; gap: .5rem; padding: .25rem 0 .5rem; }
 .chat-message-profile { color: var(--color-ink-3); font-size: 11px; }
 .chat-message-hover-meta { display: none; }
-.streaming-response:hover .chat-message-hover-meta, .streaming-response:focus-within .chat-message-hover-meta, .streaming-text:hover .chat-message-hover-meta, .streaming-text:focus-within .chat-message-hover-meta { display: inline-flex; }
+.chat-message-footer:hover .chat-message-hover-meta, .chat-message-footer:focus-within .chat-message-hover-meta, .streaming-response:hover .chat-message-hover-meta, .streaming-response:focus-within .chat-message-hover-meta, .streaming-text:hover .chat-message-hover-meta, .streaming-text:focus-within .chat-message-hover-meta { display: inline-flex; }
 .chat-message-footer:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: 4px; }
 
 .streaming-response[data-status="complete"] .streaming-response__content { animation: chat-result-settle 220ms ease-out both; }

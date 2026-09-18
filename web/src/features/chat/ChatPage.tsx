@@ -289,12 +289,26 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
   const messages = useQuery({ queryKey: ["chat-messages", sessionID], queryFn: () => listChatMessages(sessionID!), enabled: !!sessionID })
   const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders })
-  const activeRunQuery = useQuery({ queryKey: ["chat-active-run", sessionID], queryFn: () => getChatActiveRun(sessionID!), enabled: !!sessionID })
+  const activeRunQuery = useQuery({
+    queryKey: ["chat-active-run", sessionID],
+    queryFn: () => getChatActiveRun(sessionID!),
+    enabled: !!sessionID,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state
+      return state === "loading" || state === "running" ? 1000 : false
+    },
+  })
   const activeRuns = useQuery({ queryKey: ["chat-active-runs"], queryFn: listActiveChatRuns })
   const activeRunBySession = useMemo(() => new Map((activeRuns.data ?? []).map((item) => [item.session_id, item])), [activeRuns.data])
   const persistedActive = activeRunQuery.data ?? undefined
-  const run = selectedRun && selectedRun.session_id === sessionID ? selectedRun : persistedActive
-  const events = useQuery({ queryKey: ["chat-run-events", run?.id], queryFn: () => listChatRunEvents(run!.id), enabled: !!run?.id })
+  // Backend active-run is source of truth; selectedRun only bridges mutation/SSE before poll lands.
+  const run = persistedActive ?? (selectedRun && selectedRun.session_id === sessionID ? selectedRun : undefined)
+  const events = useQuery({
+    queryKey: ["chat-run-events", run?.id],
+    queryFn: () => listChatRunEvents(run!.id),
+    enabled: !!run?.id,
+    refetchInterval: run?.state === "loading" || run?.state === "running" ? 1000 : false,
+  })
 
   const modelOptions = useMemo(() => {
     const set = new Set<string>()
