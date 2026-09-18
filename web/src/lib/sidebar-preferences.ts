@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react"
-import { Activity, BookOpen, Bot, Brain, Clock3, FolderGit2, LayoutDashboard, MessageSquare, Network, Puzzle, ScrollText, Server } from "lucide-react"
+import { Activity, BookOpen, Bot, Brain, Cable, Clock3, FolderGit2, LayoutDashboard, MessageSquare, Network, Puzzle, ScrollText, Server } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "agent-mapping" | "knowledge" | "cron" | "chat" | "settings"
+export type Page = "overview" | "board" | "workspaces" | "profiles" | "providers" | "logs" | "skills" | "memory" | "agent-mapping" | "knowledge" | "cron" | "ecosystem" | "chat" | "settings"
 
 export type SidebarItem = {
   id: Exclude<Page, "settings">
@@ -19,6 +19,7 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: "cron", label: "Cron Jobs", tooltip: "Cron Jobs", icon: Clock3 },
   { id: "agent-mapping", label: "Flow Map", tooltip: "Flow Map", icon: Network },
   { id: "providers", label: "Providers", tooltip: "Providers", icon: Server },
+  { id: "ecosystem", label: "Ecosystem", tooltip: "MCP and extensions", icon: Cable },
   { id: "skills", label: "Skills", tooltip: "Skills", icon: Puzzle },
   { id: "memory", label: "Memory", tooltip: "Memory", icon: Brain },
   { id: "overview", label: "Overview", tooltip: "Overview", icon: Activity },

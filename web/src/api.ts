@@ -224,6 +224,19 @@ export function codeGraphReport(id: string) { return api<CodeGraphReport>(`/api/
 export function codeGraphIndex(id: string, path: string) { return api<CodeGraphJob>(`/api/workspaces/${id}/codegraph/index`, { method: "POST", body: JSON.stringify({ path }) }) }
 export function codeGraphJob(id: string, jobID: string) { return api<CodeGraphJob>(`/api/workspaces/${id}/codegraph/jobs/${jobID}`) }
 
+export interface MCPServer { id: string; name: string; transport: "stdio" | "http"; endpoint?: string; command?: string; enabled: boolean; capabilities?: string[]; created_at: number }
+export interface ExtensionManifest { id: string; name: string; version: string; description?: string; capabilities: string[] }
+export interface GatewayStatus { state: "disabled" | "up" | "down"; url?: string; error?: string }
+export function listMCPServers(profile = "default") { return api<MCPServer[]>(`/api/ecosystem/mcp?profile=${encodeURIComponent(profile)}`) }
+export function saveMCPServer(item: Omit<MCPServer, "created_at">, profile = "default") { return api<MCPServer[]>(`/api/ecosystem/mcp?profile=${encodeURIComponent(profile)}`, { method: "POST", body: JSON.stringify(item) }) }
+export function deleteMCPServer(id: string, profile = "default") { return api<MCPServer[]>(`/api/ecosystem/mcp/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile)}`, { method: "DELETE" }) }
+export function listExtensions(profile = "default") { return api<ExtensionManifest[]>(`/api/ecosystem/extensions?profile=${encodeURIComponent(profile)}`) }
+export function saveExtension(item: ExtensionManifest, profile = "default") { return api<ExtensionManifest[]>(`/api/ecosystem/extensions?profile=${encodeURIComponent(profile)}`, { method: "POST", body: JSON.stringify(item) }) }
+export function deleteExtension(id: string, profile = "default") { return api<ExtensionManifest[]>(`/api/ecosystem/extensions/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile)}`, { method: "DELETE" }) }
+export function gatewayStatus() { return api<GatewayStatus>("/api/ecosystem/gateway") }
+
+/* ponytail: registry UI only; add invocation after MCP auth/transport contract exists. */
+
 export interface PingPoint {
   at: number
   ms?: number | null

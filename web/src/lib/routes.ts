@@ -9,7 +9,7 @@ export type AppRoute = {
 
 const PAGES = new Set<Page>([
   "overview", "board", "workspaces", "profiles", "providers", "logs", "skills",
-  "memory", "agent-mapping", "knowledge", "cron", "chat", "settings",
+  "memory", "agent-mapping", "knowledge", "cron", "ecosystem", "chat", "settings",
 ])
 
 export function parseRoute(pathname: string): AppRoute {

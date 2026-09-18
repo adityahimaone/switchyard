@@ -24,6 +24,7 @@ const OverviewPage = lazy(() => import("./features/overview/OverviewPage"))
 const AgentMappingPage = lazy(() => import("./features/flow/AgentMappingPage"))
 const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
+const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
 import { Archive, CheckSquare, Inbox, Plus, Pencil, Search, X } from "lucide-react"
 import { useSettings } from "./hooks/useSettings"
@@ -557,6 +558,7 @@ export default function App() {
         {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
         {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
         {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
+        {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
         {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
         {page === "board" && detailId && detailPage && (
           <TaskDetailPage
