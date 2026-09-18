@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { History, Play, Plus, RefreshCw, Search, Trash2, Wrench, X } from "lucide-react"
-import { api, type CronExecution, type CronJob } from "@/api"
+import { api, type CronExecution, type CronJob, type SkillMeta } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,17 @@ export default function CronPage() {
   const jobs = useQuery({ queryKey: ["cron-jobs"], queryFn: () => api<CronJob[]>("/api/cron/jobs?all=1"), refetchInterval: 10000 })
   const status = useQuery({ queryKey: ["cron-status"], queryFn: () => api<{ output: string }>("/api/cron/status"), refetchInterval: 30000 })
   const doctor = useQuery({ queryKey: ["cron-doctor"], queryFn: () => api<{ output: string }>("/api/cron/doctor"), enabled: false })
+  const skills = useQuery({ queryKey: ["cron-skills"], queryFn: () => api<SkillMeta[]>("/api/skills"), staleTime: 30000 })
+  const schedulePresets = ["every 1h", "every 6h", "every day at 09:00", "weekdays at 09:00"]
+
+  function schedulePreview(value: string) {
+    const normalized = value.trim()
+    if (!normalized) return "Enter cron expression or natural schedule"
+    if (normalized.startsWith("every ")) return `Repeats ${normalized.slice(6)}`
+    if (normalized.includes(" at ")) return `Runs ${normalized}`
+    return `Cron expression: ${normalized}`
+  }
+
   const action = useMutation({ mutationFn: ({ id, op }: { id: string; op: "pause" | "resume" | "run" | "delete" }) => api(op === "delete" ? `/api/cron/jobs/${id}` : `/api/cron/jobs/${id}/${op}`, { method: op === "delete" ? "DELETE" : "POST" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["cron-jobs"] }) })
   const save = useMutation({
     mutationFn: (payload: Form) => {
@@ -53,7 +64,7 @@ export default function CronPage() {
     <div className="grid gap-2">{filtered.map((job) => <article key={job.id} className="rounded-lg border border-line/70 bg-surface/60 p-3"><div className="flex items-start gap-3"><div className={`mt-1 size-2 shrink-0 rounded-full ${job.enabled ? "bg-emerald-400" : "bg-neutral-600"}`} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><button className="truncate text-left text-sm font-semibold hover:text-[var(--color-accent)]" onClick={() => setSelected(job)}>{job.name || "Unnamed job"}</button><span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-500">{job.id}</span>{job.no_agent && <span className="text-[10px] text-violet-300">no-agent</span>}{job.last_status === "error" && <span className="text-[10px] text-red-300">error</span>}</div><p className="mt-1 text-xs text-neutral-400">{job.schedule_display} · {job.deliver || "no delivery"}</p><p className="mt-1 line-clamp-2 text-xs text-neutral-500">{job.prompt || job.script || "No prompt"}</p><p className="mt-2 text-[10px] text-neutral-600">next {fmt(job.next_run_at)} · last {fmt(job.last_run_at)}</p></div><div className="flex shrink-0 items-center gap-2"><Switch size="sm" checked={job.enabled} disabled={action.isPending} onCheckedChange={(on) => action.mutate({ id: job.id, op: on ? "resume" : "pause" })} aria-label={job.enabled ? "Pause job" : "Resume job"} /><Button size="icon-sm" variant="ghost" title="History" onClick={() => setHistoryJob(job)}><History className="size-3.5 text-sky-300" /></Button><Button size="icon-sm" variant="ghost" title="Run now" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, op: "run" })}><Play className="size-3.5 text-emerald-300" /></Button><Button size="icon-sm" variant="ghost" title="Delete" disabled={action.isPending} onClick={() => window.confirm(`Delete ${job.name || job.id}?`) && action.mutate({ id: job.id, op: "delete" })}><Trash2 className="size-3.5 text-red-300" /></Button></div></div></article>)}</div>
     {selected && <CronDetail job={selected} onClose={() => setSelected(null)} onEdit={() => setForm(formFrom(selected))} />}
     {historyJob && <CronHistory job={historyJob} onClose={() => setHistoryJob(null)} />}
-    {form && <CronForm value={form} editing={!!selected} onChange={setForm} onClose={() => setForm(null)} onSave={() => save.mutate(form)} busy={save.isPending} error={save.error as Error | null} />}
+    {form && <CronForm value={form} editing={!!selected} skills={skills.data ?? []} presets={schedulePresets} schedulePreview={schedulePreview} onChange={setForm} onClose={() => setForm(null)} onSave={() => save.mutate(form)} busy={save.isPending} error={save.error as Error | null} />}
   </div>
 }
 
@@ -67,7 +78,29 @@ function CronDetail({ job, onClose, onEdit }: { job: CronJob; onClose: () => voi
   return <div className="fixed inset-0 z-40 flex justify-end bg-black/50" onClick={onClose}><aside className="h-full w-full max-w-lg overflow-y-auto border-l border-line bg-surface p-4" onClick={(e) => e.stopPropagation()}><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] text-[var(--color-accent)]">CRON DETAIL</p><h2 className="mt-1 text-lg font-semibold">{job.name || job.id}</h2></div><Button size="icon-sm" variant="ghost" onClick={onClose}><X className="size-4" /></Button></div><div className="mt-4 flex gap-2"><Button size="sm" onClick={onEdit}>Edit</Button><span className="rounded bg-[var(--color-bg)] px-2 py-1 text-xs text-neutral-400">{job.enabled ? "active" : "paused"}</span></div><dl className="mt-4 grid gap-3 text-xs">{[["Schedule", job.schedule_display], ["Delivery", job.deliver], ["Next run", fmt(job.next_run_at)], ["Last run", fmt(job.last_run_at)], ["Status", job.last_status || "—"], ["Script", job.script || "—"], ["Workdir", job.workdir || "—"]].map(([k, v]) => <div key={k}><dt className="text-neutral-500">{k}</dt><dd className="mt-0.5 break-words text-neutral-200">{v}</dd></div>)}</dl><h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-neutral-500">Prompt</h3><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--color-bg)] p-3 font-mono text-[11px] text-neutral-300">{job.prompt || "—"}</pre><h3 className="mt-5 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-neutral-500"><History className="size-3" /> Recent runs</h3><div className="mt-2 grid gap-1">{runs.data?.map((run) => <div key={run.id} className="rounded border border-line/60 px-2 py-1.5 font-mono text-[10px] text-neutral-400">{run.status} · {fmt(run.finished_at || run.claimed_at)}</div>)}</div></aside></div>
 }
 
-function CronForm({ value, editing, onChange, onClose, onSave, busy, error }: { value: Form; editing: boolean; onChange: (v: Form) => void; onClose: () => void; onSave: () => void; busy: boolean; error: Error | null }) {
+function CronForm({ value, editing, skills, presets, schedulePreview, onChange, onClose, onSave, busy, error }: { value: Form; editing: boolean; skills: SkillMeta[]; presets: string[]; schedulePreview: (value: string) => string; onChange: (v: Form) => void; onClose: () => void; onSave: () => void; busy: boolean; error: Error | null }) {
   const set = (key: keyof Form, val: string | boolean) => onChange({ ...value, [key]: val })
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-4" onClick={(e) => e.stopPropagation()}><h2 className="text-sm font-semibold">{editing ? "Edit cron job" : "New cron job"}</h2><div className="grid gap-3 mt-4">{([['name','Name'],['schedule','Schedule (cron / every 2h / weekdays at 9am)'],['deliver','Delivery'],['script','Script'],['workdir','Workdir'],['skills','Skills (comma-separated)']] as [keyof Form,string][]).map(([key,label]) => <label key={key} className="text-xs text-neutral-400">{label}<Input value={String(value[key])} onChange={(e) => set(key, e.target.value)} className="mt-1 bg-[var(--color-bg)] text-xs" /></label>)}<label className="text-xs text-neutral-400">Prompt<Textarea value={value.prompt} onChange={(e) => set("prompt", e.target.value)} className="mt-1 min-h-32 bg-[var(--color-bg)] text-xs" /></label><label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={value.no_agent} onChange={(e) => set("no_agent", e.target.checked)} /> no-agent script mode</label><label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={value.paused} onChange={(e) => set("paused", e.target.checked)} /> create paused</label>{error && <p className="text-xs text-red-400">{error.message}</p>}</div><div className="mt-4 flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" disabled={busy || !value.schedule.trim()} onClick={onSave}>{busy ? "Saving…" : "Save"}</Button></div></div></div>
+  const textFields: [keyof Form, string][] = [["name", "Name"], ["deliver", "Delivery"], ["script", "Script"], ["workdir", "Workdir"]]
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-4" onClick={(e) => e.stopPropagation()}>
+      <h2 className="text-sm font-semibold">{editing ? "Edit cron job" : "New cron job"}</h2>
+      <div className="mt-4 grid gap-3">
+        {textFields.map(([key, label]) => <label key={key} className="text-xs text-neutral-400">{label}<Input value={String(value[key])} onChange={(e) => set(key, e.target.value)} className="mt-1 bg-[var(--color-bg)] text-xs" /></label>)}
+        <label className="text-xs text-neutral-400">Schedule
+          <Input value={value.schedule} onChange={(e) => set("schedule", e.target.value)} placeholder="every 2h / weekdays at 9am / cron" className="mt-1 bg-[var(--color-bg)] text-xs" />
+          <span className="mt-1 block text-[10px] text-neutral-500">{schedulePreview(value.schedule)}</span>
+          <div className="mt-1 flex flex-wrap gap-1">{presets.map((preset) => <button type="button" key={preset} onClick={() => set("schedule", preset)} className="rounded border border-line px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100">{preset}</button>)}</div>
+        </label>
+        <label className="text-xs text-neutral-400">Skills
+          <Input value={value.skills} onChange={(e) => set("skills", e.target.value)} placeholder="comma-separated skill names" className="mt-1 bg-[var(--color-bg)] text-xs" />
+          {skills.length > 0 && <span className="mt-1 block text-[10px] text-neutral-500">Available: {skills.slice(0, 12).map((skill) => skill.name).join(", ")}</span>}
+        </label>
+        <label className="text-xs text-neutral-400">Prompt<Textarea value={value.prompt} onChange={(e) => set("prompt", e.target.value)} className="mt-1 min-h-32 bg-[var(--color-bg)] text-xs" /></label>
+        <label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={value.no_agent} onChange={(e) => set("no_agent", e.target.checked)} /> no-agent script mode</label>
+        <label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={value.paused} onChange={(e) => set("paused", e.target.checked)} /> create paused</label>
+        {error && <p className="text-xs text-red-400">{error.message}</p>}
+      </div>
+      <div className="mt-4 flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" disabled={busy || !value.schedule.trim()} onClick={onSave}>{busy ? "Saving…" : "Save"}</Button></div>
+    </div>
+  </div>
 }
