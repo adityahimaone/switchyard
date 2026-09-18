@@ -294,12 +294,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     queryKey: ["chat-active-run", sessionID],
     queryFn: () => getChatActiveRun(sessionID!),
     enabled: !!sessionID,
-    refetchInterval: (query) => {
-      const state = query.state.data?.state ?? selectedRun?.state
-      return state === "loading" || state === "running" ? 1000 : false
-    },
+    retry: false,
+    // SSE chat_run_state keeps selectedRun current; this query only hydrates initial state.
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   })
-  const activeRuns = useQuery({ queryKey: ["chat-active-runs"], queryFn: listActiveChatRuns })
+  const activeRuns = useQuery({
+    queryKey: ["chat-active-runs"],
+    queryFn: listActiveChatRuns,
+    // SSE lifecycle events invalidate this cache; avoid background polling.
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  })
   const activeRunBySession = useMemo(() => new Map((activeRuns.data ?? []).map((item) => [item.session_id, item])), [activeRuns.data])
   const persistedActive = activeRunQuery.data ?? undefined
   // Backend active-run is source of truth; selectedRun only bridges mutation/SSE before poll lands.
@@ -308,7 +316,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     queryKey: ["chat-run-events", run?.id],
     queryFn: () => listChatRunEvents(run!.id),
     enabled: !!run?.id,
-    refetchInterval: run?.state === "loading" || run?.state === "running" ? 1000 : false,
+    retry: false,
+    // SSE chat_run_event invalidates this query per event; no polling needed.
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
   })
 
   const modelOptions = useMemo(() => {
