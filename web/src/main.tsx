@@ -11,6 +11,9 @@ bind()
 applyTheme(readTheme())
 syncSoundEngine()
 watchSoundPreferences()
+if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+  window.addEventListener("load", () => { void navigator.serviceWorker.register("/sw.js") })
+}
 
 const qc = new QueryClient({
   defaultOptions: { queries: { refetchInterval: 15_000, retry: 1 } },
