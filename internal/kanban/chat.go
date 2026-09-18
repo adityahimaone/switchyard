@@ -12,15 +12,19 @@ import (
 )
 
 type ChatSession struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
-	Agent           string `json:"agent"`
-	Profile         string `json:"profile"`
-	Workspace       string `json:"workspace"`
-	Model           string `json:"model"`
-	HermesSessionID string `json:"hermes_session_id"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Agent           string   `json:"agent"`
+	Profile         string   `json:"profile"`
+	Workspace       string   `json:"workspace"`
+	Model           string   `json:"model"`
+	HermesSessionID string   `json:"hermes_session_id,omitempty"`
+	CreatedAt       int64    `json:"created_at"`
+	UpdatedAt       int64    `json:"updated_at"`
+	Archived        bool     `json:"archived"`
+	Pinned          bool     `json:"pinned"`
+	ProjectID       string   `json:"project_id"`
+	Tags            []string `json:"tags"`
 }
 
 type ChatMessage struct {
@@ -74,6 +78,12 @@ func ensureChatDB() (*sql.DB, error) {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'hermes', profile TEXT NOT NULL DEFAULT 'default', workspace TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', hermes_session_id TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0)`,
 		`ALTER TABLE chat_sessions ADD COLUMN hermes_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE chat_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS chat_projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_projects_name_nocase ON chat_projects(name COLLATE NOCASE)`,
+		`CREATE TABLE IF NOT EXISTS chat_session_tags (session_id TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY(session_id, tag)) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS chat_fork_links (fork_id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, source_message_id TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, run_id TEXT, FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS chat_runs (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, message_id TEXT NOT NULL, agent TEXT NOT NULL, profile TEXT NOT NULL, workspace TEXT NOT NULL, model TEXT NOT NULL, state TEXT NOT NULL, prompt TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL, ended_at INTEGER, FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS chat_run_events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY(run_id) REFERENCES chat_runs(id) ON DELETE CASCADE)`,
@@ -117,11 +127,14 @@ func CreateChatSession(title, agent, profile, workspace, model string) (*ChatSes
 	if _, err := db.Exec(`INSERT INTO chat_sessions (id,title,agent,profile,workspace,model,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`, s.ID, s.Title, s.Agent, s.Profile, s.Workspace, s.Model, s.CreatedAt, s.UpdatedAt); err != nil {
 		return nil, err
 	}
+	if err := replaceChatTags(db, s.ID, s.Title); err != nil {
+		return nil, err
+	}
 	broadcastEvent("chat_session_created", map[string]any{"session_id": s.ID})
 	return s, nil
 }
 
-func ListChatSessions(archived bool) ([]ChatSession, error) {
+func ListChatSessions(archived bool, filters ...string) ([]ChatSession, error) {
 	db, err := ensureChatDB()
 	if err != nil {
 		return nil, err
@@ -131,7 +144,25 @@ func ListChatSessions(archived bool) ([]ChatSession, error) {
 	if archived {
 		archivedValue = 1
 	}
-	rows, err := db.Query(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at FROM chat_sessions WHERE archived=? ORDER BY updated_at DESC, created_at DESC LIMIT 200`, archivedValue)
+	q, args := `SELECT s.id,s.title,s.agent,s.profile,s.workspace,s.model,s.hermes_session_id,s.created_at,s.updated_at,s.archived,s.pinned,s.project_id,COALESCE((SELECT GROUP_CONCAT(tag, ',') FROM chat_session_tags WHERE session_id=s.id ORDER BY tag),'') FROM chat_sessions s WHERE s.archived=?`, []any{archivedValue}
+	if len(filters) > 0 && strings.TrimSpace(filters[0]) != "" {
+		q += ` AND (s.title LIKE ? COLLATE NOCASE OR EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id=s.id AND m.content LIKE ? COLLATE NOCASE))`
+		needle := "%" + strings.TrimSpace(filters[0]) + "%"
+		args = append(args, needle, needle)
+	}
+	if len(filters) > 1 && filters[1] != "" {
+		q += ` AND s.pinned=1`
+	}
+	if len(filters) > 2 && filters[2] != "" {
+		q += ` AND s.project_id=?`
+		args = append(args, filters[2])
+	}
+	if len(filters) > 3 && strings.TrimSpace(filters[3]) != "" {
+		q += ` AND EXISTS (SELECT 1 FROM chat_session_tags t WHERE t.session_id=s.id AND t.tag=?)`
+		args = append(args, strings.ToLower(strings.TrimSpace(filters[3])))
+	}
+	q += ` ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 200`
+	rows, err := db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,8 +170,16 @@ func ListChatSessions(archived bool) ([]ChatSession, error) {
 	var out []ChatSession
 	for rows.Next() {
 		var s ChatSession
-		if err := rows.Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		var archivedInt, pinnedInt int
+		var tags string
+		if err := rows.Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID, &tags); err != nil {
 			return nil, err
+		}
+		s.Archived, s.Pinned = archivedInt != 0, pinnedInt != 0
+		if tags != "" {
+			s.Tags = strings.Split(tags, ",")
+		} else {
+			s.Tags = []string{}
 		}
 		out = append(out, s)
 	}
@@ -157,20 +196,27 @@ func GetChatSession(id string) (*ChatSession, error) {
 	}
 	defer db.Close()
 	var s ChatSession
-	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at FROM chat_sessions WHERE id=?`, id).Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+	var archivedInt, pinnedInt int
+	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID); err != nil {
+		return nil, err
+	}
+	s.Archived, s.Pinned = archivedInt != 0, pinnedInt != 0
+	s.Tags, err = chatTags(db, s.ID)
+	if err != nil {
 		return nil, err
 	}
 	return &s, nil
 }
 
-func UpdateChatSession(id string, title, agent, profile, workspace, model *string) (*ChatSession, error) {
+func UpdateChatSession(id string, title, agent, profile, workspace, model *string, extras ...any) (*ChatSession, error) {
 	db, err := ensureChatDB()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 	var cur ChatSession
-	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at FROM chat_sessions WHERE id=?`, id).Scan(&cur.ID, &cur.Title, &cur.Agent, &cur.Profile, &cur.Workspace, &cur.Model, &cur.HermesSessionID, &cur.CreatedAt, &cur.UpdatedAt); err != nil {
+	var archivedInt, pinnedInt int
+	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&cur.ID, &cur.Title, &cur.Agent, &cur.Profile, &cur.Workspace, &cur.Model, &cur.HermesSessionID, &cur.CreatedAt, &cur.UpdatedAt, &archivedInt, &pinnedInt, &cur.ProjectID); err != nil {
 		return nil, err
 	}
 	if title != nil {
@@ -191,15 +237,25 @@ func UpdateChatSession(id string, title, agent, profile, workspace, model *strin
 	if model != nil {
 		cur.Model = *model
 	}
-	if agent == nil && profile == nil && workspace == nil && model == nil {
-		if _, err := db.Exec(`UPDATE chat_sessions SET title=? WHERE id=?`, cur.Title, cur.ID); err != nil {
-			return nil, err
+	cur.Pinned = pinnedInt != 0
+	for i, extra := range extras {
+		switch v := extra.(type) {
+		case *bool:
+			if i == 0 && v != nil {
+				cur.Pinned = *v
+			}
+		case *string:
+			if i == 1 && v != nil {
+				cur.ProjectID = *v
+			}
 		}
-	} else {
-		cur.UpdatedAt = time.Now().Unix()
-		if _, err := db.Exec(`UPDATE chat_sessions SET title=?,agent=?,profile=?,workspace=?,model=?,updated_at=? WHERE id=?`, cur.Title, cur.Agent, cur.Profile, cur.Workspace, cur.Model, cur.UpdatedAt, cur.ID); err != nil {
-			return nil, err
-		}
+	}
+	cur.UpdatedAt = time.Now().Unix()
+	if err := replaceChatTags(db, cur.ID, cur.Title); err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(`UPDATE chat_sessions SET title=?,agent=?,profile=?,workspace=?,model=?,pinned=?,project_id=?,updated_at=? WHERE id=?`, cur.Title, cur.Agent, cur.Profile, cur.Workspace, cur.Model, cur.Pinned, cur.ProjectID, cur.UpdatedAt, cur.ID); err != nil {
+		return nil, err
 	}
 	broadcastEvent("chat_session_updated", map[string]any{"session_id": cur.ID})
 	return &cur, nil

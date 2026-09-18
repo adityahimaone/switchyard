@@ -19,7 +19,8 @@ var chatRuns = struct {
 
 func registerChatRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/chat/sessions", func(w http.ResponseWriter, r *http.Request) {
-		items, err := kanban.ListChatSessions(r.URL.Query().Get("archived") == "1")
+		q := r.URL.Query()
+		items, err := kanban.ListChatSessions(q.Get("archived") == "1", q.Get("q"), q.Get("pinned"), q.Get("project"), q.Get("tag"))
 		if err != nil {
 			fail(w, err, 500)
 			return
@@ -35,6 +36,115 @@ func registerChatRoutes(mux *http.ServeMux) {
 		s, err := kanban.CreateChatSession(req.Title, req.Agent, req.Profile, req.Workspace, req.Model)
 		if err != nil {
 			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 201, s)
+	})
+	mux.HandleFunc("GET /api/chat/projects", func(w http.ResponseWriter, r *http.Request) {
+		items, err := kanban.ListChatProjects()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, 200, items)
+	})
+	mux.HandleFunc("POST /api/chat/projects", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name  string `json:"name"`
+			Color string `json:"color"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		p, err := kanban.CreateChatProject(req.Name, req.Color)
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 201, p)
+	})
+	mux.HandleFunc("PATCH /api/chat/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name  *string `json:"name"`
+			Color *string `json:"color"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		p, err := kanban.UpdateChatProject(r.PathValue("id"), req.Name, req.Color)
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 200, p)
+	})
+	mux.HandleFunc("DELETE /api/chat/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.DeleteChatProject(r.PathValue("id")); err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/chat/sessions/import", func(w http.ResponseWriter, r *http.Request) {
+		var in kanban.ChatExport
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&in); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		s, err := kanban.ImportChatSession(in)
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, 201, map[string]any{"session": s})
+	})
+	mux.HandleFunc("GET /api/chat/sessions/{id}/export", func(w http.ResponseWriter, r *http.Request) {
+		out, err := kanban.ExportChatSession(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 200, out)
+	})
+	mux.HandleFunc("GET /api/chat/sessions/{id}/transcript", func(w http.ResponseWriter, r *http.Request) {
+		text, err := kanban.TranscriptChatSession(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 404)
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(text))
+	})
+	mux.HandleFunc("GET /api/chat/sessions/{id}/lineage", func(w http.ResponseWriter, r *http.Request) {
+		out, err := kanban.ChatLineageForSession(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 200, out)
+	})
+	mux.HandleFunc("POST /api/chat/sessions/{id}/duplicate", func(w http.ResponseWriter, r *http.Request) {
+		s, err := kanban.DuplicateChatSession(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, 201, s)
+	})
+	mux.HandleFunc("POST /api/chat/sessions/{id}/fork", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		s, err := kanban.ForkChatSession(r.PathValue("id"), req.MessageID)
+		if err != nil {
+			fail(w, err, 404)
 			return
 		}
 		writeJSON(w, 201, s)
@@ -56,12 +166,16 @@ func registerChatRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, items)
 	})
 	mux.HandleFunc("PATCH /api/chat/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Title, Agent, Profile, Workspace, Model *string }
+		var req struct {
+			Title, Agent, Profile, Workspace, Model *string
+			Pinned                                  *bool   `json:"pinned"`
+			ProjectID                               *string `json:"project_id"`
+		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		s, err := kanban.UpdateChatSession(r.PathValue("id"), req.Title, req.Agent, req.Profile, req.Workspace, req.Model)
+		s, err := kanban.UpdateChatSession(r.PathValue("id"), req.Title, req.Agent, req.Profile, req.Workspace, req.Model, req.Pinned, req.ProjectID)
 		if err != nil {
 			fail(w, err, 400)
 			return

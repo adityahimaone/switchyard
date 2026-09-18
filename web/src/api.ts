@@ -361,16 +361,30 @@ export function toastGlobal(message: string, tone: "success" | "error" | "info" 
 
 export type ChatAgent = "hermes"
 export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
-export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number }
+export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number; archived?: boolean; pinned?: boolean; project_id?: string; tags?: string[] }
+export interface ChatProject { id: string; name: string; color: string; created_at: number }
+export interface ChatForkLink { fork_id: string; source_session_id: string; source_message_id: string; created_at: number }
+export interface ChatLineage { forks: ChatForkLink[]; source: ChatForkLink | null }
+export interface ChatExport { session: Omit<ChatSession, "id" | "hermes_session_id"> & { id?: string; hermes_session_id?: never }; messages: ChatMessage[] }
 export interface ChatMessage { id: string; session_id: string; role: "user" | "assistant" | "system"; content: string; created_at: number; run_id?: string; attachments?: Attachment[] }
 export interface Attachment { id: string; filename: string; mime: string; size: number; sha256: string; storage_provider: string; storage_key: string; created_at: number }
 export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
 export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
 export interface SkillMeta { name: string; description: string; category?: string; path?: string }
-export function listChatSessions(archived = false) { return api<ChatSession[]>(`/api/chat/sessions${archived ? "?archived=1" : ""}`) }
+export function listChatSessions(archived = false, filters: { q?: string; pinned?: boolean; project?: string; tag?: string } = {}) { const params = new URLSearchParams(); if (archived) params.set("archived", "1"); if (filters.q?.trim()) params.set("q", filters.q.trim()); if (filters.pinned) params.set("pinned", "1"); if (filters.project) params.set("project", filters.project); if (filters.tag) params.set("tag", filters.tag); const query = params.toString(); return api<ChatSession[]>(`/api/chat/sessions${query ? `?${query}` : ""}`) }
 export function createChatSession(input: Partial<ChatSession>) { return api<ChatSession>("/api/chat/sessions", { method: "POST", body: JSON.stringify(input) }) }
 export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
-export function updateChatSession(id: string, input: { title?: string }) { return api<ChatSession>(`/api/chat/sessions/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+export function updateChatSession(id: string, input: { title?: string; pinned?: boolean; project_id?: string }) { return api<ChatSession>(`/api/chat/sessions/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+export function listChatProjects() { return api<ChatProject[]>("/api/chat/projects") }
+export function createChatProject(input: { name: string; color?: string }) { return api<ChatProject>("/api/chat/projects", { method: "POST", body: JSON.stringify(input) }) }
+export function updateChatProject(id: string, input: { name?: string; color?: string }) { return api<ChatProject>(`/api/chat/projects/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+export function deleteChatProject(id: string) { return api<{ ok: boolean }>(`/api/chat/projects/${id}`, { method: "DELETE" }) }
+export function duplicateChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}/duplicate`, { method: "POST" }) }
+export function forkChatSession(id: string, message_id: string) { return api<ChatSession>(`/api/chat/sessions/${id}/fork`, { method: "POST", body: JSON.stringify({ message_id }) }) }
+export function getChatLineage(id: string) { return api<ChatLineage>(`/api/chat/sessions/${id}/lineage`) }
+export function exportChatSession(id: string) { return api<ChatExport>(`/api/chat/sessions/${id}/export`) }
+export function importChatSession(snapshot: ChatExport) { return api<{ session: ChatSession }>("/api/chat/sessions/import", { method: "POST", body: JSON.stringify(snapshot) }) }
+export async function downloadChatTranscript(id: string) { const res = await fetch(`/api/chat/sessions/${id}/transcript`, { credentials: "include" }); if (!res.ok) throw new Error(res.statusText); return res.text() }
 export function archiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/archive`, { method: "POST" }) }
 export function unarchiveChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}/unarchive`, { method: "POST" }) }
 export function deleteChatSession(id: string) { return api<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }) }

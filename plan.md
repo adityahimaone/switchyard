@@ -152,8 +152,13 @@ Design: `docs/superpowers/specs/2026-09-17-hermes-webui-parity-roadmap-design.md
 Phase 1 design: `docs/superpowers/specs/2026-09-17-chat-workspace-v1-design.md`
 Program index: `docs/superpowers/plans/2026-09-17-parity-program-index.md`
 
-Status: planning complete; implementation not started.
+Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live authenticated smoke pending integration environment.
 
+- [x] Phase 1 backend: schema, search/filter, pin/project/tag, project CRUD, duplicate/fork/lineage, export/import/transcript
+- [x] Phase 1 frontend: typed APIs, session menu, event cards, search/sidebar, active-run recovery foundations
+- [x] Phase 1 local verification: `go test ./...`, `go vet ./...`, `go build -o /tmp/kanban-board-server ./cmd/server`, `pnpm build`
+- [ ] Phase 1 authenticated live API smoke + browser-rendered acceptance
+- [ ] Phase 1 SSE mutation smoke for project/duplicate/fork/import families
 - [ ] Phase 1 — Chat Workspace: `docs/superpowers/plans/2026-09-17-chat-workspace-v1.md`
 - [ ] Phase 2 — Agent Workspace: `docs/superpowers/plans/2026-09-17-agent-workspace-parity.md`
 - [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md`
