@@ -124,7 +124,8 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
   if (!run) return null
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
   const elapsed = elapsedLabel(run.started_at, run.ended_at, now)
-  const rows = events.length ? events : [{ id: -1, run_id: run.id, kind: run.state, payload: JSON.stringify({ state: run.state }), created_at: run.started_at }]
+  const stateEvent: ChatRunEvent = { id: -1, run_id: run.id, kind: run.state, payload: JSON.stringify({ state: run.state }), created_at: run.ended_at ?? run.started_at }
+  const rows = [stateEvent, ...events]
   const tasks: TaskListTask[] = rows.map((event, index) => {
     const payload = eventPayload(event)
     const state = (payload.state ?? event.kind) as ChatState
@@ -294,7 +295,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     queryFn: () => getChatActiveRun(sessionID!),
     enabled: !!sessionID,
     refetchInterval: (query) => {
-      const state = query.state.data?.state
+      const state = query.state.data?.state ?? selectedRun?.state
       return state === "loading" || state === "running" ? 1000 : false
     },
   })
