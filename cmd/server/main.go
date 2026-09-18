@@ -1126,6 +1126,36 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, c)
 	})
+	mux.HandleFunc("GET /api/profiles/{profile}/skills", func(w http.ResponseWriter, r *http.Request) {
+		items, err := kanban.ListProfileSkills(r.PathValue("profile"))
+		if err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+	mux.HandleFunc("GET /api/profiles/{profile}/skills/{skill}", func(w http.ResponseWriter, r *http.Request) {
+		content, err := kanban.ReadProfileSkill(r.PathValue("profile"), r.PathValue("skill"))
+		if err != nil {
+			fail(w, err, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"profile": r.PathValue("profile"), "skill": r.PathValue("skill"), "content": content})
+	})
+	mux.HandleFunc("PUT /api/profiles/{profile}/skills/{skill}", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&body); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		if err := kanban.WriteProfileSkill(r.PathValue("profile"), r.PathValue("skill"), body.Content); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+	})
 
 	// memory (read-only snapshot MEMORY.md / USER.md / SOUL.md)
 	mux.HandleFunc("GET /api/memory", func(w http.ResponseWriter, r *http.Request) {
