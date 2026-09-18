@@ -964,6 +964,7 @@ func main() {
 		defer kanban.Hub.Unsubscribe(ch)
 		heartbeat := time.NewTicker(20 * time.Second)
 		defer heartbeat.Stop()
+		fmt.Fprint(w, ": connected\n\n")
 		fl.Flush()
 		for {
 			select {
