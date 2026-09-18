@@ -30,6 +30,7 @@ import { useSettings } from "./hooks/useSettings"
 import LoadingState from "./components/LoadingState"
 import { pagePath, parseRoute } from "./lib/routes"
 import { SIDEBAR_ITEMS, type Page } from "./lib/sidebar-preferences"
+import NotificationCenter from "./features/notifications/NotificationCenter"
 
 const BOARD_COLUMNS: Status[] = [...COLUMNS, "archived"]
 
@@ -512,7 +513,7 @@ export default function App() {
       header={
         <AppHeader
           breadcrumb={breadcrumb}
-          right={headerControls}
+          right={<><NotificationCenter />{headerControls}</>}
           onOpenPalette={() => setPaletteOpen(true)}
           onSettings={() => handleSelectPage("settings")}
           onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}

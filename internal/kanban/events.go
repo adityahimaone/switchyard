@@ -21,7 +21,15 @@ type EventHub struct {
 
 var Hub = &EventHub{subs: make(map[chan SSEEvent]struct{})}
 
-func BroadcastEvent(kind string, data any) { broadcastEvent(kind, data) }
+func BroadcastEvent(kind string, data any) {
+	if payload, ok := data.(map[string]any); ok {
+		switch kind {
+		case "task_failed", "task_stuck", "review_requested", "approval_required", "cron_completed", "cron_failed":
+			_ = RecordNotification(kind, payload)
+		}
+	}
+	broadcastEvent(kind, data)
+}
 
 func broadcastEvent(kind string, data any) {
 	Hub.mu.Lock()

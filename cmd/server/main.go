@@ -918,6 +918,34 @@ func main() {
 	mux.HandleFunc("GET /api/chat/daemon-health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, kanban.ChatDaemonHealth())
 	})
+	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
+		limit := 50
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil {
+				limit = n
+			}
+		}
+		items, err := kanban.ListNotifications(r.URL.Query().Get("profile"), r.URL.Query().Get("unread") == "1", limit)
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+	mux.HandleFunc("POST /api/notifications/{id}/read", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.MarkNotificationRead(r.PathValue("id")); err != nil {
+			fail(w, err, 404)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/notifications/read-all", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.MarkAllNotificationsRead(r.URL.Query().Get("profile")); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /api/flow/active", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"tasks": kanban.FlowActive(), "retention_seconds": kanban.FlowRetentionSeconds()})
 	})

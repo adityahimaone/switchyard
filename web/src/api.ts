@@ -424,6 +424,10 @@ export function listProviders() { return api<ProviderModel[]>("/api/providers") 
 export function createProvider(input: ProviderInput) { return api<ProviderModel>("/api/providers", { method: "POST", body: JSON.stringify(input) }) }
 export function updateProvider(name: string, input: Omit<ProviderInput, "name">) { return api<ProviderModel>(`/api/providers/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(input) }) }
 export function deleteProvider(name: string) { return api<{ deleted: string }>(`/api/providers/${encodeURIComponent(name)}`, { method: "DELETE" }) }
+export interface NotificationItem { id: string; profile: string; kind: string; data: Record<string, unknown>; unread: boolean; created_at: number }
+export function listNotifications(profile = "default", unread = false) { return api<NotificationItem[]>(`/api/notifications?profile=${encodeURIComponent(profile)}${unread ? "&unread=1" : ""}`) }
+export function markNotificationRead(id: string) { return api<{ ok: boolean }>(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }) }
+export function markAllNotificationsRead(profile = "default") { return api<{ ok: boolean }>(`/api/notifications/read-all?profile=${encodeURIComponent(profile)}`, { method: "POST" }) }
 export function discoverProviderModels(name: string) { return api<{ name: string; models: string[] }>(`/api/providers/${encodeURIComponent(name)}/models/discover`, { method: "POST" }) }
 export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
 export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }
