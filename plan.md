@@ -167,6 +167,8 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [ ] Phase 2 authenticated browser acceptance (local live route served 200; API routes returned 401 without session; browser tool blocked private URL)
 - [ ] Phase 2 — Agent Workspace: `docs/superpowers/plans/2026-09-17-agent-workspace-parity.md`
 - [x] Phase 3 local implementation: providers, guarded discovery, cron builder, notification center, PWA shell; passkey/OIDC fail-closed evaluation
-- [ ] Phase 3 authenticated live smoke + browser acceptance (provider redaction, cron run, notification read state, PWA offline shell)
-- [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md` acceptance closeout
+- [x] Phase 3 authenticated live API smoke: login, provider redaction, cron read, notification read-safe empty state, manifest/service-worker markers
+- [ ] Phase 3 browser-rendered acceptance (browser tool blocks private local URL)
+- [x] Phase 3 — Operations and Trust: local implementation + authenticated API acceptance complete
+- [ ] Phase 3 — browser acceptance closeout (requires non-private authenticated URL)
 - [ ] Phase 4 — MCP/extensions/gateway: separate design approval required
