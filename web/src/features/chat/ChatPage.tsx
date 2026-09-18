@@ -345,7 +345,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         }
       } catch { /* parse error, fall through to standard handling */ }
     }
-    if ((event.kind === "chat_run" || event.kind === "chat_run_event") && event.data?.run_id && runId && event.data.run_id === runId) {
+    if ((event.kind === "chat_run" || event.kind === "chat_run_state" || event.kind === "chat_run_event") && event.data?.run_id && runId && event.data.run_id === runId) {
       void getChatRun(runId).then((fresh) => {
         setSelectedRun(fresh)
         // on terminal state, clear stream buffer (final output replaces it)
@@ -548,13 +548,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{!messageStreaming && msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
         ))}
+        {run && isRunning && !activeMessages.some((message) => message.id === run.message_id) && <ActivityContext run={run} events={events.data ?? []} />}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>
