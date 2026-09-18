@@ -89,28 +89,6 @@ function activityLabel(event: ChatRunEvent) {
   return payload.label ?? payload.description ?? event.kind.replaceAll("_", " ")
 }
 
-function ActivityTimeline({ run, events }: { run: ChatRun; events: ChatRunEvent[] }) {
-  const raw = events
-    .filter((event, index, all) => index === all.findIndex((candidate) => candidate.id === event.id))
-    .map((event) => ["loading", "running", "done", "error", "cancelled"].includes(event.kind) ? { ...event, kind: "state", payload: JSON.stringify({ state: event.kind }) } : event)
-    .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
-  const rows = raw.length ? raw : [{ id: -1, run_id: run.id, kind: "state", payload: JSON.stringify({ state: run.state }), created_at: run.started_at }]
-  const visible = rows.filter((event, index, all) => {
-    if (index === 0) return true
-    const previous = all[index - 1]
-    return event.kind !== "state" || previous.kind !== "state" || eventPayload(event).state !== eventPayload(previous).state
-  })
-  return <div className="space-y-1.5">
-    {visible.map((event) => {
-      const payload = eventPayload(event)
-      const state = payload.state as ChatState | undefined
-      const label = event.kind === "state" ? `${stateLabel(state)} · ${progressLabelForEvents(events, state)}` : activityLabel(event)
-      const tone = event.kind === "error" || event.kind === "cancelled" ? "text-red-300" : event.kind === "tool_output" ? "text-sky-300" : event.kind === "state" ? stateTone(state) : "text-[var(--color-ink-2)]"
-      return <div key={`${event.kind}-${event.id}`} className="flex items-start gap-2 border-b border-[var(--color-line)]/50 py-1.5 last:border-0"><span className={`mt-0.5 size-1.5 shrink-0 rounded-full bg-current ${tone}`} /><span className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${tone}`}>{label}</span><span className="shrink-0 font-mono text-[10px] text-[var(--color-ink-4)]">{new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
-    })}
-  </div>
-}
-
 function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
   const active = run?.state === "loading" || run?.state === "running"
   const [open, setOpen] = useState(active)
@@ -123,7 +101,6 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
   }, [active, run?.id])
   if (!run) return null
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
-  const elapsed = elapsedLabel(run.started_at, run.ended_at, now)
   const stateEvent: ChatRunEvent = { id: -1, run_id: run.id, kind: run.state, payload: JSON.stringify({ state: run.state }), created_at: run.ended_at ?? run.started_at }
   const rows = [stateEvent, ...events]
   const tasks: TaskListTask[] = rows.map((event, index) => {

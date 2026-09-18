@@ -1,13 +1,15 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Activity, CheckCircle2, Cpu, Database, Gauge, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
-import { LabelList, Pie, PieChart } from "recharts"
+import { Activity, CheckCircle2, Cpu, Database, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
 import { api, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/LoadingState"
 import {
   HeatmapChart,
   HeatmapCells,
+  HeatmapInteractionBoundary,
+  HeatmapInteractionProvider,
+  HeatmapLegend,
   HeatmapXAxis,
   HeatmapYAxis,
   HeatmapTooltip,
@@ -16,6 +18,11 @@ import {
 } from "@/components/charts/heatmap"
 import { AreaChart } from "@/components/charts/area-chart"
 import { Area } from "@/components/charts/area"
+import { FunnelChart, type FunnelStage } from "@/components/charts/funnel-chart"
+import { Gauge } from "@/components/charts/gauge"
+import { RingChart } from "@/components/charts/ring-chart"
+import { Ring } from "@/components/charts/ring"
+import { RingCenter } from "@/components/charts/ring-center"
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -115,16 +122,20 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
   const pct = Math.max(0, Math.min(100, value))
   const color = tones[tone].icon
   return (
-    <div className="gauge-dial flex flex-col items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-4">
+    <div className="flex flex-col items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-4">
       <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]"><Icon className="size-3" style={{ color }} />{label}</span>
-      <div className="relative mt-3">
-        <svg width="140" height="84" viewBox="0 0 140 84" className="overflow-visible">
-          <path pathLength="100" d="M 14 70 A 56 56 0 0 1 126 70" fill="none" stroke="var(--color-bg)" strokeWidth="10" strokeLinecap="round" />
-          <path pathLength="100" d="M 14 70 A 56 56 0 0 1 126 70" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${pct} 100`} strokeDashoffset="0" />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
-          <span className="font-mono text-xl font-semibold tabular-nums" style={{ color }}>{pct.toFixed(1)}%</span>
-        </div>
+      <div className="mt-3 w-full">
+        <Gauge
+          value={pct}
+          totalNotches={46}
+          spacing={22}
+          notchCornerRadius={4}
+          inactiveFillOpacity={0.35}
+          activeFill={color}
+          minWidth={0}
+          defaultLabel={label}
+          centerValue={Math.round(pct)}
+        />
       </div>
       <p className="mt-2 text-center text-[10px] leading-3 text-[var(--color-ink-4)]">{detail}</p>
     </div>
@@ -135,19 +146,20 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
 
 function TaskHealthChart({ data }: { data: Overview }) {
   const rows = statusRows(data)
+  const total = Math.max(1, data.total_tasks)
+  const rings = rows.map((row) => ({ label: row.category, value: row.value, maxValue: total, color: row.fill }))
   return (
     <div className="grid items-center gap-4 sm:grid-cols-[minmax(180px,1fr)_minmax(150px,.8fr)]">
-      <div className="h-64 min-w-0">
-        <PieChart width={260} height={250} className="mx-auto max-w-full">
-          <Pie data={rows} dataKey="value" nameKey="category" innerRadius={62} outerRadius="84%" cornerRadius={5} paddingAngle={2} stroke="var(--color-surface)" strokeWidth={4}>
-            <LabelList dataKey="value" position="inside" className="fill-background text-xs font-semibold" stroke="none" formatter={(value) => Number(value) > 0 ? value : ""} />
-          </Pie>
-        </PieChart>
+      <div className="mx-auto h-64 w-full max-w-[260px]">
+        <RingChart data={rings} baseInnerRadius={62} strokeWidth={12} ringGap={7}>
+          {rings.map((item) => <Ring key={item.label} index={rings.indexOf(item)} />)}
+          <RingCenter defaultLabel="Total tasks" />
+        </RingChart>
       </div>
       <div className="space-y-3">
         {rows.map((row) => {
           const pct = data.total_tasks > 0 ? Math.round((row.value / data.total_tasks) * 100) : 0
-          return <div key={row.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-[var(--color-ink-3)]"><i className="size-2 rounded-full" style={{ background: row.fill, boxShadow: `0 0 8px ${row.fill}` }} />{row.category}</span><span className="font-mono tabular-nums text-[var(--color-ink-2)]">{row.value} <small className="text-[var(--color-ink-4)]">({pct}%)</small></span></div>
+          return <div key={row.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-[var(--color-ink-3)]"><i className="size-2 rounded-full" style={{ background: row.fill }} />{row.category}</span><span className="font-mono tabular-nums text-[var(--color-ink-2)]">{row.value} <small className="text-[var(--color-ink-4)]">({pct}%)</small></span></div>
         })}
       </div>
     </div>
@@ -222,19 +234,21 @@ function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: bool
       {loading || !data ? (
         <p className="mt-6 text-xs text-[var(--color-ink-4)]">Loading review metrics…</p>
       ) : (
-        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-          {[
-            { label: "Approved", value: data.approved, tone: "text-[var(--color-success)]" },
-            { label: "Reopened", value: data.reopened, tone: "text-[var(--color-warning)]" },
-            { label: "In review", value: data.now_in_review, tone: "text-[var(--color-accent)]" },
-            { label: "Avg latency", value: data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "—", tone: "text-[var(--color-ink-2)]" },
-          ].map((cell) => (
-            <div key={cell.label} className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-2">
-              <p className="text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">{cell.label}</p>
-              <p className={`mt-1 font-mono text-sm ${cell.tone}`}>{cell.value}</p>
-            </div>
-          ))}
-        </div>
+        <>
+          <FunnelChart
+            className="mt-4 h-44 w-full"
+            data={[
+              { label: "In review", value: data.now_in_review, displayValue: String(data.now_in_review), color: "var(--color-accent)" },
+              { label: "Reopened", value: data.reopened, displayValue: String(data.reopened), color: "var(--color-warning)" },
+              { label: "Approved", value: data.approved, displayValue: String(data.approved), color: "var(--color-success)" },
+            ] satisfies FunnelStage[]}
+            color="var(--color-accent)"
+            layers={2}
+            gap={3}
+            showPercentage={false}
+          />
+          <div className="mt-2 flex justify-end"><span className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 px-3 py-2 text-center"><span className="block text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">Avg latency</span><span className="mt-1 block font-mono text-lg text-[var(--color-ink-2)]">{data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "-"}</span></span></div>
+        </>
       )}
     </section>
   )
@@ -337,20 +351,28 @@ export default function OverviewPage() {
             {activity.isLoading ? (
               <p className="text-xs text-[var(--color-ink-4)]">Loading activity…</p>
             ) : heatmapData.length === 0 ? (
-              <p className="text-xs text-[var(--color-ink-4)]">No activity data yet — start chatting or dispatching tasks</p>
+              <p className="text-xs text-[var(--color-ink-4)]">No activity data yet - start chatting or dispatching tasks</p>
             ) : (
-              <HeatmapChart
-                data={heatmapData}
-                layout="fluid"
-                weekStartDay={1}
-                animate
-                levelColors={["var(--color-inset)", "color-mix(in srgb, var(--color-accent) 20%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 40%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 65%, var(--color-inset))", "var(--color-accent)"]}
-              >
-                <HeatmapCells />
-                <HeatmapXAxis />
-                <HeatmapYAxis />
-                <HeatmapTooltip formatLabel={(count, date) => `${count} total · ${date.toLocaleDateString("en-ID", { weekday: "short", day: "numeric", month: "short" })}`} />
-              </HeatmapChart>
+              <HeatmapInteractionProvider>
+                <HeatmapInteractionBoundary>
+                  <div className="flex w-full flex-col items-stretch gap-3">
+                    <HeatmapChart
+                      data={heatmapData}
+                      className="w-full"
+                      layout="fluid"
+                      weekStartDay={1}
+                      animate
+                      levelColors={["var(--color-inset)", "color-mix(in srgb, var(--color-accent) 20%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 40%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 65%, var(--color-inset))", "var(--color-accent)"]}
+                    >
+                      <HeatmapCells inactiveOpacity={1} inactiveScale={1} />
+                      <HeatmapXAxis />
+                      <HeatmapYAxis />
+                      <HeatmapTooltip instant formatLabel={(count, date) => `${count} total · ${date.toLocaleDateString("en-ID", { weekday: "short", day: "numeric", month: "short" })}`} />
+                    </HeatmapChart>
+                    <HeatmapLegend inactiveOpacity={1} inactiveScale={1} align="end" />
+                  </div>
+                </HeatmapInteractionBoundary>
+              </HeatmapInteractionProvider>
             )}
           </div>
         </section>
@@ -358,7 +380,7 @@ export default function OverviewPage() {
         {/* ── System health + Task health side by side ── */}
         <div className="mt-3 grid gap-3 lg:grid-cols-[1.15fr_.85fr]">
           <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><Gauge className="size-4 text-[var(--color-accent)]" /></div>
+            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><GaugeIcon className="size-4 text-[var(--color-accent)]" /></div>
             <div className="mt-5 grid min-h-64 grid-cols-2 items-stretch gap-3"><GaugeDial icon={Cpu} label="CPU load" value={data.metrics.cpu_percent} detail={`${data.metrics.goroutines} active Go runtime goroutines`} /><GaugeDial icon={MemoryStick} label="Memory" value={memoryPct} detail={`${data.metrics.memory_used_mb} MB used of ${data.metrics.memory_total_mb} MB`} tone={memoryPct > 80 ? "danger" : memoryPct > 60 ? "warning" : "accent"} /></div>
             <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><p className="text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">Goroutines</p><p className="mt-1 font-mono text-lg text-[var(--color-ink)]">{data.metrics.goroutines}</p></div><div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><p className="text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">Finished</p><p className="mt-1 font-mono text-lg text-[var(--color-ink)]">{finished}</p></div></div>
           </section>
