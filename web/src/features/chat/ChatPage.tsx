@@ -137,7 +137,10 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
       tone: event.kind === "tool_output" ? "tool" : isState ? "session" : "model",
     }
   })
-  return <TaskList title="Context activity" tasks={tasks} defaultOpen={open} leading={active ? <div className="mb-2 border-b border-[var(--color-line)]/50 pb-2"><AgentProgress label={phase?.label ?? progressLabelForEvents(events, run.state)} elapsedSeconds={Math.max(0, (now - run.started_at * 1000) / 1000)} /></div> : undefined} />
+  return <div className="mt-3">
+    {active && <div className="mb-2"><AgentProgress label={phase?.label ?? progressLabelForEvents(events, run.state)} elapsedSeconds={Math.max(0, (now - run.started_at * 1000) / 1000)} /></div>}
+    <TaskList title="Context activity" tasks={tasks} defaultOpen={open} />
+  </div>
 }
 
 function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
