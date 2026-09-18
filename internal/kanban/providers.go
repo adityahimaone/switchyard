@@ -36,6 +36,126 @@ type providerRaw struct {
 	Models  map[string]any `yaml:"models"`
 }
 
+type ProviderInput struct {
+	Name         string `json:"name"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	DefaultModel string `json:"default_model"`
+}
+
+func validateProviderName(name string) error {
+	if name == "" || len(name) > 100 || strings.TrimSpace(name) != name || strings.ContainsAny(name, "/\\\n\r") {
+		return fmt.Errorf("invalid provider name")
+	}
+	return nil
+}
+
+func loadProviderDocument() (map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(hermesHome(), "config.yaml"))
+	if os.IsNotExist(err) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = map[string]any{}
+	}
+	return doc, nil
+}
+
+func saveProviderDocument(doc map[string]any) error {
+	if err := os.MkdirAll(hermesHome(), 0o700); err != nil {
+		return err
+	}
+	raw, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(hermesHome(), "config.yaml")
+	tmp, err := os.CreateTemp(hermesHome(), ".config.yaml-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+func UpsertProvider(input ProviderInput) error {
+	if err := validateProviderName(input.Name); err != nil {
+		return err
+	}
+	if err := validateProviderBaseURL(input.BaseURL); err != nil {
+		return err
+	}
+	doc, err := loadProviderDocument()
+	if err != nil {
+		return err
+	}
+	providers, _ := doc["custom_providers"].([]any)
+	found := false
+	for i, raw := range providers {
+		provider, ok := raw.(map[string]any)
+		if !ok || provider["name"] != input.Name {
+			continue
+		}
+		provider["base_url"] = input.BaseURL
+		provider["model"] = input.DefaultModel
+		if input.APIKey != "" {
+			provider["api_key"] = input.APIKey
+		}
+		providers[i], found = provider, true
+	}
+	if !found {
+		provider := map[string]any{"name": input.Name, "base_url": input.BaseURL, "model": input.DefaultModel}
+		if input.APIKey != "" {
+			provider["api_key"] = input.APIKey
+		}
+		providers = append(providers, provider)
+	}
+	doc["custom_providers"] = providers
+	return saveProviderDocument(doc)
+}
+
+func DeleteProvider(name string) error {
+	if err := validateProviderName(name); err != nil {
+		return err
+	}
+	doc, err := loadProviderDocument()
+	if err != nil {
+		return err
+	}
+	providers, _ := doc["custom_providers"].([]any)
+	filtered := providers[:0]
+	for _, raw := range providers {
+		provider, _ := raw.(map[string]any)
+		if provider["name"] != name {
+			filtered = append(filtered, raw)
+		}
+	}
+	doc["custom_providers"] = filtered
+	return saveProviderDocument(doc)
+}
+
+// configRaw describes Hermes custom provider entries.
+var _ = providerRaw{}
+
 type configRaw struct {
 	CustomProviders []providerRaw `yaml:"custom_providers"`
 }

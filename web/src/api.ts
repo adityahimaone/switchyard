@@ -419,7 +419,11 @@ export function analyzeAttachment(id: string, model: string, prompt = "") { retu
 export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string; attachment_ids?: string[] }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
 export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
+export interface ProviderInput { name: string; base_url: string; api_key?: string; default_model?: string }
 export function listProviders() { return api<ProviderModel[]>("/api/providers") }
+export function createProvider(input: ProviderInput) { return api<ProviderModel>("/api/providers", { method: "POST", body: JSON.stringify(input) }) }
+export function updateProvider(name: string, input: Omit<ProviderInput, "name">) { return api<ProviderModel>(`/api/providers/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(input) }) }
+export function deleteProvider(name: string) { return api<{ deleted: string }>(`/api/providers/${encodeURIComponent(name)}`, { method: "DELETE" }) }
 export function discoverProviderModels(name: string) { return api<{ name: string; models: string[] }>(`/api/providers/${encodeURIComponent(name)}/models/discover`, { method: "POST" }) }
 export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
 export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }

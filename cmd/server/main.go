@@ -800,6 +800,60 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, providers)
 	})
+	mux.HandleFunc("POST /api/providers", func(w http.ResponseWriter, r *http.Request) {
+		var input kanban.ProviderInput
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&input); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		if err := kanban.UpsertProvider(input); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		providers, err := kanban.ListProviders()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		for _, provider := range providers {
+			if provider.Name == input.Name {
+				writeJSON(w, http.StatusOK, provider)
+				return
+			}
+		}
+		fail(w, fmt.Errorf("provider not found after save"), 500)
+	})
+	mux.HandleFunc("PUT /api/providers/{name}", func(w http.ResponseWriter, r *http.Request) {
+		var input kanban.ProviderInput
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&input); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		input.Name = r.PathValue("name")
+		if err := kanban.UpsertProvider(input); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		providers, err := kanban.ListProviders()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		for _, provider := range providers {
+			if provider.Name == input.Name {
+				writeJSON(w, http.StatusOK, provider)
+				return
+			}
+		}
+		fail(w, fmt.Errorf("provider not found after save"), 500)
+	})
+	mux.HandleFunc("DELETE /api/providers/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.DeleteProvider(r.PathValue("name")); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"deleted": r.PathValue("name")})
+	})
 	mux.HandleFunc("POST /api/providers/{name}/models/discover", func(w http.ResponseWriter, r *http.Request) {
 		models, err := kanban.DiscoverConfiguredProviderModels(r.PathValue("name"))
 		if err != nil {
