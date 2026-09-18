@@ -130,7 +130,11 @@ func UpsertProvider(input ProviderInput) error {
 		providers = append(providers, provider)
 	}
 	doc["custom_providers"] = providers
-	return saveProviderDocument(doc)
+	if err := saveProviderDocument(doc); err != nil {
+		return err
+	}
+	invalidateChatRosterCache()
+	return nil
 }
 
 func DeleteProvider(name string) error {
@@ -150,7 +154,11 @@ func DeleteProvider(name string) error {
 		}
 	}
 	doc["custom_providers"] = filtered
-	return saveProviderDocument(doc)
+	if err := saveProviderDocument(doc); err != nil {
+		return err
+	}
+	invalidateChatRosterCache()
+	return nil
 }
 
 // configRaw describes Hermes custom provider entries.

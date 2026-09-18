@@ -15,6 +15,12 @@ var chatRosterCache struct {
 
 const chatRosterTTL = 5 * time.Second
 
+func invalidateChatRosterCache() {
+	chatRosterCache.Lock()
+	chatRosterCache.at = time.Time{}
+	chatRosterCache.Unlock()
+}
+
 // ValidateChatModel rejects explicit overrides outside configured profile/provider rosters.
 // Empty model means profile default and remains valid.
 func ValidateChatModel(profile, model string) error {
