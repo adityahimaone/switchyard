@@ -160,6 +160,10 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [ ] Phase 1 authenticated live API smoke + browser-rendered acceptance
 - [ ] Phase 1 SSE mutation smoke for project/duplicate/fork/import families
 - [ ] Phase 1 — Chat Workspace: `docs/superpowers/plans/2026-09-17-chat-workspace-v1.md`
+- [x] Phase 2 local implementation: workspace contract, bounded browse/mutations, terminal session, profile-scoped Skills/Memory APIs, file browser and memory editor
+- [x] Phase 2 local verification: `go test ./...`, `go vet ./...`, `go build -o /tmp/kanban-board-server ./cmd/server`, Vite production build
+- [ ] Phase 2 authenticated browser acceptance
+- [ ] Phase 2 remote Mac canary through node-agent (`KANBAN_NODE_AGENT` unset in verification environment)
 - [ ] Phase 2 — Agent Workspace: `docs/superpowers/plans/2026-09-17-agent-workspace-parity.md`
 - [ ] Phase 3 — Operations and Trust: `docs/superpowers/plans/2026-09-17-operations-trust-parity.md`
 - [ ] Phase 4 — MCP/extensions/gateway: separate design approval required
