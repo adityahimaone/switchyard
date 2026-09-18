@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
-import { api, type PingPoint, type Workspace } from "@/api"
+import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Workspace, type WorkspaceFile } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -334,6 +334,24 @@ function LogsDialog({ ws, onClose }: { ws: Workspace; onClose: () => void }) {
 }
 
 
+function FileBrowser({ ws }: { ws: Workspace }) {
+  const [path, setPath] = useState(".")
+  const [selected, setSelected] = useState<WorkspaceFile | null>(null)
+  const [draft, setDraft] = useState("")
+  const files = useQuery({ queryKey: ["workspace-files", ws.id, path], queryFn: () => listWorkspaceFiles(ws.id, path) })
+  const preview = useQuery({ queryKey: ["workspace-preview", ws.id, selected?.path], queryFn: () => previewWorkspaceFile(ws.id, selected!.path), enabled: !!selected && !selected.is_dir })
+  useEffect(() => { if (preview.data?.body != null) setDraft(preview.data.body) }, [preview.data?.body])
+  const save = useMutation({ mutationFn: () => saveWorkspaceFile(ws.id, selected!.path, draft), onSuccess: () => preview.refetch() })
+  function open(file: WorkspaceFile) { if (file.is_dir) setPath(file.path); else { setSelected(file); setDraft("") } }
+  return <div className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-2.5">
+    <div className="flex items-center justify-between gap-2"><span className="text-[10px] uppercase tracking-wider text-neutral-500">Files · {path}</span>{selected && <a className="text-[10px] text-[var(--color-accent)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}>Download</a>}</div>
+    <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,180px)_1fr]">
+      <div className="max-h-40 space-y-0.5 overflow-auto">{path !== "." && <button className="block w-full truncate px-1 text-left text-[11px] text-neutral-500 hover:text-white" onClick={() => setPath(path.split("/").slice(0, -1).join("/") || ".")}>..</button>}{(files.data?.files ?? []).map((file) => <button key={file.path} className={`block w-full truncate rounded px-1 text-left text-[11px] ${selected?.path === file.path ? "bg-[var(--color-inset)] text-white" : "text-neutral-400 hover:bg-[var(--color-inset)]"}`} onClick={() => open(file)}>{file.is_dir ? "▸ " : "· "}{file.name}</button>)}{files.isError && <p className="text-[10px] text-red-300">{(files.error as Error).message}</p>}</div>
+      <div className="min-w-0">{preview.data?.is_binary ? <p className="text-xs text-neutral-500">Binary file. Preview unavailable.</p> : selected ? <><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-32 font-mono text-[11px]" placeholder="Loading preview…" /><div className="mt-1 flex justify-end"><Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save"}</Button></div></> : <p className="text-xs text-neutral-600">Select file to preview.</p>}</div>
+    </div>
+  </div>
+}
+
 export default function WorkspacesPage() {
   const qc = useQueryClient()
   const [form, setForm] = useState<{ open: boolean; edit: Workspace | null }>({ open: false, edit: null })
@@ -504,6 +522,8 @@ export default function WorkspacesPage() {
                 </div>
 
                 <CodeGraphPanel ws={ws} open={!!codeGraphOpen[ws.id]} onToggle={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))} />
+
+                <FileBrowser ws={ws} />
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <Button variant="outline" size="sm" onClick={() => pingOne(ws)} disabled={pinging != null}>

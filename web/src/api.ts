@@ -183,6 +183,16 @@ export interface Workspace {
   ping_ms?: number | null
 }
 
+export interface WorkspaceFile { name: string; path: string; is_dir: boolean; size?: number }
+export interface WorkspacePreview { path: string; mime: string; body?: string; bytes: number; truncated?: boolean; is_binary?: boolean }
+export interface WorkspaceFilesResponse { workspace_id: string; transport: string; files: WorkspaceFile[] }
+export interface WorkspaceTerminal { session_id: string; transport: string; host?: string }
+export function listWorkspaceFiles(id: string, path = ".") { return api<WorkspaceFilesResponse>(`/api/workspaces/${id}/files?path=${encodeURIComponent(path)}`) }
+export function previewWorkspaceFile(id: string, path: string) { return api<WorkspacePreview>(`/api/workspaces/${id}/files/preview?path=${encodeURIComponent(path)}`) }
+export function saveWorkspaceFile(id: string, path: string, content: string) { return api<{ path: string; status: string }>(`/api/workspaces/${id}/files/edit`, { method: "PUT", body: JSON.stringify({ path, content }) }) }
+export function startWorkspaceTerminal(id: string, command: string) { return api<WorkspaceTerminal>(`/api/workspaces/${id}/terminal/start`, { method: "POST", body: JSON.stringify({ command }) }) }
+export function downloadWorkspaceFileURL(id: string, path: string) { return `/api/workspaces/${id}/files/download?path=${encodeURIComponent(path)}` }
+
 export interface NodeAgent {
   node_id: string
   hostname: string
