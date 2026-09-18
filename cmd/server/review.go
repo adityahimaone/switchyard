@@ -101,8 +101,8 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	slug, id := r.PathValue("slug"), r.PathValue("id")
 	var req struct {
-		Action  string `json:"action"`            // done | commit | commit_push
-		Message string `json:"message,omitempty"` // optional commit message override
+		Action  string   `json:"action"`            // done | commit | commit_push
+		Message string   `json:"message,omitempty"` // optional commit message override
 		Files   []string `json:"files,omitempty"`   // per-file selective commit
 	}
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))

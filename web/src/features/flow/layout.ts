@@ -3,6 +3,7 @@ import type { FlowStage } from "./useFlowTasks"
 
 export type FlowNodeId = "orchestrator" | "kanban" | "dispatcher" | "memory" | "node-agent-server" | "tailscale" | "mac" | "windows" | "review"
 export interface Point { x: number; y: number }
+export interface FlowTaskCard { task_id: string; title: string }
 export interface LayoutNode { id: FlowNodeId; label: string; sub: string; row: number; col: number; x: number; y: number; hue: string; group: string }
 export interface LayoutEdge { from: FlowNodeId; to: FlowNodeId; color: string }
 
@@ -75,4 +76,10 @@ export function stageNode(stage: FlowStage, nodeId: string): FlowNodeId | null {
   if (stage === "running") return nodeId === "mac" || nodeId === "windows" ? nodeId : "node-agent-server"
   if (stage === "done" || stage === "failed") return nodeId === "mac" || nodeId === "windows" ? nodeId : "review"
   return null
+}
+
+export function taskCardPositions(tasks: FlowTaskCard[], center: Point): Point[] {
+  const gap = 68
+  const start = center.y - ((tasks.length - 1) * gap) / 2
+  return tasks.map((_, index) => ({ x: center.x, y: start + index * gap }))
 }

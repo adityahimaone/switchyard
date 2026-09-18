@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { AppWindow, Brain, Database, Expand, GitPullRequest, Kanban, Laptop, Minimize2, Network, Radio, Search, Server, ZoomIn, ZoomOut, Maximize2, X } from "lucide-react"
-import { NODES, EDGES, type FlowNodeId, type Point } from "./layout"
+import { NODES, EDGES, taskCardPositions, type FlowNodeId, type Point } from "./layout"
 import { elbowPath, elbowPathV, pathLength } from "./elbow"
 import { TravelingDot } from "./TravelingDot"
 import { useFlowTasks, type FlowStage, type FlowTask } from "./useFlowTasks"
@@ -86,6 +86,16 @@ export default function AgentMappingPage() {
   const positions = useMemo(() => ({ ...POS, ...overrides }), [overrides])
   const countFor = (id: FlowNodeId) => visibleTasks.filter((t) => t.node_id === id || (t.stage === "dispatched" && id === "dispatcher") || ((t.stage === "done" || t.stage === "failed") && id === "review")).length
   const selectedTask = selected ? stageFor(selected, visibleTasks) : undefined
+  const taskCards = useMemo(() => {
+    const grouped = new Map<FlowNodeId, FlowTask[]>()
+    for (const task of visibleTasks) {
+      const node = task.stage === "dispatched" ? "dispatcher" : task.stage === "done" || task.stage === "failed" ? "review" : (task.node_id === "mac" || task.node_id === "windows" ? task.node_id : "node-agent-server")
+      const list = grouped.get(node) ?? []
+      list.push(task)
+      grouped.set(node, list)
+    }
+    return [...grouped.entries()].flatMap(([node, nodeTasks]) => taskCardPositions(nodeTasks, positions[node]).map((position, index) => ({ task: nodeTasks[index], position })))
+  }, [positions, visibleTasks])
   const activeEdgeKeys = new Set<string>(); for (const t of visibleTasks) { const chain = channelChain(t); for (let i = 0; i < chain.length - 1; i++) { activeEdgeKeys.add(`${chain[i]}-${chain[i + 1]}`); activeEdgeKeys.add(`${chain[i + 1]}-${chain[i]}`) } }
   const edgePaths = EDGES.map((edge) => ({ ...edge, path: anchor(edge.from, edge.to, positions)[2], active: activeEdgeKeys.has(`${edge.from}-${edge.to}`) }))
   const activeCount = tasks.filter((t) => t.stage === "dispatched" || t.stage === "running").length
@@ -132,6 +142,7 @@ export default function AgentMappingPage() {
         {visibleTasks.slice(0, 24).flatMap((t, i) => { const chain = channelChain(t); return chain.slice(0, -1).flatMap((from, hop) => { const to = chain[hop + 1]; const path = anchor(from, to, positions)[2]; return [0, 1, 2, 3, 4, 5, 6, 7].map((dot) => <TravelingDot key={`${t.task_id}-${from}-${to}-${dot}`} taskId={`${t.task_id}-${i}`} pathD={path} pathLen={pathLength(path)} phaseRatio={dot / 8} active />) }) })}
         {edgePaths.flatMap((edge, i) => [0, 1].map((phase) => <TravelingDot key={`idle-${edge.from}-${edge.to}-${phase}`} taskId={`idle-${i}`} pathD={edge.path} pathLen={pathLength(edge.path)} phaseRatio={(i * .21 + phase / 2) % 1} idle />))}
         {NODES.map((node) => { const Icon = ICON[node.id], task = stageFor(node.id, visibleTasks), color = task ? STAGE_COLOR[task.stage] : COLORS[node.id]; return <button key={node.id} type="button" onPointerDown={(e) => onNodePointerDown(e, node.id)} onPointerMove={onNodePointerMove} onPointerUp={(e) => onNodePointerUp(e, node.id)} onPointerCancel={() => { nodeDragRef.current = null }} className={`map-node glass-panel-raised absolute flex h-[52px] w-[188px] cursor-grab items-center gap-2 rounded-xl border bg-[var(--color-surface)] px-3 text-left shadow-[0_8px_24px_rgba(0,0,0,.18)] transition-colors duration-150 hover:bg-[var(--color-inset)] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${!visibleTasks.length ? "map-idle-card" : ""} ${selected === node.id ? "ring-1" : ""}`} style={{ left: positions[node.id].x - CARD_W / 2, top: positions[node.id].y - CARD_H / 2, borderColor: task ? color : selected === node.id ? color : "rgba(30,36,48,.9)", boxShadow: task ? `0 0 0 1px ${color}, 0 0 18px ${color}66, 0 8px 24px rgba(0,0,0,.22)` : selected === node.id ? `0 0 0 1px ${color}, 0 8px 24px rgba(0,0,0,.22)` : undefined }}><span className="absolute inset-y-2 left-0.5 w-0.5 rounded-full" style={{ background: color }} /><Icon className="ml-1 size-3.5 shrink-0" style={{ color }} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-semibold">{LABEL[node.id]}</span><span className="block truncate font-mono text-[9px] text-[var(--color-ink-3)]">{task ? `${task.stage} · ${task.task_id}` : node.sub}</span></span>{countFor(node.id) > 0 && <span className="flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-black" style={{ background: color }}>{countFor(node.id)}</span>}</button> })}
+        {taskCards.map(({ task, position }) => <span key={`task-${task.task_id}`} title={task.title} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-bg)]/95 px-1.5 py-1 font-mono text-[9px] text-[var(--color-accent)] shadow-lg" style={{ left: position.x, top: position.y }}>{task.task_id}</span>)}
         <div className="absolute left-16 top-[282px] font-mono text-[9px] uppercase tracking-[.16em] text-[#666960]">{visibleTasks.length ? "live route activity" : "no active task"}</div>
       </div>
       <div onPointerDown={(e) => e.stopPropagation()} className="absolute bottom-4 left-4 flex items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/95 p-1 shadow-[0_8px_24px_rgba(0,0,0,.18)]"><button aria-label="Zoom out" title="Zoom out" className="map-control" onClick={() => zoomAt(.8)}><ZoomOut className="size-3.5" /></button><span className="w-10 text-center font-mono text-[10px] text-[var(--color-ink-3)]">{Math.round(actualView.scale * 100)}%</span><button aria-label="Zoom in" title="Zoom in" className="map-control" onClick={() => zoomAt(1.2)}><ZoomIn className="size-3.5" /></button><button aria-label="Fit graph" title="Fit graph" className="map-control" onClick={() => setView(null)}><Maximize2 className="size-3.5" /></button><button aria-label={expanded ? "Exit expanded map" : "Expand map"} title={expanded ? "Exit expanded map" : "Expand map"} className="map-control" onClick={toggleExpand}>{expanded ? <Minimize2 className="size-3.5" /> : <Expand className="size-3.5" />}</button></div>
