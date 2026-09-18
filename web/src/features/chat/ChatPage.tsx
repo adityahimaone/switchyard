@@ -554,14 +554,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = isLiveRunMessage ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
         ))}
-        {run && isRunning && (!run.message_id || !activeMessages.some((message) => message.id === run.message_id || message.run_id === run.id)) && <ActivityContext run={run} events={events.data ?? []} />}
+        {run && isRunning && <ActivityContext run={run} events={events.data ?? []} />}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>
