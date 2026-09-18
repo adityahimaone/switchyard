@@ -48,6 +48,25 @@ func TestChatSessionAutoTitleUsesFirstPrompt(t *testing.T) {
 	}
 }
 
+func TestChatLifecycleEventIncludesIdentity(t *testing.T) {
+	ch := Hub.Subscribe()
+	defer Hub.Unsubscribe(ch)
+	r := &ChatRun{SessionID: "cs_test", ID: "cr_test", MessageID: "cm_test", State: "running"}
+	broadcastChatLifecycle(r)
+	select {
+	case ev := <-ch:
+		if ev.Kind != "chat_run_state" {
+			t.Fatalf("kind=%s", ev.Kind)
+		}
+		payload, ok := ev.Data.(ChatLifecycleEvent)
+		if !ok || payload.SessionID != r.SessionID || payload.RunID != r.ID || payload.MessageID != r.MessageID || payload.State != r.State {
+			t.Fatalf("payload=%+v", ev.Data)
+		}
+	default:
+		t.Fatal("lifecycle event not broadcast")
+	}
+}
+
 func TestChatSessionActiveRun(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	s, err := CreateChatSession("New chat", "hermes", "default", "", "")

@@ -154,7 +154,7 @@ export interface OverviewHealth {
 
 export interface ServerEvent {
   kind: string
-  data: { board?: string; task_id?: string; run_id?: string; session_id?: string; kind?: string; payload?: string | Record<string, unknown> }
+  data: { board?: string; task_id?: string; run_id?: string; message_id?: string; session_id?: string; state?: string; kind?: string; payload?: string | Record<string, unknown> }
   at: number
 }
 
@@ -164,7 +164,7 @@ export function openEventStream(onEvent: (event: ServerEvent) => void) {
     try { onEvent(JSON.parse(message.data) as ServerEvent) } catch { /* refetch remains fallback */ }
   }
   source.onmessage = handle
-  ;["task_created", "task_updated", "status_changed", "task_event", "commented", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
+  ;["task_created", "task_updated", "status_changed", "task_event", "commented", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_state", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
   return () => source.close()
 }
 

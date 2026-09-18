@@ -90,6 +90,28 @@ function AgentTaskPlan({ events, title = "Context activity", defaultOpen = true,
   return <TaskList tasks={tasks} title={title} defaultOpen={defaultOpen} complete={complete} />
 }
 
+function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
+  const active = run?.state === "loading" || run?.state === "running"
+  const [open, setOpen] = useState(active)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    setOpen(!!active)
+    if (!active) return
+    const timer = window.setInterval(() => setNow(Date.now()), 500)
+    return () => window.clearInterval(timer)
+  }, [active, run?.id])
+  if (!run || events.length === 0) return null
+  const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
+  const elapsed = elapsedLabel(run.started_at, run.ended_at, now)
+  return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)]/45 px-3 py-2 text-xs">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[var(--color-ink-2)]">
+      <span className="flex min-w-0 items-center gap-2"><span className={stateTone(run.state)}>{stateLabel(run.state)}</span><span className="truncate text-[var(--color-ink-3)]">{phase?.label ?? progressLabelForEvents(events, run.state)}</span></span>
+      <span className="shrink-0 font-mono tabular-nums text-[var(--color-ink-3)]">{elapsed} · {events.length} events</span>
+    </summary>
+    <div className="mt-2 border-t border-[var(--color-line)] pt-2"><AgentTaskPlan events={events} title="Context activity" defaultOpen complete={!active} /></div>
+  </details>
+}
+
 function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
   if (phase?.label) return phase.label
@@ -504,7 +526,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const cardEvents = msgEvents.filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{!messageStreaming && msgEvents.length > 0 && <AgentTaskPlan events={msgEvents} title="Context activity" defaultOpen={false} complete={msgRun?.state === "done"} />}<EventCards events={cardEvents} /></StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} /><ActivityContext run={msgRun} events={msgEvents} /><EventCards events={cardEvents} /></StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
@@ -513,7 +535,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         ))}
         {run && isRunning && <div className="chat-agent-progress">
           <AgentProgress label={progressLabelForEvents(events.data ?? [], run.state)} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} />
-          <AgentTaskPlan events={events.data ?? []} title="Context activity" defaultOpen />
           <EventCards events={(events.data ?? []).filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")} />
         </div>}
         <div ref={bottomRef} aria-hidden="true" />

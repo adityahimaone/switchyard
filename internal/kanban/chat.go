@@ -61,6 +61,23 @@ type ChatRunEvent struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+// ChatLifecycleEvent is broadcast on the SSE hub whenever a chat run
+// changes state, carrying enough identity for the UI to route it to the
+// owning session and message without fetching.
+type ChatLifecycleEvent struct {
+	SessionID string `json:"session_id"`
+	RunID     string `json:"run_id"`
+	MessageID string `json:"message_id"`
+	State     string `json:"state"`
+}
+
+func broadcastChatLifecycle(r *ChatRun) {
+	if r == nil {
+		return
+	}
+	broadcastEvent("chat_run_state", ChatLifecycleEvent{SessionID: r.SessionID, RunID: r.ID, MessageID: r.MessageID, State: r.State})
+}
+
 var validChatAgents = map[string]bool{"hermes": true}
 var validChatStates = map[string]bool{"loading": true, "running": true, "done": true, "error": true, "cancelled": true}
 
@@ -398,7 +415,8 @@ func CreateChatRun(sessionID, messageID, agent, profile, workspace, model, promp
 		return nil, err
 	}
 	_ = appendChatRunEventLocked(db, r.ID, "loading", `{"state":"loading"}`)
-	broadcastEvent("chat_run", map[string]any{"run_id": r.ID, "session_id": sessionID, "state": r.State})
+	broadcastChatLifecycle(r)
+	broadcastEvent("chat_run", map[string]any{"run_id": r.ID, "session_id": sessionID, "message_id": r.MessageID, "state": r.State})
 	return r, nil
 }
 
@@ -433,9 +451,11 @@ func UpdateChatRunState(id, state, output, errMsg string) error {
 		return err
 	}
 	_ = appendChatRunEventLocked(db, id, state, fmt.Sprintf(`{"state":%q}`, state))
-	var sess string
-	_ = db.QueryRow(`SELECT session_id FROM chat_runs WHERE id=?`, id).Scan(&sess)
-	broadcastEvent("chat_run", map[string]any{"run_id": id, "session_id": sess, "state": state})
+	updated, getErr := GetChatRun(id)
+	if getErr == nil {
+		broadcastChatLifecycle(updated)
+		broadcastEvent("chat_run", map[string]any{"run_id": id, "session_id": updated.SessionID, "message_id": updated.MessageID, "state": state})
+	}
 	return nil
 }
 
@@ -452,7 +472,9 @@ func appendChatRunEventLocked(db *sql.DB, runID, kind, payload string) error {
 	if _, err := db.Exec(`INSERT INTO chat_run_events (run_id,kind,payload,created_at) VALUES (?,?,?,?)`, runID, kind, payload, time.Now().Unix()); err != nil {
 		return err
 	}
-	broadcastEvent("chat_run_event", map[string]any{"run_id": runID, "kind": kind, "payload": payload})
+	var sessionID, messageID string
+	_ = db.QueryRow(`SELECT session_id,message_id FROM chat_runs WHERE id=?`, runID).Scan(&sessionID, &messageID)
+	broadcastEvent("chat_run_event", map[string]any{"run_id": runID, "session_id": sessionID, "message_id": messageID, "kind": kind, "payload": payload})
 	return nil
 }
 
