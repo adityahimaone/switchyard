@@ -221,7 +221,7 @@ func isLoopbackHost(host string) bool {
 func ListMCPServers(profile string) ([]MCPServer, error) {
 	ecosystem.mu.RLock()
 	defer ecosystem.mu.RUnlock()
-	var items []MCPServer
+	items := []MCPServer{}
 	if err := ecosystem.read(profile, "mcp.json", &items); err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func UpsertMCPServer(profile string, m MCPServer) ([]MCPServer, error) {
 }
 
 func ListMCPServersUnlocked(profile string) ([]MCPServer, error) {
-	var items []MCPServer
+	items := []MCPServer{}
 	if err := ecosystem.read(profile, "mcp.json", &items); err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func DeleteMCPServer(profile, id string) ([]MCPServer, error) {
 func ListExtensions(profile string) ([]ExtensionManifest, error) {
 	ecosystem.mu.RLock()
 	defer ecosystem.mu.RUnlock()
-	var items []ExtensionManifest
+	items := []ExtensionManifest{}
 	if err := ecosystem.read(profile, "extensions.json", &items); err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func UpsertExtension(profile string, m ExtensionManifest) ([]ExtensionManifest, 
 }
 
 func ListExtensionsUnlocked(profile string) ([]ExtensionManifest, error) {
-	var items []ExtensionManifest
+	items := []ExtensionManifest{}
 	if err := ecosystem.read(profile, "extensions.json", &items); err != nil {
 		return nil, err
 	}
