@@ -100,7 +100,7 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
     const timer = window.setInterval(() => setNow(Date.now()), 500)
     return () => window.clearInterval(timer)
   }, [active, run?.id])
-  if (!run || events.length === 0) return null
+  if (!run) return null
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
   const elapsed = elapsedLabel(run.started_at, run.ended_at, now)
   return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)]/45 px-3 py-2 text-xs">
@@ -526,7 +526,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const cardEvents = msgEvents.filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} /><ActivityContext run={msgRun} events={msgEvents} /><EventCards events={cardEvents} /></StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{messageStreaming ? <ActivityContext run={msgRun} events={msgEvents} /> : (msgEvents.length > 0 && <AgentTaskPlan events={msgEvents} title="Context activity" defaultOpen={false} complete={msgRun?.state === "done"} />)}<EventCards events={cardEvents} /></StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
