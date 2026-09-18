@@ -10,13 +10,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { BorderBeam } from "@/components/ui/border-beam"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
-import { AgentProgress } from "@/components/agents/loading-states"
-import { TaskList, type TaskListTask } from "@/TodoList"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
 import { AttachmentChip } from "@/components/AttachmentChip"
-import { EventCards } from "@/components/chat/EventCard"
 import { SessionMenu } from "@/components/chat/SessionMenu"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
@@ -79,15 +76,37 @@ function eventPayload(event: ChatRunEvent): Record<string, string> {
   }
 }
 
-function AgentTaskPlan({ events, title = "Context activity", defaultOpen = true, complete = false }: { events: ChatRunEvent[]; title?: string; defaultOpen?: boolean; complete?: boolean }) {
-  const tasks: TaskListTask[] = events.filter((event) => event.kind === "phase" || event.kind === "spawned" || event.kind === "error" || event.kind === "cancelled").map((event, index, all) => {
-    const payload = eventPayload(event)
-    const failed = event.kind === "error" || event.kind === "cancelled"
-    const status = failed ? "error" : complete || index < all.length - 1 ? "done" : "active"
-    const label = event.kind === "spawned" ? "Started Agent Hermes" : event.kind === "phase" ? payload.label ?? PHASE_LABELS[payload.phase] ?? "Working" : failed ? (event.kind === "error" ? "Agent reported an error" : "Run cancelled") : "Working"
-    return { id: String(event.id), status, label, detail: new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+function activityLabel(event: ChatRunEvent) {
+  const payload = eventPayload(event)
+  if (event.kind === "phase") return payload.label ?? PHASE_LABELS[payload.phase] ?? "Working"
+  if (event.kind === "spawned") return "Started agent"
+  if (event.kind === "error") return payload.message ?? "Agent reported an error"
+  if (event.kind === "cancelled") return "Run cancelled"
+  if (event.kind === "tool_output") return payload.text ?? payload.output ?? "Tool output"
+  if (event.kind === "tool") return payload.name ? `Tool: ${payload.name}` : "Tool call"
+  return payload.label ?? payload.description ?? event.kind.replaceAll("_", " ")
+}
+
+function ActivityTimeline({ run, events }: { run: ChatRun; events: ChatRunEvent[] }) {
+  const raw = events
+    .filter((event, index, all) => index === all.findIndex((candidate) => candidate.id === event.id))
+    .map((event) => ["loading", "running", "done", "error", "cancelled"].includes(event.kind) ? { ...event, kind: "state", payload: JSON.stringify({ state: event.kind }) } : event)
+    .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
+  const rows = raw.length ? raw : [{ id: -1, run_id: run.id, kind: "state", payload: JSON.stringify({ state: run.state }), created_at: run.started_at }]
+  const visible = rows.filter((event, index, all) => {
+    if (index === 0) return true
+    const previous = all[index - 1]
+    return event.kind !== "state" || previous.kind !== "state" || eventPayload(event).state !== eventPayload(previous).state
   })
-  return <TaskList tasks={tasks} title={title} defaultOpen={defaultOpen} complete={complete} />
+  return <div className="space-y-1.5">
+    {visible.map((event) => {
+      const payload = eventPayload(event)
+      const state = payload.state as ChatState | undefined
+      const label = event.kind === "state" ? `${stateLabel(state)} · ${progressLabelForEvents(events, state)}` : activityLabel(event)
+      const tone = event.kind === "error" || event.kind === "cancelled" ? "text-red-300" : event.kind === "tool_output" ? "text-sky-300" : event.kind === "state" ? stateTone(state) : "text-[var(--color-ink-2)]"
+      return <div key={`${event.kind}-${event.id}`} className="flex items-start gap-2 border-b border-[var(--color-line)]/50 py-1.5 last:border-0"><span className={`mt-0.5 size-1.5 shrink-0 rounded-full bg-current ${tone}`} /><span className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${tone}`}>{label}</span><span className="shrink-0 font-mono text-[10px] text-[var(--color-ink-4)]">{new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+    })}
+  </div>
 }
 
 function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
@@ -108,7 +127,7 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
       <span className="flex min-w-0 items-center gap-2"><span className={stateTone(run.state)}>{stateLabel(run.state)}</span><span className="truncate text-[var(--color-ink-3)]">{phase?.label ?? progressLabelForEvents(events, run.state)}</span></span>
       <span className="shrink-0 font-mono tabular-nums text-[var(--color-ink-3)]">{elapsed} · {events.length} events</span>
     </summary>
-    <div className="mt-2 border-t border-[var(--color-line)] pt-2"><AgentTaskPlan events={events} title="Context activity" defaultOpen complete={!active} /></div>
+    <div className="mt-2 border-t border-[var(--color-line)] pt-2"><ActivityTimeline run={run} events={events} /></div>
   </details>
 }
 
@@ -525,18 +544,13 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = messageStreaming ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = messageStreaming ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  const cardEvents = msgEvents.filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{messageStreaming ? <ActivityContext run={msgRun} events={msgEvents} /> : (msgEvents.length > 0 && <AgentTaskPlan events={msgEvents} title="Context activity" defaultOpen={false} complete={msgRun?.state === "done"} />)}<EventCards events={cardEvents} /></StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
         ))}
-        {run && isRunning && <div className="chat-agent-progress">
-          <AgentProgress label={progressLabelForEvents(events.data ?? [], run.state)} initialSeconds={Math.max(0, (Date.now() - run.started_at * 1000) / 1000)} />
-          <EventCards events={(events.data ?? []).filter((event) => event.kind !== "phase" && event.kind !== "spawned" && event.kind !== "error" && event.kind !== "cancelled")} />
-        </div>}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>
