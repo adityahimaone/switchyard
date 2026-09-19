@@ -160,7 +160,10 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 	}
 
 	if strings.TrimSpace(workspace) != "" && !isLocalWorkspace(workspace) {
-		res, err := DispatchRemote(NodeDispatchRequest{TaskID: runID, Title: "Chat: " + prompt, Board: "default", Message: prompt, Workspace: workspace, Model: model, Provider: profile, Executor: agent}, 10*time.Minute)
+		remoteProgress := ""
+		res, err := DispatchRemoteWithProgress(NodeDispatchRequest{TaskID: runID, Title: "Chat: " + prompt, Board: "default", Message: prompt, Workspace: workspace, Model: model, Provider: profile, Executor: agent}, RemoteDispatchWait(), func(chunk string) {
+			remoteProgress = appendChatProgressLines(runID, remoteProgress, chunk)
+		})
 		if err != nil {
 			_ = UpdateChatRunState(runID, "error", "", err.Error())
 			return
@@ -192,13 +195,10 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 			hermesSessionID = s.HermesSessionID
 		}
 	}
-	_ = AppendChatRunEvent(runID, "phase", fmt.Sprintf(`{"phase":"profile_context","label":"Loading profile context: %s"}`, profile))
-	_ = AppendChatRunEvent(runID, "phase", `{"phase":"loading_context","label":"Loading workspace context"}`)
-	if hermesSessionID != "" {
-		_ = AppendChatRunEvent(runID, "phase", `{"phase":"resuming_session","label":"Resuming conversation"}`)
-	} else {
-		_ = AppendChatRunEvent(runID, "phase", `{"phase":"new_session","label":"Starting a new conversation"}`)
-	}
+	// These lookups are intentionally represented by one honest setup step.
+	// Emitting four synchronous ticks here made the checklist look complete
+	// before Hermes had started doing any work.
+	_ = AppendChatRunEvent(runID, "phase", `{"phase":"preparing_session","label":"Preparing chat session"}`)
 
 	// Try warm daemon first (saves cold-start on repeat runs); fall back to CLI.
 	if daemonHealthy() {
@@ -295,7 +295,7 @@ func parseHermesSessionID(out string) string {
 func stripHermesMetadata(out string) string {
 	kept := make([]string, 0)
 	for _, line := range strings.Split(out, "\n") {
-		if parseHermesSessionID(line) == "" {
+		if parseHermesSessionID(line) == "" && !strings.HasPrefix(strings.TrimSpace(line), "HERMES_EVENT:") {
 			kept = append(kept, line)
 		}
 	}
@@ -306,9 +306,89 @@ func appendHermesOutputEvents(runID, line string) {
 	if parseHermesSessionID(line) != "" {
 		return
 	}
-	_ = AppendChatRunEvent(runID, "tool_output", fmt.Sprintf(`{"text":%q}`, line))
+	if event, ok := parseHermesStructuredEvent(line); ok {
+		if event.Phase != "" {
+			label := event.Label
+			if label == "" {
+				label = hermesPhaseLabel(event.Phase, event.Name)
+			}
+			payload := map[string]string{"phase": event.Phase, "label": label}
+			if event.Name != "" {
+				payload["name"] = event.Name
+			}
+			raw, _ := json.Marshal(payload)
+			_ = AppendChatRunEvent(runID, "phase", string(raw))
+		}
+		return
+	}
+	// Raw process output is useful for the streaming response/debug log, but it
+	// is not a user-facing activity step.
+	_ = AppendChatRunEvent(runID, "raw_output", fmt.Sprintf(`{"text":%q}`, line))
 	if phase, label := hermesOutputPhase(line); phase != "" {
 		_ = AppendChatRunEvent(runID, "phase", fmt.Sprintf(`{"phase":%q,"label":%q}`, phase, label))
+	}
+}
+
+type hermesStructuredEvent struct {
+	Phase string `json:"phase"`
+	Name  string `json:"name"`
+	Label string `json:"label"`
+}
+
+func parseHermesStructuredEvent(line string) (hermesStructuredEvent, bool) {
+	value := strings.TrimSpace(line)
+	if !strings.HasPrefix(value, "HERMES_EVENT:") {
+		return hermesStructuredEvent{}, false
+	}
+	var event hermesStructuredEvent
+	if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(value, "HERMES_EVENT:"))), &event); err != nil || event.Phase == "" {
+		return hermesStructuredEvent{}, false
+	}
+	return event, true
+}
+
+func hermesPhaseLabel(phase, name string) string {
+	switch phase {
+	case "job_started":
+		return "Starting remote agent"
+	case "preparing_session":
+		return "Preparing chat session"
+	case "executor_resolved":
+		if name != "" {
+			return "Resolved executor: " + name
+		}
+		return "Resolved executor"
+	case "codegraph_preflight":
+		return "Checking workspace structure"
+	case "process_spawned":
+		return "Starting agent process"
+	case "process_exited":
+		return "Agent process finished"
+	case "reading_skill":
+		return "Reading agent skill"
+	case "reading_instructions":
+		return "Reading project instructions"
+	case "shell_command":
+		return "Using shell command"
+	case "file_operation":
+		return "Working with workspace files"
+	default:
+		if name != "" {
+			return name
+		}
+		return strings.ReplaceAll(phase, "_", " ")
+	}
+}
+
+func appendChatProgressLines(runID, pending, chunk string) string {
+	pending += chunk
+	for {
+		idx := strings.IndexByte(pending, '\n')
+		if idx < 0 {
+			return pending
+		}
+		appendHermesOutputEvents(runID, strings.TrimSuffix(pending[:idx], "\r"))
+		pending = pending[idx+1:]
 	}
 }
 

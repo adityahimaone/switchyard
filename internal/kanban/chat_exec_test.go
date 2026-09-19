@@ -148,6 +148,19 @@ func TestParseHermesSessionID(t *testing.T) {
 	}
 }
 
+func TestParseHermesStructuredEvent(t *testing.T) {
+	event, ok := parseHermesStructuredEvent(`HERMES_EVENT: {"phase":"reading_skill","name":"ui-styling"}`)
+	if !ok || event.Phase != "reading_skill" || event.Name != "ui-styling" {
+		t.Fatalf("event=%+v ok=%v", event, ok)
+	}
+	if _, ok := parseHermesStructuredEvent("ordinary Hermes output"); ok {
+		t.Fatal("ordinary output must not be treated as structured activity")
+	}
+	if got := stripHermesMetadata("answer\nHERMES_EVENT: {\"phase\":\"shell_command\"}\nSession: abc"); got != "answer" {
+		t.Fatalf("metadata not stripped: %q", got)
+	}
+}
+
 func TestDaemonHealthyMissingSocket(t *testing.T) {
 	t.Setenv("HERMES_DAEMON_SOCK", filepath.Join(t.TempDir(), "missing.sock"))
 	if daemonHealthy() {

@@ -18,6 +18,9 @@ import {
 } from "@/components/charts/heatmap"
 import { AreaChart } from "@/components/charts/area-chart"
 import { Area } from "@/components/charts/area"
+import { Grid } from "@/components/charts/grid"
+import { XAxis } from "@/components/charts/x-axis"
+import { ChartTooltip } from "@/components/charts/tooltip"
 import { FunnelChart, type FunnelStage } from "@/components/charts/funnel-chart"
 import { Gauge } from "@/components/charts/gauge"
 import { RingChart } from "@/components/charts/ring-chart"
@@ -254,7 +257,7 @@ function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: bool
   )
 }
 
-// ── queue trend sparkline (bklit area chart) ───────────────────────────────
+// ── queue trend line chart ─────────────────────────────────────────────────
 
 function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading: boolean }) {
   const chartData = useMemo(() => (data ?? []).map((d) => ({
@@ -282,12 +285,16 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
           <AreaChart
             data={chartData}
             xDataKey="date"
-            aspectRatio="3 / 1"
+            aspectRatio="2.6 / 1"
             status="ready"
+            yDomainTween
           >
-            <Area dataKey="completed" fill="var(--color-success)" fillOpacity={0.25} stroke="var(--color-success)" showLine />
-            <Area dataKey="failed" fill="var(--color-danger)" fillOpacity={0.2} stroke="var(--color-danger)" showLine />
-            <Area dataKey="queue_size" fill="var(--color-accent)" fillOpacity={0.35} stroke="var(--color-accent)" showLine showHighlight />
+            <Grid horizontal />
+            <Area dataKey="completed" fill="var(--color-success)" fillOpacity={0} stroke="var(--color-success)" showLine showMarkers />
+            <Area dataKey="failed" fill="var(--color-danger)" fillOpacity={0} stroke="var(--color-danger)" showLine showMarkers />
+            <Area dataKey="queue_size" fill="var(--color-accent)" fillOpacity={0} stroke="var(--color-accent)" showLine showHighlight showMarkers />
+            <XAxis numTicks={6} tickMode="data" />
+            <ChartTooltip />
           </AreaChart>
         )}
       </div>

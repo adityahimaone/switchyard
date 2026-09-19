@@ -1,9 +1,10 @@
+import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, runControl, taskHealth, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
-import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square } from "lucide-react"
+import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square, X } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultPanel, WorkerLogPanel } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
@@ -56,6 +57,14 @@ export default function TaskDetail({
   onReassign: (a: string) => Promise<void>
   onOpenPage: () => void
 }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [onClose])
+
   const events = useQuery({
     queryKey: ["events", slug, task.id],
     queryFn: () => api<TaskEvent[]>(`/api/boards/${slug}/tasks/${task.id}/events`),
@@ -83,27 +92,31 @@ export default function TaskDetail({
   const resultSplit = task.result ? splitAgentResult(task.result) : null
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 p-0 sm:p-3" onClick={onClose}>
       <aside
-        className="glass-panel flex h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-none border-y-0 border-l-0 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-detail-title"
+        className="task-detail-drawer glass-panel flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-y-0 border-l-0 pb-[env(safe-area-inset-bottom)] sm:rounded-xl sm:border sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* header */}
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="text-sm font-semibold leading-snug text-neutral-100">{task.title}</h2>
-          <Button variant="outline" size="sm" className="shrink-0 px-2" onClick={onClose}>✕</Button>
+        <div className="shrink-0 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-500">Task details</p>
+              <h2 id="task-detail-title" className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-neutral-100">{task.title}</h2>
+            </div>
+            <Button variant="outline" size="sm" aria-label="Close task details" className="size-10 shrink-0 p-0" onClick={onClose}><X className="size-4" /></Button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
+            <Badge variant="outline" className={`px-1.5 py-0 text-[9px] leading-none ${STATUS_CHIP[task.status] ?? "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-300"}`}>{task.status}</Badge>
+            {task.priority > 0 && <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[9px] leading-none text-amber-300">P{task.priority}</Badge>}
+            <span className="max-w-full truncate font-mono text-[10px] text-neutral-500/60">{task.id}</span>
+          </div>
         </div>
 
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
-          <Badge variant="outline" className={`px-1.5 py-0 text-[9px] leading-none ${STATUS_CHIP[task.status] ?? "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-300"}`}>{task.status}</Badge>
-          {task.priority > 0 && (
-            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[9px] leading-none text-amber-300">P{task.priority}</Badge>
-          )}
-          <span className="font-mono text-[10px] text-neutral-500/60">{task.id}</span>
-          {task.consecutive_failures > 0 && (
-            <span className="text-[10px] text-red-400">{task.consecutive_failures} consecutive failures</span>
-          )}
-        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
+
 
         <AgentTaskStatus task={task} events={events.data ?? []} />
         <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} compact />
@@ -236,9 +249,10 @@ export default function TaskDetail({
           ))}
         </div>
 
-        <div className="mt-auto pt-1">
-          <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5 bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
-            <ExternalLink className="size-3.5" /> Buka detail page
+        </div>
+        <div className="shrink-0 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 p-3 backdrop-blur-xl">
+          <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5 bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90 active:scale-[.98]">
+            <ExternalLink className="size-3.5" /> Open full detail page
           </Button>
         </div>
       </aside>

@@ -56,6 +56,12 @@ function MessageFooter({ run, sessionID, messageCreatedAt, isStreaming }: { run?
 }
 
 const PHASE_LABELS: Record<string, string> = {
+	job_started: "Starting remote agent",
+	preparing_session: "Preparing chat session",
+	executor_resolved: "Resolved executor",
+	codegraph_preflight: "Checking workspace structure",
+	process_spawned: "Starting agent process",
+	process_exited: "Agent process finished",
   profile_context: "Loading profile context",
   loading_context: "Loading workspace context",
   resuming_session: "Resuming conversation",
@@ -84,9 +90,14 @@ function activityLabel(event: ChatRunEvent) {
   if (event.kind === "spawned") return "Started agent"
   if (event.kind === "error") return payload.message ?? "Agent reported an error"
   if (event.kind === "cancelled") return "Run cancelled"
-  if (event.kind === "tool_output") return payload.text ?? payload.output ?? "Tool output"
   if (event.kind === "tool") return payload.name ? `Tool: ${payload.name}` : "Tool call"
   return payload.label ?? payload.description ?? event.kind.replaceAll("_", " ")
+}
+
+function isActivityEvent(event: ChatRunEvent) {
+  // stdout is streamed into the response/debug buffer, not presented as a
+  // checklist step. Only semantic events belong in Context activity.
+  return event.kind !== "raw_output" && event.kind !== "tool_output"
 }
 
 function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
@@ -102,17 +113,17 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
   if (!run) return null
   const phase = events.filter((event) => event.kind === "phase").map(eventPayload).at(-1)
   const stateEvent: ChatRunEvent = { id: -1, run_id: run.id, kind: run.state, payload: JSON.stringify({ state: run.state }), created_at: run.ended_at ?? run.started_at }
-  const rows = [stateEvent, ...events]
+  const rows = [stateEvent, ...events.filter(isActivityEvent)]
   const tasks: TaskListTask[] = rows.map((event, index) => {
     const payload = eventPayload(event)
     const state = (payload.state ?? event.kind) as ChatState
     const isState = ["loading", "running", "done", "error", "cancelled"].includes(event.kind)
     return {
-      id: `${event.kind}-${event.id}-${index}`,
+      id: isState ? "current-status" : `${event.kind}-${event.id}-${index}`,
       label: isState ? `${stateLabel(state)} · ${progressLabelForEvents(events, state)}` : activityLabel(event),
-      detail: event.created_at ? new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : undefined,
+      detail: event.created_at ? new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : undefined,
       status: event.kind === "error" || event.kind === "cancelled" ? "error" : isState && active ? "active" : "done",
-      tone: event.kind === "tool_output" ? "tool" : isState ? "session" : "model",
+      tone: isState ? "session" : "model",
     }
   })
   return <div className="mt-3">
@@ -345,11 +356,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
-    // accumulate tool_output lines into stream buffer for progressive rendering
+    // Accumulate raw worker output into the response buffer. The activity list
+    // receives only semantic phase events.
     if (event.kind === "chat_run_event" && event.data?.run_id && event.data.run_id === runId) {
       try {
         const payload = typeof event.data.payload === "string" ? JSON.parse(event.data.payload) : event.data.payload
-        if (payload?.kind === "tool_output" && typeof payload.text === "string") {
+        if ((event.data.kind === "raw_output" || event.data.kind === "tool_output") && typeof payload?.text === "string") {
           const rid = event.data.run_id
           setStreamBuffer((prev) => ({ ...prev, [rid]: (prev[rid] ?? "") + payload.text + "\n" }))
           return // don't double-invalidate queries for every line

@@ -336,7 +336,8 @@ export default function TaskDetailPage({
   const resultSplit = task.result ? splitAgentResult(task.result) : null
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-col px-4 py-4 sm:px-5 lg:px-8">
       {/* top bar: back + title */}
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack} className="gap-1 border-[var(--color-line)] bg-[var(--color-surface)] text-neutral-300">
@@ -540,6 +541,7 @@ export default function TaskDetailPage({
             <CollapsibleGroup key={g.title} group={g} />
           ))
         )}
+      </div>
       </div>
     </div>
   )

@@ -27,6 +27,15 @@ function nodeFor(workspace: Workspace | undefined, nodes: NodeAgent[]) {
   return nodes.find((node) => node.workspaces?.some((path) => path === workspace.path || workspace.path.startsWith(path)))
 }
 
+function isRemoteWorkspace(workspace?: Workspace) {
+  if (!workspace) return false
+  const host = (workspace.host || "").toLowerCase()
+  const os = (workspace.os || "").toLowerCase()
+  const path = workspace.path || ""
+  return Boolean(host && host !== "localhost" && host !== "127.0.0.1") ||
+    os === "mac" || os === "windows" || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/Users/")
+}
+
 function StatusLine({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="flex items-center justify-between gap-2 py-1"><span className="text-[10px] uppercase tracking-wider text-neutral-500">{label}</span><span className="min-w-0 truncate text-right text-[11px] text-neutral-300">{children}</span></div>
 }
@@ -53,8 +62,19 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ta
   const graphApps = graph.data?.apps ?? []
   const graphState = !workspace ? "not checked" : graph.isLoading ? "checking…" : graph.isError ? "unavailable" : graphApps.length ? `indexed · ${graphApps.length} app${graphApps.length === 1 ? "" : "s"}` : "unavailable"
   const graphTone = graphState.startsWith("indexed") ? "good" : graphState === "not checked" || graphState === "checking…" ? "muted" : "warn"
-  const nodeState = !workspace ? "not checked" : nodes.isLoading ? "checking…" : node?.status === "online" ? "online" : nodes.data?.status === "up" ? "offline" : "unavailable"
-  const nodeTone = nodeState === "online" ? "good" : nodeState === "not checked" || nodeState === "checking…" ? "muted" : "warn"
+  const remote = isRemoteWorkspace(workspace)
+  const nodeState = !workspace || !remote
+    ? "local"
+    : nodes.isLoading
+      ? "checking…"
+      : node?.status === "online"
+        ? "online"
+        : nodes.data?.status === "down"
+          ? "offline"
+          : nodes.data?.status === "up"
+            ? "not registered"
+            : "unavailable"
+  const nodeTone = nodeState === "online" ? "good" : nodeState === "local" || nodeState === "not registered" || nodeState === "checking…" ? "muted" : "warn"
   const profileState = !profile ? "unassigned" : profile.valid ? "valid" : "invalid"
   const profileTone = !profile ? "muted" : profile.valid ? "good" : "bad"
   const currentPhase = phase(events, task)
@@ -87,6 +107,8 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ta
         <StatusLine label="CodeGraph">{chip(graphState, graphTone)}</StatusLine>
         <StatusLine label="Current phase">{currentPhase}</StatusLine>
       </div>
+      {nodeState === "offline" && <p className="mt-2 text-[10px] leading-relaxed text-amber-300">Node agent is unreachable. Remote runs may remain queued until the agent reconnects.</p>}
+      {nodeState === "not registered" && <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">Node agent is reachable, but no node has claimed this workspace.</p>}
       {graphState === "unavailable" && <p className="mt-2 text-[10px] leading-relaxed text-amber-300">CodeGraph unavailable. Worker can continue with normal file inspection.</p>}
     </section>
   )

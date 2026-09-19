@@ -111,7 +111,12 @@ func NodeAgentHealth() (*NodeAgentStatus, error) {
 		broadcastEvent("node_health", down)
 		return down, nil
 	}
-	st.Status = "up"
+	// A healthy HTTP response only proves that the node-agent endpoint is
+	// reachable. Preserve an explicit status from the agent and use "up" only
+	// for the legacy response shape that omitted it.
+	if strings.TrimSpace(st.Status) == "" {
+		st.Status = "up"
+	}
 	broadcastEvent("node_health", st)
 	return &st, nil
 }
@@ -120,16 +125,24 @@ func NodeAgentHealth() (*NodeAgentStatus, error) {
 // result. node-agent routes by workspace prefix; an unknown workspace falls
 // back to the first online node.
 func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchResult, error) {
-	return dispatchRemote(req, wait, true)
+	return dispatchRemote(req, wait, true, nil)
+}
+
+// DispatchRemoteWithProgress forwards progress chunks as they arrive. The
+// callback is intentionally optional so existing board/task callers keep the
+// same behavior while chat can translate structured worker markers into chat
+// run events.
+func DispatchRemoteWithProgress(req NodeDispatchRequest, wait time.Duration, onProgress func(string)) (*NodeDispatchResult, error) {
+	return dispatchRemote(req, wait, true, onProgress)
 }
 
 // DispatchRemoteRaw uses node-agent as a remote command channel without
 // touching the Kanban task row. Review uses this for git commands.
 func DispatchRemoteRaw(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchResult, error) {
-	return dispatchRemote(req, wait, false)
+	return dispatchRemote(req, wait, false, nil)
 }
 
-func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask bool) (*NodeDispatchResult, error) {
+func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask bool, onProgress func(string)) (*NodeDispatchResult, error) {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return nil, fmt.Errorf("task_id required")
 	}
@@ -185,6 +198,9 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		// tail progress before checking result so live log appears even before completion
 		if poff, txt := fetchProgress(pc, req.TaskID, off); txt != "" {
 			_ = AppendWorkerLog(req.Board, req.TaskID, txt)
+			if onProgress != nil {
+				onProgress(txt)
+			}
 			off = poff
 		}
 		preq, err := http.NewRequest("GET", nodeAgentBase()+"/api/results/"+req.TaskID, nil)

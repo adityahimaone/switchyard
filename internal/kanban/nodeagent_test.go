@@ -30,3 +30,17 @@ func TestNodeAgentHealthBroadcastsStatus(t *testing.T) {
 		t.Fatal("timed out waiting for node_health event")
 	}
 }
+
+func TestNodeAgentHealthPreservesReportedStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"down","error":"no connected nodes"}`))
+	}))
+	defer server.Close()
+	t.Setenv("KANBAN_NODE_AGENT", server.URL)
+
+	status, err := NodeAgentHealth()
+	if err != nil || status.Status != "down" {
+		t.Fatalf("health = %+v, err = %v; explicit agent status must be preserved", status, err)
+	}
+}
