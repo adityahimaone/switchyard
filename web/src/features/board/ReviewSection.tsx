@@ -7,6 +7,7 @@ import { Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus } from "lucid
 
 type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
 type DiffFile = { name: string; lines: DiffLine[] }
+type ReviewMetadata = { provenance?: string[]; codegraph?: string }
 
 export function parseDiffFiles(raw: string): DiffFile[] {
   const files: DiffFile[] = []
@@ -89,7 +90,7 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
 
   const diff = useQuery({
     queryKey: ["diff", slug, task.id],
-    queryFn: () => api<{ stat: string; diff: string; clean: boolean }>(`/api/boards/${slug}/tasks/${task.id}/diff`),
+    queryFn: () => api<{ stat: string; diff: string; clean: boolean } & ReviewMetadata>(`/api/boards/${slug}/tasks/${task.id}/diff`),
     enabled: task.status === "review",
     retry: false,
   })
@@ -165,6 +166,15 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         </div>
       </div>
       {open && <div className="space-y-2 p-2">
+        {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
+          <details className="rounded-lg border border-sky-500/20 bg-sky-500/[0.04] px-3 py-2">
+            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-sky-200">Execution provenance</summary>
+            <div className="mt-2 space-y-1 font-mono text-[10px] text-neutral-400">
+              <p><span className="text-neutral-600">CodeGraph:</span> {diff.data?.codegraph || "skipped or unavailable"}</p>
+              {(diff.data?.provenance ?? []).map((line, index) => <p key={`${line}-${index}`} className="break-all"><span className="text-neutral-600">Worker:</span> {line}</p>)}
+            </div>
+          </details>
+        )}
         {!diff.data?.clean && !diff.isLoading && files.length > 1 && (
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="sm" onClick={selectAll} disabled={allSelected} className="h-6 px-2 text-[10px]">Select all</Button>

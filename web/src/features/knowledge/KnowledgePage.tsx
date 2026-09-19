@@ -9,12 +9,12 @@ const kanbanSections = [
   {
     title: "I–Q · Execution to review",
     icon: GitBranch,
-    body: "Worker jalankan hermes/codex/shell di cwd exact. Live progress lewat progress buffer → worker log. Result guarded ke review, diff gabungkan tracked + untracked, selection files lalu commit/commit_push atau mark done jika clean.",
+    body: "Worker jalankan hermes/codex/shell di cwd exact. Live progress lewat progress buffer → worker log. Result guarded ke review; diff, status, commit, dan commit_push untuk workspace node-agent berjalan lewat channel worker, sedangkan task SSH legacy tetap memakai SSH langsung.",
   },
   {
     title: "R–Z · Retry, safety, proof",
     icon: CheckCircle2,
-    body: "Retry bounded, blocked jika threshold, continuation lewat @mention. Fail-closed untuk executor/profile/workspace unknown. Done hanya jika intent + provenance + artifact + diff + approval lengkap.",
+    body: "Review atau blocked comment otomatis requeue ke todo dan komentar terbaru masuk ke continuation prompt; task done tetap mention-gated. Retry timeout diberi sumber error, continuation timeout berulang diblokir, dan run silent/lost otomatis dilepas setelah 10 menit.",
   },
 ]
 
@@ -66,9 +66,9 @@ export default function KnowledgePage() {
 
         <section id="kanban" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
           <div className="flex items-center gap-2"><Workflow className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Kanban Board Flow — A sampai Z</h2></div>
-          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Intent → board/task → validate → exact workspace → dispatcher → node-agent → executor → live progress → result → diff review → approve.</p>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Intent → board/task → validate → exact workspace → dispatcher → node-agent → executor → live progress → result → diff/provenance review → approve.</p>
           <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
-            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claim todo/ready → running</div><div className="pl-4">↓ mac-tailscale / node-agent</div><div className="pl-4">↓ hermes | codex | shell</div><div className="pl-4">↓ provenance + worker log + events</div><div className="pl-4">↓ review diff → commit / commit_push → done / blocked</div>
+            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | shell + CodeGraph</div><div className="pl-4">↓ progress buffer → worker log + task events</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div><div className="pl-4">↓ silent/lost run ≥10m → automatic todo release</div>
           </div>
         </section>
 
@@ -114,7 +114,9 @@ export default function KnowledgePage() {
             <ul className="mt-2 list-disc pl-5 text-xs leading-5 text-[var(--color-ink-3)]">
               <li>Chat tidak pakai dispatcher/board claim/review gate.</li>
               <li>Kanban tidak pakai chat session sebagai task state.</li>
-              <li>Remote path fail-closed; register exact workspace dulu.</li>
+              <li>Remote path fail-closed; register exact workspace dulu. Registered remotes persist as node-agent transport.</li>
+              <li>Node-agent job timeout default 10m; dispatcher wait = worker timeout + 2m.</li>
+              <li>Review panel shows CodeGraph status and provenance without SSHing to the worker.</li>
               <li>Proof executor dari provenance, bukan dari teks output.</li>
             </ul>
           </section>

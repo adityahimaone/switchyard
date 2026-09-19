@@ -288,6 +288,7 @@ export interface TaskComment {
   author: string
   body: string
   created_at: number
+  requeued?: boolean
 }
 
 export interface CronSchedule { kind: string; expr?: string; minutes?: number; display?: string }

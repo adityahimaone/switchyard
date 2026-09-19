@@ -26,12 +26,14 @@ import (
 const diffLimit = 100 << 10 // 100KB truncation cap for raw diff output
 
 type reviewTask struct {
+	Slug          string
 	ID            string
 	Title         string
 	Status        string
 	WorkspacePath string
 	Transport     string
 	SSHTarget     string
+	Result        string
 }
 
 func loadReviewTask(slug, id string) (*reviewTask, error) {
@@ -41,10 +43,11 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 	}
 	defer db.Close()
 	t := &reviewTask{}
+	t.Slug = slug
 	err = db.QueryRow(`SELECT id, title, status, workspace_path,
 		COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,'mac-tailscale')
-		FROM tasks WHERE id=?`, id).
-		Scan(&t.ID, &t.Title, &t.Status, &t.WorkspacePath, &t.Transport, &t.SSHTarget)
+		, COALESCE(result,'') FROM tasks WHERE id=?`, id).
+		Scan(&t.ID, &t.Title, &t.Status, &t.WorkspacePath, &t.Transport, &t.SSHTarget, &t.Result)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +56,27 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 
 // runGit executes a git command inside the task workspace over SSH.
 func runGit(t *reviewTask, args string) (string, int) {
+	if t.Transport == "node-agent" {
+		res, err := kanban.DispatchRemoteRaw(kanban.NodeDispatchRequest{
+			TaskID: fmt.Sprintf("review-%s-%d", t.ID, time.Now().UnixNano()),
+			Title:  t.Title, Board: t.Slug, Workspace: t.WorkspacePath,
+			Executor: "shell", Command: args,
+		}, kanban.RemoteDispatchWait())
+		if err != nil {
+			return err.Error(), 255
+		}
+		if res == nil {
+			return "node-agent returned no result", 255
+		}
+		out := res.Output
+		if res.Error != "" {
+			out += "\n" + res.Error
+		}
+		if !res.Success {
+			return out, 1
+		}
+		return out, 0
+	}
 	target := taskSSHTarget(t.SSHTarget)
 	return sshRun(target, t.WorkspacePath, args)
 }
@@ -80,7 +104,7 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("task not in review (status=%s)", t.Status), 400)
 		return
 	}
-	if t.Transport != "ssh" {
+	if t.Transport != "ssh" && t.Transport != "node-agent" {
 		fail(w, fmt.Errorf("unsupported transport %q for diff", t.Transport), 400)
 		return
 	}
@@ -92,9 +116,11 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"stat":  truncate(stat, 4000),
-		"diff":  truncate(diff, diffLimit),
-		"clean": clean,
+		"stat":       truncate(stat, 4000),
+		"diff":       truncate(diff, diffLimit),
+		"clean":      clean,
+		"provenance": reviewProvenance(t.Result),
+		"codegraph":  reviewCodeGraph(t.Result),
 	})
 }
 
@@ -123,7 +149,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("task not in review (status=%s)", t.Status), 400)
 		return
 	}
-	if t.Transport != "ssh" {
+	if t.Transport != "ssh" && t.Transport != "node-agent" {
 		fail(w, fmt.Errorf("unsupported transport %q for approve", t.Transport), 400)
 		return
 	}
@@ -203,6 +229,25 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		db.Close()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000)})
+}
+
+func reviewProvenance(result string) []string {
+	var out []string
+	for _, line := range strings.Split(result, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "provenance ") {
+			out = append(out, strings.TrimSpace(line))
+		}
+	}
+	return out
+}
+
+func reviewCodeGraph(result string) string {
+	for _, line := range strings.Split(result, "\n") {
+		if strings.Contains(strings.ToLower(line), "codegraph") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return "skipped or unavailable"
 }
 
 func changedFiles(t *reviewTask) []string {

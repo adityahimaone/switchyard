@@ -82,7 +82,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
       setDraft("")
       setLastSentAt(comment.created_at)
       setReplyState("sent")
-      toastGlobal("Reply sent · agent notified", "success")
+      toastGlobal(comment.requeued ? "Comment saved · task requeued to todo" : "Comment saved · task was not requeued", comment.requeued ? "success" : "info")
       qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["tasks", slug] })

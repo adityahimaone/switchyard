@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,6 +234,10 @@ func RetryTask(slug, taskID string) (Task, error) {
 // transaction as the UPDATE, so a dispatcher claiming the task concurrently
 // fails the release instead of double-running.
 func ReleaseStaleTask(slug, taskID string) (Task, error) {
+	return releaseStaleTask(slug, taskID, "run-control")
+}
+
+func releaseStaleTask(slug, taskID, source string) (Task, error) {
 	db, err := openDB(slug)
 	if err != nil {
 		return Task{}, err
@@ -271,7 +276,11 @@ func ReleaseStaleTask(slug, taskID string) (Task, error) {
 	if _, err := tx.Exec(`UPDATE tasks SET status='todo', started_at=NULL, completed_at=NULL, consecutive_failures=0, worker_pid=NULL, current_run_id=NULL, last_heartbeat_at=NULL WHERE id=?`, taskID); err != nil {
 		return Task{}, err
 	}
-	if err := insertEventTx(tx, taskID, "run_released", map[string]any{"source": "run-control", "reason": "stale run released"}); err != nil {
+	eventKind := "run_released"
+	if source == "auto" {
+		eventKind = "run_auto_released"
+	}
+	if err := insertEventTx(tx, taskID, eventKind, map[string]any{"source": source, "reason": "stale run released"}); err != nil {
 		return Task{}, err
 	}
 	if err := insertEventTx(tx, taskID, "status_changed", map[string]any{"source": "run-control", "from": "running", "to": "todo"}); err != nil {
@@ -282,6 +291,30 @@ func ReleaseStaleTask(slug, taskID string) (Task, error) {
 	}
 	broadcastEvent("status_changed", map[string]any{"board": slug, "task_id": taskID, "from": "running", "to": "todo"})
 	return taskByID(db, taskID)
+}
+
+// AutoReleaseStaleTasks is the background safety net for runs whose worker
+// stopped producing log activity. ReleaseStaleTask still performs the
+// transaction-local health recheck, so a concurrent dispatcher claim wins.
+func AutoReleaseStaleTasks() {
+	boards, err := ListBoards()
+	if err != nil {
+		return
+	}
+	for _, board := range boards {
+		health, err := BoardTaskHealth(board.Slug)
+		if err != nil {
+			continue
+		}
+		for id, h := range health {
+			if h.Health != "stuck" && h.Health != "lost" {
+				continue
+			}
+			if _, err := releaseStaleTask(board.Slug, id, "auto"); err != nil {
+				log.Printf("auto-release %s/%s: %v", board.Slug, id, err)
+			}
+		}
+	}
 }
 
 // CloneTask copies body/workspace/priority/assignee into a NEW todo task.

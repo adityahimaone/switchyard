@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -119,6 +120,16 @@ func NodeAgentHealth() (*NodeAgentStatus, error) {
 // result. node-agent routes by workspace prefix; an unknown workspace falls
 // back to the first online node.
 func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchResult, error) {
+	return dispatchRemote(req, wait, true)
+}
+
+// DispatchRemoteRaw uses node-agent as a remote command channel without
+// touching the Kanban task row. Review uses this for git commands.
+func DispatchRemoteRaw(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchResult, error) {
+	return dispatchRemote(req, wait, false)
+}
+
+func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask bool) (*NodeDispatchResult, error) {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return nil, fmt.Errorf("task_id required")
 	}
@@ -157,10 +168,12 @@ func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchR
 	// live flow tracking: dispatched + running
 	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowDispatched})
 	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowRunning})
-	if db, err := openDB(req.Board); err == nil {
-		_ = insertEvent(db, req.TaskID, "remote_dispatched", map[string]any{"node_id": ack.NodeID})
-		_, _ = db.Exec(`UPDATE tasks SET status='running' WHERE id=?`, req.TaskID)
-		db.Close()
+	if persistTask {
+		if db, err := openDB(req.Board); err == nil {
+			_ = insertEvent(db, req.TaskID, "remote_dispatched", map[string]any{"node_id": ack.NodeID})
+			_, _ = db.Exec(`UPDATE tasks SET status='running' WHERE id=?`, req.TaskID)
+			db.Close()
+		}
 	}
 
 	// poll result + live progress tail
@@ -206,28 +219,56 @@ func DispatchRemote(req NodeDispatchRequest, wait time.Duration) (*NodeDispatchR
 			evtKind = "failed"
 		}
 		flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
-		if db, err := openDB(req.Board); err == nil {
-			_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"output": res.Output, "error": res.Error})
-			now := time.Now().Unix()
-			newStatus := "blocked"
-			if res.Success {
-				newStatus = "review"
+		if persistTask {
+			if db, err := openDB(req.Board); err == nil {
+				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"output": res.Output, "error": res.Error})
+				now := time.Now().Unix()
+				newStatus := "blocked"
+				if res.Success {
+					newStatus = "review"
+				}
+				failure := ""
+				if !res.Success {
+					failure = res.Error
+					if failure == "" {
+						failure = res.Output
+					}
+				}
+				_, _ = db.Exec(`UPDATE tasks SET status=?, completed_at=?, result=?, last_failure_error=? WHERE id=? AND status='running'`,
+					newStatus, now, res.Output, trimErrStr(failure), req.TaskID)
+				db.Close()
 			}
-			_, _ = db.Exec(`UPDATE tasks SET status=?, completed_at=?, result=? WHERE id=? AND status='running'`,
-				newStatus, now, res.Output, req.TaskID)
-			db.Close()
 		}
 		return &res, nil
 	}
 	// live flow tracking: timeout = failed
 	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowFailed})
-	if db, err := openDB(req.Board); err == nil {
-		_ = insertEvent(db, req.TaskID, "failed", map[string]any{"reason": "timeout"})
-		_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status='running'`, time.Now().Unix(), "remote watcher timeout", req.TaskID)
-		db.Close()
+	if persistTask {
+		if db, err := openDB(req.Board); err == nil {
+			_ = insertEvent(db, req.TaskID, "failed", map[string]any{"reason": "timeout"})
+			_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status='running'`, time.Now().Unix(), "dispatch_wait_timeout: remote watcher exceeded wait", req.TaskID)
+			db.Close()
+		}
 	}
-	return nil, fmt.Errorf("timeout after %s waiting for result of %s (node %s)", wait, req.TaskID, ack.NodeID)
+	return nil, fmt.Errorf("dispatch_wait_timeout: timeout after %s waiting for result of %s (node %s)", wait, req.TaskID, ack.NodeID)
 }
+
+// RemoteJobTimeout is the shared worker/control-plane timeout. The server
+// override lets the control plane share a value with NODE_AGENT_JOB_TIMEOUT.
+func RemoteJobTimeout() time.Duration {
+	secs := 600
+	for _, key := range []string{"KANBAN_NODE_AGENT_JOB_TIMEOUT", "NODE_AGENT_JOB_TIMEOUT"} {
+		if v := os.Getenv(key); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				secs = n
+				break
+			}
+		}
+	}
+	return time.Duration(secs) * time.Second
+}
+
+func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Minute }
 
 func trimErrStr(s string) string {
 	s = strings.TrimSpace(s)

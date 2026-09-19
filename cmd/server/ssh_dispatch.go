@@ -25,10 +25,12 @@ import (
 // success lands in 'review', never 'done' — approval via /approve only.
 func StartSSHDispatcher() {
 	go func() {
+		kanban.AutoReleaseStaleTasks()
 		dispatchSSHTasks()
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			kanban.AutoReleaseStaleTasks()
 			dispatchSSHTasks()
 		}
 	}()
@@ -104,16 +106,16 @@ func dispatchSSHTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(last_failure_error,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
 		if err != nil {
 			db.Close()
 			continue
 		}
-		type row struct{ id, title, body, result, ws, transport, sshTarget, executor, command string }
+		type row struct{ id, title, body, result, ws, transport, sshTarget, executor, command, lastError string }
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command, &r.lastError); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -134,6 +136,16 @@ func dispatchSSHTasks() {
 				msg = r.title
 			}
 			if r.result != "" {
+				if strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:") {
+					_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "repeated timeout on continuation — needs a fresh single-shot run", r.id)
+					log.Printf("ssh-dispatcher: blocked continuation %s after repeated timeout", r.id)
+					continue
+				}
+				if continuationNeedsExplicitExecutor(r.executor, r.result) {
+					_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "continuation requires explicit executor (codex or shell); auto/hermes retry disabled", r.id)
+					log.Printf("ssh-dispatcher: blocked continuation %s: explicit executor required", r.id)
+					continue
+				}
 				trunc := r.result
 				if len(trunc) > 800 {
 					trunc = trunc[:800] + "\n... [truncated]"
@@ -196,7 +208,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: "shell", Command: cmd,
-				}, 25*time.Minute)
+				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -209,7 +221,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: r.executor, Command: r.command,
-				}, 25*time.Minute)
+				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -224,7 +236,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: "auto", Command: r.command,
-				}, 25*time.Minute)
+				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -269,6 +281,10 @@ func dispatchSSHTasks() {
 			db.Close()
 		}
 	}
+}
+
+func continuationNeedsExplicitExecutor(executor, result string) bool {
+	return strings.TrimSpace(result) != "" && (executor == "" || executor == "auto")
 }
 
 func runHemesViaSSH(taskID, title, message, workspacePath, sshTarget, board string) (string, bool) {

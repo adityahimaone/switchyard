@@ -133,7 +133,7 @@ func transportForPath(p string) (transport, target string, isRemote bool) {
 		if host == "" {
 			host = "mac-tailscale"
 		}
-		return "ssh", host, true
+		return "node-agent", host, true
 	}
 	return "", "", false
 }

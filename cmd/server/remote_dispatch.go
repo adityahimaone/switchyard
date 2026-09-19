@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"kanban-board/internal/kanban"
@@ -11,7 +13,7 @@ import (
 )
 
 // StartRemoteDispatcher polls all boards every 30s for todo tasks with
-// workspace_transport='ssh' and dispatches them via node-agent instead of
+// workspace_transport='node-agent' and dispatches them via node-agent instead of
 // letting the Hermes Python dispatcher try (and fail) to spawn locally.
 func StartRemoteDispatcher() {
 	go func() {
@@ -34,26 +36,52 @@ func dispatchPendingRemoteTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), workspace_path, COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status='todo' AND workspace_transport='ssh' LIMIT 5`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
 		if err != nil {
 			db.Close()
 			continue
 		}
-		type row struct{ id, title, body, ws, executor, command string }
+		type row struct{ id, title, body, result, lastError, ws, executor, command string }
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.ws, &r.executor, &r.command); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.command); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
 		rows.Close()
-		db.Close()
 
 		for _, r := range pending {
 			msg := r.body
 			if msg == "" {
 				msg = r.title
+			}
+			if r.result != "" && (strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:")) {
+				_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "repeated timeout on continuation — needs a fresh single-shot run", r.id)
+				continue
+			}
+			if r.result != "" {
+				previous := r.result
+				if len(previous) > 800 {
+					previous = previous[:800] + "\n... [truncated]"
+				}
+				msg = fmt.Sprintf("[CONTINUATION] This task was requeued after review feedback.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nContinue from the existing workspace and apply the user's feedback:\n\n%s", previous, msg)
+			}
+			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT 5`, r.id); cr != nil {
+				var recent []string
+				for cr.Next() {
+					var author, body string
+					if err := cr.Scan(&author, &body); err == nil {
+						recent = append(recent, fmt.Sprintf("@%s: %s", author, body))
+					}
+				}
+				cr.Close()
+				for i, j := 0, len(recent)-1; i < j; i, j = i+1, j-1 {
+					recent[i], recent[j] = recent[j], recent[i]
+				}
+				if len(recent) > 0 {
+					msg += "\n\n--- Recent Comments ---\n" + strings.Join(recent, "\n")
+				}
 			}
 			command := r.command
 			if r.executor == "shell" && command == "" {
@@ -70,12 +98,13 @@ func dispatchPendingRemoteTasks() {
 				Command:   command,
 			}
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent", r.id, b.Slug)
-			_, err := kanban.DispatchRemote(req, 25*time.Minute)
+			_, err := kanban.DispatchRemote(req, kanban.RemoteDispatchWait())
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {
 				log.Printf("remote-dispatcher: %s completed", r.id)
 			}
 		}
+		db.Close()
 	}
 }

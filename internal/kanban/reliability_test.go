@@ -5,6 +5,16 @@ import (
 	"time"
 )
 
+func TestRemoteTimeoutConfiguration(t *testing.T) {
+	t.Setenv("KANBAN_NODE_AGENT_JOB_TIMEOUT", "17")
+	if got := RemoteJobTimeout(); got != 17*time.Second {
+		t.Fatalf("RemoteJobTimeout = %s, want 17s", got)
+	}
+	if got := RemoteDispatchWait(); got != 2*time.Minute+17*time.Second {
+		t.Fatalf("RemoteDispatchWait = %s, want 2m17s", got)
+	}
+}
+
 func TestTaskHealthFromActivityThresholds(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	cases := []struct {

@@ -14,6 +14,7 @@ type TaskComment struct {
 	Author    string `json:"author"`
 	Body      string `json:"body"`
 	CreatedAt int64  `json:"created_at"`
+	Requeued  bool   `json:"requeued"`
 }
 
 // ListComments returns a task's comments, oldest first.
@@ -76,17 +77,18 @@ func AddComment(slug, taskID, author, body string) (*TaskComment, error) {
 		taskID, "commented", string(payload), now); err != nil {
 		return nil, err
 	}
-	// @mention routing: if the body tags the assignee (e.g. "@karina"), the
-	// worker's next spawn picks the comment up via build_worker_context. On a
-	// done/review task we nudge it back to todo so the dispatcher respawns.
+	// Any review or blocked comment is an explicit change request. A done task
+	// stays mention-gated so unrelated notes do not reopen completed work.
 	mentioned := assignee != "" && strings.Contains(body, "@"+assignee)
-	if mentioned && (status == "done" || status == "review" || status == "blocked") {
+	requeued := false
+	if status == "review" || status == "blocked" || (status == "done" && mentioned) {
 		if _, err := db.Exec(`UPDATE tasks SET status='todo', completed_at=NULL WHERE id=?`, taskID); err == nil {
 			ev, _ := json.Marshal(map[string]any{"from": status, "to": "todo", "source": "board-ui-comment"})
 			_, _ = db.Exec(`INSERT INTO task_events (task_id, kind, payload, created_at) VALUES (?,?,?,?)`,
 				taskID, "status_changed", string(ev), now)
+			requeued = true
 		}
 	}
 	broadcastEvent("commented", map[string]any{"board": slug, "task_id": taskID, "author": author})
-	return &TaskComment{ID: id, TaskID: taskID, Author: author, Body: body, CreatedAt: now}, nil
+	return &TaskComment{ID: id, TaskID: taskID, Author: author, Body: body, CreatedAt: now, Requeued: requeued}, nil
 }
