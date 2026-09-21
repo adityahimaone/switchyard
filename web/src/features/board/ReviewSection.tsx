@@ -8,8 +8,9 @@ import { Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus } from "lucid
 type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
 type DiffFile = { name: string; lines: DiffLine[] }
 type ReviewMetadata = { provenance?: string[]; codegraph?: string }
+type ReviewDiff = { stat: string; diff: string; files?: string[]; clean: boolean } & ReviewMetadata
 
-export function parseDiffFiles(raw: string): DiffFile[] {
+export function parseDiffFiles(raw: string, authoritativeNames: string[] = []): DiffFile[] {
   const files: DiffFile[] = []
   let file: DiffFile | null = null
   let oldLine = 0
@@ -35,6 +36,10 @@ export function parseDiffFiles(raw: string): DiffFile[] {
     if (type === "removed") file.lines.push({ type, oldLine: oldLine++, content })
     else if (type === "added") file.lines.push({ type, newLine: newLine++, content })
     else if (source && (oldLine || newLine)) file.lines.push({ type, oldLine: oldLine++, newLine: newLine++, content })
+  }
+  if (authoritativeNames.length) {
+    const byName = new Map(files.map((entry) => [entry.name, entry]))
+    return authoritativeNames.map((name) => byName.get(name) || { name, lines: [] })
   }
   return files.length ? files : [{ name: "workspace changes", lines: raw ? raw.split("\n").map((content) => ({ type: "context" as const, content })) : [] }]
 }
@@ -90,12 +95,12 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
 
   const diff = useQuery({
     queryKey: ["diff", slug, task.id],
-    queryFn: () => api<{ stat: string; diff: string; clean: boolean } & ReviewMetadata>(`/api/boards/${slug}/tasks/${task.id}/diff`),
+    queryFn: () => api<ReviewDiff>(`/api/boards/${slug}/tasks/${task.id}/diff`),
     enabled: task.status === "review",
     retry: false,
   })
 
-  const files = useMemo(() => parseDiffFiles(diff.data?.diff || ""), [diff.data?.diff])
+  const files = useMemo(() => parseDiffFiles(diff.data?.diff || "", diff.data?.files || []), [diff.data?.diff, diff.data?.files])
   const complete = !diff.isLoading
   const additions = files.flatMap((file) => file.lines).filter((line) => line.type === "added").length
   const removals = files.flatMap((file) => file.lines).filter((line) => line.type === "removed").length

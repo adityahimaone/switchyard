@@ -85,10 +85,17 @@ func TestCreateTaskDefaults(t *testing.T) {
 	}
 }
 
-func TestCreateShellTaskRequiresCommand(t *testing.T) {
+func TestCreateShellTaskDefaultsToAgenticMode(t *testing.T) {
 	slug := testBoard(t)
-	if err := CreateTask(slug, &Task{Title: "shell", Executor: "shell", Body: "natural language"}); err == nil {
-		t.Fatal("shell task without command accepted")
+	task := &Task{Title: "shell", Executor: "shell", Body: "natural language"}
+	if err := CreateTask(slug, task); err != nil {
+		t.Fatalf("agentic shell rejected: %v", err)
+	}
+	if task.ExecutionMode != "agentic" || task.MaxIterations != 6 {
+		t.Fatalf("unexpected shell defaults: mode=%q iterations=%d", task.ExecutionMode, task.MaxIterations)
+	}
+	if err := CreateTask(slug, &Task{Title: "direct shell", Executor: "shell", ExecutionMode: "direct", Body: "description"}); err == nil {
+		t.Fatal("direct shell without command accepted")
 	}
 	if err := CreateTask(slug, &Task{Title: "shell", Executor: "shell", Body: "description", Command: "printf ok"}); err != nil {
 		t.Fatalf("shell task with command rejected: %v", err)

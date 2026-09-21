@@ -49,15 +49,18 @@ func nodeAgentToken() string {
 
 // NodeDispatchRequest mirrors transport.DispatchRequest on the node-agent.
 type NodeDispatchRequest struct {
-	TaskID    string `json:"task_id"`
-	Title     string `json:"title,omitempty"`
-	Board     string `json:"board"`
-	Message   string `json:"message"`
-	Workspace string `json:"workspace"`
-	Model     string `json:"model,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	Executor  string `json:"executor,omitempty"`
-	Command   string `json:"command,omitempty"`
+	TaskID        string `json:"task_id"`
+	Title         string `json:"title,omitempty"`
+	Board         string `json:"board"`
+	Message       string `json:"message"`
+	Workspace     string `json:"workspace"`
+	Model         string `json:"model,omitempty"`
+	Provider      string `json:"provider,omitempty"`
+	Executor      string `json:"executor,omitempty"`
+	Command       string `json:"command,omitempty"`
+	ExecutionMode string `json:"execution_mode,omitempty"` // direct|agentic
+	MaxIterations int    `json:"max_iterations,omitempty"`
+	Acceptance    string `json:"acceptance,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
@@ -183,8 +186,9 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowRunning})
 	if persistTask {
 		if db, err := openDB(req.Board); err == nil {
-			_ = insertEvent(db, req.TaskID, "remote_dispatched", map[string]any{"node_id": ack.NodeID})
-			_, _ = db.Exec(`UPDATE tasks SET status='running' WHERE id=?`, req.TaskID)
+			now := time.Now().Unix()
+			_ = insertEvent(db, req.TaskID, "remote_dispatched", map[string]any{"node_id": ack.NodeID, "started_at": now})
+			_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL WHERE id=?`, now, req.TaskID)
 			db.Close()
 		}
 	}
@@ -198,6 +202,11 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		// tail progress before checking result so live log appears even before completion
 		if poff, txt := fetchProgress(pc, req.TaskID, off); txt != "" {
 			_ = AppendWorkerLog(req.Board, req.TaskID, txt)
+			executor := req.Executor
+			if executor == "" {
+				executor = "auto"
+			}
+			_ = PersistWorkerLogEvent(req.Board, req.TaskID, executor, "stdout", txt, int64(poff))
 			if onProgress != nil {
 				onProgress(txt)
 			}
@@ -237,7 +246,7 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
 		if persistTask {
 			if db, err := openDB(req.Board); err == nil {
-				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"output": res.Output, "error": res.Error})
+				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"executor": req.Executor, "output": res.Output, "error": res.Error, "duration_ms": res.DurationMs})
 				now := time.Now().Unix()
 				newStatus := "blocked"
 				if res.Success {

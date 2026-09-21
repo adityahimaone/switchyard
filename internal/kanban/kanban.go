@@ -43,6 +43,8 @@ type Task struct {
 	Assignee      string `json:"assignee"`
 	Executor      string `json:"executor"`
 	Command       string `json:"command,omitempty"`
+	ExecutionMode string `json:"execution_mode,omitempty"`
+	MaxIterations int    `json:"max_iterations,omitempty"`
 	WorkspaceKind string `json:"workspace_kind"`
 	WorkspacePath string `json:"workspace_path"`
 	Result        string `json:"result"`
@@ -143,6 +145,8 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN command TEXT`,
 		`ALTER TABLE tasks ADD COLUMN resolved_executor TEXT`,
 		`ALTER TABLE tasks ADD COLUMN execution_meta TEXT`,
+		`ALTER TABLE tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'direct'`,
+		`ALTER TABLE tasks ADD COLUMN max_iterations INTEGER NOT NULL DEFAULT 1`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -233,7 +237,22 @@ func CreateTask(slug string, t *Task) error {
 	if !ValidExecutors[t.Executor] {
 		return fmt.Errorf("invalid executor %q", t.Executor)
 	}
-	if t.Executor == "shell" && strings.TrimSpace(t.Command) == "" {
+	if t.Executor == "shell" && strings.TrimSpace(t.ExecutionMode) == "" {
+		t.ExecutionMode = "agentic"
+	}
+	if t.ExecutionMode == "" {
+		t.ExecutionMode = "direct"
+	}
+	if t.ExecutionMode != "direct" && t.ExecutionMode != "agentic" {
+		return fmt.Errorf("invalid execution mode %q", t.ExecutionMode)
+	}
+	if t.MaxIterations <= 0 {
+		t.MaxIterations = 6
+	}
+	if t.MaxIterations > 12 {
+		return fmt.Errorf("max iterations cannot exceed 12")
+	}
+	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" {
 		return fmt.Errorf("shell executor requires command")
 	}
 	if t.WorkspaceKind == "" {
@@ -264,9 +283,9 @@ func CreateTask(slug string, t *Task) error {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt)
+	_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt)
 	if err != nil {
 		return err
 	}

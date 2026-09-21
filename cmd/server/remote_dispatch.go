@@ -37,16 +37,19 @@ func dispatchPendingRemoteTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(command,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1) FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
 		if err != nil {
 			db.Close()
 			continue
 		}
-		type row struct{ id, title, body, result, lastError, ws, executor, command string }
+		type row struct {
+			id, title, body, result, lastError, ws, executor, command, executionMode string
+			maxIterations                                                            int
+		}
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.command); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.command, &r.executionMode, &r.maxIterations); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -85,7 +88,7 @@ func dispatchPendingRemoteTasks() {
 				}
 			}
 			command := r.command
-			if r.executor == "shell" && command == "" {
+			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
 				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
 				continue
 			}
@@ -93,13 +96,16 @@ func dispatchPendingRemoteTasks() {
 			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
 			_ = kanban.PersistTaskIdentity(db, r.id, identity)
 			req := kanban.NodeDispatchRequest{
-				TaskID:    r.id,
-				Title:     r.title,
-				Board:     b.Slug,
-				Message:   msg,
-				Workspace: r.ws,
-				Executor:  r.executor,
-				Command:   command,
+				TaskID:        r.id,
+				Title:         r.title,
+				Board:         b.Slug,
+				Message:       msg,
+				Workspace:     r.ws,
+				Executor:      r.executor,
+				Command:       command,
+				ExecutionMode: r.executionMode,
+				MaxIterations: r.maxIterations,
+				Acceptance:    r.title,
 			}
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent", r.id, b.Slug)
 			_, err := kanban.DispatchRemote(req, kanban.RemoteDispatchWait())

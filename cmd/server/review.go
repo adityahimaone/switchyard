@@ -93,6 +93,34 @@ func reviewWorkspaceClean(t *reviewTask) (bool, string, int) {
 	return false, out, code
 }
 
+type reviewSnapshot struct {
+	stat  string
+	diff  string
+	names []string
+	clean bool
+}
+
+func parseReviewSnapshot(raw string) reviewSnapshot {
+	part := func(name, next string) string {
+		value := raw
+		if i := strings.Index(value, name); i >= 0 {
+			value = value[i+len(name):]
+		}
+		if next != "" {
+			if i := strings.Index(value, next); i >= 0 {
+				value = value[:i]
+			}
+		}
+		return strings.TrimSpace(value)
+	}
+	return reviewSnapshot{
+		stat:  part("__STAT__", "__NAMES__"),
+		diff:  part("__DIFF__", ""),
+		names: parseChangedFilesRaw(part("__NAMES__", "__CLEAN__")),
+		clean: part("__CLEAN__", "__DIFF__") == "1",
+	}
+}
+
 func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 	slug, id := r.PathValue("slug"), r.PathValue("id")
 	t, err := loadReviewTask(slug, id)
@@ -108,17 +136,21 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("unsupported transport %q for diff", t.Transport), 400)
 		return
 	}
-	stat, code1 := runGit(t, `git diff --stat HEAD -- .; for f in $(git ls-files --others --exclude-standard); do git diff --no-index --stat /dev/null "$f" || true; done | tail -40`)
-	diff, code2 := runGit(t, `git diff HEAD -- .; for f in $(git ls-files --others --exclude-standard); do git diff --no-index /dev/null "$f" || true; done | head -8000`)
-	clean, _, code3 := reviewWorkspaceClean(t)
-	if code1 != 0 && code2 != 0 && code3 != 0 {
-		fail(w, fmt.Errorf("git diff failed: %s", truncate(stat, 300)), 500)
+	snapshot, code := runGit(t, `printf '__STAT__\n'; git diff --stat HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then git diff --no-index --stat /dev/null "$f"; fi; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then printf '%s\n' "$f"; fi; done; printf '__CLEAN__\n'; if git diff --quiet HEAD -- . && [ -z "$(git ls-files --others --exclude-standard)" ]; then printf '1\n'; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then git diff --no-index /dev/null "$f"; fi; done | head -8000`)
+	if code != 0 && strings.TrimSpace(snapshot) == "" {
+		fail(w, fmt.Errorf("git diff failed"), 500)
 		return
 	}
+	review := parseReviewSnapshot(snapshot)
+	files := review.names
+	if len(files) == 0 && strings.TrimSpace(review.diff) != "" {
+		files = parseDiffNames(review.diff)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"stat":       truncate(stat, 4000),
-		"diff":       truncate(diff, diffLimit),
-		"clean":      clean,
+		"stat":       truncate(review.stat, 4000),
+		"diff":       truncate(review.diff, diffLimit),
+		"files":      files,
+		"clean":      review.clean,
 		"provenance": reviewProvenance(t.Result),
 		"codegraph":  reviewCodeGraph(t.Result),
 	})
@@ -248,6 +280,44 @@ func reviewCodeGraph(result string) string {
 		}
 	}
 	return "skipped or unavailable"
+}
+
+func parseChangedFilesRaw(raw string) []string {
+	seen := make(map[string]struct{})
+	files := make([]string, 0)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		files = append(files, line)
+	}
+	return files
+}
+
+func parseDiffNames(raw string) []string {
+	seen := make(map[string]struct{})
+	files := make([]string, 0)
+	for _, line := range strings.Split(raw, "\n") {
+		if !strings.HasPrefix(line, "diff --git ") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 4 {
+			continue
+		}
+		name := strings.TrimPrefix(parts[len(parts)-1], "b/")
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		files = append(files, name)
+	}
+	return files
 }
 
 func changedFiles(t *reviewTask) []string {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs"
-import { Bell, XCircle, Eye, EyeOff, ArrowDown, ArrowUp, GripVertical, RotateCcw, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse } from "lucide-react"
+import { Bell, XCircle, Eye, EyeOff, ArrowDown, ArrowUp, GripVertical, RotateCcw, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse, Trash2 } from "lucide-react"
 import { useSidebarPreferences } from "@/lib/sidebar-preferences"
 import { useTheme, useSoundSettings, type ThemePreference } from "@/hooks/useSettings"
 import { Button } from "@/components/ui/button"
@@ -63,12 +63,38 @@ export default function SettingsPage() {
   const [passwordBusy, setPasswordBusy] = useState(false)
   const { items, isVisible, move, toggle, reset } = useSidebarPreferences()
   const { theme, setTheme } = useTheme()
+  const qc = useQueryClient()
   const { data: jevStatus, isFetching: jevRefreshing, refetch: refreshJEV } = useQuery({
     queryKey: ["jev-status"],
     queryFn: getJEVStatus,
     enabled: tab === "ai",
     refetchInterval: tab === "ai" ? 30000 : false,
   })
+  const [jevSaving, setJevSaving] = useState(false)
+  const [historyBusy, setHistoryBusy] = useState(false)
+  const [historyMsg, setHistoryMsg] = useState("")
+  async function clearExecutionHistory() {
+    if (!window.confirm("Hapus semua worker log, execution events, dan result history? Task, comment, attachment tetap aman.")) return
+    setHistoryBusy(true); setHistoryMsg("")
+    try {
+      await api("/api/settings/execution-history", { method: "DELETE" })
+      await qc.invalidateQueries({ queryKey: ["tasks"] })
+      setHistoryMsg("Execution history cleared.")
+    } catch (e) {
+      setHistoryMsg((e as Error).message)
+    } finally {
+      setHistoryBusy(false)
+    }
+  }
+  async function toggleJEV(enabled: boolean) {
+    setJevSaving(true)
+    try {
+      await api("/api/settings/jev", { method: "PUT", body: JSON.stringify({ enabled }) })
+      await qc.invalidateQueries({ queryKey: ["jev-status"] })
+    } finally {
+      setJevSaving(false)
+    }
+  }
 
   // Sync cuelume engine on any sound pref change
   useEffect(() => {
@@ -394,7 +420,23 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {!show("Ping", "Workspace", "Heartbeat", "Export", "Backup", "Data") && (
+              {show("Execution history", "Worker log", "Clear history", "Runtime") && (
+                <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <Trash2 className="mt-0.5 size-4 text-red-300" />
+                    <div>
+                      <p className="text-sm font-medium text-neutral-200">Clear execution history</p>
+                      <p className="mt-1 max-w-lg text-xs leading-5 text-neutral-500">Hapus raw worker logs, execution events, task result, dan failure trace. Tasks, comments, attachments tetap ada. Running task tidak disentuh.</p>
+                      {historyMsg && <p className="mt-2 text-xs text-neutral-400">{historyMsg}</p>}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => void clearExecutionHistory()} disabled={historyBusy} className="shrink-0 border-red-500/30 text-xs text-red-200 hover:bg-red-500/10">
+                    {historyBusy ? "Clearing…" : "Clear history"}
+                  </Button>
+                </div>
+              )}
+
+              {!show("Ping", "Workspace", "Heartbeat", "Export", "Backup", "Data", "Execution history", "Worker log", "Clear history", "Runtime") && (
                 <p className="text-xs text-neutral-600">No match.</p>
               )}
             </TabsContent>
@@ -415,6 +457,13 @@ export default function SettingsPage() {
                     <Button size="sm" variant="ghost" onClick={() => void refreshJEV()} disabled={jevRefreshing} aria-label="Refresh JEV status" className="h-8 shrink-0 text-xs text-neutral-400">
                       <RefreshCw className={`size-3.5 ${jevRefreshing ? "animate-spin" : ""}`} />
                     </Button>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-medium text-neutral-200">Enable JEV task routing</p>
+                      <p className="mt-0.5 text-[11px] text-neutral-500">Classify Kanban tasks with JEV before dispatch.</p>
+                    </div>
+                    <Switch checked={jevStatus?.enabled ?? true} onCheckedChange={(value) => void toggleJEV(value)} disabled={!jevStatus || jevSaving} aria-label="Enable JEV task routing" />
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
                     <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">

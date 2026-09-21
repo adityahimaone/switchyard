@@ -862,7 +862,28 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"name": r.PathValue("name"), "models": models})
 	})
+	mux.HandleFunc("DELETE /api/settings/execution-history", func(w http.ResponseWriter, r *http.Request) {
+		if err := kanban.ClearExecutionHistory(); err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /api/settings/jev", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, kanban.GetJEVStatus(r.Context()))
+	})
+	mux.HandleFunc("PUT /api/settings/jev", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&input); err != nil || input.Enabled == nil {
+			fail(w, fmt.Errorf("enabled boolean required"), http.StatusBadRequest)
+			return
+		}
+		if err := kanban.SetJEVEnabled(*input.Enabled); err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, http.StatusOK, kanban.GetJEVStatus(r.Context()))
 	})
 	mux.HandleFunc("GET /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
@@ -1349,6 +1370,7 @@ func main() {
 
 	kanban.StartFlowSync()
 	StartSSHDispatcher()
+	StartRemoteDispatcher()
 	log.Printf("kanban-board listening on %s (dist=%s)", addr, dist)
 	log.Fatal(http.ListenAndServe(addr, authHandler(mux)))
 }

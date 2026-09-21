@@ -4,7 +4,7 @@ const kanbanSections = [
   {
     title: "A–H · Intent and dispatch",
     icon: Workflow,
-    body: "Board task stores intent/title/body, workspace exact, profile, executor, dan priority. Validation di API, bukan sekadar UI. Dispatcher claim todo/ready → running, route exact workspace via SSH/node-agent, bukan tebakan path.",
+    body: "Board task stores intent/title/body, workspace exact, profile, executor, dan priority. Validation di API, bukan sekadar UI. Dispatcher claim todo/ready → running, route exact workspace via SSH/node-agent, lalu shell agent merencanakan dan menjalankan command bounded.",
   },
   {
     title: "I–Q · Execution to review",
@@ -39,7 +39,7 @@ const chatSections = [
 const kanbanMatrix = [
   ["hermes", "hermes chat -q", "CodeGraph + prerequisites"],
   ["codex", "codex exec --full-auto", "CodeGraph + prerequisites"],
-  ["shell", "bash -lc", "RTK only; no AI preflight"],
+  ["shell", "planner → bash -lc", "read-only plan + bounded iterations"],
   ["auto", "Hermes first; fallback", "Resolved executor decides"],
 ]
 
@@ -66,9 +66,9 @@ export default function KnowledgePage() {
 
         <section id="kanban" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
           <div className="flex items-center gap-2"><Workflow className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Kanban Board Flow — A sampai Z</h2></div>
-          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Intent → board/task → validate → exact workspace → dispatcher → node-agent → executor → live progress → result → diff/provenance review → approve.</p>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Intent → board/task → validate → exact workspace → dispatcher → node-agent → planner → shell+RTK → bounded decision loop → diff/provenance review → approve.</p>
           <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
-            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | shell + CodeGraph</div><div className="pl-4">↓ progress buffer → worker log + task events</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div><div className="pl-4">↓ silent/lost run ≥10m → automatic todo release</div>
+            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | shell-agent</div><div className="pl-4">↓ read-only plan → RTK shell → worker output</div><div className="pl-4">↓ bounded retry / complete / blocked decision</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div>
           </div>
         </section>
 

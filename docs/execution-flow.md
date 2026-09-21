@@ -6,7 +6,7 @@ Kanban task execution supports three explicit remote executor modes:
 
 - `hermes`: Hermes CLI agent session.
 - `codex`: OpenAI Codex CLI session.
-- `shell`: direct terminal command on remote workspace, with RTK rewrite only.
+- `shell`: agentic shell access on remote workspace by default; direct one-shot mode remains compatible, with RTK rewrite.
 - `auto`: compatibility mode. Resolves Hermes first, then Codex, then CommandCode.
 
 Use explicit executor when provenance matters. Do not use `auto` for executor comparison.
@@ -46,10 +46,10 @@ Parent path registration does not replace exact child path registration when rou
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + project prerequisites | task message | `provenance executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + project prerequisites | task message | `provenance executor=codex` |
-| `shell` | `bash -lc ...` | none (opt-in `NODE_AGENT_SHELL_PREFLIGHT=1` adds codegraph via env, never mutates command) | `command` only — `body` is description | `provenance executor=shell` |
+| `shell` | read-only planner → `bash -lc ...` | bounded iterations; optional shell preflight | task intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | Hermes first, fallback Codex/CommandCode | resolved executor rules | task message | resolved provenance |
 
-Shell intentionally skips CodeGraph/README/AGENTS/Hermes prompt injection by default. `body` is never executed. `command` is the only executed input; empty/whitespace `command` is rejected at `CreateTask` (400) and at dispatcher as `blocked: shell executor requires command`. When `NODE_AGENT_SHELL_PREFLIGHT=1`, codegraph+prequest are exported as `NODE_AGENT_CODEGRAPH_STATUS` / `NODE_AGENT_PREQUEST` env, never injected into command text. RTK may rewrite shell commands within its bounded timeout (`rtk hook check` → `rtk rewrite`, 800 ms each), then the resulting command runs directly in the remote workspace. Output >8 KiB may be compacted via `rtk pipe --ultra-compact` when `NODE_AGENT_SHELL_CAVEMAN=1` (2 s cap, fail-open).
+Shell agentic mode gives a read-only planner workspace visibility, then executes only its structured command through the shell worker. Body remains task intent, direct mode uses `command`. Max iterations are bounded (default 6, hard cap 12), destructive patterns are blocked, and success still lands in review. RTK may rewrite shell commands within its bounded timeout (`rtk hook check` → `rtk rewrite`, 800 ms each), then the resulting command runs directly in the remote workspace. Output >8 KiB may be compacted via `rtk pipe --ultra-compact` when `NODE_AGENT_SHELL_CAVEMAN=1` (2 s cap, fail-open).
 
 ## Lifecycle
 

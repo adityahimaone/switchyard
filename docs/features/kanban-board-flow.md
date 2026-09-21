@@ -38,9 +38,9 @@ User membuat task dengan data eksplisit:
 - assignee/profile
 - executor: `hermes`, `codex`, `shell`, atau compatibility `auto`
 - priority
-- optional shell `command`
+- optional shell `command` for direct mode; new shell tasks default to agentic mode
 
-`body` menjelaskan intent. Untuk executor `shell`, hanya `command` yang dieksekusi. `body` tidak pernah menjadi fallback command.
+`body` menjelaskan intent. Shell agentic memakai body sebagai intent lalu planner read-only menyusun command per iterasi; worker menjalankan command di workspace exact melalui shell + RTK. Shell direct tetap memakai `command` untuk kompatibilitas.
 
 Task baru masuk `todo` atau status draft yang disetujui. Task baru tidak boleh langsung `running`; claim hanya milik dispatcher.
 
@@ -61,7 +61,7 @@ Validasi minimum:
 1. title/body sesuai contract.
 2. executor valid.
 3. profile ada dan valid.
-4. shell punya `command` non-empty.
+4. shell direct punya `command` non-empty; shell agentic punya body/intent non-empty.
 5. workspace path local atau exact match entry registered.
 6. remote workspace punya transport/target yang approved.
 7. task running tidak boleh di-reassign.
@@ -93,7 +93,7 @@ Semua save wajib merge unknown keys seperti `luvus_workspace_id`, `remote`, dan 
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + prerequisites | task message | provenance `executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + prerequisites | task message | provenance `executor=codex` |
-| `shell` | `bash -lc ...` | none by default; optional shell preflight | `command` only | provenance `executor=shell` |
+| `shell` | planner read-only → `bash -lc ...` | bounded iterations + optional shell preflight | intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | compatibility fallback | resolved runtime | task message | resolved provenance |
 
 Gunakan executor explicit saat membandingkan runtime. Jangan menyimpulkan executor dari durasi, title, atau teks `Sisyphus`.
@@ -156,7 +156,7 @@ Node-agent memilih gRPC jika available dalam `auto`; fallback HTTP long-poll. Tr
 
 Worker resolve binary dan menjalankan executor di workspace exact.
 
-AI executor memakai CodeGraph/prerequisite context sesuai policy. Shell default tidak membaca AGENTS/README/CodeGraph dan tidak mengubah command. Optional `NODE_AGENT_SHELL_PREFLIGHT=1` hanya export context melalui env. RTK rewrite bounded dan fail-open. Output compaction optional, bukan pengganti raw evidence.
+AI executor memakai CodeGraph/prerequisite context sesuai policy. Shell agentic planner membaca workspace secara read-only, lalu worker menjalankan command terstruktur melalui RTK. Iterasi dibatasi maksimal 12 dan command destruktif diblokir. Shell direct tetap tidak membaca AGENTS/README/CodeGraph. Output compaction optional, bukan pengganti raw evidence.
 
 ## 11. J — Job runtime states
 

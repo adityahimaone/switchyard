@@ -33,7 +33,6 @@ const END_EVENTS = new Set(["completed", ...FAILURE_EVENTS])
 
 export function useElapsed(startedAt?: number | null, endAt?: number | null, active = true) {
   const [now, setNow] = useState(() => Date.now())
-  const fallbackStart = useState(() => Date.now())[0]
 
   useEffect(() => {
     if (!active || endAt) return
@@ -41,7 +40,7 @@ export function useElapsed(startedAt?: number | null, endAt?: number | null, act
     return () => window.clearInterval(timer)
   }, [active, endAt])
 
-  const baseMs = startedAt ? startedAt * 1000 : active ? fallbackStart : null
+  const baseMs = startedAt ? startedAt * 1000 : null
   if (baseMs == null) return "0.0s"
   const seconds = Math.max(0, ((endAt ? endAt * 1000 : now) - baseMs) / 1000)
   return seconds < 60

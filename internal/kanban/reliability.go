@@ -363,10 +363,10 @@ func taskByID(db *sql.DB, taskID string) (Task, error) {
 	var t Task
 	var started, completed sql.NullInt64
 	err := db.QueryRow(`SELECT id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''),
-		workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''), COALESCE(created_by,''), created_at, started_at, completed_at, consecutive_failures, COALESCE(last_failure_error,'')
+		COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''), COALESCE(created_by,''), created_at, started_at, completed_at, consecutive_failures, COALESCE(last_failure_error,'')
 		FROM tasks WHERE id=?`, taskID).
 		Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command,
-			&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt, &started, &completed, &t.Failures, &t.LastError)
+			&t.ExecutionMode, &t.MaxIterations, &t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt, &started, &completed, &t.Failures, &t.LastError)
 	if err != nil {
 		return Task{}, err
 	}

@@ -16,6 +16,8 @@ export interface Task {
   assignee: string
   executor: "auto" | "hermes" | "codex" | "commandcode" | "shell"
   command?: string
+  execution_mode?: "direct" | "agentic"
+  max_iterations?: number
   workspace_kind: string
   workspace_path: string
   result: string
@@ -303,6 +305,7 @@ export interface ProviderModel {
   api_key_set: boolean
 }
 export interface JEVStatus {
+  enabled: boolean
   configured: boolean
   online: boolean
   mode: "jev" | "local_fallback"

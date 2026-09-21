@@ -53,6 +53,7 @@ func ensurePositionColumn(db *sql.DB) error {
 func taskSelectCols() string {
 	// Keep column order synced with ListTasks scan.
 	return `id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''),
+	        COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1),
 	        workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''),
 	        COALESCE(created_by,''), created_at, started_at, completed_at,
 	        consecutive_failures, COALESCE(last_failure_error,''), COALESCE(execution_meta,'')`
@@ -61,7 +62,7 @@ func taskSelectCols() string {
 func scanTask(rows *sql.Rows) (Task, error) {
 	var t Task
 	var started, completed sql.NullInt64
-	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command,
+	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command, &t.ExecutionMode, &t.MaxIterations,
 		&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt,
 		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta); err != nil {
 		return t, err
@@ -424,16 +425,16 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 			if t.Executor == "" {
 				t.Executor = "auto"
 			}
-			_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, workspace_kind, workspace_path, created_by, created_at, started_at, completed_at, consecutive_failures, last_failure_error)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.WorkspaceKind, t.WorkspacePath, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError)
+			_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, created_by, created_at, started_at, completed_at, consecutive_failures, last_failure_error)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError)
 			if err != nil {
 				return created, nil, err
 			}
 		} else {
 			// Overwrite main fields; keep identity.
-			if _, err := db.Exec(`UPDATE tasks SET title=?, body=?, status=?, priority=?, assignee=?, executor=?, command=?, workspace_kind=?, workspace_path=?, result=?, created_by=?, created_at=?, started_at=?, completed_at=?, consecutive_failures=?, last_failure_error=? WHERE id=?`,
-				t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.WorkspaceKind, t.WorkspacePath, t.Result, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError, t.ID); err != nil {
+			if _, err := db.Exec(`UPDATE tasks SET title=?, body=?, status=?, priority=?, assignee=?, executor=?, command=?, execution_mode=?, max_iterations=?, workspace_kind=?, workspace_path=?, result=?, created_by=?, created_at=?, started_at=?, completed_at=?, consecutive_failures=?, last_failure_error=? WHERE id=?`,
+				t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.Result, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError, t.ID); err != nil {
 				return created, nil, err
 			}
 		}

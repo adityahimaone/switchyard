@@ -18,6 +18,7 @@ import (
 // it hands a task to an LLM. It deliberately does not contain a rewritten
 // prompt or workspace contents.
 type JEVStatus struct {
+	Enabled          bool   `json:"enabled"`
 	Configured       bool   `json:"configured"`
 	Online           bool   `json:"online"`
 	Mode             string `json:"mode"`
@@ -95,6 +96,9 @@ var taskScopes = map[string]string{
 // IdentifyTask uses JEV's structured Choice primitive when configured. The
 // local fallback keeps Switchyard usable in development and during outages.
 func IdentifyTask(ctx context.Context, title, body string) TaskIdentity {
+	if !JEVEnabled() {
+		return identifyTaskLocally(compactTaskState(title, body))
+	}
 	jevMetrics.calls.Add(1)
 	started := time.Now()
 	state := compactTaskState(title, body)
@@ -124,6 +128,7 @@ func GetJEVStatus(ctx context.Context) JEVStatus {
 	}
 	configured := strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY")) != ""
 	status := JEVStatus{
+		Enabled:         JEVEnabled(),
 		Configured:      configured,
 		Mode:            "local_fallback",
 		Model:           model,

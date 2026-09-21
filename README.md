@@ -206,7 +206,7 @@ The execution pipeline has three context-reduction layers:
 2. **rtk** — reduces verbose shell command and output within bounded timeouts (hook check + rewrite `800 ms` each; `rtk pipe --ultra-compact` with `2 s` cap when `NODE_AGENT_SHELL_CAVEMAN=1`).
 3. **caveman** — optional compact output for shell (`NODE_AGENT_SHELL_CAVEMAN=1`, `>8 KiB`, fail-open). AI executors already produce their own structured result.
 
-Shell default path avoids AGENTS/README/codegraph prompt injection. `body` is descriptive; `command` is the only executed input; empty/whitespace `command` is `400` / `blocked`. Workspace routing, hard-guard (`/Users/`/`C:\`) → `ssh`/`mac-tailscale`, flow tracking, and review gate remain as documented in `docs/execution-flow.md`.
+Shell agentic path gives a read-only planner workspace visibility, then executes structured commands through shell + RTK with bounded iterations. `body` is task intent; `command` remains the direct-mode input. Workspace routing, hard-guard (`/Users/`/`C:\`) → `ssh`/`mac-tailscale`, flow tracking, and review gate remain as documented in `docs/execution-flow.md`.
 
 ## Configuration
 

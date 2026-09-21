@@ -106,16 +106,19 @@ func dispatchSSHTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(last_failure_error,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(last_failure_error,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1) FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
 		if err != nil {
 			db.Close()
 			continue
 		}
-		type row struct{ id, title, body, result, ws, transport, sshTarget, executor, command, lastError string }
+		type row struct {
+			id, title, body, result, ws, transport, sshTarget, executor, command, lastError, executionMode string
+			maxIterations                                                                                  int
+		}
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command, &r.lastError); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command, &r.lastError, &r.executionMode, &r.maxIterations); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -197,7 +200,7 @@ func dispatchSSHTasks() {
 
 			var output string
 			var success bool
-			if r.executor == "shell" {
+			if r.executor == "shell" && r.executionMode != "agentic" {
 				cmd := strings.TrimSpace(r.command)
 				if cmd == "" {
 					now := time.Now().Unix()
@@ -212,7 +215,20 @@ func dispatchSSHTasks() {
 				}
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
-					Workspace: r.ws, Executor: "shell", Command: cmd,
+					Workspace: r.ws, Executor: "shell", Command: cmd, ExecutionMode: "direct", MaxIterations: 1,
+				}, kanban.RemoteDispatchWait())
+				if err != nil {
+					output = err.Error()
+				} else if res != nil {
+					output, success = res.Output, res.Success
+					if !success && res.Error != "" {
+						output += "\n" + res.Error
+					}
+				}
+			} else if r.executor == "shell" && r.executionMode == "agentic" {
+				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
+					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
+					Workspace: r.ws, Executor: "shell", ExecutionMode: "agentic", MaxIterations: r.maxIterations, Acceptance: r.title,
 				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()

@@ -48,10 +48,10 @@ export default function TaskDialog({
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
-  const [command, setCommand] = useState("")
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "shell">("auto")
+  const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
@@ -113,14 +113,13 @@ export default function TaskDialog({
   async function submit() {
     if (uploading) { setErr("Wait for attachment upload to finish"); return }
     if (!title.trim()) { setErr("Title required"); return }
-    if (executor === "shell" && !command.trim()) { setErr("Command required for shell executor"); return }
     setBusy(true); setErr(null)
     let created: unknown = null
     try {
       created = await onCreate({
         title: title.trim(),
         body: body.trim(),
-        ...(executor === "shell" ? { command: command.trim() } : {}),
+        ...(executor === "shell" ? { execution_mode: "agentic", max_iterations: Number(maxIterations) || 6 } : {}),
         workspace_path: ws,
         assignee,
         executor,
@@ -181,13 +180,14 @@ export default function TaskDialog({
         </div>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} placeholder="Deskripsi (opsional) — klik AI improve biar prompt-nya dirapikan"
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] text-sm" />
-        {executor === "shell" && <>
-          <Label className="mt-3 block text-xs text-neutral-400">Shell Command</Label>
-          <Textarea value={command} onChange={(e) => setCommand(e.target.value)} rows={4}
-            placeholder="Command yang dieksekusi langsung di remote workspace"
-            className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs" />
-          <p className="mt-1 text-[11px] text-neutral-500">Body jadi deskripsi. Command jadi satu-satunya input yang dijalankan.</p>
-        </>}
+        {executor === "shell" && <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+          <p className="text-xs font-medium text-amber-200">Autonomous shell access</p>
+          <p className="mt-1 text-[11px] leading-4 text-neutral-400">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
+          <div className="mt-2 flex items-center gap-2">
+            <Label className="text-[11px] text-neutral-400">Max iterations</Label>
+            <Input type="number" min="1" max="12" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+          </div>
+        </div>}
         <Label className="mt-3 block text-xs text-neutral-400">Agent Profile</Label>
         <Select value={assignee} onValueChange={setAssignee}>
           <SelectTrigger className={`mt-1 ${selCls}`}>
@@ -215,7 +215,7 @@ export default function TaskDialog({
             <SelectItem value="hermes" className="text-sm">Hermes</SelectItem>
             <SelectItem value="codex" className="text-sm">Codex</SelectItem>
             <SelectItem value="commandcode" className="text-sm">Command Code</SelectItem>
-            <SelectItem value="shell" className="text-sm">Shell command</SelectItem>
+            <SelectItem value="shell" className="text-sm">Shell agent (workspace access)</SelectItem>
           </SelectContent>
         </Select>
         <div className="mt-3 grid grid-cols-2 gap-3">

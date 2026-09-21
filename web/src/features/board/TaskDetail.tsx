@@ -164,7 +164,7 @@ export default function TaskDetail({
               : "scratch"}
           </Row>
           <Row label="Kind">{task.workspace_kind || "dir"}</Row>
-          <Row label="Execution">{task.executor || "auto"}{task.command ? " · " + task.command : ""}</Row>
+          <Row label="Execution">{task.executor || "auto"}{task.execution_mode === "agentic" ? " · agentic" : task.command ? " · " + task.command : ""}</Row>
           {jev && (
             <div className="border-t border-[var(--color-line)]/60 py-2">
               <div className="mb-1 flex items-center justify-between">
