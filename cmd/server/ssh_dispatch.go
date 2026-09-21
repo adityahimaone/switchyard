@@ -216,7 +216,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Executor: "shell", Command: cmd, ExecutionMode: "direct", MaxIterations: 1,
-				}, kanban.RemoteDispatchWait())
+				}, kanban.RemoteDispatchWaitFor(r.executionMode))
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {
@@ -228,8 +228,8 @@ func dispatchSSHTasks() {
 			} else if r.executor == "shell" && r.executionMode == "agentic" {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
-					Workspace: r.ws, Executor: "shell", ExecutionMode: "agentic", MaxIterations: r.maxIterations, Acceptance: r.title,
-				}, kanban.RemoteDispatchWait())
+					Workspace: r.ws, Executor: "shell", ExecutionMode: "agentic", MaxIterations: r.maxIterations, Acceptance: strings.TrimSpace(r.title + "\n" + r.body),
+				}, kanban.RemoteDispatchWaitFor(r.executionMode))
 				if err != nil {
 					output = err.Error()
 				} else if res != nil {

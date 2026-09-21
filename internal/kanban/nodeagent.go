@@ -207,6 +207,9 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 				executor = "auto"
 			}
 			_ = PersistWorkerLogEvent(req.Board, req.TaskID, executor, "stdout", txt, int64(poff))
+			if strings.EqualFold(strings.TrimSpace(req.ExecutionMode), "agentic") {
+				persistShellIterationEvents(req.Board, req.TaskID, txt)
+			}
 			if onProgress != nil {
 				onProgress(txt)
 			}
@@ -278,6 +281,35 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 	return nil, fmt.Errorf("dispatch_wait_timeout: timeout after %s waiting for result of %s (node %s)", wait, req.TaskID, ack.NodeID)
 }
 
+func persistShellIterationEvents(slug, taskID, chunk string) {
+	db, err := openDB(slug)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+	for _, line := range strings.Split(chunk, "\n") {
+		const marker = "HERMES_EVENT: "
+		idx := strings.Index(line, marker)
+		if idx < 0 {
+			continue
+		}
+		var event struct {
+			Phase string `json:"phase"`
+			Label string `json:"label"`
+		}
+		if json.Unmarshal([]byte(strings.TrimSpace(line[idx+len(marker):])), &event) != nil || event.Label == "" {
+			continue
+		}
+		iteration := 0
+		if strings.HasPrefix(event.Label, "Iteration ") {
+			_, _ = fmt.Sscanf(event.Label, "Iteration %d", &iteration)
+		} else if strings.HasPrefix(event.Label, "Planning shell iteration ") {
+			_, _ = fmt.Sscanf(event.Label, "Planning shell iteration %d", &iteration)
+		}
+		_ = insertEvent(db, taskID, "shell_iteration", map[string]any{"phase": event.Phase, "label": event.Label, "iteration": iteration})
+	}
+}
+
 // RemoteJobTimeout is the shared worker/control-plane timeout. The server
 // override lets the control plane share a value with NODE_AGENT_JOB_TIMEOUT.
 func RemoteJobTimeout() time.Duration {
@@ -294,6 +326,24 @@ func RemoteJobTimeout() time.Duration {
 }
 
 func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Minute }
+
+// RemoteDispatchWaitFor gives agentic shell jobs enough time for multiple
+// planner/execution cycles without changing the timeout for direct jobs.
+func RemoteDispatchWaitFor(executionMode string) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(executionMode), "agentic") {
+		secs := 1200
+		for _, key := range []string{"KANBAN_NODE_AGENT_SHELL_AGENTIC_TIMEOUT", "NODE_AGENT_SHELL_AGENTIC_TIMEOUT"} {
+			if v := os.Getenv(key); v != "" {
+				if n, err := strconv.Atoi(v); err == nil && n > 0 {
+					secs = n
+					break
+				}
+			}
+		}
+		return time.Duration(secs)*time.Second + 2*time.Minute
+	}
+	return RemoteDispatchWait()
+}
 
 func trimErrStr(s string) string {
 	s = strings.TrimSpace(s)

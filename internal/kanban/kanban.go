@@ -23,6 +23,8 @@ var ValidExecutors = map[string]bool{
 	"auto": true, "hermes": true, "codex": true, "commandcode": true, "shell": true,
 }
 
+const maxTaskIterations = 24
+
 // Columns the dispatcher owns — board UI must never write these.
 var dispatcherOwned = []string{"claim_lock", "consecutive_failures", "worker_pid", "current_run_id", "last_heartbeat_at"}
 
@@ -249,8 +251,8 @@ func CreateTask(slug string, t *Task) error {
 	if t.MaxIterations <= 0 {
 		t.MaxIterations = 6
 	}
-	if t.MaxIterations > 12 {
-		return fmt.Errorf("max iterations cannot exceed 12")
+	if t.MaxIterations > maxTaskIterations {
+		return fmt.Errorf("max iterations cannot exceed %d", maxTaskIterations)
 	}
 	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" {
 		return fmt.Errorf("shell executor requires command")

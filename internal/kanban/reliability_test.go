@@ -15,6 +15,13 @@ func TestRemoteTimeoutConfiguration(t *testing.T) {
 	}
 }
 
+func TestRemoteDispatchWaitForAgentic(t *testing.T) {
+	t.Setenv("KANBAN_NODE_AGENT_SHELL_AGENTIC_TIMEOUT", "1200")
+	if got, want := RemoteDispatchWaitFor("agentic"), 22*time.Minute; got != want {
+		t.Fatalf("RemoteDispatchWaitFor(agentic) = %s, want %s", got, want)
+	}
+}
+
 func TestTaskHealthFromActivityThresholds(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	cases := []struct {

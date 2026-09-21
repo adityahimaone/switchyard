@@ -105,10 +105,10 @@ func dispatchPendingRemoteTasks() {
 				Command:       command,
 				ExecutionMode: r.executionMode,
 				MaxIterations: r.maxIterations,
-				Acceptance:    r.title,
+				Acceptance:    strings.TrimSpace(r.title + "\n" + r.body),
 			}
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent", r.id, b.Slug)
-			_, err := kanban.DispatchRemote(req, kanban.RemoteDispatchWait())
+			_, err := kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {

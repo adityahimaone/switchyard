@@ -185,7 +185,7 @@ export default function TaskDialog({
           <p className="mt-1 text-[11px] leading-4 text-neutral-400">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
           <div className="mt-2 flex items-center gap-2">
             <Label className="text-[11px] text-neutral-400">Max iterations</Label>
-            <Input type="number" min="1" max="12" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+            <Input type="number" min="1" max="24" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
           </div>
         </div>}
         <Label className="mt-3 block text-xs text-neutral-400">Agent Profile</Label>
