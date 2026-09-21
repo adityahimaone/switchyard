@@ -209,6 +209,15 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
             </div>
             <Button
               size="sm"
+              variant="outline"
+              disabled={approve.isPending || diff.isLoading}
+              onClick={() => { setErr(null); approve.mutate("done") }}
+              className="h-8 shrink-0 border-amber-500/30 px-2 text-[10px] text-amber-200 hover:bg-amber-500/10"
+            >
+              Mark done
+            </Button>
+            <Button
+              size="sm"
               disabled={!action || approve.isPending || selectedCount === 0 || diff.isLoading}
               onClick={() => { setErr(null); approve.mutate(action!) }}
               className="h-8 shrink-0 gap-1 bg-violet-500 text-white hover:bg-violet-400"

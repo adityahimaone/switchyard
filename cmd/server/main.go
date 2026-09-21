@@ -236,8 +236,8 @@ func main() {
 		if req.Status == "done" {
 			if cur, err := kanban.TaskStatus(r.PathValue("slug"), r.PathValue("id")); err == nil && cur == "review" {
 				t, loadErr := loadReviewTask(r.PathValue("slug"), r.PathValue("id"))
-				if loadErr != nil || t.Transport != "ssh" {
-					fail(w, fmt.Errorf("review->done requires a clean ssh workspace"), 400)
+				if loadErr != nil || (t.Transport != "ssh" && t.Transport != "node-agent") {
+					fail(w, fmt.Errorf("review->done requires a clean workspace"), 400)
 					return
 				}
 				clean, _, statusCode := reviewWorkspaceClean(t)

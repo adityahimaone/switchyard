@@ -25,6 +25,12 @@ import (
 
 const diffLimit = 100 << 10 // 100KB truncation cap for raw diff output
 
+// Git reports paths relative to the repository root, even when the command is
+// run from a nested workspace. Normalize to that root first, while keeping the
+// task workspace as the diff scope. This prevents nested workspaces from
+// accidentally resolving untracked paths against the wrong directory.
+const reviewScopeSetup = `repo_root=$(git rev-parse --show-toplevel) || exit 2; workspace=$(pwd -P); case "$workspace" in "$repo_root") scope=".";; "$repo_root"/*) scope="${workspace#"$repo_root"/}";; *) echo "workspace is outside git root" >&2; exit 2;; esac; cd "$repo_root" || exit 2; untracked() { git ls-files --others --exclude-standard -- "$scope"; }; `
+
 type reviewTask struct {
 	Slug          string
 	ID            string
@@ -83,7 +89,7 @@ func runGit(t *reviewTask, args string) (string, int) {
 
 func reviewWorkspaceClean(t *reviewTask) (bool, string, int) {
 	// git diff --quiet ignores untracked files; review must treat new files as changes.
-	out, code := runGit(t, `git diff --quiet HEAD -- .; diff_code=$?; untracked=$(git ls-files --others --exclude-standard | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
+	out, code := runGit(t, reviewScopeSetup+`git diff --quiet HEAD -- "$scope"; diff_code=$?; untracked=$(untracked | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
 	if code == 0 {
 		return true, out, 0
 	}
@@ -136,7 +142,10 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("unsupported transport %q for diff", t.Transport), 400)
 		return
 	}
-	snapshot, code := runGit(t, `printf '__STAT__\n'; git diff --stat HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then git diff --no-index --stat /dev/null "$f"; fi; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then printf '%s\n' "$f"; fi; done; printf '__CLEAN__\n'; if git diff --quiet HEAD -- . && [ -z "$(git ls-files --others --exclude-standard)" ]; then printf '1\n'; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- .; git ls-files --others --exclude-standard | while IFS= read -r f; do if [ -s "$f" ]; then git diff --no-index /dev/null "$f"; fi; done | head -8000`)
+	// Keep the clean-workspace path cheap. In particular, do not run a full
+	// diff after Git has already told us there is nothing to review. Limit the
+	// remote diff too, before it is sent back over SSH/node-agent.
+	snapshot, code := runGit(t, reviewScopeSetup+`printf '__STAT__\n'; git diff --stat HEAD -- "$scope"; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index --stat /dev/null "$f" || true; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- "$scope"; untracked; printf '__CLEAN__\n'; if git diff --quiet HEAD -- "$scope" && [ -z "$(untracked)" ]; then printf '1\n'; printf '__DIFF__\n'; exit 0; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- "$scope" | head -8000; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index /dev/null "$f" || true; done | head -8000`)
 	if code != 0 && strings.TrimSpace(snapshot) == "" {
 		fail(w, fmt.Errorf("git diff failed"), 500)
 		return
@@ -185,6 +194,14 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("unsupported transport %q for approve", t.Transport), 400)
 		return
 	}
+	if req.Action == "done" {
+		if err := kanban.StatusTransition(slug, id, "done"); err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": "marked done without committing workspace changes"})
+		return
+	}
 
 	clean, status, code := reviewWorkspaceClean(t)
 	if code != 0 {
@@ -199,11 +216,6 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": "workspace clean; no commit needed"})
 		return
 	}
-	if req.Action == "done" {
-		fail(w, fmt.Errorf("workspace has uncommitted changes; choose commit or commit_push"), 400)
-		return
-	}
-
 	// Build commit message: subject + bullet changes + Refs footer.
 	subject := req.Message
 	if subject == "" {
@@ -241,12 +253,12 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		}
 		script = fmt.Sprintf("git add -- %s && git commit -m %s", strings.Join(quoted, " "), shellQuote(msg))
 	} else {
-		script = fmt.Sprintf("git add -A && git commit -m %s", shellQuote(msg))
+		script = fmt.Sprintf("git add -A -- \"$scope\" && git commit -m %s", shellQuote(msg))
 	}
 	if req.Action == "commit_push" {
 		script += " && git push"
 	}
-	out, code := runGit(t, script)
+	out, code := runGit(t, reviewScopeSetup+script)
 	if code != 0 {
 		fail(w, fmt.Errorf("git failed (exit %d): %s", code, truncate(out, 500)), 500)
 		return
@@ -321,7 +333,7 @@ func parseDiffNames(raw string) []string {
 }
 
 func changedFiles(t *reviewTask) []string {
-	out, code := runGit(t, `git diff --name-only HEAD -- .; git ls-files --others --exclude-standard`)
+	out, code := runGit(t, reviewScopeSetup+`git diff --name-only HEAD -- "$scope"; untracked`)
 	if code != 0 {
 		return nil
 	}
