@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { api, runControl, taskHealth, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
+import { api, parseTaskExecutionMeta, runControl, taskHealth, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
 import { Apple, ExternalLink, HardDrive, Laptop, Monitor, Square, X } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { ResultEmpty, ResultPanel, WorkerLogPanel } from "./OutputPanels"
@@ -90,6 +90,7 @@ export default function TaskDetail({
   const healthTone = health.data?.health === "healthy" ? "text-emerald-300" : health.data?.health === "silent" ? "text-amber-300" : "text-red-300"
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const resultSplit = task.result ? splitAgentResult(task.result) : null
+  const jev = parseTaskExecutionMeta(task.execution_meta)
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 p-0 sm:p-3" onClick={onClose}>
@@ -164,6 +165,20 @@ export default function TaskDetail({
           </Row>
           <Row label="Kind">{task.workspace_kind || "dir"}</Row>
           <Row label="Execution">{task.executor || "auto"}{task.command ? " · " + task.command : ""}</Row>
+          {jev && (
+            <div className="border-t border-[var(--color-line)]/60 py-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-violet-300/80">JEV routing</span>
+                <span className="text-[10px] text-neutral-500">{jev.source}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] text-violet-200">{jev.case}</Badge>
+                <Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] text-violet-200">scope: {jev.scope}</Badge>
+                <span className="self-center text-[10px] text-neutral-500">confidence {(jev.confidence * 100).toFixed(0)}%</span>
+              </div>
+              {(jev.model || jev.input_tokens) && <p className="mt-1 truncate text-[10px] text-neutral-600" title={jev.model}>{jev.model || "local"}{jev.input_tokens ? ` · ${jev.input_tokens} input tokens` : ""}</p>}
+            </div>
+          )}
           <Row label="Dibuat">{new Date(task.created_at * 1000).toLocaleString()}</Row>
           {task.started_at && <Row label="Mulai">{new Date(task.started_at * 1000).toLocaleString()}</Row>}
           {task.completed_at && <Row label="Selesai">{new Date(task.completed_at * 1000).toLocaleString()}</Row>}

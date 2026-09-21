@@ -7,7 +7,7 @@ import { useSidebarPreferences } from "@/lib/sidebar-preferences"
 import { useTheme, useSoundSettings, type ThemePreference } from "@/hooks/useSettings"
 import { Button } from "@/components/ui/button"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, archiveBoard, type Board } from "@/api"
+import { api, archiveBoard, getJEVStatus, type Board } from "@/api"
 import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
 import AttachmentAnalysisSettings from "./AttachmentAnalysisSettings"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -63,6 +63,12 @@ export default function SettingsPage() {
   const [passwordBusy, setPasswordBusy] = useState(false)
   const { items, isVisible, move, toggle, reset } = useSidebarPreferences()
   const { theme, setTheme } = useTheme()
+  const { data: jevStatus, isFetching: jevRefreshing, refetch: refreshJEV } = useQuery({
+    queryKey: ["jev-status"],
+    queryFn: getJEVStatus,
+    enabled: tab === "ai",
+    refetchInterval: tab === "ai" ? 30000 : false,
+  })
 
   // Sync cuelume engine on any sound pref change
   useEffect(() => {
@@ -394,6 +400,45 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="ai" className="mt-0 space-y-6">
+              {show("JEV", "TypeSafe", "task identification", "routing", "LLM", "AI") && (
+                <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <Activity className="mt-0.5 size-4 text-[var(--color-accent)]" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-neutral-200">JEV task routing</p>
+                        <p className="mt-1 text-xs leading-5 text-neutral-500">
+                          Used before Kanban execution to identify the task case and workspace scope, so the worker receives a focused LLM context.
+                        </p>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => void refreshJEV()} disabled={jevRefreshing} aria-label="Refresh JEV status" className="h-8 shrink-0 text-xs text-neutral-400">
+                      <RefreshCw className={`size-3.5 ${jevRefreshing ? "animate-spin" : ""}`} />
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Connection</p>
+                      <p className={`mt-1 text-xs font-medium ${jevStatus?.online ? "text-emerald-400" : jevStatus?.configured ? "text-amber-400" : "text-neutral-400"}`}>
+                        {jevStatus?.online ? "Online" : jevStatus?.configured ? "Configured · offline" : "Fallback mode"}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Model</p>
+                      <p className="mt-1 truncate text-xs font-medium text-neutral-300">{jevStatus?.model ?? "Checking…"}</p>
+                    </div>
+                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Classifications</p>
+                      <p className="mt-1 text-xs font-medium text-neutral-300">{jevStatus ? `${jevStatus.successful_calls} JEV · ${jevStatus.fallback_calls} fallback · chat ${jevStatus.chat_calls} · kanban ${jevStatus.kanban_calls}` : "Checking…"}</p>
+                    </div>
+                  </div>
+                  {jevStatus && jevStatus.calls > 0 && (
+                    <p className="text-[11px] text-neutral-500">
+                      Last classification: {jevStatus.last_latency_ms} ms · {jevStatus.last_input_tokens || "—"} input tokens. Usage metrics are persisted in chat.db.
+                    </p>
+                  )}
+                </div>
+              )}
               <AttachmentAnalysisSettings show={show} />
             </TabsContent>
           </Tabs>

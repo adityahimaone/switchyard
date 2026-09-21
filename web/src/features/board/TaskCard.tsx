@@ -1,4 +1,4 @@
-import type { Profile, Status, Task, TaskHealth, Workspace } from "../../api"
+import { parseTaskExecutionMeta, type Profile, type Status, type Task, type TaskHealth, type Workspace } from "../../api"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -59,6 +59,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
   const ws = (workspaces ?? []).find((w) => w.path === task.workspace_path)
   const wsIsSsh = ws ? !!ws.host && ws.host !== "localhost" && ws.host !== "127.0.0.1" : isSshPath(task.workspace_path || "")
   const desc = task.result || task.body
+  const jev = parseTaskExecutionMeta(task.execution_meta)
   return (
     <article
       draggable={task.status !== "running"}
@@ -147,6 +148,12 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
             </span>
           )}
           <OsInfo ws={ws} />
+          {jev && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-violet-300/80" title={`JEV: ${jev.case} · ${jev.scope} · ${jev.source} · confidence ${(jev.confidence * 100).toFixed(0)}%`}>
+              <span className="rounded border border-violet-400/20 bg-violet-400/10 px-1 py-0.5">{jev.case}</span>
+              <span className="text-violet-300/50">{jev.scope}</span>
+            </span>
+          )}
           <span className="ml-auto shrink-0 font-mono text-[10px] text-neutral-500/40">{task.id}</span>
         </div>
       </div>

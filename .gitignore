@@ -2,3 +2,7 @@ bin/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+# Local secrets
+.env
+.env.*
+!.env.example

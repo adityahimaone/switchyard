@@ -52,6 +52,7 @@ type Task struct {
 	CompletedAt   *int64 `json:"completed_at"`
 	Failures      int    `json:"consecutive_failures"`
 	LastError     string `json:"last_failure_error"`
+	ExecutionMeta string `json:"execution_meta,omitempty"`
 }
 
 type TaskEvent struct {

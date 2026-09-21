@@ -55,7 +55,7 @@ func taskSelectCols() string {
 	return `id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''),
 	        workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''),
 	        COALESCE(created_by,''), created_at, started_at, completed_at,
-	        consecutive_failures, COALESCE(last_failure_error,'')`
+	        consecutive_failures, COALESCE(last_failure_error,''), COALESCE(execution_meta,'')`
 }
 
 func scanTask(rows *sql.Rows) (Task, error) {
@@ -63,7 +63,7 @@ func scanTask(rows *sql.Rows) (Task, error) {
 	var started, completed sql.NullInt64
 	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command,
 		&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt,
-		&started, &completed, &t.Failures, &t.LastError); err != nil {
+		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta); err != nil {
 		return t, err
 	}
 	if started.Valid {

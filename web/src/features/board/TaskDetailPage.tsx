@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { addTaskDependency, api, cancelRun, openEventStream, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
+import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react"
 import { AttachmentChip } from "@/components/AttachmentChip"
@@ -334,6 +334,7 @@ export default function TaskDetailPage({
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const groups = events.data ? parseEventCards(events.data) : []
   const resultSplit = task.result ? splitAgentResult(task.result) : null
+  const jev = parseTaskExecutionMeta(task.execution_meta)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -354,6 +355,7 @@ export default function TaskDetailPage({
           {task.priority > 0 && (
             <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[9px] leading-none text-amber-300">P{task.priority}</Badge>
           )}
+          {jev && <><Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] leading-none text-violet-200">JEV {jev.case}</Badge><Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] leading-none text-violet-200">{jev.scope}</Badge></>}
           <span>dibuat {new Date(task.created_at * 1000).toLocaleString()}</span>
           {task.completed_at && <span>· selesai {new Date(task.completed_at * 1000).toLocaleString()}</span>}
         </div>
@@ -401,6 +403,22 @@ export default function TaskDetailPage({
             )}
           </div>
         </div>
+
+        {jev && (
+          <div className="glass-inset-card mt-3 rounded-lg p-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] uppercase tracking-wider text-violet-300/80">JEV routing</label>
+              <span className="text-[10px] text-neutral-500">{jev.source}</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+              <span className="text-neutral-500">Case <strong className="ml-1 font-medium text-neutral-200">{jev.case}</strong></span>
+              <span className="text-neutral-500">Scope <strong className="ml-1 font-medium text-neutral-200">{jev.scope}</strong></span>
+              <span className="text-neutral-500">Confidence <strong className="ml-1 font-medium text-neutral-200">{(jev.confidence * 100).toFixed(0)}%</strong></span>
+              <span className="text-neutral-500">Input <strong className="ml-1 font-medium text-neutral-200">{jev.input_tokens ?? 0} tokens</strong></span>
+            </div>
+            {jev.model && <p className="mt-1 truncate text-[10px] text-neutral-600">model: {jev.model}</p>}
+          </div>
+        )}
 
         {task.body && (
           <div className="glass-inset-card mt-3 max-h-28 overflow-y-auto rounded-lg p-2.5">

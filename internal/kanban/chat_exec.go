@@ -137,18 +137,88 @@ func timeChatAnswer(prompt string, now time.Time) (string, bool) {
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
 	_ = UpdateChatRunState(runID, "running", "", "")
 	_ = AppendChatRunEvent(runID, "spawned", fmt.Sprintf(`{"agent":%q,"profile":%q}`, agent, profile))
-	preparedPrompt, err := prepareChatAttachmentPrompt(ctx, runID, profile, model, prompt)
+	originalPrompt := prompt
+	route, recent, routeErr := routeChatForRun(ctx, runID, prompt, workspace)
+	runRecord, _ := GetChatRun(runID)
+	confirmedPrompt := originalPrompt
+	if routeErr != nil {
+		_ = AppendChatRunEvent(runID, "routing", fmt.Sprintf(`{"source":"error","error":%q}`, routeErr.Error()))
+		route = ChatRoute{Intent: "other", ContextScope: "session_only", Source: "route_error", Confidence: 0}
+	} else {
+		if runRecord != nil {
+			if pendingIntent, pendingPrompt, pending := PendingChatConfirmation(runRecord.SessionID); pending && isChatConfirmationPrompt(originalPrompt) {
+				confirmedPrompt = pendingPrompt
+				route = ChatRoute{Intent: pendingIntent, ContextScope: "workspace_focused", NeedsWorkspace: true, Confidence: 0.95, Source: "confirmed"}
+				_ = ConsumeChatConfirmation(runRecord.SessionID)
+			}
+		}
+		rawRoute, _ := json.Marshal(route)
+		_ = AppendChatRunEvent(runID, "routing", string(rawRoute))
+	}
+	if route.Intent == "create_kanban_task" && route.Source == "confirmed" {
+		task, err := createChatTaskFromPrompt(confirmedPrompt, workspace)
+		if err != nil {
+			_ = UpdateChatRunState(runID, "error", "", err.Error())
+			return
+		}
+		answer := fmt.Sprintf("Created Kanban task %s: %s.", task.ID, task.Title)
+		_ = AppendChatRunEvent(runID, "task_created", fmt.Sprintf(`{"task_id":%q,"status":%q}`, task.ID, task.Status))
+		_ = UpdateChatRunState(runID, "done", answer, "")
+		if r, err := GetChatRun(runID); err == nil {
+			_, _ = CreateChatMessage(r.SessionID, "assistant", answer, r.ID)
+		}
+		return
+	}
+	if route.Intent == "task_status" {
+		if answer, ok := chatTaskStatusAnswer(originalPrompt); ok {
+			_ = AppendChatRunEvent(runID, "completed", `{"fast_path":true,"route":"task_status"}`)
+			_ = UpdateChatRunState(runID, "done", answer, "")
+			if r, err := GetChatRun(runID); err == nil {
+				_, _ = CreateChatMessage(r.SessionID, "assistant", answer, r.ID)
+			}
+			return
+		}
+	}
+	if route.NeedsConfirmation && route.Confidence >= 0.65 {
+		answer := "I identified this as a potentially state-changing action. Please reply with `confirm` to continue, or explain what should be changed."
+		_ = AppendChatRunEvent(runID, "confirmation_required", fmt.Sprintf(`{"intent":%q,"confidence":%.2f}`, route.Intent, route.Confidence))
+		if runRecord != nil {
+			_ = CreateChatConfirmation(runRecord.SessionID, runID, route.Intent, originalPrompt)
+		}
+		_ = UpdateChatRunState(runID, "done", answer, "")
+		if r, err := GetChatRun(runID); err == nil {
+			_, _ = CreateChatMessage(r.SessionID, "assistant", answer, r.ID)
+		}
+		return
+	}
+	hermesSessionID := ""
+	switchyardSessionID := ""
+	if r, getErr := GetChatRun(runID); getErr == nil {
+		switchyardSessionID = r.SessionID
+		if s, sessionErr := GetChatSession(r.SessionID); sessionErr == nil {
+			hermesSessionID = s.HermesSessionID
+		}
+	}
+	preparedPrompt, err := prepareChatAttachmentPrompt(ctx, runID, profile, model, originalPrompt)
 	if err != nil {
 		_ = UpdateChatRunState(runID, "error", "", err.Error())
 		return
 	}
-	prompt = preparedPrompt
-	answer, ok := greetingChatAnswer(prompt)
+	// The warm daemon and newer Hermes builds return a resumable session ID.
+	// Older CLI/daemon paths may not, so rebuild bounded room history explicitly
+	// whenever no durable resume ID exists. This keeps rooms coherent across turns
+	// and across daemon restarts without changing executor selection.
+	if recent != "" && (route.NeedsCompaction || hermesSessionID == "") {
+		prompt = ChatRoutingPrompt(route) + "Bounded recent session context:\n" + recent + "\n\nCurrent request:\n" + preparedPrompt
+	} else {
+		prompt = ChatRoutingPrompt(route) + preparedPrompt
+	}
+	answer, ok := greetingChatAnswer(originalPrompt)
 	if !ok {
-		answer, ok = todayChatAnswer(prompt, time.Now())
+		answer, ok = todayChatAnswer(originalPrompt, time.Now())
 	}
 	if !ok {
-		answer, ok = timeChatAnswer(prompt, time.Now())
+		answer, ok = timeChatAnswer(originalPrompt, time.Now())
 	}
 	if ok && strings.TrimSpace(workspace) == "" {
 		_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"fast_path":true}`, len(answer)))
@@ -187,13 +257,8 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 		}
 		return
 	}
-	hermesSessionID := ""
-	switchyardSessionID := ""
-	if r, getErr := GetChatRun(runID); getErr == nil {
-		switchyardSessionID = r.SessionID
-		if s, sessionErr := GetChatSession(r.SessionID); sessionErr == nil {
-			hermesSessionID = s.HermesSessionID
-		}
+	if route.NeedsCompaction {
+		hermesSessionID = ""
 	}
 	// These lookups are intentionally represented by one honest setup step.
 	// Emitting four synchronous ticks here made the checklist look complete

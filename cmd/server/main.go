@@ -862,6 +862,9 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"name": r.PathValue("name"), "models": models})
 	})
+	mux.HandleFunc("GET /api/settings/jev", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, kanban.GetJEVStatus(r.Context()))
+	})
 	mux.HandleFunc("GET /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
 		cfg, err := kanban.LoadAttachmentAnalysisConfig()
 		if err != nil {

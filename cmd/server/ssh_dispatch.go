@@ -176,6 +176,11 @@ func dispatchSSHTasks() {
 			startedAt := time.Now().Unix()
 			_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL WHERE id=? AND status IN ('todo','ready')`, startedAt, r.id)
 			claimed = true
+			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
+			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
+			if err := kanban.PersistTaskIdentity(db, r.id, identity); err != nil {
+				log.Printf("ssh-dispatcher: could not persist JEV identity for %s: %v", r.id, err)
+			}
 			db.Close()
 			target := r.sshTarget
 			if target == "" {

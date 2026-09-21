@@ -25,6 +25,34 @@ export interface Task {
   completed_at: number | null
   consecutive_failures: number
   last_failure_error: string
+  execution_meta?: string
+}
+
+export interface TaskExecutionMeta {
+  case: string
+  scope: string
+  confidence: number
+  source: string
+  model?: string
+  input_tokens?: number
+}
+
+export function parseTaskExecutionMeta(raw?: string): TaskExecutionMeta | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<TaskExecutionMeta>
+    if (typeof parsed.case !== "string" || typeof parsed.scope !== "string") return null
+    return {
+      case: parsed.case,
+      scope: parsed.scope,
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
+      source: typeof parsed.source === "string" ? parsed.source : "unknown",
+      model: typeof parsed.model === "string" ? parsed.model : undefined,
+      input_tokens: typeof parsed.input_tokens === "number" ? parsed.input_tokens : undefined,
+    }
+  } catch {
+    return null
+  }
 }
 
 export interface TaskRun {
@@ -274,6 +302,24 @@ export interface ProviderModel {
   capabilities: Record<string, ModelCapability>
   api_key_set: boolean
 }
+export interface JEVStatus {
+  configured: boolean
+  online: boolean
+  mode: "jev" | "local_fallback"
+  model: string
+  endpoint: string
+  calls: number
+  successful_calls: number
+  fallback_calls: number
+  chat_calls: number
+  kanban_calls: number
+  chat_successful_calls: number
+  kanban_successful_calls: number
+  last_latency_ms: number
+  last_input_tokens: number
+  checked_at: number
+}
+
 export interface AttachmentAnalysisConfig {
   mode: "auto" | "dedicated"
   dedicated_model: string
@@ -444,6 +490,7 @@ export function markNotificationRead(id: string) { return api<{ ok: boolean }>(`
 export function markAllNotificationsRead(profile = "default") { return api<{ ok: boolean }>(`/api/notifications/read-all?profile=${encodeURIComponent(profile)}`, { method: "POST" }) }
 export function discoverProviderModels(name: string) { return api<{ name: string; models: string[] }>(`/api/providers/${encodeURIComponent(name)}/models/discover`, { method: "POST" }) }
 export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
+export function getJEVStatus() { return api<JEVStatus>("/api/settings/jev") }
 export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }
 export function saveAttachmentAnalysisConfig(config: AttachmentAnalysisConfig) { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis", { method: "PUT", body: JSON.stringify(config) }) }
 export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }

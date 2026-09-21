@@ -414,3 +414,14 @@ Chat completion never means Kanban task done. Kanban completion never means Chat
 - [Kanban Board Flow — A sampai Z](kanban-board-flow.md)
 - [Current chat architecture](chat-flow-architecture.md)
 - [Legacy execution flow](../execution-flow.md)
+
+## JEV chat preflight
+
+Chat runs perform a compact structured preflight before Hermes when the message is complex, has attachments, or has a long session context. TypeSafe JEV evaluates intent, context scope, workspace need, confirmation need, attachment analysis, and compaction in one request.
+
+- Short greetings and acknowledgements stay on the local fast path.
+- High-risk actions create a durable ten-minute confirmation record before execution.
+- `confirm` consumes that record and resumes the intended action.
+- When compaction is required, Switchyard sends bounded recent context and starts a fresh Hermes session instead of resuming the stale one.
+- Routing decisions are persisted as `chat_run_events(kind=routing)` and JEV usage is persisted in `jev_usage`.
+- `create task ...` is confirmation-gated and creates a default-board Kanban task after confirmation.

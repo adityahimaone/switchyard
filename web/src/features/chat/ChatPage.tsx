@@ -49,7 +49,7 @@ function MessageFooter({ run, sessionID, messageCreatedAt, isStreaming }: { run?
     <span className="chat-message-hover-meta items-center gap-1.5">
       <span className="max-w-[110px] truncate font-mono text-[11px] text-[var(--color-ink-3)]" title={modelLabel}>{modelLabel}</span>
       {run && elapsed && <><span className="text-[var(--color-ink-4)]">·</span><span className="font-mono tabular-nums" title="elapsed">{elapsed}</span></>}
-      {sessionID && <><span className="text-[var(--color-ink-4)]">·</span><span className="font-mono text-[10px]" title={sessionID}>{sessionID}</span></>}
+      {sessionID && <><span className="text-[var(--color-ink-4)]">·</span><span className="font-mono text-[10px]" title="Switchyard room session ID">{sessionID}</span></>}
       {isError && run && <><span className="text-[var(--color-ink-4)]">·</span><span className={stateTone(run.state)}>{stateLabel(run.state)}</span></>}
     </span>
   </span>
@@ -87,6 +87,8 @@ function eventPayload(event: ChatRunEvent): Record<string, string> {
 function activityLabel(event: ChatRunEvent) {
   const payload = eventPayload(event)
   if (event.kind === "phase") return payload.label ?? PHASE_LABELS[payload.phase] ?? "Working"
+  if (event.kind === "routing") return `JEV route: ${payload.intent ?? "unknown"}${payload.context_scope ? ` · ${payload.context_scope}` : ""}`
+  if (event.kind === "confirmation_required") return "Confirmation required before execution"
   if (event.kind === "spawned") return "Started agent"
   if (event.kind === "error") return payload.message ?? "Agent reported an error"
   if (event.kind === "cancelled") return "Run cancelled"
@@ -572,7 +574,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = isLiveRunMessage ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={current.data?.hermes_session_id} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>

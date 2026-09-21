@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -88,6 +89,9 @@ func dispatchPendingRemoteTasks() {
 				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
 				continue
 			}
+			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
+			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
+			_ = kanban.PersistTaskIdentity(db, r.id, identity)
 			req := kanban.NodeDispatchRequest{
 				TaskID:    r.id,
 				Title:     r.title,

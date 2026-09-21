@@ -218,6 +218,9 @@ Shell default path avoids AGENTS/README/codegraph prompt injection. `body` is de
 | `KANBAN_NODE_AGENT` | env | Override node-agent HTTP base URL (default `http://127.0.0.1:8788`) |
 | `KANBAN_NODE_AGENT_TOKEN` | env | Shared auth token for node-agent HTTP + gRPC metadata |
 | `KANBAN_SSH_TARGET` | env | Override SSH target for review and legacy transport |
+| `TYPESAFE_API_KEY` | env | Optional TypeSafe AI key; enables JEV task classification before dispatch |
+| `TYPESAFE_JEV_MODEL` | env | Optional JEV model override (default `jev-latest`) |
+| `TYPESAFE_API_URL` | env | Optional TypeSafe endpoint override (default `https://api.typesafe.ai/v1/systemone`) |
 
 ## Build and deploy
 

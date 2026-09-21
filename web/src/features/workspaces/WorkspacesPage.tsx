@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSettings } from "@/hooks/useSettings"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { FolderGit2, Plus, RefreshCw, ScrollText, Trash2, Pencil, Loader2, Monitor, Apple, Laptop, HardDrive, Radio } from "lucide-react"
+import { ChevronRight, Download, FileCode2, Folder, FolderGit2, FolderOpen, Plus, RefreshCw, ScrollText, Trash2, Pencil, Loader2, Monitor, Apple, Laptop, HardDrive, Radio, X } from "lucide-react"
 import LoadingState from "@/components/LoadingState"
 import { CodeGraphPanel } from "./CodeGraphPanel"
 
@@ -335,21 +335,59 @@ function LogsDialog({ ws, onClose }: { ws: Workspace; onClose: () => void }) {
 
 
 function FileBrowser({ ws }: { ws: Workspace }) {
+  const [openDialog, setOpenDialog] = useState(false)
   const [path, setPath] = useState(".")
   const [selected, setSelected] = useState<WorkspaceFile | null>(null)
   const [draft, setDraft] = useState("")
-  const files = useQuery({ queryKey: ["workspace-files", ws.id, path], queryFn: () => listWorkspaceFiles(ws.id, path) })
+  const files = useQuery({ queryKey: ["workspace-files", ws.id, path], queryFn: () => listWorkspaceFiles(ws.id, path), enabled: openDialog })
   const preview = useQuery({ queryKey: ["workspace-preview", ws.id, selected?.path], queryFn: () => previewWorkspaceFile(ws.id, selected!.path), enabled: !!selected && !selected.is_dir })
   useEffect(() => { if (preview.data?.body != null) setDraft(preview.data.body) }, [preview.data?.body])
+  useEffect(() => {
+    if (!openDialog) return
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setOpenDialog(false) }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [openDialog])
   const save = useMutation({ mutationFn: () => saveWorkspaceFile(ws.id, selected!.path, draft), onSuccess: () => preview.refetch() })
-  function open(file: WorkspaceFile) { if (file.is_dir) setPath(file.path); else { setSelected(file); setDraft("") } }
-  return <div className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-2.5">
-    <div className="flex items-center justify-between gap-2"><span className="text-[10px] uppercase tracking-wider text-neutral-500">Files · {path}</span>{selected && <a className="text-[10px] text-[var(--color-accent)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}>Download</a>}</div>
-    <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,180px)_1fr]">
-      <div className="max-h-40 space-y-0.5 overflow-auto">{path !== "." && <button className="block w-full truncate px-1 text-left text-[11px] text-neutral-500 hover:text-white" onClick={() => setPath(path.split("/").slice(0, -1).join("/") || ".")}>..</button>}{(files.data?.files ?? []).map((file) => <button key={file.path} className={`block w-full truncate rounded px-1 text-left text-[11px] ${selected?.path === file.path ? "bg-[var(--color-inset)] text-white" : "text-neutral-400 hover:bg-[var(--color-inset)]"}`} onClick={() => open(file)}>{file.is_dir ? "▸ " : "· "}{file.name}</button>)}{files.isError && <p className="text-[10px] text-red-300">{(files.error as Error).message}</p>}</div>
-      <div className="min-w-0">{preview.data?.is_binary ? <p className="text-xs text-neutral-500">Binary file. Preview unavailable.</p> : selected ? <><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-32 font-mono text-[11px]" placeholder="Loading preview…" /><div className="mt-1 flex justify-end"><Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save"}</Button></div></> : <p className="text-xs text-neutral-600">Select file to preview.</p>}</div>
+  function open(file: WorkspaceFile) {
+    if (file.is_dir) { setPath(file.path); setSelected(null) }
+    else { setSelected(file); setDraft("") }
+  }
+  function parentPath() { return path.split(/[\\/]/).slice(0, -1).join("/") || "." }
+  const entries = files.data?.files ?? []
+
+  return <>
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-2.5">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-inset)]"><Folder className="size-3.5 text-[var(--color-accent)]" /></div>
+      <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Workspace files</p><p className="truncate text-[10px] text-neutral-600">Browse, preview, edit, and download files</p></div>
+      <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 text-[11px]" onClick={() => setOpenDialog(true)}><FolderOpen className="size-3.5" /> Open files</Button>
     </div>
-  </div>
+    {openDialog && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-5" onClick={() => setOpenDialog(false)}>
+      <section role="dialog" aria-modal="true" aria-labelledby={`workspace-files-title-${ws.id}`} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] shadow-2xl sm:max-h-[min(860px,calc(100dvh-2.5rem))]" onClick={(event) => event.stopPropagation()}>
+        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur-xl">
+          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[.14em] text-neutral-500">Workspace files</p><h2 id={`workspace-files-title-${ws.id}`} className="truncate text-sm font-semibold text-neutral-100">{ws.name}</h2></div>
+          <span className="hidden min-w-0 truncate font-mono text-[10px] text-neutral-600 sm:block">{ws.path}</span>
+          <Button variant="outline" size="sm" aria-label="Close workspace files" className="ml-auto size-9 shrink-0 p-0" onClick={() => setOpenDialog(false)}><X className="size-4" /></Button>
+        </header>
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,250px)_minmax(0,1fr)] md:overflow-hidden">
+          <aside className="min-h-0 border-b border-[var(--color-line)] bg-[var(--color-bg)]/45 p-3 md:overflow-y-auto md:border-b-0 md:border-r" aria-label="File tree">
+            <div className="mb-2 flex items-center justify-between gap-2"><span className="truncate font-mono text-[10px] text-neutral-500">{path}</span>{files.isFetching && <Loader2 className="size-3 shrink-0 animate-spin text-neutral-500" />}</div>
+            <div className="space-y-0.5" role="tree" aria-label={`Files in ${ws.name}`}>
+              {path !== "." && <button type="button" role="treeitem" className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[11px] text-neutral-500 hover:bg-[var(--color-inset)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]" onClick={() => setPath(parentPath())}><ChevronRight className="size-3 -rotate-180" /><span>Parent folder</span></button>}
+              {entries.map((file) => <button type="button" role="treeitem" key={file.path} aria-selected={selected?.path === file.path} className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[11px] transition-colors ${selected?.path === file.path ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]" : "text-neutral-400 hover:bg-[var(--color-inset)] hover:text-neutral-200"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]`} onClick={() => open(file)}>{file.is_dir ? <Folder className="size-3.5 shrink-0 text-[var(--color-info)]" /> : <FileCode2 className="size-3.5 shrink-0 text-neutral-500" />}<span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>{file.is_dir && <ChevronRight className="size-3 shrink-0 text-neutral-600" />}</button>)}
+              {files.isLoading && <p className="px-2 py-3 text-[11px] text-neutral-600">Loading files…</p>}
+              {!files.isLoading && !entries.length && !files.isError && <p className="px-2 py-3 text-[11px] text-neutral-600">This folder is empty.</p>}
+              {files.isError && <p className="break-words px-2 py-3 text-[10px] text-red-300">{(files.error as Error).message}</p>}
+            </div>
+          </aside>
+          <main className="flex min-h-0 flex-col bg-[var(--color-surface)] p-3 sm:p-4">
+            <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-[var(--color-line)] pb-3"><FileCode2 className="size-4 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-200">{selected?.path ?? "No file selected"}</span>{selected && !selected.is_dir && <a className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-accent)] hover:bg-[var(--color-accent-tint)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}><Download className="size-3.5" /> Download</a>}</div>
+            <div className="min-h-0 flex-1 pt-3">{preview.data?.is_binary ? <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-neutral-500">Binary file · preview unavailable</div> : selected ? <div className="flex h-full min-h-64 flex-col gap-2"><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-0 flex-1 resize-none font-mono text-[11px] leading-relaxed" placeholder="Loading preview…" /><div className="flex shrink-0 justify-end"><Button size="sm" className="min-h-9" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save changes"}</Button></div></div> : <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-neutral-600">Select a file from the tree to preview it.</div>}</div>
+          </main>
+        </div>
+      </section>
+    </div>}
+  </>
 }
 
 export default function WorkspacesPage() {
