@@ -20,8 +20,14 @@ Socket path: `/tmp/hermes-daemon.sock` (override with `HERMES_DAEMON_SOCK`).
 ## Endpoints
 
 - `GET /health` → `{"status":"ready"}`
-- `POST /query` body `{"prompt","workspace","profile","model"}` → SSE stream of `{"kind":"tool_output","text":"..."}` then `{"kind":"completed","text":"..."}` then `{"kind":"done"}`
+- `POST /query` body `{"prompt","workspace","profile","model"}` → SSE stream of typed `phase` activity events, `tool_output` log lines, `completed`, and `done`.
+
+Hermes runs with `--format stream-json`: `tool_use` and `tool_result` become live activity events, while `text` deltas stream into the answer. Tool details and duration are forwarded without scraping terminal banners. Legacy `HERMES_EVENT: {"phase":"..."}` lines remain supported.
 - `GET /shutdown` → graceful stop
+
+## Latency
+
+The daemon keeps the Python bridge and per-room Hermes session warm. Reasoning defaults to `minimal` and can be changed with `HERMES_DAEMON_REASONING=none|minimal|low`; `none` is faster for short factual prompts but trades away agent reasoning.
 
 ## Token savings
 

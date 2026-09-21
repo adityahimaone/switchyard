@@ -377,9 +377,15 @@ func appendHermesOutputEvents(runID, line string) {
 			if label == "" {
 				label = hermesPhaseLabel(event.Phase, event.Name)
 			}
-			payload := map[string]string{"phase": event.Phase, "label": label}
+			payload := map[string]string{"phase": event.Phase, "label": label, "source": "hermes"}
 			if event.Name != "" {
 				payload["name"] = event.Name
+			}
+			if event.Detail != "" {
+				payload["detail"] = event.Detail
+			}
+			if event.Status != "" {
+				payload["status"] = event.Status
 			}
 			raw, _ := json.Marshal(payload)
 			_ = AppendChatRunEvent(runID, "phase", string(raw))
@@ -395,9 +401,11 @@ func appendHermesOutputEvents(runID, line string) {
 }
 
 type hermesStructuredEvent struct {
-	Phase string `json:"phase"`
-	Name  string `json:"name"`
-	Label string `json:"label"`
+	Phase  string `json:"phase"`
+	Name   string `json:"name"`
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+	Status string `json:"status"`
 }
 
 func parseHermesStructuredEvent(line string) (hermesStructuredEvent, bool) {
@@ -522,11 +530,16 @@ func ChatDaemonHealth() map[string]any {
 // runChatViaDaemon streams the warm daemon's SSE response into chat run events.
 // Returns false on any failure before the first event so RunChat can fall back to CLI.
 func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, prompt, hermesSessionID, switchyardSessionID string) bool {
+	reasoning := "minimal"
+	if fastChatPrompt(prompt) {
+		reasoning = "none"
+	}
 	body, _ := json.Marshal(map[string]string{
 		"prompt":                prompt,
 		"workspace":             workspace,
 		"profile":               profile,
 		"model":                 model,
+		"reasoning":             reasoning,
 		"session_id":            hermesSessionID,
 		"switchyard_session_id": switchyardSessionID,
 	})
@@ -558,9 +571,13 @@ func runChatViaDaemon(ctx context.Context, runID, workspace, profile, model, pro
 		switch ev["kind"] {
 		case "tool_output":
 			appendHermesOutputEvents(runID, ev["text"])
-		case "phase":
-			phasePayload, _ := json.Marshal(map[string]string{"phase": ev["phase"], "label": ev["label"]})
+		case "phase", "activity":
+			phasePayload, _ := json.Marshal(map[string]string{"phase": ev["phase"], "label": ev["label"], "name": ev["name"], "detail": ev["detail"], "status": ev["status"], "duration": ev["duration"], "source": "hermes"})
 			_ = AppendChatRunEvent(runID, "phase", string(phasePayload))
+		case "text_delta":
+			if ev["text"] != "" {
+				BroadcastChatRunEphemeral(runID, "text_delta", fmt.Sprintf(`{"text":%q}`, ev["text"]))
+			}
 		case "error":
 			failed = ev["error"]
 		case "completed":

@@ -464,6 +464,12 @@ func UpdateChatRunState(id, state, output, errMsg string) error {
 	return nil
 }
 
+// BroadcastChatRunEphemeral sends a high-frequency live event without writing each
+// token delta to SQLite. Durable semantic activity still uses AppendChatRunEvent.
+func BroadcastChatRunEphemeral(runID, kind, payload string) {
+	broadcastEvent("chat_run_event", map[string]any{"run_id": runID, "kind": kind, "payload": payload})
+}
+
 func AppendChatRunEvent(runID, kind, payload string) error {
 	db, err := ensureChatDB()
 	if err != nil {

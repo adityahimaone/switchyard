@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Archive, ArrowUp, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Square, Trash2, X } from "lucide-react"
+import { Activity, Archive, ArrowUp, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Square, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -86,7 +86,12 @@ function eventPayload(event: ChatRunEvent): Record<string, string> {
 
 function activityLabel(event: ChatRunEvent) {
   const payload = eventPayload(event)
-  if (event.kind === "phase") return payload.label ?? PHASE_LABELS[payload.phase] ?? "Working"
+  if (event.kind === "phase") {
+    const label = payload.label ?? PHASE_LABELS[payload.phase] ?? "Working"
+    const detail = payload.detail ?? payload.name
+    const duration = payload.duration
+    return [label, detail, duration].filter(Boolean).join(" · ")
+  }
   if (event.kind === "routing") return `JEV route: ${payload.intent ?? "unknown"}${payload.context_scope ? ` · ${payload.context_scope}` : ""}`
   if (event.kind === "confirmation_required") return "Confirmation required before execution"
   if (event.kind === "spawned") return "Started agent"
@@ -97,9 +102,28 @@ function activityLabel(event: ChatRunEvent) {
 }
 
 function isActivityEvent(event: ChatRunEvent) {
-  // stdout is streamed into the response/debug buffer, not presented as a
-  // checklist step. Only semantic events belong in Context activity.
-  return event.kind !== "raw_output" && event.kind !== "tool_output"
+  // Raw logs and answer deltas have dedicated live surfaces. Only semantic
+  // events belong in Context activity.
+  return event.kind !== "raw_output" && event.kind !== "tool_output" && event.kind !== "text_delta"
+}
+
+function LiveWorkerLog({ text, active }: { text: string; active: boolean }) {
+  const lines = text.split("\n").filter(Boolean)
+  if (!lines.length) return null
+  const visible = lines.slice(-12)
+  return <details open={active} className="mt-3 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-inset)]">
+    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] text-[var(--color-ink-3)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
+      <Activity className="size-3.5 shrink-0 text-[var(--color-accent)]" aria-hidden />
+      <span className="font-medium text-[var(--color-ink-2)]">Live worker log</span>
+      <span className="ml-auto font-mono text-[10px] tabular-nums">{lines.length} lines</span>
+    </summary>
+    <pre className="max-h-48 overflow-auto border-t border-[var(--color-line)] px-3 py-2 font-mono text-[10px] leading-5 text-[var(--color-ink-3)]">{visible.join("\n")}</pre>
+  </details>
+}
+
+function mergeActivityEvents(events: ChatRunEvent[], liveEvents: ChatRunEvent[]) {
+  const seen = new Set(events.map((event) => `${event.kind}:${event.payload}`))
+  return [...events, ...liveEvents.filter((event) => !seen.has(`${event.kind}:${event.payload}`))]
 }
 
 function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
@@ -124,7 +148,7 @@ function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[
       id: isState ? "current-status" : `${event.kind}-${event.id}-${index}`,
       label: isState ? `${stateLabel(state)} · ${progressLabelForEvents(events, state)}` : activityLabel(event),
       detail: event.created_at ? new Date(event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : undefined,
-      status: event.kind === "error" || event.kind === "cancelled" ? "error" : isState && active ? "active" : "done",
+      status: event.kind === "error" || event.kind === "cancelled" || payload.status === "error" ? "error" : payload.status === "started" && active ? "active" : isState && active ? "active" : "done",
       tone: isState ? "session" : "model",
     }
   })
@@ -216,6 +240,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
   const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
+  const [answerBuffer, setAnswerBuffer] = useState<Record<string, string>>({})
+  const [liveEvents, setLiveEvents] = useState<ChatRunEvent[]>([])
   const shouldFollowChatRef = useRef(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
@@ -227,7 +253,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const streamBufferRef = useRef<Record<string, string>>({})
   // sync ref for use in event handlers without re-binding effect
   useEffect(() => { streamBufferRef.current = streamBuffer }, [streamBuffer])
-
   const agent: ChatAgent = "hermes"
   const initialCreate = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -302,6 +327,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const persistedActive = activeRunQuery.data ?? undefined
   // Backend active-run is source of truth; selectedRun only bridges mutation/SSE before poll lands.
   const run = persistedActive ?? (selectedRun && selectedRun.session_id === sessionID ? selectedRun : undefined)
+  useEffect(() => { setAnswerBuffer({}) }, [run?.id])
+  useEffect(() => { setLiveEvents([]) }, [run?.id])
   const events = useQuery({
     queryKey: ["chat-run-events", run?.id],
     queryFn: () => listChatRunEvents(run!.id),
@@ -366,7 +393,22 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         if ((event.data.kind === "raw_output" || event.data.kind === "tool_output") && typeof payload?.text === "string") {
           const rid = event.data.run_id
           setStreamBuffer((prev) => ({ ...prev, [rid]: (prev[rid] ?? "") + payload.text + "\n" }))
-          return // don't double-invalidate queries for every line
+          return // raw logs are local-streamed; do not refetch on every line
+        }
+        if (event.data.kind === "text_delta" && typeof payload?.text === "string") {
+          const rid = event.data.run_id
+          setAnswerBuffer((prev) => ({ ...prev, [rid]: (prev[rid] ?? "") + payload.text }))
+          return // answer deltas are rendered locally without query refetches
+        }
+        if (event.data.kind === "phase" || event.data.kind === "activity") {
+          const live: ChatRunEvent = {
+            id: -Date.now(),
+            run_id: event.data.run_id,
+            kind: event.data.kind,
+            payload: typeof payload === "string" ? payload : JSON.stringify(payload ?? {}),
+            created_at: Math.floor(Date.now() / 1000),
+          }
+          setLiveEvents((prev) => [...prev, live].slice(-80))
         }
       } catch { /* parse error, fall through to standard handling */ }
     }
@@ -376,6 +418,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         // on terminal state, clear stream buffer (final output replaces it)
         if (fresh.state === "done" || fresh.state === "error" || fresh.state === "cancelled") {
           setStreamBuffer((prev) => { const n = { ...prev }; delete n[fresh.id]; return n })
+          setAnswerBuffer((prev) => { const n = { ...prev }; delete n[fresh.id]; return n })
           void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] })
           void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] })
         }
@@ -571,17 +614,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 {(() => {
                   const isLiveRunMessage = !!run && (message.id === run.message_id || message.run_id === run.id || (isRunning && message.id === activeMessages[activeMessages.length - 1]?.id))
                   const messageStreaming = isRunning && isLiveRunMessage
-                  const response = splitResponseText(messageStreaming && run?.id && streamBuffer[run.id] ? streamBuffer[run.id] : message.content)
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
-                  const msgEvents = isLiveRunMessage ? (events.data ?? []) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  const msgEvents = isLiveRunMessage ? mergeActivityEvents(events.data ?? [], liveEvents) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
+                  const response = splitResponseText(messageStreaming ? (run?.id ? (answerBuffer[run.id] ?? "") : "") : (message.content || msgRun?.output || ""))
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
             )}
           </div>
         ))}
-        {run && isRunning && <ActivityContext run={run} events={events.data ?? []} />}
+        {run && isRunning && <ActivityContext run={run} events={mergeActivityEvents(events.data ?? [], liveEvents)} />}
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>

@@ -149,8 +149,8 @@ func TestParseHermesSessionID(t *testing.T) {
 }
 
 func TestParseHermesStructuredEvent(t *testing.T) {
-	event, ok := parseHermesStructuredEvent(`HERMES_EVENT: {"phase":"reading_skill","name":"ui-styling"}`)
-	if !ok || event.Phase != "reading_skill" || event.Name != "ui-styling" {
+	event, ok := parseHermesStructuredEvent(`HERMES_EVENT: {"phase":"reading_skill","name":"ui-styling","detail":"/skills/ui-styling","status":"started"}`)
+	if !ok || event.Phase != "reading_skill" || event.Name != "ui-styling" || event.Detail != "/skills/ui-styling" || event.Status != "started" {
 		t.Fatalf("event=%+v ok=%v", event, ok)
 	}
 	if _, ok := parseHermesStructuredEvent("ordinary Hermes output"); ok {

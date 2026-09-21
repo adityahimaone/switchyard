@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler
 SOCKET_PATH = os.environ.get("HERMES_DAEMON_SOCK", "/tmp/hermes-daemon.sock")
 MAX_OUTPUT = 100_000
 SESSION_RE = re.compile(r"(?:Session|session_id):\s*(\S+)", re.IGNORECASE)
+HERMES_EVENT_RE = re.compile(r"^\s*HERMES_EVENT:\s*(\{.*\})\s*$")
 
 sessions = {}
 sessions_lock = threading.Lock()
@@ -23,12 +24,51 @@ def rewrite_prompt(prompt):
     return prompt
 
 
+def structured_event(line):
+    match = HERMES_EVENT_RE.match(line)
+    if not match:
+        return None
+    try:
+        event = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict) or not event.get("phase"):
+        return None
+    return event
+
+
+def _tool_activity(name, payload, status):
+    tool = (name or "tool").strip()
+    lowered = tool.lower()
+    args = payload if isinstance(payload, dict) else {}
+    command = args.get("command") or args.get("cmd") or args.get("script") or args.get("query") or ""
+    path = args.get("path") or args.get("file_path") or args.get("filename") or ""
+    if any(token in lowered for token in ("terminal", "shell", "execute", "command", "bash", "powershell")):
+        phase, label, detail = "shell_command", "Using terminal", command
+    elif "skill" in lowered:
+        phase, label, detail = "reading_skill", "Reading agent skill", path or command
+    elif any(token in lowered for token in ("read", "write", "file", "directory", "glob", "grep", "search")):
+        phase, label, detail = "file_operation", "Working with workspace files", path or command
+    else:
+        phase, label, detail = "tool_call", f"Using {tool}", command or path
+    if not detail and isinstance(args, dict):
+        detail = ", ".join(f"{key}={value}" for key, value in list(args.items())[:2])
+    return {
+        "kind": "activity",
+        "phase": phase,
+        "label": label,
+        "name": tool,
+        "detail": str(detail)[:500],
+        "status": status,
+    }
+
+
 def query(payload, emit=None):
     workspace = str(payload.get("workspace") or "")
     prompt = str(payload.get("prompt") or "")
     profile = str(payload.get("profile") or "")
     model = str(payload.get("model") or "")
-    # Prefer explicit hermes session from Switchyard room; fallback to workspace bucket.
+    # Prefer explicit Hermes session from Switchyard room; fallback to workspace bucket.
     session_key = str(payload.get("switchyard_session_id") or "")
     if not session_key:
         session_key = str(payload.get("session_id") or payload.get("hermes_session_id") or workspace)
@@ -37,7 +77,6 @@ def query(payload, emit=None):
         if "session_id" in payload and str(payload.get("session_id") or "") == "":
             with sessions_lock:
                 sessions.pop(session_key, None)
-        # Also handle legacy key.
         if "hermes_session_id" in payload and str(payload.get("hermes_session_id") or "") == "":
             with sessions_lock:
                 sessions.pop(session_key, None)
@@ -47,7 +86,10 @@ def query(payload, emit=None):
         if session_id:
             sessions[session_key] = session_id
 
-    args = ["hermes", "chat", "-Q", "--reasoning", "minimal"]
+    # stream-json is flushed by Hermes after every tool/text event. This removes
+    # terminal rendering overhead and gives Switchyard a typed live activity feed.
+    reasoning = str(payload.get("reasoning") or os.environ.get("HERMES_DAEMON_REASONING", "minimal"))
+    args = ["hermes", "chat", "-Q", "--reasoning", reasoning, "--format", "stream-json"]
     if session_id:
         args.extend(["--resume", session_id])
     if profile and profile != "default":
@@ -62,15 +104,17 @@ def query(payload, emit=None):
             cwd=workspace or None,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
     except OSError as exc:
         return {"error": str(exc), "events": []}
 
-    output = []
     events = []
+    final_text = ""
+    result_session_id = ""
+    tool_details = {}
 
     def publish(event):
         events.append(event)
@@ -80,17 +124,43 @@ def query(payload, emit=None):
     try:
         proc.stdin.write(rewrite_prompt(prompt))
         proc.stdin.close()
-        while True:
-            line = proc.stdout.readline()
-            if not line:
-                break
-            line = line.rstrip("\r\n")
-            if sum(len(part) for part in output) < MAX_OUTPUT:
-                output.append(line + "\n")
-            if SESSION_RE.search(line):
+        for raw_line in proc.stdout:
+            line = raw_line.rstrip("\r\n")
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                if line:
+                    publish({"kind": "tool_output", "text": line})
                 continue
-            publish({"kind": "tool_output", "text": line})
+            event_type = event.get("type")
+            if event_type == "system" and event.get("subtype") == "init":
+                publish({"kind": "phase", "phase": "process_spawned", "label": "Starting Hermes", "status": "started"})
+            elif event_type == "tool_use":
+                activity = _tool_activity(event.get("name"), event.get("input") or {}, "started")
+                tool_key = str(event.get("tool_call_id") or event.get("name") or "tool")
+                tool_details[tool_key] = activity.get("detail") or ""
+                publish(activity)
+            elif event_type == "tool_result":
+                tool_key = str(event.get("tool_call_id") or event.get("name") or "tool")
+                activity = _tool_activity(event.get("name"), {"command": tool_details.pop(tool_key, "")}, "completed")
+                duration = event.get("duration_ms")
+                if duration is not None:
+                    activity["duration"] = f"{float(duration) / 1000:.1f}s"
+                if event.get("is_error"):
+                    activity["status"] = "error"
+                publish(activity)
+            elif event_type == "text":
+                text = str(event.get("text") or "")
+                if text:
+                    final_text += text
+                    publish({"kind": "text_delta", "text": text})
+            elif event_type == "result":
+                final_text = str(event.get("text") or final_text)
+                result_session_id = str(event.get("session_id") or "")
+                if event.get("error"):
+                    publish({"kind": "error", "error": str(event["error"])})
         proc.wait(timeout=600)
+        stderr = proc.stderr.read() if proc.stderr else ""
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
@@ -98,22 +168,18 @@ def query(payload, emit=None):
     except OSError as exc:
         return {"error": str(exc), "events": events}
 
-    result = "".join(output).strip()
-    result = "\n".join(line for line in result.splitlines() if not SESSION_RE.search(line)).strip()
-    stdout = "".join(output)
-    match = SESSION_RE.search(stdout)
-    if proc.returncode == 0 and match:
+    stderr_session = SESSION_RE.search(stderr or "")
+    if stderr_session:
+        result_session_id = result_session_id or stderr_session.group(1)
+    if proc.returncode == 0 and result_session_id:
         with sessions_lock:
-            sessions[session_key] = match.group(1)
+            sessions[session_key] = result_session_id
     if proc.returncode != 0:
-        return {"error": result or f"hermes exited with {proc.returncode}", "events": events}
-    # Include new session_id so Go can persist per-room resume.
-    sid = ""
-    with sessions_lock:
-        sid = sessions.get(session_key, "")
-    completed = {"kind": "completed", "text": result}
-    if sid:
-        completed["session_id"] = sid
+        return {"error": (stderr or final_text).strip() or f"hermes exited with {proc.returncode}", "events": events}
+
+    completed = {"kind": "completed", "text": final_text.strip()}
+    if result_session_id:
+        completed["session_id"] = result_session_id
     publish(completed)
     publish({"kind": "done"})
     return {"events": events}
