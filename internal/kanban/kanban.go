@@ -20,7 +20,7 @@ var ValidStatuses = map[string]bool{
 }
 
 var ValidExecutors = map[string]bool{
-	"auto": true, "hermes": true, "codex": true, "commandcode": true, "shell": true,
+	"auto": true, "hermes": true, "codex": true, "commandcode": true, "dsh": true, "shell": true,
 }
 
 const maxTaskIterations = 24
@@ -149,6 +149,7 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN execution_meta TEXT`,
 		`ALTER TABLE tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'direct'`,
 		`ALTER TABLE tasks ADD COLUMN max_iterations INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE tasks ADD COLUMN dsh_session_id TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -458,6 +459,19 @@ func newTaskID() string {
 // Valid marks whether the worker CLI would actually start with this profile —
 // an unrecognized provider (e.g. "custom:host.name" typo) means every spawned
 // task crashes with "Unknown provider" (protocol_violation loop).
+// ProfileModel returns model bound to Switchyard profile. DSH receives this
+// exact ID, keeping profile/model switching 1:1 across both apps.
+func ProfileModel(name string) (string, error) {
+	p, err := GetProfile(name)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(p.Model) == "" {
+		return "", fmt.Errorf("profile %q has no model", name)
+	}
+	return p.Model, nil
+}
+
 func ListProfiles() ([]Profile, error) {
 	out := []Profile{}
 	root := filepath.Join(hermesHome(), "profiles")

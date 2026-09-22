@@ -106,19 +106,19 @@ func dispatchSSHTasks() {
 		if err != nil {
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(last_failure_error,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1) FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), workspace_path, COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,''), COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(last_failure_error,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1) FROM tasks WHERE status IN ('todo','ready') AND workspace_path IS NOT NULL AND workspace_path != '' LIMIT 1`)
 		if err != nil {
 			db.Close()
 			continue
 		}
 		type row struct {
-			id, title, body, result, ws, transport, sshTarget, executor, command, lastError, executionMode string
-			maxIterations                                                                                  int
+			id, title, body, result, ws, transport, sshTarget, executor, assignee, command, lastError, executionMode string
+			maxIterations                                                                                            int
 		}
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.command, &r.lastError, &r.executionMode, &r.maxIterations); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.ws, &r.transport, &r.sshTarget, &r.executor, &r.assignee, &r.command, &r.lastError, &r.executionMode, &r.maxIterations); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -173,6 +173,12 @@ func dispatchSSHTasks() {
 				}
 			}
 
+			model, modelErr := kanban.ProfileModel(r.assignee)
+			if modelErr != nil && r.executor == "dsh" {
+				_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=?`, time.Now().Unix(), modelErr.Error(), r.id)
+				log.Printf("ssh-dispatcher: %s blocked: %v", r.id, modelErr)
+				continue
+			}
 			// claim: persist start time so every UI surface measures same run
 			// ponytail: don't reset consecutive_failures here (preserve retry count)
 			// reset only on success below; otherwise todo->running->fail loops never hit blocked
@@ -181,6 +187,8 @@ func dispatchSSHTasks() {
 			claimed = true
 			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
 			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
+			// Read session ID before closing DB. Continuation must resume same DSH session.
+			dshSessionID := kanban.TaskDSHSessionID(db, r.id)
 			if err := kanban.PersistTaskIdentity(db, r.id, identity); err != nil {
 				log.Printf("ssh-dispatcher: could not persist JEV identity for %s: %v", r.id, err)
 			}
@@ -241,7 +249,8 @@ func dispatchSSHTasks() {
 			} else if r.executor != "" && r.executor != "auto" {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
-					Workspace: r.ws, Executor: r.executor, Command: r.command,
+					Workspace: r.ws, Model: model, Provider: r.assignee, Executor: r.executor, Command: r.command,
+					DSHSessionID: dshSessionID,
 				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()
@@ -288,8 +297,10 @@ func dispatchSSHTasks() {
 				failures := 1
 				_ = db2.QueryRow(`SELECT COALESCE(consecutive_failures,0)+1 FROM tasks WHERE id=?`, r.id).Scan(&failures)
 				newStatus := "blocked"
-				if failures < 3 {
-					newStatus = "todo" // retry
+				// DSH preflight/session failures are deterministic. Retrying while
+				// DSH Web is disabled only requeues same broken run and obscures root cause.
+				if failures < 3 && !strings.Contains(output, "dsh_unavailable:") && !strings.Contains(output, "dsh_session_missing:") {
+					newStatus = "todo" // retry transient failures
 				}
 				_, _ = db2.Exec(`UPDATE tasks SET status=?, consecutive_failures=?, last_failure_error=?, completed_at=? WHERE id=?`,
 					newStatus, failures, truncate(output, 500), now, r.id)

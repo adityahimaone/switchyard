@@ -29,7 +29,7 @@ const diffLimit = 100 << 10 // 100KB truncation cap for raw diff output
 // run from a nested workspace. Normalize to that root first, while keeping the
 // task workspace as the diff scope. This prevents nested workspaces from
 // accidentally resolving untracked paths against the wrong directory.
-const reviewScopeSetup = `repo_root=$(git rev-parse --show-toplevel) || exit 2; workspace=$(pwd -P); case "$workspace" in "$repo_root") scope=".";; "$repo_root"/*) scope="${workspace#"$repo_root"/}";; *) echo "workspace is outside git root" >&2; exit 2;; esac; cd "$repo_root" || exit 2; untracked() { git ls-files --others --exclude-standard -- "$scope"; }; `
+const reviewScopeSetup = `repo_root=$(git rev-parse --show-toplevel) || exit 2; workspace=$(pwd -P); if [ "$workspace" = "$repo_root" ]; then scope="."; elif [ "${workspace#"$repo_root"/}" != "$workspace" ]; then scope="${workspace#"$repo_root"/}"; else echo "workspace is outside git root" >&2; exit 2; fi; cd "$repo_root" || exit 2; untracked() { git ls-files --others --exclude-standard -- "$scope" | while IFS= read -r f; do if [ -d "$f" ]; then find "$f" -type f -not -path '*/.git/*' -print; else printf '%s\n' "$f"; fi; done; }; `
 
 type reviewTask struct {
 	Slug          string
@@ -66,7 +66,7 @@ func runGit(t *reviewTask, args string) (string, int) {
 		res, err := kanban.DispatchRemoteRaw(kanban.NodeDispatchRequest{
 			TaskID: fmt.Sprintf("review-%s-%d", t.ID, time.Now().UnixNano()),
 			Title:  t.Title, Board: t.Slug, Workspace: t.WorkspacePath,
-			Executor: "shell", Command: args,
+			Executor: "shell", Command: args, NoRTK: true,
 		}, kanban.RemoteDispatchWait())
 		if err != nil {
 			return err.Error(), 255

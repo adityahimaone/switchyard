@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Kanban task execution supports three explicit remote executor modes:
+Kanban task execution supports four explicit remote executor modes:
 
 - `hermes`: Hermes CLI agent session.
 - `codex`: OpenAI Codex CLI session.
+- `dsh`: DeepSeek Harness headless profile on workspace host.
 - `shell`: agentic shell access on remote workspace by default; direct one-shot mode remains compatible, with RTK rewrite.
 - `auto`: compatibility mode. Resolves Hermes first, then Codex, then CommandCode.
 
@@ -46,6 +47,7 @@ Parent path registration does not replace exact child path registration when rou
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + project prerequisites | task message | `provenance executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + project prerequisites | task message | `provenance executor=codex` |
+| `dsh` | `dsh --profile headless ...` | CodeGraph + project prerequisites | task message | `provenance executor=dsh` |
 | `shell` | read-only planner → `bash -lc ...` | bounded iterations; optional shell preflight | task intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | Hermes first, fallback Codex/CommandCode | resolved executor rules | task message | resolved provenance |
 

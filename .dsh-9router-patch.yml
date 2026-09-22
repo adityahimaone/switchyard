@@ -1,0 +1,19 @@
+# DeepSeek Harness custom provider route for 9router.
+- id: agent-default-model
+  config:
+    provider: 9router-adityahimaone-space
+    model: codex
+- id: llm-pi-ai
+  config:
+    providers:
+      9router-adityahimaone-space:
+        displayName: 9router / adityahimaone / space
+        apiKeyEnv: DEEPSEEK_API_KEY
+        api: openai-completions
+        baseURL: https://9router.adityahimaone.space/v1
+        compat:
+          supportsDeveloperRole: false
+          maxTokensField: max_tokens
+        models:
+          - id: codex
+            name: codex

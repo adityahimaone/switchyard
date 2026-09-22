@@ -50,7 +50,7 @@ export default function TaskDialog({
   const [body, setBody] = useState("")
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
-  const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "shell">("auto")
+  const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "dsh" | "shell">("auto")
   const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")
   const [busy, setBusy] = useState(false)
@@ -215,6 +215,7 @@ export default function TaskDialog({
             <SelectItem value="hermes" className="text-sm">Hermes</SelectItem>
             <SelectItem value="codex" className="text-sm">Codex</SelectItem>
             <SelectItem value="commandcode" className="text-sm">Command Code</SelectItem>
+            <SelectItem value="dsh" className="text-sm">DeepSeek Harness</SelectItem>
             <SelectItem value="shell" className="text-sm">Shell agent (workspace access)</SelectItem>
           </SelectContent>
         </Select>

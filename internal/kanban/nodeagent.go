@@ -2,12 +2,14 @@ package kanban
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -59,8 +61,10 @@ type NodeDispatchRequest struct {
 	Executor      string `json:"executor,omitempty"`
 	Command       string `json:"command,omitempty"`
 	ExecutionMode string `json:"execution_mode,omitempty"` // direct|agentic
+	NoRTK         bool   `json:"no_rtk,omitempty"`         // preserve machine-readable command output
 	MaxIterations int    `json:"max_iterations,omitempty"`
 	Acceptance    string `json:"acceptance,omitempty"`
+	DSHSessionID  string `json:"dsh_session_id,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
@@ -70,6 +74,21 @@ type NodeDispatchResult struct {
 	Output     string `json:"output"`
 	Error      string `json:"error,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
+}
+
+var dshSessionProof = regexp.MustCompile(`dsh_session_id=([^[:space:]]+)`)
+
+func TaskDSHSessionID(db *sql.DB, taskID string) string {
+	var id string
+	_ = db.QueryRow(`SELECT COALESCE(dsh_session_id,'') FROM tasks WHERE id=?`, taskID).Scan(&id)
+	return strings.TrimSpace(id)
+}
+
+func saveDSHSessionID(db *sql.DB, taskID, output string) {
+	match := dshSessionProof.FindStringSubmatch(output)
+	if len(match) == 2 && match[1] != "" {
+		_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, match[1], taskID)
+	}
 }
 
 // NodeAgentStatus is what GET /api/remote/nodes returns.
@@ -249,6 +268,7 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
 		if persistTask {
 			if db, err := openDB(req.Board); err == nil {
+				saveDSHSessionID(db, req.TaskID, res.Output)
 				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"executor": req.Executor, "output": res.Output, "error": res.Error, "duration_ms": res.DurationMs})
 				now := time.Now().Unix()
 				newStatus := "blocked"
