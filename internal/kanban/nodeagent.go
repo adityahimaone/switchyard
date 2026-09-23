@@ -299,7 +299,11 @@ func finalizeRemoteResult(db *sql.DB, req NodeDispatchRequest, taskID, eventKind
 			return false, err
 		}
 	}
-	if err := insertEventTx(tx, taskID, eventKind, map[string]any{"executor": req.Executor, "output": result.Output, "error": result.Error, "duration_ms": result.DurationMs}); err != nil {
+	payload := map[string]any{"executor": req.Executor, "output": result.Output, "error": result.Error, "duration_ms": result.DurationMs}
+	if usage, ok := usageFromJSON(result.Output); ok {
+		payload["usage"] = usage
+	}
+	if err := insertEventTx(tx, taskID, eventKind, payload); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

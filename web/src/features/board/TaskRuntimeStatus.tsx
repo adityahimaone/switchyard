@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Badge } from "@/components/ui/badge"
-import { codeGraphReport, nodeAgentHealth, type CodeGraphReport, type NodeAgent, type Profile, type Task, type TaskEvent, type Workspace } from "../../api"
+import { codeGraphReport, nodeAgentHealth, type CodeGraphReport, type NodeAgent, type Profile, type Task, type TaskEvent, type TaskRun, type Workspace } from "../../api"
 
 function chip(label: string, tone: "good" | "warn" | "bad" | "muted" = "muted") {
   const styles = {
@@ -40,11 +40,12 @@ function StatusLine({ label, children }: { label: string; children: React.ReactN
   return <div className="flex items-center justify-between gap-2 py-1"><span className="text-[10px] uppercase tracking-wider text-neutral-500">{label}</span><span className="min-w-0 truncate text-right text-[11px] text-neutral-300">{children}</span></div>
 }
 
-export default function TaskRuntimeStatus({ task, profile, workspace, events, tasks = [], compact = false }: {
+export default function TaskRuntimeStatus({ task, profile, workspace, events, runs = [], tasks = [], compact = false }: {
   task: Task
   profile?: Profile
   workspace?: Workspace
   events: TaskEvent[]
+  runs?: TaskRun[]
   tasks?: Task[]
   compact?: boolean
 }) {
@@ -78,6 +79,13 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ta
   const profileState = !profile ? "unassigned" : profile.valid ? "valid" : "invalid"
   const profileTone = !profile ? "muted" : profile.valid ? "good" : "bad"
   const currentPhase = phase(events, task)
+  const usage = (runs ?? []).reduce((total: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number }, run: TaskRun) => ({
+    inputTokens: total.inputTokens + (run.usage?.inputTokens ?? 0),
+    outputTokens: total.outputTokens + (run.usage?.outputTokens ?? 0),
+    totalTokens: total.totalTokens + (run.usage?.totalTokens ?? 0),
+    cacheReadTokens: total.cacheReadTokens + (run.usage?.cacheReadTokens ?? 0),
+  }), { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0 })
+  const hasUsage = usage.inputTokens + usage.outputTokens + usage.totalTokens + usage.cacheReadTokens > 0
 
   if (compact) return (
     <section className="glass-inset-card rounded-lg p-2.5" aria-label="Runtime status">
@@ -86,6 +94,7 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ta
         {chip(`${task.assignee || "unassigned"} · ${profileState}`, profileTone)}
         {chip(`node · ${nodeState}`, nodeTone)}
         {chip(`CodeGraph · ${graphState}`, graphTone)}
+        {hasUsage && chip(`tokens · ${usage.totalTokens.toLocaleString()}`, "good")}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-neutral-500">
         <span>phase: <strong className="font-medium text-neutral-300">{currentPhase}</strong></span>
@@ -106,6 +115,7 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ta
         <StatusLine label="Node">{chip(nodeState, nodeTone)} {node && <span className="ml-1 text-neutral-500">{node.hostname || node.node_id}</span>}</StatusLine>
         <StatusLine label="CodeGraph">{chip(graphState, graphTone)}</StatusLine>
         <StatusLine label="Current phase">{currentPhase}</StatusLine>
+        {hasUsage && <StatusLine label="Token usage">{usage.totalTokens.toLocaleString()} total · {usage.inputTokens.toLocaleString()} in · {usage.outputTokens.toLocaleString()} out · {usage.cacheReadTokens.toLocaleString()} cache · {runs?.length ?? 0} runs</StatusLine>}
       </div>
       {nodeState === "offline" && <p className="mt-2 text-[10px] leading-relaxed text-amber-300">Node agent is unreachable. Remote runs may remain queued until the agent reconnects.</p>}
       {nodeState === "not registered" && <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">Node agent is reachable, but no node has claimed this workspace.</p>}

@@ -116,7 +116,13 @@ function eventData(event: TaskEvent) {
   try {
     return Object.entries(JSON.parse(event.payload) as Record<string, unknown>)
       .filter(([, value]) => value != null && value !== "")
-      .map(([key, value]) => [key.replaceAll("_", " "), String(value)] as [string, string])
+      .map(([key, value]) => {
+        let display = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)
+        if (typeof value === "string" && (value.trim().startsWith("{") || value.trim().startsWith("["))) {
+          try { display = JSON.stringify(JSON.parse(value), null, 2) } catch { /* plain text */ }
+        }
+        return [key.replaceAll("_", " "), display] as [string, string]
+      })
   } catch {
     return [["payload", event.payload]] as [string, string][]
   }
@@ -258,7 +264,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                               {details.length > 0 ? details.map(([key, value], detailIndex) => (
                                 <div key={`${key}-${value}`} className="flex items-center justify-between gap-3" style={{ animation: open ? `fade-up 300ms cubic-bezier(0.23,1,0.32,1) ${120 + detailIndex * 80}ms both` : undefined }}>
                                   <span className="truncate text-[12px] capitalize text-ink-2">{key}</span>
-                                  <span className="max-w-[62%] truncate text-right font-mono text-[11.5px] text-ink-3 tabular-nums">{value}</span>
+                                  <span className="max-w-[62%] whitespace-pre-wrap break-words text-right font-mono text-[11.5px] text-ink-3 tabular-nums">{value}</span>
                                 </div>
                               )) : <span className="text-[12px] text-ink-3">No event details</span>}
                             </div>

@@ -50,6 +50,18 @@ func TestGroupTaskRunsByAttemptBoundaries(t *testing.T) {
 	}
 }
 
+func TestUsageFromJSONFindsNestedTokenUsage(t *testing.T) {
+	got, ok := usageFromJSON(`{"type":"status","usage":{"inputTokens":12,"outputTokens":8,"totalTokens":20,"cacheReadTokens":3}}`)
+	if !ok || got.InputTokens != 12 || got.OutputTokens != 8 || got.TotalTokens != 20 || got.CacheReadTokens != 3 {
+		t.Fatalf("usage = %+v, ok=%v", got, ok)
+	}
+	got, ok = usageFromJSON(`{"type":"status","usage":{"inputTokens":12}}
+{"type":"status","usage":{"outputTokens":8}}`)
+	if !ok || got.InputTokens != 12 || got.OutputTokens != 8 {
+		t.Fatalf("stream usage = %+v, ok=%v", got, ok)
+	}
+}
+
 func TestTaskDependenciesValidateAndList(t *testing.T) {
 	slug := testBoard(t)
 	a, b := Task{Title: "a"}, Task{Title: "b"}

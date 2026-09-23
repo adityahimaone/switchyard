@@ -57,11 +57,19 @@ export function parseTaskExecutionMeta(raw?: string): TaskExecutionMeta | null {
   }
 }
 
+export interface TaskRunUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens: number
+}
+
 export interface TaskRun {
   index: number
   started_at: number
   ended_at: number
   outcome: string
+  usage: TaskRunUsage
   events: TaskEvent[]
 }
 

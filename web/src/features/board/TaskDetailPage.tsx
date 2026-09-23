@@ -360,7 +360,7 @@ export default function TaskDetailPage({
           {task.completed_at && <span>· selesai {new Date(task.completed_at * 1000).toLocaleString()}</span>}
         </div>
         <AgentTaskStatus task={task} events={events.data ?? []} />
-        <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} tasks={boardTasks.data ?? []} />
+        <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} runs={runs.data ?? []} tasks={boardTasks.data ?? []} />
 
         {/* meta grid */}
         <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
@@ -539,7 +539,7 @@ export default function TaskDetailPage({
         <div className="glass-inset-card rounded-lg p-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Runs</h3>
           <div className="mt-2 space-y-1.5">
-            {(runs.data ?? []).map((run) => <div key={run.index} className="flex items-center gap-2 rounded border border-[var(--color-line)] px-2 py-1.5 text-[11px]"><span className="font-mono">Attempt {run.index}</span><span className="text-neutral-500">{run.outcome}</span><span className="ml-auto text-[10px] text-neutral-600">{run.events.length} events</span></div>)}
+            {(runs.data ?? []).map((run) => <div key={run.index} className="rounded border border-[var(--color-line)] px-2 py-1.5 text-[11px]"><div className="flex items-center gap-2"><span className="font-mono">Run {run.index}</span><span className="text-neutral-500">{run.outcome}</span><span className="ml-auto text-[10px] text-neutral-600">{run.events.length} events</span></div>{run.usage?.totalTokens > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-violet-300/80"><span>{run.usage.totalTokens.toLocaleString()} total</span><span>{run.usage.inputTokens.toLocaleString()} in</span><span>{run.usage.outputTokens.toLocaleString()} out</span><span>{run.usage.cacheReadTokens.toLocaleString()} cache</span></div>}</div>)}
             {!runs.data?.length && <p className="text-[11px] text-neutral-600">No runs</p>}
           </div>
         </div>

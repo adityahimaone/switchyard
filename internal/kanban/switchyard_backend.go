@@ -10,13 +10,95 @@ import (
 	"time"
 )
 
-type TaskRun struct {
-	Index     int         `json:"index"`
-	StartedAt int64       `json:"started_at"`
-	EndedAt   int64       `json:"ended_at"`
-	Outcome   string      `json:"outcome"`
-	Events    []TaskEvent `json:"events"`
+type TaskRunUsage struct {
+	InputTokens     int64 `json:"inputTokens"`
+	OutputTokens    int64 `json:"outputTokens"`
+	TotalTokens     int64 `json:"totalTokens"`
+	CacheReadTokens int64 `json:"cacheReadTokens"`
 }
+
+type TaskRun struct {
+	Index     int          `json:"index"`
+	StartedAt int64        `json:"started_at"`
+	EndedAt   int64        `json:"ended_at"`
+	Outcome   string       `json:"outcome"`
+	Usage     TaskRunUsage `json:"usage"`
+	Events    []TaskEvent  `json:"events"`
+}
+
+func usageFromJSON(raw string) (TaskRunUsage, bool) {
+	var value any
+	if json.Unmarshal([]byte(raw), &value) != nil {
+		if !strings.Contains(raw, "\n") {
+			return TaskRunUsage{}, false
+		}
+		total := TaskRunUsage{}
+		found := false
+		for _, line := range strings.Split(raw, "\n") {
+			if strings.TrimSpace(line) == strings.TrimSpace(raw) {
+				continue
+			}
+			if usage, ok := usageFromJSON(strings.TrimSpace(line)); ok {
+				total.InputTokens += usage.InputTokens
+				total.OutputTokens += usage.OutputTokens
+				total.TotalTokens += usage.TotalTokens
+				total.CacheReadTokens += usage.CacheReadTokens
+				found = true
+			}
+		}
+		return total, found
+	}
+	var walk func(any) (TaskRunUsage, bool)
+	walk = func(v any) (TaskRunUsage, bool) {
+		if obj, ok := v.(map[string]any); ok {
+			u := TaskRunUsage{}
+			found := false
+			for key, value := range obj {
+				if n, ok := value.(float64); ok {
+					switch key {
+					case "inputTokens", "input_tokens":
+						u.InputTokens = int64(n)
+						found = true
+					case "outputTokens", "output_tokens":
+						u.OutputTokens = int64(n)
+						found = true
+					case "totalTokens", "total_tokens":
+						u.TotalTokens = int64(n)
+						found = true
+					case "cacheReadTokens", "cache_read_tokens":
+						u.CacheReadTokens = int64(n)
+						found = true
+					}
+				}
+				if child, ok := walk(value); ok {
+					u.InputTokens += child.InputTokens
+					u.OutputTokens += child.OutputTokens
+					u.TotalTokens += child.TotalTokens
+					u.CacheReadTokens += child.CacheReadTokens
+					found = true
+				}
+			}
+			return u, found
+		}
+		if list, ok := v.([]any); ok {
+			u := TaskRunUsage{}
+			found := false
+			for _, child := range list {
+				if next, ok := walk(child); ok {
+					u.InputTokens += next.InputTokens
+					u.OutputTokens += next.OutputTokens
+					u.TotalTokens += next.TotalTokens
+					u.CacheReadTokens += next.CacheReadTokens
+					found = true
+				}
+			}
+			return u, found
+		}
+		return TaskRunUsage{}, false
+	}
+	return walk(value)
+}
+
 type TaskDependency struct {
 	TaskID      string `json:"task_id"`
 	DependsOnID string `json:"depends_on_id"`
@@ -72,6 +154,12 @@ func groupRuns(events []TaskEvent) []TaskRun {
 		}
 		r := &out[len(out)-1]
 		r.Events = append(r.Events, ev)
+		if usage, ok := usageFromJSON(ev.Payload); ok {
+			r.Usage.InputTokens += usage.InputTokens
+			r.Usage.OutputTokens += usage.OutputTokens
+			r.Usage.TotalTokens += usage.TotalTokens
+			r.Usage.CacheReadTokens += usage.CacheReadTokens
+		}
 		if r.StartedAt == 0 {
 			r.StartedAt = ev.CreatedAt
 		}

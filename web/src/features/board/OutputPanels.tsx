@@ -97,6 +97,16 @@ function hasAnsi(s: string) {
   return s.includes("\x1b[")
 }
 
+function prettyJSONLine(line: string) {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2)
+  } catch {
+    return null
+  }
+}
+
 // heuristics when no ANSI
 function workerHint(line: string) {
   const l = line.toLowerCase()
@@ -229,7 +239,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
   }, [running, slug, taskId, text])
 
 
-  const lines = useMemo(() => liveText.split("\n"), [liveText])
+  const lines = useMemo(() => liveText.split("\n").flatMap((line) => prettyJSONLine(line)?.split("\n") ?? [line]), [liveText])
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-700/40 bg-[#0d1426] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.35)]">
