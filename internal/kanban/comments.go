@@ -60,6 +60,35 @@ func TaskCommentsAfter(db *sql.DB, taskID string, afterID int64) ([]TaskComment,
 	return comments, rows.Err()
 }
 
+// FocusedGitReviewPrompt compacts read-only Git inspection comments.
+// ok=false keeps normal review feedback on existing continuation flow.
+func FocusedGitReviewPrompt(raw string) (string, bool) {
+	text := strings.ToLower(strings.TrimSpace(raw))
+	if text == "" || (!strings.Contains(text, "git") && !strings.Contains(text, "branch")) {
+		return "", false
+	}
+	var steps []string
+	if strings.Contains(text, "main") && (strings.Contains(text, "branch") || strings.Contains(text, "checkout") || strings.Contains(text, "switch")) {
+		steps = append(steps, "Switch to main branch.")
+	}
+	if strings.Contains(text, "git pull") || strings.Contains(text, "pull latest") {
+		steps = append(steps, "Pull latest changes.")
+	}
+	if strings.Contains(text, "git log") || strings.Contains(text, "last 5 commit") || strings.Contains(text, "5 last commit") {
+		steps = append(steps, "Show last 5 commits.")
+	}
+	if len(steps) == 0 {
+		return "", false
+	}
+	var body strings.Builder
+	body.WriteString("[SWITCHYARD FOCUSED GIT REVIEW]\n")
+	for i, step := range steps {
+		fmt.Fprintf(&body, "%d. %s\n", i+1, step)
+	}
+	body.WriteString("Do not modify files.\nReturn command output only.")
+	return body.String(), true
+}
+
 func RenderReviewComments(taskID, cardTitle string, comments []TaskComment) string {
 	var body strings.Builder
 	label := "comment"

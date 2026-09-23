@@ -48,6 +48,8 @@ Contract:
 - [x] `go vet ./...`.
 - [x] `go build ./cmd/server` — pass; output removed after verification.
 - [x] `pnpm build` in `web/` — Vite production build pass.
+- [x] Focused Git review prompt: compact read-only prompt for branch switch, pull, and last-5 log; normal code feedback keeps existing continuation path.
+- [x] Focused prompt tests and full Go validation pass.
 
 ## Files changed
 

@@ -68,6 +68,7 @@ func dispatchPendingRemoteTasks() {
 			}
 			dshSessionID := binding.HarnessSessionID
 			msg := r.body
+			focusedGitPrompt := false
 			if msg == "" {
 				msg = r.title
 			}
@@ -97,7 +98,12 @@ func dispatchPendingRemoteTasks() {
 					msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
 				}
 			}
-			if !sessionContinuation && r.result != "" {
+			if r.executor == "dsh" {
+				if compact, ok := kanban.FocusedGitReviewPrompt(msg); ok {
+					msg, focusedGitPrompt = compact, true
+				}
+			}
+			if !focusedGitPrompt && !sessionContinuation && r.result != "" {
 				previous := r.result
 				if len(previous) > 800 {
 					previous = previous[:800] + "\n... [truncated]"
@@ -130,7 +136,9 @@ func dispatchPendingRemoteTasks() {
 				continue
 			}
 			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
-			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
+			if !focusedGitPrompt {
+				msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
+			}
 			model, modelErr := kanban.ProfileModel(r.assignee)
 			if modelErr != nil && r.executor == "dsh" {
 				log.Printf("remote-dispatcher: %s blocked: %v", r.id, modelErr)

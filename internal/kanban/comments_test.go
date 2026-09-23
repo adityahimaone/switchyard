@@ -38,6 +38,33 @@ func TestDoneCommentStillRequiresMention(t *testing.T) {
 	}
 }
 
+func TestFocusedGitReviewPrompt(t *testing.T) {
+	got, ok := FocusedGitReviewPrompt("go to main branch then git pull\n@board-ui: @default git log 5 last commit")
+	if !ok {
+		t.Fatal("expected focused git prompt")
+	}
+	for _, want := range []string{
+		"Switch to main branch.",
+		"Pull latest changes.",
+		"Show last 5 commits.",
+		"Do not modify files.",
+		"Return command output only.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("prompt %q missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "Recent Comments") || strings.Contains(got, "Resume the existing DSH session") {
+		t.Fatalf("focused prompt retained broad continuation context: %q", got)
+	}
+}
+
+func TestFocusedGitReviewPromptRejectsCodeFeedback(t *testing.T) {
+	if got, ok := FocusedGitReviewPrompt("fix failing contact form and update validation"); ok || got != "" {
+		t.Fatalf("expected normal review feedback fallback, got %q, focused=%t", got, ok)
+	}
+}
+
 func TestRenderReviewCommentAttributesTaskAndPreservesBody(t *testing.T) {
 	got := RenderReviewComments("t_91399069", "Fix harness", []TaskComment{{Author: "reviewer", Body: "keep same session"}})
 	for _, want := range []string{
