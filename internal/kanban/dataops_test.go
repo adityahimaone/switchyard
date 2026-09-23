@@ -261,11 +261,17 @@ CREATE TABLE task_comments (
 	}
 	db.Close()
 	_ = os.WriteFile(filepath.Join(dir, "board.json"), []byte(`{"slug":"t1","name":"t1","icon":"🗂","color":"#10e0dd"}`), 0o644)
+	workspace := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	var a, b Task
 	a.Title = "one"
 	a.Body = "body one"
 	a.Status = "todo"
 	a.Priority = 2
+	a.Executor = "dsh"
+	a.WorkspacePath = workspace
 	b.Title = "two"
 	if err := CreateTask(slug, &a); err != nil {
 		t.Fatal(err)
@@ -276,9 +282,22 @@ CREATE TABLE task_comments (
 	if err := StatusTransition(slug, b.ID, "done"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AddComment(slug, a.ID, "tester", "hello comment"); err != nil {
+	comment, err := AddComment(slug, a.ID, "tester", "hello comment")
+	if err != nil {
 		t.Fatal(err)
 	}
+	bindingDB, err := openDB(slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, _, err := ResolveHarnessBinding(bindingDB, slug, a.ID, a.WorkspacePath)
+	if err != nil {
+		bindingDB.Close()
+		t.Fatal(err)
+	}
+	seq := int64(17)
+	saveDSHSessionID(bindingDB, a.ID, binding.HarnessSessionID, "workspace-roundtrip", &comment.ID, false, NodeDispatchResult{Success: true, DSHSessionID: binding.HarnessSessionID, DSHWorkspaceID: "workspace-roundtrip", LastTurnSeq: &seq})
+	bindingDB.Close()
 
 	snap, err := ExportBoard(slug)
 	if err != nil {
@@ -287,8 +306,8 @@ CREATE TABLE task_comments (
 	if snap.Board.Slug != slug {
 		t.Fatalf("snap board slug = %q", snap.Board.Slug)
 	}
-	if len(snap.Tasks) != 2 || len(snap.Events) == 0 || len(snap.Comments) != 1 {
-		t.Fatalf("snapshot incomplete: tasks=%d events=%d comments=%d", len(snap.Tasks), len(snap.Events), len(snap.Comments))
+	if len(snap.Tasks) != 2 || len(snap.Events) == 0 || len(snap.Comments) != 1 || len(snap.Bindings) != 1 {
+		t.Fatalf("snapshot incomplete: tasks=%d events=%d comments=%d bindings=%d", len(snap.Tasks), len(snap.Events), len(snap.Comments), len(snap.Bindings))
 	}
 	if snap.Tasks[0].ID == "" || snap.Tasks[0].Title == "" {
 		t.Fatalf("task fields lost: %+v", snap.Tasks[0])
@@ -336,6 +355,19 @@ CREATE TABLE task_comments (
 	}
 	if len(comments) != 1 || comments[0].Body != "hello comment" {
 		t.Fatalf("comments not restored: %+v", comments)
+	}
+	importedDB, err := openDB(snap.Board.Slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer importedDB.Close()
+	var restored HarnessBinding
+	if err := importedDB.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings WHERE card_id=?`, a.ID).
+		Scan(&restored.CardID, &restored.WorkspacePath, &restored.HarnessWorkspaceID, &restored.HarnessSessionID, &restored.LastTurnSeq, &restored.LastCommentID, &restored.Status); err != nil {
+		t.Fatal(err)
+	}
+	if restored.HarnessWorkspaceID != "workspace-roundtrip" || restored.LastTurnSeq != seq || restored.LastCommentID != comment.ID || restored.HarnessSessionID == "" {
+		t.Fatalf("binding not restored: %+v", restored)
 	}
 }
 

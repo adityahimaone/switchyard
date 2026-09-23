@@ -2,7 +2,9 @@ package kanban
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,57 +53,294 @@ func nodeAgentToken() string {
 
 // NodeDispatchRequest mirrors transport.DispatchRequest on the node-agent.
 type NodeDispatchRequest struct {
-	TaskID        string `json:"task_id"`
-	Title         string `json:"title,omitempty"`
-	Board         string `json:"board"`
-	Message       string `json:"message"`
-	Workspace     string `json:"workspace"`
-	Model         string `json:"model,omitempty"`
-	Provider      string `json:"provider,omitempty"`
-	Executor      string `json:"executor,omitempty"`
-	Command       string `json:"command,omitempty"`
-	ExecutionMode string `json:"execution_mode,omitempty"` // direct|agentic
-	NoRTK         bool   `json:"no_rtk,omitempty"`         // preserve machine-readable command output
-	MaxIterations int    `json:"max_iterations,omitempty"`
-	Acceptance    string `json:"acceptance,omitempty"`
-	DSHSessionID  string `json:"dsh_session_id,omitempty"`
-	// SessionContinuation tells the worker to resume DSHSessionID and lets newer workers skip duplicate workspace prerequisites.
+	TaskID         string `json:"task_id"`
+	CardID         string `json:"-"`
+	Title          string `json:"title,omitempty"`
+	Board          string `json:"board"`
+	Message        string `json:"message"`
+	Workspace      string `json:"workspace"`
+	Model          string `json:"model,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	Executor       string `json:"executor,omitempty"`
+	Command        string `json:"command,omitempty"`
+	ExecutionMode  string `json:"execution_mode,omitempty"` // direct|agentic
+	NoRTK          bool   `json:"no_rtk,omitempty"`         // preserve machine-readable command output
+	MaxIterations  int    `json:"max_iterations,omitempty"`
+	Acceptance     string `json:"acceptance,omitempty"`
+	DSHWorkspaceID string `json:"dsh_workspace_id,omitempty"`
+	DSHSessionID   string `json:"dsh_session_id,omitempty"`
+	LastTurnSeq    *int64 `json:"last_turn_seq,omitempty"`
+	LastCommentID  *int64 `json:"last_comment_id,omitempty"`
+	RunID          string `json:"run_id,omitempty"`
+	// SessionContinuation tells worker to prompt existing DSHSessionID instead of creating a cold session.
 	SessionContinuation bool `json:"session_continuation,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
 type NodeDispatchResult struct {
-	TaskID       string `json:"task_id"`
-	Success      bool   `json:"success"`
-	Output       string `json:"output"`
-	Error        string `json:"error,omitempty"`
-	DurationMs   int64  `json:"duration_ms"`
-	DSHSessionID string `json:"dsh_session_id,omitempty"`
-	SessionID    string `json:"session_id,omitempty"`
+	TaskID         string `json:"task_id"`
+	Success        bool   `json:"success"`
+	Output         string `json:"output"`
+	Error          string `json:"error,omitempty"`
+	DurationMs     int64  `json:"duration_ms"`
+	DSHWorkspaceID string `json:"dsh_workspace_id,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	DSHSessionID   string `json:"dsh_session_id,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	LastTurnSeq    *int64 `json:"last_turn_seq,omitempty"`
 }
 
 var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|session_id|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
 
-func TaskDSHSessionID(db *sql.DB, taskID string) string {
-	var id string
-	_ = db.QueryRow(`SELECT COALESCE(dsh_session_id,'') FROM tasks WHERE id=?`, taskID).Scan(&id)
-	return strings.TrimSpace(id)
+type HarnessBinding struct {
+	CardID             string `json:"card_id"`
+	WorkspacePath      string `json:"workspace_path"`
+	HarnessWorkspaceID string `json:"harness_workspace_id"`
+	HarnessSessionID   string `json:"harness_session_id"`
+	LastTurnSeq        int64  `json:"last_turn_seq"`
+	LastCommentID      int64  `json:"last_comment_id"`
+	Status             string `json:"status"`
 }
 
-func saveDSHSessionID(db *sql.DB, taskID string, result NodeDispatchResult) {
-	id := strings.TrimSpace(result.DSHSessionID)
-	if id == "" {
-		id = strings.TrimSpace(result.SessionID)
+func DeterministicDSHSessionID(boardID, cardID string) string {
+	h := sha1.Sum([]byte(boardID + "/" + cardID))
+	return "switchyard-card-" + hex.EncodeToString(h[:8])
+}
+
+// ResolveHarnessBinding returns durable card continuity. existed reports whether worker must prompt an existing session.
+func ResolveHarnessBinding(db *sql.DB, boardID, cardID, workspacePath string) (HarnessBinding, bool, error) {
+	if err := ensureHarnessBindingsSchema(db); err != nil {
+		return HarnessBinding{}, false, err
 	}
-	if id == "" {
+	workspacePath = filepath.Clean(strings.TrimSpace(workspacePath))
+	if workspacePath == "." || workspacePath == "" {
+		return HarnessBinding{}, false, fmt.Errorf("workspace path required")
+	}
+	var b HarnessBinding
+	err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings WHERE card_id=?`, cardID).
+		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status)
+	if err == nil {
+		if filepath.Clean(b.WorkspacePath) != workspacePath {
+			return HarnessBinding{}, false, fmt.Errorf("card %s is bound to workspace %q, not %q", cardID, b.WorkspacePath, workspacePath)
+		}
+		continuation := b.Status != "active" && b.HarnessWorkspaceID != "" && b.HarnessSessionID != ""
+		return b, continuation, nil
+	}
+	if err != sql.ErrNoRows {
+		return HarnessBinding{}, false, err
+	}
+
+	var legacySessionID string
+	_ = db.QueryRow(`SELECT COALESCE(dsh_session_id,'') FROM tasks WHERE id=?`, cardID).Scan(&legacySessionID)
+	legacySessionID = strings.TrimSpace(legacySessionID)
+	existed := legacySessionID != ""
+	status := "active"
+	if existed {
+		status = "idle"
+	}
+	b = HarnessBinding{CardID: cardID, WorkspacePath: workspacePath, HarnessSessionID: legacySessionID, LastTurnSeq: -1, Status: status}
+	if !existed {
+		b.HarnessSessionID = DeterministicDSHSessionID(boardID, cardID)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT OR IGNORE INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?,?)`, b.CardID, b.WorkspacePath, "", b.HarnessSessionID, b.LastTurnSeq, b.Status, now, now); err != nil {
+		return HarnessBinding{}, false, err
+	}
+	if err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings WHERE card_id=?`, cardID).
+		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status); err != nil {
+		return HarnessBinding{}, false, err
+	}
+	if filepath.Clean(b.WorkspacePath) != workspacePath {
+		return HarnessBinding{}, false, fmt.Errorf("card %s is bound to workspace %q, not %q", cardID, b.WorkspacePath, workspacePath)
+	}
+	return b, b.Status != "active" && b.HarnessWorkspaceID != "" && b.HarnessSessionID != "", nil
+}
+
+type dshResultIdentity struct {
+	sessionID   string
+	workspaceID string
+	valid       bool
+}
+
+func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult) (dshResultIdentity, error) {
+	sessionID := strings.TrimSpace(result.DSHSessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(result.SessionID)
+	}
+	if sessionID == "" {
 		match := dshSessionProof.FindStringSubmatch(result.Output)
 		if len(match) == 2 {
-			id = strings.TrimSpace(match[1])
+			sessionID = strings.TrimSpace(match[1])
 		}
 	}
-	if id != "" {
-		_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, id, taskID)
+	returnedSession := sessionID != ""
+	if expected := strings.TrimSpace(req.DSHSessionID); sessionID != "" && expected != "" && sessionID != expected {
+		return dshResultIdentity{}, fmt.Errorf("worker returned session %q, dispatched session was %q", sessionID, expected)
 	}
+	if sessionID == "" && (req.SessionContinuation || !result.Success || result.LastTurnSeq != nil) {
+		sessionID = strings.TrimSpace(req.DSHSessionID)
+	}
+
+	workspaceID := strings.TrimSpace(result.DSHWorkspaceID)
+	if workspaceID == "" {
+		workspaceID = strings.TrimSpace(result.WorkspaceID)
+	}
+	returnedWorkspace := workspaceID != ""
+	if expected := strings.TrimSpace(req.DSHWorkspaceID); workspaceID != "" && expected != "" && workspaceID != expected {
+		return dshResultIdentity{}, fmt.Errorf("worker returned workspace %q, dispatched workspace was %q", workspaceID, expected)
+	}
+	if workspaceID == "" && (req.SessionContinuation || !result.Success || result.LastTurnSeq != nil) {
+		workspaceID = strings.TrimSpace(req.DSHWorkspaceID)
+	}
+	if result.Success && !returnedSession {
+		return dshResultIdentity{}, fmt.Errorf("worker result omitted session id")
+	}
+	if result.Success && !returnedWorkspace {
+		return dshResultIdentity{}, fmt.Errorf("worker result omitted workspace id")
+	}
+	if result.Success && result.LastTurnSeq == nil {
+		return dshResultIdentity{}, fmt.Errorf("worker result omitted last turn sequence")
+	}
+	if result.Success && req.LastTurnSeq != nil && *result.LastTurnSeq <= *req.LastTurnSeq {
+		return dshResultIdentity{}, fmt.Errorf("worker returned stale turn sequence %d, dispatched cursor was %d", *result.LastTurnSeq, *req.LastTurnSeq)
+	}
+	return dshResultIdentity{sessionID: sessionID, workspaceID: workspaceID, valid: true}, nil
+}
+
+func updateDSHBindingTx(tx *sql.Tx, taskID string, commentID *int64, result NodeDispatchResult, identity dshResultIdentity) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if !identity.valid {
+		result, err := tx.Exec(`UPDATE harness_bindings SET status='error', updated_at=? WHERE card_id=?`, now, taskID)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected != 1 {
+			return fmt.Errorf("harness binding missing for card %s", taskID)
+		}
+		return nil
+	}
+	if identity.sessionID == "" {
+		return nil
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, identity.sessionID, taskID); err != nil {
+		return err
+	}
+	ready := result.Success && identity.workspaceID != ""
+	updated, err := tx.Exec(`UPDATE harness_bindings SET harness_session_id=?, harness_workspace_id=CASE WHEN ?='' THEN harness_workspace_id ELSE ? END, last_turn_seq=CASE WHEN ? IS NOT NULL AND ? > last_turn_seq THEN ? ELSE last_turn_seq END, last_comment_id=CASE WHEN ? AND ? IS NOT NULL AND ? > last_comment_id THEN ? ELSE last_comment_id END, status=CASE WHEN ? THEN 'idle' ELSE 'error' END, updated_at=? WHERE card_id=?`, identity.sessionID, identity.workspaceID, identity.workspaceID, result.LastTurnSeq, result.LastTurnSeq, result.LastTurnSeq, result.Success, commentID, commentID, commentID, ready, now, taskID)
+	if err != nil {
+		return err
+	}
+	affected, err := updated.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("harness binding missing for card %s", taskID)
+	}
+	return nil
+}
+
+func saveDSHSessionID(db *sql.DB, taskID, fallbackSessionID, fallbackWorkspaceID string, fallbackCommentID *int64, continuation bool, result NodeDispatchResult) {
+	req := NodeDispatchRequest{DSHSessionID: fallbackSessionID, DSHWorkspaceID: fallbackWorkspaceID, SessionContinuation: continuation}
+	identity, err := resolveDSHResultIdentity(req, result)
+	if err != nil {
+		return
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return
+	}
+	if err := updateDSHBindingTx(tx, taskID, fallbackCommentID, result, identity); err != nil {
+		_ = tx.Rollback()
+		return
+	}
+	_ = tx.Commit()
+}
+
+func finalizeRemoteResult(db *sql.DB, req NodeDispatchRequest, taskID, eventKind string, result NodeDispatchResult, identity dshResultIdentity) (bool, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	baseline := int64(0)
+	hasBaseline := req.LastCommentID != nil
+	if hasBaseline {
+		baseline = *req.LastCommentID
+	}
+	failure := ""
+	if !result.Success {
+		failure = result.Error
+		if failure == "" {
+			failure = result.Output
+		}
+	}
+	args := []any{hasBaseline, taskID, baseline, result.Success, time.Now().Unix(), result.Output, trimErrStr(failure), taskID}
+	query := `UPDATE tasks SET status=CASE WHEN ? AND EXISTS (SELECT 1 FROM task_comments WHERE task_id=? AND id>?) THEN 'todo' WHEN ? THEN 'review' ELSE 'blocked' END, completed_at=?, result=?, last_failure_error=?, current_run_id=NULL WHERE id=? AND status='running'`
+	if req.RunID != "" {
+		query += ` AND current_run_id=?`
+		args = append(args, req.RunID)
+	}
+	updated, err := tx.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := updated.RowsAffected()
+	if err != nil || affected != 1 {
+		return false, err
+	}
+	if req.Executor == "dsh" {
+		if err := updateDSHBindingTx(tx, taskID, req.LastCommentID, result, identity); err != nil {
+			return false, err
+		}
+	}
+	if err := insertEventTx(tx, taskID, eventKind, map[string]any{"executor": req.Executor, "output": result.Output, "error": result.Error, "duration_ms": result.DurationMs}); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func finalizeRemoteTimeout(db *sql.DB, req NodeDispatchRequest, taskID string) (bool, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	baseline := int64(0)
+	hasBaseline := req.LastCommentID != nil
+	if hasBaseline {
+		baseline = *req.LastCommentID
+	}
+	args := []any{hasBaseline, taskID, baseline, time.Now().Unix(), "dispatch_wait_timeout: remote watcher exceeded wait", taskID}
+	query := `UPDATE tasks SET status=CASE WHEN ? AND EXISTS (SELECT 1 FROM task_comments WHERE task_id=? AND id>?) THEN 'todo' ELSE 'blocked' END, completed_at=?, last_failure_error=?, current_run_id=NULL WHERE id=? AND status='running'`
+	if req.RunID != "" {
+		query += ` AND current_run_id=?`
+		args = append(args, req.RunID)
+	}
+	updated, err := tx.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := updated.RowsAffected()
+	if err != nil || affected != 1 {
+		return false, err
+	}
+	if err := insertEventTx(tx, taskID, "failed", map[string]any{"reason": "timeout", "run_id": req.RunID}); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // NodeAgentStatus is what GET /api/remote/nodes returns.
@@ -177,12 +416,87 @@ func DispatchRemoteRaw(req NodeDispatchRequest, wait time.Duration) (*NodeDispat
 	return dispatchRemote(req, wait, false, nil)
 }
 
+func ClaimTaskRun(db *sql.DB, taskID string) (string, bool, error) {
+	if err := ensureTaskExecutionColumns(db); err != nil {
+		return "", false, err
+	}
+	runID := fmt.Sprintf("run_%x", time.Now().UnixNano())
+	res, err := db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL, current_run_id=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), runID, taskID)
+	if err != nil {
+		return "", false, err
+	}
+	affected, err := res.RowsAffected()
+	return runID, affected == 1, err
+}
+
+func finalizeDispatchFailure(db *sql.DB, taskID, runID, reason string) error {
+	if runID == "" {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE tasks SET status='todo', started_at=NULL, completed_at=NULL, current_run_id=NULL, last_failure_error=? WHERE id=? AND status='running' AND current_run_id=?`, trimErrStr(reason), taskID, runID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		return err
+	}
+	if err := insertEventTx(tx, taskID, "failed", map[string]any{"reason": reason, "run_id": runID}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (req NodeDispatchRequest) recordID() string {
+	if req.CardID != "" {
+		return req.CardID
+	}
+	return req.TaskID
+}
+
 func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask bool, onProgress func(string)) (*NodeDispatchResult, error) {
+	recordID := req.recordID()
 	if strings.TrimSpace(req.TaskID) == "" {
 		return nil, fmt.Errorf("task_id required")
 	}
 	if strings.TrimSpace(req.Workspace) == "" {
 		return nil, fmt.Errorf("workspace required (remote dispatch is workspace-scoped)")
+	}
+	if persistTask && req.CardID == "" {
+		if db, err := openDB(req.Board); err == nil {
+			var exists int
+			_ = db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE id=?`, req.TaskID).Scan(&exists)
+			db.Close()
+			if exists == 1 {
+				req.CardID = req.TaskID
+				recordID = req.TaskID
+			} else {
+				persistTask = false
+			}
+		} else {
+			persistTask = false
+		}
+	}
+	if persistTask && req.RunID == "" {
+		db, err := openDB(req.Board)
+		if err != nil {
+			return nil, err
+		}
+		runID, claimed, claimErr := ClaimTaskRun(db, recordID)
+		db.Close()
+		if claimErr != nil {
+			return nil, claimErr
+		}
+		if !claimed {
+			return nil, fmt.Errorf("task %s is not claimable", recordID)
+		}
+		req.TaskID = runID
+		req.RunID = runID
 	}
 	c := &http.Client{Timeout: 10 * time.Second}
 	buf, _ := json.Marshal(req)
@@ -196,11 +510,25 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 	}
 	resp, err := c.Do(hreq)
 	if err != nil {
+		reason := fmt.Sprintf("node-agent unreachable: %v", err)
+		if persistTask && req.RunID != "" {
+			if db, openErr := openDB(req.Board); openErr == nil {
+				_ = finalizeDispatchFailure(db, recordID, req.RunID, reason)
+				db.Close()
+			}
+		}
 		return nil, fmt.Errorf("node-agent unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode != 200 {
+		reason := fmt.Sprintf("node-agent dispatch %d: %s", resp.StatusCode, trimErrStr(string(body)))
+		if persistTask && req.RunID != "" {
+			if db, openErr := openDB(req.Board); openErr == nil {
+				_ = finalizeDispatchFailure(db, recordID, req.RunID, reason)
+				db.Close()
+			}
+		}
 		return nil, fmt.Errorf("node-agent dispatch %d: %s", resp.StatusCode, trimErrStr(string(body)))
 	}
 	var ack struct {
@@ -210,17 +538,32 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		DeliveryID string `json:"delivery_id"`
 	}
 	if err := json.Unmarshal(body, &ack); err != nil {
+		reason := "node-agent bad ack: " + trimErrStr(string(body))
+		if persistTask && req.RunID != "" {
+			if db, openErr := openDB(req.Board); openErr == nil {
+				_ = finalizeDispatchFailure(db, recordID, req.RunID, reason)
+				db.Close()
+			}
+		}
 		return nil, fmt.Errorf("node-agent bad ack: %s", trimErrStr(string(body)))
 	}
 
 	// live flow tracking: dispatched + running
-	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowDispatched})
-	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowRunning})
+	flowSet(FlowTask{TaskID: recordID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowDispatched})
+	flowSet(FlowTask{TaskID: recordID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowRunning})
 	if persistTask {
 		if db, err := openDB(req.Board); err == nil {
 			now := time.Now().Unix()
-			_ = insertEvent(db, req.TaskID, "remote_dispatched", map[string]any{"node_id": ack.NodeID, "started_at": now})
-			_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL WHERE id=?`, now, req.TaskID)
+			if req.RunID == "" {
+				_ = insertEvent(db, recordID, "remote_dispatched", map[string]any{"node_id": ack.NodeID, "started_at": now})
+				_, _ = db.Exec(`UPDATE tasks SET status='running', started_at=?, completed_at=NULL WHERE id=?`, now, recordID)
+			} else {
+				var owned int
+				_ = db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE id=? AND status='running' AND current_run_id=?`, recordID, req.RunID).Scan(&owned)
+				if owned == 1 {
+					_ = insertEvent(db, recordID, "remote_dispatched", map[string]any{"node_id": ack.NodeID, "started_at": now, "run_id": req.RunID})
+				}
+			}
 			db.Close()
 		}
 	}
@@ -233,14 +576,14 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		time.Sleep(1 * time.Second)
 		// tail progress before checking result so live log appears even before completion
 		if poff, txt := fetchProgress(pc, req.TaskID, off); txt != "" {
-			_ = AppendWorkerLog(req.Board, req.TaskID, txt)
+			_ = AppendWorkerLog(req.Board, recordID, txt)
 			executor := req.Executor
 			if executor == "" {
 				executor = "auto"
 			}
-			_ = PersistWorkerLogEvent(req.Board, req.TaskID, executor, "stdout", txt, int64(poff))
+			_ = PersistWorkerLogEvent(req.Board, recordID, executor, "stdout", txt, int64(poff))
 			if strings.EqualFold(strings.TrimSpace(req.ExecutionMode), "agentic") {
-				persistShellIterationEvents(req.Board, req.TaskID, txt)
+				persistShellIterationEvents(req.Board, recordID, txt)
 			}
 			if onProgress != nil {
 				onProgress(txt)
@@ -271,45 +614,57 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		if err := json.Unmarshal(b2, &res); err != nil {
 			continue
 		}
-		// live flow tracking: done / failed
-		stage := FlowDone
-		evtKind := "completed"
-		if !res.Success {
-			stage = FlowFailed
-			evtKind = "failed"
+		if res.TaskID != "" && res.TaskID != req.TaskID {
+			continue
 		}
-		flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
-		if persistTask {
-			if db, err := openDB(req.Board); err == nil {
-				saveDSHSessionID(db, req.TaskID, res)
-				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"executor": req.Executor, "output": res.Output, "error": res.Error, "duration_ms": res.DurationMs})
-				now := time.Now().Unix()
-				newStatus := "blocked"
-				if res.Success {
-					newStatus = "review"
-				}
-				failure := ""
-				if !res.Success {
-					failure = res.Error
-					if failure == "" {
-						failure = res.Output
-					}
-				}
-				_, _ = db.Exec(`UPDATE tasks SET status=?, completed_at=?, result=?, last_failure_error=? WHERE id=? AND status='running'`,
-					newStatus, now, res.Output, trimErrStr(failure), req.TaskID)
-				db.Close()
+		identity := dshResultIdentity{valid: true}
+		if req.Executor == "dsh" {
+			var identityErr error
+			identity, identityErr = resolveDSHResultIdentity(req, res)
+			if identityErr != nil {
+				identity.valid = false
+				res.Success = false
+				res.Error = "dsh_identity_rejected: " + identityErr.Error()
 			}
 		}
+		evtKind := "completed"
+		stage := FlowDone
+		if !res.Success {
+			evtKind = "failed"
+			stage = FlowFailed
+		}
+		if persistTask {
+			db, err := openDB(req.Board)
+			if err != nil {
+				return nil, err
+			}
+			finalized, finalizeErr := finalizeRemoteResult(db, req, recordID, evtKind, res, identity)
+			db.Close()
+			if finalizeErr != nil {
+				return nil, fmt.Errorf("finalize remote result: %w", finalizeErr)
+			}
+			if !finalized {
+				return &res, nil
+			}
+		}
+		flowSet(FlowTask{TaskID: recordID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
 		return &res, nil
 	}
-	// live flow tracking: timeout = failed
-	flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowFailed})
 	if persistTask {
-		if db, err := openDB(req.Board); err == nil {
-			_ = insertEvent(db, req.TaskID, "failed", map[string]any{"reason": "timeout"})
-			_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status='running'`, time.Now().Unix(), "dispatch_wait_timeout: remote watcher exceeded wait", req.TaskID)
-			db.Close()
+		db, err := openDB(req.Board)
+		if err != nil {
+			return nil, err
 		}
+		finalized, finalizeErr := finalizeRemoteTimeout(db, req, recordID)
+		db.Close()
+		if finalizeErr != nil {
+			return nil, fmt.Errorf("finalize remote timeout: %w", finalizeErr)
+		}
+		if finalized {
+			flowSet(FlowTask{TaskID: recordID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowFailed})
+		}
+	} else {
+		flowSet(FlowTask{TaskID: recordID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: FlowFailed})
 	}
 	return nil, fmt.Errorf("dispatch_wait_timeout: timeout after %s waiting for result of %s (node %s)", wait, req.TaskID, ack.NodeID)
 }

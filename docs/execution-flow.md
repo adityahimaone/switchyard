@@ -53,6 +53,19 @@ Parent path registration does not replace exact child path registration when rou
 
 Shell agentic mode gives a read-only planner workspace visibility, then executes only its structured command through the shell worker. Body remains task intent, direct mode uses `command`. Max iterations are bounded (default 6, hard cap 12), destructive patterns are blocked, and success still lands in review. RTK may rewrite shell commands within its bounded timeout (`rtk hook check` → `rtk rewrite`, 800 ms each), then the resulting command runs directly in the remote workspace. Output >8 KiB may be compacted via `rtk pipe --ultra-compact` when `NODE_AGENT_SHELL_CAVEMAN=1` (2 s cap, fail-open).
 
+## DSH session continuity
+
+Switchyard stores one `harness_bindings` row per card and sends `dsh_workspace_id`, deterministic `dsh_session_id`, `last_turn_seq`, `last_comment_id`, and `session_continuation` to node-agent.
+
+Node-agent must follow this contract:
+
+1. When `session_continuation` is false, idempotently ensure workspace and create or adopt `dsh_session_id`, attach session, then prompt it.
+2. When `session_continuation` is true, resume or attach `dsh_session_id` and call `session.prompt`; never create a new session or spawn a stateless DSH CLI run.
+3. Follow events after `last_turn_seq`, then return `dsh_workspace_id`, `dsh_session_id`, and highest consumed `last_turn_seq` in result.
+4. Treat `last_comment_id` as dispatch metadata. Switchyard advances it only after successful turn, so failed turns replay unconfirmed comments.
+
+Review comments use same session with explicit task, card, reviewer, and comment attribution. Comments arriving during active turn requeue card after turn completes. Existing in-flight cards without bindings adopt legacy `tasks.dsh_session_id` when available.
+
 ## Lifecycle
 
 ```text

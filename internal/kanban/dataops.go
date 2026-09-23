@@ -280,10 +280,11 @@ func BulkAssign(slug string, ids []string, profile string) error {
 
 // BoardSnapshot is the portable board export shape.
 type BoardSnapshot struct {
-	Board    Board         `json:"board"`
-	Tasks    []Task        `json:"tasks"`
-	Events   []TaskEvent   `json:"events"`
-	Comments []TaskComment `json:"comments"`
+	Board    Board            `json:"board"`
+	Tasks    []Task           `json:"tasks"`
+	Events   []TaskEvent      `json:"events"`
+	Comments []TaskComment    `json:"comments"`
+	Bindings []HarnessBinding `json:"harness_bindings,omitempty"`
 }
 
 func slugValid(s string) bool {
@@ -341,7 +342,23 @@ func ExportBoard(slug string) (*BoardSnapshot, error) {
 	}
 	sort.Slice(events, func(i, j int) bool { return events[i].ID < events[j].ID })
 	sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
-	return &BoardSnapshot{Board: b, Tasks: tasks, Events: events, Comments: comments}, nil
+	bindings := []HarnessBinding{}
+	rows, err := db.Query(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings ORDER BY card_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var binding HarnessBinding
+		if err := rows.Scan(&binding.CardID, &binding.WorkspacePath, &binding.HarnessWorkspaceID, &binding.HarnessSessionID, &binding.LastTurnSeq, &binding.LastCommentID, &binding.Status); err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, binding)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &BoardSnapshot{Board: b, Tasks: tasks, Events: events, Comments: comments, Bindings: bindings}, nil
 }
 
 // ImportBoard restores a snapshot. Creates board.json if missing, then
@@ -358,7 +375,8 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 		// normalize: caller may have passed display slug vs stored.
 		snap.Board.Slug = slug
 	}
-	// Validate tasks before touching disk.
+	// Validate tasks and session bindings before touching disk.
+	tasksByID := make(map[string]Task, len(snap.Tasks))
 	for _, t := range snap.Tasks {
 		if strings.TrimSpace(t.ID) == "" {
 			return false, nil, fmt.Errorf("task id required (title=%q)", t.Title)
@@ -371,6 +389,30 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 		}
 		if t.Status == "running" {
 			return false, nil, fmt.Errorf("task %q has dispatcher-owned status running", t.ID)
+		}
+		tasksByID[t.ID] = t
+	}
+	maxCommentID := make(map[string]int64)
+	for _, comment := range snap.Comments {
+		if comment.ID > maxCommentID[comment.TaskID] {
+			maxCommentID[comment.TaskID] = comment.ID
+		}
+	}
+	for _, binding := range snap.Bindings {
+		task, ok := tasksByID[binding.CardID]
+		if !ok {
+			return false, nil, fmt.Errorf("harness binding references unknown card %q", binding.CardID)
+		}
+		if binding.WorkspacePath == "" || filepath.Clean(binding.WorkspacePath) != filepath.Clean(task.WorkspacePath) {
+			return false, nil, fmt.Errorf("harness binding workspace mismatch for card %q", binding.CardID)
+		}
+		if binding.HarnessSessionID == "" || binding.LastTurnSeq < -1 || binding.LastCommentID < 0 || binding.LastCommentID > maxCommentID[binding.CardID] {
+			return false, nil, fmt.Errorf("invalid harness binding cursors for card %q", binding.CardID)
+		}
+		switch binding.Status {
+		case "active", "idle", "error":
+		default:
+			return false, nil, fmt.Errorf("invalid harness binding status %q for card %q", binding.Status, binding.CardID)
 		}
 	}
 	dir := filepath.Dir(BoardDBPath(slug))
@@ -476,6 +518,16 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 		}
 		if _, err := db.Exec(`INSERT INTO task_comments (id, task_id, author, body, created_at) VALUES (?,?,?,?,?)`, c.ID, c.TaskID, c.Author, c.Body, c.CreatedAt); err != nil {
 			return created, nil, err
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, binding := range snap.Bindings {
+		result, err := db.Exec(`INSERT INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(card_id) DO NOTHING`, binding.CardID, binding.WorkspacePath, binding.HarnessWorkspaceID, binding.HarnessSessionID, binding.LastTurnSeq, binding.LastCommentID, binding.Status, now, now)
+		if err != nil {
+			return created, nil, err
+		}
+		if inserted, _ := result.RowsAffected(); inserted == 1 {
+			_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, binding.HarnessSessionID, binding.CardID)
 		}
 	}
 	return created, ids, nil

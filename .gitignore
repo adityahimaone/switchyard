@@ -6,3 +6,6 @@ web/*.tsbuildinfo
 .env
 .env.*
 !.env.example
+
+# Local oversized agent checkpoint
+internal/kanban/Switchyard Harness Session Continuity.md

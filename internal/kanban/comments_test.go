@@ -1,6 +1,9 @@
 package kanban
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestReviewCommentRequeuesWithoutMention(t *testing.T) {
 	slug := testBoard(t)
@@ -32,5 +35,19 @@ func TestDoneCommentStillRequiresMention(t *testing.T) {
 	}
 	if comment.Requeued {
 		t.Fatal("done task reopened without an assignee mention")
+	}
+}
+
+func TestRenderReviewCommentAttributesTaskAndPreservesBody(t *testing.T) {
+	got := RenderReviewComments("t_91399069", "Fix harness", []TaskComment{{Author: "reviewer", Body: "keep same session"}})
+	for _, want := range []string{
+		`[Switchyard review comment — task t_91399069, card "Fix harness"]`,
+		"Reviewer: reviewer",
+		"Comment:\nkeep same session",
+		"do not restart the task from scratch",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("prompt %q missing %q", got, want)
+		}
 	}
 }

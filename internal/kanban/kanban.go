@@ -136,11 +136,36 @@ func openDB(slug string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureHarnessBindingsSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
 }
 
 // ensureTaskExecutionColumns keeps boards created by older Hermes versions usable.
 // These fields are additive and let the board select a concrete worker executor.
+func ensureHarnessBindingsSchema(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS harness_bindings (
+		card_id TEXT PRIMARY KEY,
+		workspace_path TEXT NOT NULL,
+		harness_workspace_id TEXT NOT NULL,
+		harness_session_id TEXT NOT NULL,
+		last_turn_seq INTEGER NOT NULL DEFAULT -1,
+		last_comment_id INTEGER NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_harness_bindings_session ON harness_bindings(harness_session_id);`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE harness_bindings ADD COLUMN last_comment_id INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return err
+	}
+	return nil
+}
+
 func ensureTaskExecutionColumns(db *sql.DB) error {
 	for _, stmt := range []string{
 		`ALTER TABLE tasks ADD COLUMN executor TEXT NOT NULL DEFAULT 'auto'`,
@@ -150,6 +175,7 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'direct'`,
 		`ALTER TABLE tasks ADD COLUMN max_iterations INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE tasks ADD COLUMN dsh_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN current_run_id TEXT`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err

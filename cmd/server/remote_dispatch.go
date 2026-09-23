@@ -56,18 +56,48 @@ func dispatchPendingRemoteTasks() {
 		rows.Close()
 
 		for _, r := range pending {
-			dshSessionID := kanban.TaskDSHSessionID(db, r.id)
+			var binding kanban.HarnessBinding
+			var sessionContinuation bool
+			if r.executor == "dsh" {
+				var err error
+				binding, sessionContinuation, err = kanban.ResolveHarnessBinding(db, b.Slug, r.id, r.ws)
+				if err != nil {
+					log.Printf("remote-dispatcher: %s binding failed: %v", r.id, err)
+					continue
+				}
+			}
+			dshSessionID := binding.HarnessSessionID
 			msg := r.body
 			if msg == "" {
 				msg = r.title
 			}
-			if r.result != "" && dshSessionID == "" && (strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:")) {
+			if r.result != "" && !sessionContinuation && (strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:")) {
 				_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "repeated timeout on continuation — needs a fresh single-shot run", r.id)
 				continue
 			}
-			if dshSessionID != "" {
-				msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
-			} else if r.result != "" {
+			var lastCommentID *int64
+			if r.executor == "dsh" {
+				commentCursor := binding.LastCommentID
+				lastCommentID = &commentCursor
+				comments, err := kanban.TaskCommentsAfter(db, r.id, binding.LastCommentID)
+				if err != nil {
+					log.Printf("remote-dispatcher: %s comment lookup failed: %v", r.id, err)
+					continue
+				}
+				if len(comments) > 0 {
+					id := comments[len(comments)-1].ID
+					lastCommentID = &id
+					feedback := kanban.RenderReviewComments(r.id, r.title, comments)
+					if sessionContinuation {
+						msg = feedback
+					} else {
+						msg += "\n\n" + feedback
+					}
+				} else if sessionContinuation {
+					msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
+				}
+			}
+			if !sessionContinuation && r.result != "" {
 				previous := r.result
 				if len(previous) > 800 {
 					previous = previous[:800] + "\n... [truncated]"
@@ -75,8 +105,8 @@ func dispatchPendingRemoteTasks() {
 				msg = fmt.Sprintf("[CONTINUATION] This task was requeued after review feedback.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nContinue from the existing workspace and apply the user's feedback:\n\n%s", previous, msg)
 			}
 			commentLimit := 5
-			if dshSessionID != "" {
-				commentLimit = 1
+			if r.executor == "dsh" {
+				commentLimit = 0
 			}
 			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT ?`, r.id, commentLimit); cr != nil {
 				var recent []string
@@ -108,22 +138,39 @@ func dispatchPendingRemoteTasks() {
 			}
 			_ = kanban.PersistTaskIdentity(db, r.id, identity)
 			req := kanban.NodeDispatchRequest{
-				TaskID:        r.id,
-				Title:         r.title,
-				Board:         b.Slug,
-				Message:       msg,
-				Workspace:     r.ws,
-				Model:         model,
-				Provider:      r.assignee,
-				Executor:      r.executor,
-				Command:       command,
-				ExecutionMode: r.executionMode,
-				MaxIterations: r.maxIterations,
-				Acceptance:    strings.TrimSpace(r.title + "\n" + r.body),
-				DSHSessionID:  dshSessionID, SessionContinuation: dshSessionID != "",
+				TaskID:              r.id,
+				Title:               r.title,
+				Board:               b.Slug,
+				Message:             msg,
+				Workspace:           r.ws,
+				Model:               model,
+				Provider:            r.assignee,
+				Executor:            r.executor,
+				Command:             command,
+				ExecutionMode:       r.executionMode,
+				MaxIterations:       r.maxIterations,
+				Acceptance:          strings.TrimSpace(r.title + "\n" + r.body),
+				DSHWorkspaceID:      binding.HarnessWorkspaceID,
+				DSHSessionID:        dshSessionID,
+				SessionContinuation: sessionContinuation,
 			}
-			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent", r.id, b.Slug)
-			_, err := kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
+			if r.executor == "dsh" {
+				req.LastTurnSeq = &binding.LastTurnSeq
+				req.LastCommentID = lastCommentID
+			}
+			runID, claimed, err := kanban.ClaimTaskRun(db, r.id)
+			if err != nil {
+				log.Printf("remote-dispatcher: %s claim failed: %v", r.id, err)
+				continue
+			}
+			if !claimed {
+				continue
+			}
+			req.CardID = r.id
+			req.TaskID = runID
+			req.RunID = runID
+			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent workspace_id=%q session_id=%q last_turn_seq=%d continuation=%t", r.id, b.Slug, binding.HarnessWorkspaceID, dshSessionID, binding.LastTurnSeq, sessionContinuation)
+			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {

@@ -161,6 +161,35 @@ func TestStatusTransition(t *testing.T) {
 	}
 }
 
+func TestClaimTaskRunAllowsOneOwner(t *testing.T) {
+	slug := testBoard(t)
+	task := Task{Title: "claim once", Status: "todo"}
+	if err := CreateTask(slug, &task); err != nil {
+		t.Fatal(err)
+	}
+	db, err := openDB(slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	firstRunID, claimed, err := ClaimTaskRun(db, task.ID)
+	if err != nil || !claimed || firstRunID == "" {
+		t.Fatalf("first claim: id=%q claimed=%t err=%v", firstRunID, claimed, err)
+	}
+	secondRunID, claimed, err := ClaimTaskRun(db, task.ID)
+	if err != nil || claimed || secondRunID == "" {
+		t.Fatalf("second claim: id=%q claimed=%t err=%v", secondRunID, claimed, err)
+	}
+	var storedRunID, status string
+	if err := db.QueryRow(`SELECT current_run_id, status FROM tasks WHERE id=?`, task.ID).Scan(&storedRunID, &status); err != nil {
+		t.Fatal(err)
+	}
+	if storedRunID != firstRunID || status != "running" {
+		t.Fatalf("owner changed: run_id=%q status=%q", storedRunID, status)
+	}
+}
+
 func TestStatusTransitionRefusesRunningClaim(t *testing.T) {
 	slug := testBoard(t)
 	var task Task
