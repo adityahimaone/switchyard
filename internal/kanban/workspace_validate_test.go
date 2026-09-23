@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -26,19 +25,15 @@ func writeWorkspaces(t *testing.T, entries map[string]string) {
 
 func TestValidateWorkspacePath(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
-	// No workspaces.json: remote-shaped / inaccessible paths must be refused
-	// (fail closed).
+	// Remote-shaped paths route to remote worker, even without registry.
 	remoteCases := []string{
 		"/Users/adityahimawan/Development/bisadaya-monorepo", // real Mac path — t_0b6b086c
 		"/Users/shared/whatever",
 		"C:\\Users\\user\\repo", // windows drive
 	}
 	for _, p := range remoteCases {
-		err := validateWorkspacePath(p)
-		if err == nil {
-			t.Errorf("validateWorkspacePath(%q) = nil, want error (remote path)", p)
-		} else if !strings.Contains(err.Error(), "cannot") && !strings.Contains(err.Error(), "does not exist") && !strings.Contains(err.Error(), "not accessible") && !strings.Contains(err.Error(), "Register") {
-			t.Errorf("validateWorkspacePath(%q) error lacks remote hint: %v", p, err)
+		if err := validateWorkspacePath(p); err != nil {
+			t.Errorf("validateWorkspacePath(%q) = %v, want nil", p, err)
 		}
 	}
 	// Local paths must pass.
@@ -63,9 +58,9 @@ func TestValidateWorkspacePathRegisteredRemote(t *testing.T) {
 	if err := validateWorkspacePath(macPath); err != nil {
 		t.Errorf("registered remote path %q rejected: %v", macPath, err)
 	}
-	// Same shape but NOT registered → still refused.
-	if err := validateWorkspacePath("/Users/adityahimawan/Development/other"); err == nil {
-		t.Error("unregistered /Users path should be refused")
+	// Same shape but NOT registered → still routes remotely.
+	if err := validateWorkspacePath("/Users/adityahimawan/Development/other"); err != nil {
+		t.Errorf("unregistered /Users path rejected: %v", err)
 	}
 	// Windows path registered as remote → allowed too.
 	winPath := "C:\\Users\\user\\repo"
@@ -75,11 +70,20 @@ func TestValidateWorkspacePathRegisteredRemote(t *testing.T) {
 	}
 }
 
-func TestCreateTaskRejectsRemoteWorkspace(t *testing.T) {
-	slug := testBoard(t)
-	task := &Task{Title: "remote ws", WorkspaceKind: "dir", WorkspacePath: "/Users/mac/only/path", Status: "todo"}
-	if err := CreateTask(slug, task); err == nil {
-		t.Fatal("CreateTask with remote /Users path should fail, got nil")
+func TestTransportForUnregisteredRemotePaths(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	cases := []struct {
+		path, target string
+	}{
+		{"/Users/adityahimawan/Development/next-portfolio-blog", "mac-tailscale"},
+		{"C:\\Users\\User\\Development\\app", "windows-tailscale"},
+		{"C:/Development/app", "windows-tailscale"},
+	}
+	for _, tc := range cases {
+		transport, target, remote := transportForPath(tc.path)
+		if transport != "node-agent" || target != tc.target || !remote {
+			t.Fatalf("transportForPath(%q) = (%q, %q, %t), want node-agent/%q/true", tc.path, transport, target, remote, tc.target)
+		}
 	}
 }
 

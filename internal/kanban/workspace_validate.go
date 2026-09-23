@@ -30,6 +30,11 @@ func validateWorkspacePath(p string) error {
 	if p == "" {
 		return nil
 	}
+	// Remote-shaped paths are valid even when registry stale. transportForPath
+	// routes them to node-agent; local dispatcher must never touch them.
+	if strings.HasPrefix(p, "/Users/") || (len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/')) {
+		return nil
+	}
 	// If this exact path is a registered remote workspace, allow it — it'll
 	// dispatch via node-agent, not the local mkdir path.
 	if isRegisteredRemotePath(p) {
@@ -134,6 +139,15 @@ func transportForPath(p string) (transport, target string, isRemote bool) {
 			host = "mac-tailscale"
 		}
 		return "node-agent", host, true
+	}
+	// Fail closed even when workspace registry is stale or unavailable. These
+	// prefixes cannot be valid on VPS Linux; local dispatch would attempt mkdir
+	// or chdir and fail with Permission denied: '/Users'.
+	if strings.HasPrefix(p, "/Users/") {
+		return "node-agent", "mac-tailscale", true
+	}
+	if len(p) >= 3 && (p[1] == ':' && (p[2] == '\\' || p[2] == '/')) {
+		return "node-agent", "windows-tailscale", true
 	}
 	return "", "", false
 }
