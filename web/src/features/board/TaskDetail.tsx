@@ -204,10 +204,10 @@ export default function TaskDetail({
           ) : resultSplit?.final ? (
             <>
               <WorkerLogPanel text={resultSplit.working} slug={slug} taskId={task.id} />
-              <ResultPanel text={resultSplit.final} hasWorking={!!resultSplit.working} />
+              <ResultPanel text={resultSplit.final} hasWorking={!!resultSplit.working} executor={task.executor} />
             </>
           ) : resultSplit?.working ? (
-            <ResultPanel text={resultSplit.working} hasWorking={false} />
+            <ResultPanel text={resultSplit.working} hasWorking={false} executor={task.executor} />
           ) : (
             <ResultEmpty />
           )}

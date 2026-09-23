@@ -134,11 +134,14 @@ func dispatchSSHTasks() {
 			}
 
 			// build continuation message BEFORE claim/close — needs result + comments
+			dshSessionID := kanban.TaskDSHSessionID(db, r.id)
 			msg := r.body
 			if msg == "" {
 				msg = r.title
 			}
-			if r.result != "" {
+			if dshSessionID != "" {
+				msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
+			} else if r.result != "" {
 				if strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:") {
 					_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "repeated timeout on continuation — needs a fresh single-shot run", r.id)
 					log.Printf("ssh-dispatcher: blocked continuation %s after repeated timeout", r.id)
@@ -155,8 +158,13 @@ func dispatchSSHTasks() {
 				}
 				msg = fmt.Sprintf("[CONTINUATION] This task was previously completed and requeued for follow-up.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nUser comments requested a follow-up. Continue from where you left off:\n\n%s", trunc, msg)
 			}
-			// recent comments (reuse open db handle before claim)
-			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT 5`, r.id); cr != nil {
+			// A resumed DSH session already contains older board comments; send only
+			// the newest one. Legacy tasks without a session retain the five-comment fallback.
+			commentLimit := 5
+			if dshSessionID != "" {
+				commentLimit = 1
+			}
+			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT ?`, r.id, commentLimit); cr != nil {
 				var cmt []string
 				for cr.Next() {
 					var author, body string
@@ -187,8 +195,8 @@ func dispatchSSHTasks() {
 			claimed = true
 			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
 			msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
-			// Read session ID before closing DB. Continuation must resume same DSH session.
-			dshSessionID := kanban.TaskDSHSessionID(db, r.id)
+			// dshSessionID was read before building the continuation prompt and
+			// is forwarded unchanged so the worker resumes the same DSH session.
 			if err := kanban.PersistTaskIdentity(db, r.id, identity); err != nil {
 				log.Printf("ssh-dispatcher: could not persist JEV identity for %s: %v", r.id, err)
 			}
@@ -250,7 +258,7 @@ func dispatchSSHTasks() {
 				res, err := kanban.DispatchRemote(kanban.NodeDispatchRequest{
 					TaskID: r.id, Title: r.title, Board: b.Slug, Message: msg,
 					Workspace: r.ws, Model: model, Provider: r.assignee, Executor: r.executor, Command: r.command,
-					DSHSessionID: dshSessionID,
+					DSHSessionID: dshSessionID, SessionContinuation: dshSessionID != "",
 				}, kanban.RemoteDispatchWait())
 				if err != nil {
 					output = err.Error()

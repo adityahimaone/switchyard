@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment, useRef } from "react"
-import { ArrowDownToLine, Check, ChevronDown, Copy, FileCheck2, Terminal } from "lucide-react"
+import { ArrowDownToLine, Check, ChevronDown, Copy, FileCheck2, Terminal, BrainCircuit, ExternalLink, Layers3 } from "lucide-react"
 import { toastGlobal, workerLog, type Task, type TaskEvent } from "../../api"
 
 function useCopy(text: string) {
@@ -357,7 +357,94 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
   )
 }
 
-export function ResultPanel({ text, hasWorking, title, defaultOpen }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean }) {
+type DshResult = {
+  provenance?: { workspace?: string; sessionId?: string; cwd?: string; bin?: string; args?: string }
+  answer: string
+  events: { type: string; text?: string; phase?: string; label?: string }[]
+}
+
+function parseDshResult(raw: string): DshResult {
+  const lines = raw.split("\n")
+  const provenanceLine = lines.find((line) => line.startsWith("provenance executor=dsh")) ?? ""
+  const field = (name: string) => provenanceLine.match(new RegExp(`${name}=([^\\s]+)`))?.[1]
+  const events: DshResult["events"] = []
+  const answer: string[] = []
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line) as DshResult["events"][number]
+      if (!event || typeof event.type !== "string") continue
+      events.push(event)
+      if (event.type === "text" && event.text) answer.push(event.text)
+    } catch { /* provenance and proof lines are intentionally not JSON */ }
+  }
+  return {
+    provenance: provenanceLine ? {
+      workspace: field("ws"),
+      sessionId: field("dsh_session_id"),
+      cwd: field("dsh_session_cwd"),
+      bin: field("bin"),
+      args: provenanceLine.match(/args=(\[.*?\])\sws=/)?.[1],
+    } : undefined,
+    answer: answer.join("\n\n").trim(),
+    events,
+  }
+}
+
+function DshResultPanel({ text, hasWorking, title, defaultOpen }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen !== false)
+  const [traceOpen, setTraceOpen] = useState(false)
+  const { copied, copy } = useCopy(text)
+  const parsed = useMemo(() => parseDshResult(text), [text])
+  const trace = parsed.events.filter((event) => event.type !== "text")
+  const answer = parsed.answer || "No final answer text returned. Open raw trace to inspect the run."
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-cyan-400/25 bg-[var(--color-surface-raised)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_rgba(8,145,178,0.1)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-cyan-400/15 bg-cyan-400/[0.07] px-3 py-2.5">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 items-center gap-1.5 text-left">
+          <ChevronDown className={`size-3.5 shrink-0 text-cyan-300 transition-transform ${open ? "" : "-rotate-90"}`} />
+          <span className="flex size-7 items-center justify-center rounded-full bg-cyan-400/15 text-cyan-200"><BrainCircuit className="size-3.5" /></span>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-100">{title || "DeepSeek Harness result"}</span>
+        </button>
+        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100">session-aware</span>
+        <span className="ml-auto hidden items-center gap-2 sm:flex">
+          <span className="font-mono text-[10px] text-cyan-200/65">{trace.length} trace events</span>
+          <button type="button" onClick={() => copy()} aria-label="Copy raw DeepSeek Harness result" className="inline-flex size-7 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          </button>
+        </span>
+      </div>
+      {open && (
+        <div className="space-y-3 bg-[#07141a]/55 p-3">
+          {parsed.provenance && (
+            <div className="grid gap-2 rounded-lg border border-cyan-300/10 bg-cyan-300/[0.04] p-2.5 text-[10px] sm:grid-cols-2">
+              <div className="min-w-0"><span className="text-cyan-200/50">session</span><p className="mt-0.5 truncate font-mono text-cyan-100" title={parsed.provenance.sessionId}>{parsed.provenance.sessionId || "unknown"}</p></div>
+              <div className="min-w-0"><span className="text-cyan-200/50">workspace</span><p className="mt-0.5 truncate font-mono text-cyan-100" title={parsed.provenance.workspace}>{parsed.provenance.workspace || "unknown"}</p></div>
+            </div>
+          )}
+          <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-200/65"><Layers3 className="size-3.5" /> Answer</div>
+            <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-100">{answer}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setTraceOpen((value) => !value)} className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100/75 hover:bg-white/[0.08]">
+              <ExternalLink className="size-3.5" /> {traceOpen ? "Hide raw trace" : "Show raw trace"}
+            </button>
+            <button type="button" onClick={() => copy()} className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100/75 hover:bg-white/[0.08] sm:hidden">
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} Copy raw
+            </button>
+          </div>
+          {traceOpen && <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-black/25 p-3 font-mono text-[11px] leading-5 text-slate-300">{text}</pre>}
+        </div>
+      )}
+      {!open && <p className="px-3 py-2 font-mono text-[11px] text-cyan-100/50">Collapsed · session {parsed.provenance?.sessionId || "unknown"}</p>}
+      {hasWorking && <p className="border-t border-cyan-400/10 bg-cyan-400/[0.03] px-3 py-2 font-mono text-[11px] text-cyan-100/50">Working trace is available above in Worker log.</p>}
+    </div>
+  )
+}
+
+export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
+  if (executor === "dsh") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} />
   const [wrap, setWrap] = useState(true)
   const [open, setOpen] = useState(defaultOpen !== false)
   const { copied, copy } = useCopy(text)
@@ -465,7 +552,7 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
     <div className="space-y-2">
       <h4 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-emerald-300">Results · {results.length}</h4>
       {results.map((r, i) => (
-        <ResultPanel key={i} text={r.text} hasWorking={false} title={`Result ${r.index} · ${r.outcome}`} defaultOpen={i === results.length - 1} />
+        <ResultPanel key={i} text={r.text} hasWorking={false} title={`Result ${r.index} · ${r.outcome}`} defaultOpen={i === results.length - 1} executor={task.executor} />
       ))}
     </div>
   )

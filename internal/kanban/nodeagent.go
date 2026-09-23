@@ -65,18 +65,22 @@ type NodeDispatchRequest struct {
 	MaxIterations int    `json:"max_iterations,omitempty"`
 	Acceptance    string `json:"acceptance,omitempty"`
 	DSHSessionID  string `json:"dsh_session_id,omitempty"`
+	// SessionContinuation tells the worker to resume DSHSessionID and lets newer workers skip duplicate workspace prerequisites.
+	SessionContinuation bool `json:"session_continuation,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
 type NodeDispatchResult struct {
-	TaskID     string `json:"task_id"`
-	Success    bool   `json:"success"`
-	Output     string `json:"output"`
-	Error      string `json:"error,omitempty"`
-	DurationMs int64  `json:"duration_ms"`
+	TaskID       string `json:"task_id"`
+	Success      bool   `json:"success"`
+	Output       string `json:"output"`
+	Error        string `json:"error,omitempty"`
+	DurationMs   int64  `json:"duration_ms"`
+	DSHSessionID string `json:"dsh_session_id,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
 }
 
-var dshSessionProof = regexp.MustCompile(`dsh_session_id=([^[:space:]]+)`)
+var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|session_id|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
 
 func TaskDSHSessionID(db *sql.DB, taskID string) string {
 	var id string
@@ -84,10 +88,19 @@ func TaskDSHSessionID(db *sql.DB, taskID string) string {
 	return strings.TrimSpace(id)
 }
 
-func saveDSHSessionID(db *sql.DB, taskID, output string) {
-	match := dshSessionProof.FindStringSubmatch(output)
-	if len(match) == 2 && match[1] != "" {
-		_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, match[1], taskID)
+func saveDSHSessionID(db *sql.DB, taskID string, result NodeDispatchResult) {
+	id := strings.TrimSpace(result.DSHSessionID)
+	if id == "" {
+		id = strings.TrimSpace(result.SessionID)
+	}
+	if id == "" {
+		match := dshSessionProof.FindStringSubmatch(result.Output)
+		if len(match) == 2 {
+			id = strings.TrimSpace(match[1])
+		}
+	}
+	if id != "" {
+		_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, id, taskID)
 	}
 }
 
@@ -268,7 +281,7 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 		flowSet(FlowTask{TaskID: req.TaskID, Title: req.Title, Board: req.Board, NodeID: ack.NodeID, Executor: req.Executor, Transport: ack.Transport, Stage: stage})
 		if persistTask {
 			if db, err := openDB(req.Board); err == nil {
-				saveDSHSessionID(db, req.TaskID, res.Output)
+				saveDSHSessionID(db, req.TaskID, res)
 				_ = insertEvent(db, req.TaskID, evtKind, map[string]any{"executor": req.Executor, "output": res.Output, "error": res.Error, "duration_ms": res.DurationMs})
 				now := time.Now().Unix()
 				newStatus := "blocked"

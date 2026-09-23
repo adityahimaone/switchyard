@@ -1,6 +1,7 @@
 package kanban
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,5 +43,34 @@ func TestNodeAgentHealthPreservesReportedStatus(t *testing.T) {
 	status, err := NodeAgentHealth()
 	if err != nil || status.Status != "down" {
 		t.Fatalf("health = %+v, err = %v; explicit agent status must be preserved", status, err)
+	}
+}
+
+func TestNodeDispatchCarriesDSHContinuation(t *testing.T) {
+	raw, err := json.Marshal(NodeDispatchRequest{
+		TaskID: "task-1", Workspace: "/Users/example/repo", Executor: "dsh",
+		DSHSessionID: "session-abc", SessionContinuation: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["dsh_session_id"] != "session-abc" || got["session_continuation"] != true {
+		t.Fatalf("request = %s, missing durable continuation identity", raw)
+	}
+}
+
+func TestDSHSessionProofAcceptsOutputFormats(t *testing.T) {
+	for _, output := range []string{
+		`dsh_session_id=session-proof`,
+		`session_id: session-colon`,
+		`Session=session-equals`,
+	} {
+		if !dshSessionProof.MatchString(output) {
+			t.Fatalf("session proof did not match %q", output)
+		}
 	}
 }
