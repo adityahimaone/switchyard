@@ -42,12 +42,12 @@ Contract:
 - [x] `gofmt` check.
 - [x] `git diff --check`.
 - [x] Local DSH authenticated read probe: HTTP `200`, RPC success, session list returned.
-- [ ] Two-turn live DSH continuity probe.
-- [ ] Verify deployed node-agent consumes all continuity fields.
-- [ ] Full `go test ./...`: current failure is host-sensitive workspace validation outside this task.
-- [ ] `go vet ./...`.
-- [ ] `go build ./cmd/server`.
-- [ ] `pnpm build` in `web/`.
+- [x] Two-turn live DSH continuity probe — PASS: same session, workspace, and cursor advanced `0 -> 1`; markers `CONTINUITY_TURN_ONE_FINAL` and `CONTINUITY_TURN_TWO_FINAL` returned.
+- [x] Verify deployed node-agent consumes all continuity fields — PASS: live HTTP dispatch/result carried session, workspace, run, continuation, comment, and cursor metadata; Mac worker consumed `--session-id` continuation.
+- [x] Full `go test ./...` — `cmd/server` and `internal/kanban` pass.
+- [x] `go vet ./...`.
+- [x] `go build ./cmd/server` — pass; output removed after verification.
+- [x] `pnpm build` in `web/` — Vite production build pass.
 
 ## Files changed
 
