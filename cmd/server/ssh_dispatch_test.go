@@ -1,6 +1,20 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"kanban-board/internal/kanban"
+)
+
+func TestDispatchDSHSessionIDOnlyResumesExistingBinding(t *testing.T) {
+	binding := kanban.HarnessBinding{HarnessSessionID: "switchyard-card-real"}
+	if got := dispatchDSHSessionID(binding, false); got != "" {
+		t.Fatalf("initial dispatch session=%q, want empty", got)
+	}
+	if got := dispatchDSHSessionID(binding, true); got != binding.HarnessSessionID {
+		t.Fatalf("continuation session=%q, want %q", got, binding.HarnessSessionID)
+	}
+}
 
 func TestContinuationNeedsExplicitExecutor(t *testing.T) {
 	cases := []struct {

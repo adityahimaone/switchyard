@@ -144,7 +144,7 @@ func dispatchSSHTasks() {
 					continue
 				}
 			}
-			dshSessionID := binding.HarnessSessionID
+			dshSessionID := dispatchDSHSessionID(binding, sessionContinuation)
 			msg := r.body
 			if msg == "" {
 				msg = r.title

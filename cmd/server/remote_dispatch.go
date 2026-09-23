@@ -13,6 +13,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func dispatchDSHSessionID(binding kanban.HarnessBinding, continuation bool) string {
+	if !continuation {
+		return ""
+	}
+	return binding.HarnessSessionID
+}
+
 // StartRemoteDispatcher polls all boards every 30s for todo tasks with
 // workspace_transport='node-agent' and dispatches them via node-agent instead of
 // letting the Hermes Python dispatcher try (and fail) to spawn locally.
@@ -66,7 +73,7 @@ func dispatchPendingRemoteTasks() {
 					continue
 				}
 			}
-			dshSessionID := binding.HarnessSessionID
+			dshSessionID := dispatchDSHSessionID(binding, sessionContinuation)
 			msg := r.body
 			focusedGitPrompt := false
 			if msg == "" {
