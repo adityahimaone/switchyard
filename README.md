@@ -37,7 +37,7 @@ flowchart TB
     Review[Review gate<br/>diff + approve]
   end
   subgraph Workers[Execution plane — workers]
-    Mac[Mac agent<br/>hermes / codex / commandcode / dsh / shell]
+    Mac[Mac agent<br/>hermes / codex / dsh / commandcode / shell]
     Win[Windows agent]
   end
 
@@ -59,8 +59,8 @@ flowchart TB
 | `auto` | Legacy SSH from VPS | Hermes on VPS, file access over SSH |
 | `hermes` | node-agent | Hermes on workspace host |
 | `codex` | node-agent | Codex on workspace host |
-| `commandcode` | node-agent | CommandCode on workspace host |
 | `dsh` | node-agent | DeepSeek Harness session on workspace host |
+| `commandcode` | node-agent | CommandCode on workspace host |
 
 `auto` is kept for backward compatibility with old tasks. New tasks that need a local worker should pick an explicit executor. Node-agent prefers gRPC when available and falls back to HTTP long-poll when the gRPC stream is down.
 
@@ -211,7 +211,7 @@ On register each node advertises capabilities:
 {
   "node_id": "mac",
   "workspaces": ["/Users/<user>/Development"],
-  "executors": ["hermes", "codex", "commandcode", "dsh", "shell"],
+  "executors": ["hermes", "codex", "dsh", "commandcode", "shell"],
   "versions": {"commandcode": "..."}
 }
 ```

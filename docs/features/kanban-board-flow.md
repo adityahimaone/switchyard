@@ -93,8 +93,8 @@ Semua save wajib merge unknown keys seperti `luvus_workspace_id`, `remote`, dan 
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + prerequisites | task message | provenance `executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + prerequisites | task message | provenance `executor=codex` |
-| `commandcode` | `cmd -p ... --yolo` | CodeGraph + prerequisites | task message | provenance `executor=commandcode` |
 | `dsh` | `dsh --profile headless --json [--session-id <id>]` | health check + CodeGraph | task message | provenance `executor=dsh` + `dsh_session_id` |
+| `commandcode` | `cmd -p ... --yolo` | CodeGraph + prerequisites | task message | provenance `executor=commandcode` |
 | `shell` | planner read-only → `bash -lc ...` | bounded iterations + optional shell preflight | intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | compatibility fallback | resolved runtime | task message | resolved provenance |
 
