@@ -50,6 +50,31 @@ func TestGroupTaskRunsByAttemptBoundaries(t *testing.T) {
 	}
 }
 
+func TestGroupTaskRunsSplitsRemoteDispatch(t *testing.T) {
+	// DSH continuation: each remote_dispatch -> new run. Regression for
+	// t_e52df8a2 where run 2 (session continuation) merged into run 1 and
+	// the second answer disappeared from the run list.
+	events := []TaskEvent{
+		{ID: 1, TaskID: "t", Kind: "created", CreatedAt: 1},
+		{ID: 2, TaskID: "t", Kind: "remote_dispatched", Payload: `{"node_id":"mac","run_id":"run_1"}`, CreatedAt: 2},
+		{ID: 3, TaskID: "t", Kind: "worker_output", Payload: `{"executor":"dsh"}`, CreatedAt: 3},
+		{ID: 4, TaskID: "t", Kind: "completed", Payload: `{"executor":"dsh"}`, CreatedAt: 4},
+		{ID: 5, TaskID: "t", Kind: "remote_dispatched", Payload: `{"node_id":"mac","run_id":"run_2","session_continuation":true}`, CreatedAt: 5},
+		{ID: 6, TaskID: "t", Kind: "worker_output", Payload: `{"executor":"dsh"}`, CreatedAt: 6},
+		{ID: 7, TaskID: "t", Kind: "completed", Payload: `{"executor":"dsh"}`, CreatedAt: 7},
+	}
+	got := GroupTaskRuns(events)
+	if len(got) != 2 {
+		t.Fatalf("runs = %+v", got)
+	}
+	if got[0].Outcome != "completed" || got[1].Outcome != "completed" {
+		t.Fatalf("outcomes = %+v", got)
+	}
+	if len(got[0].Events) != 3 || len(got[1].Events) != 3 {
+		t.Fatalf("event split = %+v", got)
+	}
+}
+
 func TestUsageFromJSONFindsNestedTokenUsage(t *testing.T) {
 	got, ok := usageFromJSON(`{"type":"status","usage":{"inputTokens":12,"outputTokens":8,"totalTokens":20,"cacheReadTokens":3}}`)
 	if !ok || got.InputTokens != 12 || got.OutputTokens != 8 || got.TotalTokens != 20 || got.CacheReadTokens != 3 {

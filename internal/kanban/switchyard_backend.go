@@ -168,7 +168,7 @@ func GroupTaskRuns(events []TaskEvent) []TaskRun { return groupRuns(events) }
 
 func groupRuns(events []TaskEvent) []TaskRun {
 	out := []TaskRun{}
-	starts := map[string]bool{"claimed": true, "spawned": true, "retry": true, "run_started": true, "run_requested": true, "retry_requested": true}
+	starts := map[string]bool{"claimed": true, "spawned": true, "retry": true, "run_started": true, "run_requested": true, "retry_requested": true, "remote_dispatched": true}
 	for _, ev := range events {
 		if starts[ev.Kind] || len(out) == 0 && ev.Kind != "created" {
 			out = append(out, TaskRun{Index: len(out) + 1, StartedAt: ev.CreatedAt})

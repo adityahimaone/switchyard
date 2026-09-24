@@ -385,25 +385,27 @@ function parseDshResult(raw: string): DshResult {
   const field = (name: string) => provenanceLine.match(new RegExp(`${name}=([^\\s]+)`))?.[1]
   const events: DshResult["events"] = []
   const answer: string[] = []
+  const finals: string[] = []
   for (const line of lines) {
     try {
       const event = JSON.parse(line) as DshResult["events"][number]
       if (!event || typeof event.type !== "string") continue
       events.push(event)
-      if (event.type === "text" && event.text) answer.push(event.text)
+      if (event.type === "final" && event.text) finals.push(event.text)
+      else if (event.type === "text" && event.text) answer.push(event.text)
     } catch { /* provenance and proof lines are intentionally not JSON */ }
   }
   return {
-    provenance: provenanceLine ? {
-      workspace: field("ws"),
-      sessionId: field("dsh_session_id"),
-      cwd: field("dsh_session_cwd"),
-      bin: field("bin"),
-      args: provenanceLine.match(/args=(\[.*?\])\sws=/)?.[1],
-    } : undefined,
-    answer: answer.join("\n\n").trim(),
-    events,
-  }
+      provenance: provenanceLine ? {
+        workspace: field("ws"),
+        sessionId: field("dsh_session_id"),
+        cwd: field("dsh_session_cwd"),
+        bin: field("bin"),
+        args: provenanceLine.match(/args=(\[.*?\])\s+ws=/)?.[1],
+      } : undefined,
+      answer: (finals.length ? finals[finals.length - 1] : answer.join("\n\n").trim()) || "No final answer text returned. Open raw trace to inspect the run.",
+      events,
+    }
 }
 
 function DshResultPanel({ text, hasWorking, title, defaultOpen }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean }) {
