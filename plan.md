@@ -177,3 +177,16 @@ Status: Phase 1 implementation slice complete in `feat/chat-workspace-v1`; live 
 - [x] Phase 4 isolated registry lifecycle tests + read-only live smoke: validation, profile isolation, gateway disabled, manifest/service worker
 - [ ] Phase 4 browser-rendered acceptance (browser provider unavailable; public HTTPS returns `200` via curl)
 - [ ] Phase 4 MCP invocation, extension execution, gateway sessions: separate auth/transport design required before implementation
+
+## DSH Health Overview (2026-09-24)
+
+Design: `docs/superpowers/specs/2026-09-24-dsh-health-overview-design.md`
+
+- [ ] Node-agent: `dsh --version` + `--dump-config` probe, cached, TTL env `DSH_HEALTH_INTERVAL_SECONDS` (default 60), `refresh_dsh=1` bypass
+- [ ] Node-agent: dsh_health result shape + error taxonomy (no_binary / bad_profile / timeout)
+- [ ] VPS: extend `GET /api/nodes` with dsh_health, forward refresh flag to node-agents
+- [ ] Frontend: NodeFleetCard DSH sub-block (green/amber/red) + Check DSH button
+- [ ] Go unit tests: version parse, config parse, cache TTL, force bypass
+- [ ] Verify: frontend build, go test ./..., go vet ./..., git diff --check
+- [ ] Deploy: VPS binary + Mac node-agent (darwin arm64, launchd restart)
+- [ ] Live verify: Mac node shows dsh_health.ok=true with real version/model
