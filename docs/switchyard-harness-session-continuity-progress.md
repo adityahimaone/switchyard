@@ -51,6 +51,27 @@ Contract:
 - [x] Focused Git review prompt: compact read-only prompt for branch switch, pull, and last-5 log; normal code feedback keeps existing continuation path.
 - [x] Focused prompt tests and full Go validation pass.
 
+## Post-implementation findings
+
+Two defects only appeared under repeated real-card loops, after the continuity
+work was recorded as complete:
+
+1. **`dsh_session_conflict` on every continuation.** `dsh web` holds an OS
+   `flock(2)` write handle on `session.lock` for its whole process lifetime and
+   the installed build never expires the lease, so retry tuning could not help.
+   Fixed in node-agent by running headless `dsh` under an isolated `DSH_HOME`
+   (`~/.dsh-nodeagent`) and adopting legacy sessions by copy, which yields an
+   independent lock inode.
+2. **Agent sessions invisible in `dsh web`.** The UI enumerates sessions from
+   `$DSH_HOME/storages/workspace.json`, not from the sessions directory, so a
+   correct isolated home is by design unreadable there. Fixed by publishing the
+   finished session back into `~/.dsh` — transcript plus registry entry, and
+   never the lock file.
+
+Both were verified on real cards: three loops on one card and four loops on
+another, each reusing a single session with zero conflicts. Worker contract:
+[node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
+
 ## Files changed
 
 - `cmd/server/remote_dispatch.go`

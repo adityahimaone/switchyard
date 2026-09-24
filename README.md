@@ -37,7 +37,7 @@ flowchart TB
     Review[Review gate<br/>diff + approve]
   end
   subgraph Workers[Execution plane — workers]
-    Mac[Mac agent<br/>hermes / codex / commandcode / shell]
+    Mac[Mac agent<br/>hermes / codex / commandcode / dsh / shell]
     Win[Windows agent]
   end
 
@@ -60,6 +60,7 @@ flowchart TB
 | `hermes` | node-agent | Hermes on workspace host |
 | `codex` | node-agent | Codex on workspace host |
 | `commandcode` | node-agent | CommandCode on workspace host |
+| `dsh` | node-agent | DeepSeek Harness session on workspace host |
 
 `auto` is kept for backward compatibility with old tasks. New tasks that need a local worker should pick an explicit executor. Node-agent prefers gRPC when available and falls back to HTTP long-poll when the gRPC stream is down.
 
@@ -76,7 +77,8 @@ NODE_AGENT_GRPC_TARGET=<VPS_TAILSCALE_IP>:8789
 
 ### Hard guard, claim, and retry
 
-- Remote paths with an empty transport are normalized to `ssh` with default target `mac-tailscale` before spawn.
+- Remote paths with an empty transport are routed by `remoteTransportForPath`: `/Users/...` and `C:\...` resolve to `node-agent` with default targets `mac-tailscale` and `windows-tailscale`. An explicitly set `ssh` or `node-agent` transport is honored as-is.
+- A `/Users/...` path must never be downgraded to SSH or executed on the VPS — both are treated as misconfiguration, not as a fallback.
 - In-flight tasks are `running`.
 - Successful results become `review`, not `done`.
 - Failures retry up to 3 times, then become `blocked`.
@@ -90,9 +92,45 @@ Tasks store human intent as `title` + `description`. Users pick an AI executor o
 {"executor": "commandcode"}
 ```
 
-Valid values: `auto`, `hermes`, `codex`, `commandcode`, `shell`.
+Valid values: `auto`, `hermes`, `codex`, `commandcode`, `dsh`, `shell`.
 
 `shell` is a normal task executor for direct remote commands. `command` is the only executed input; `body` is descriptive text and is never executed. Empty/whitespace `command` is rejected at task create (`400 shell executor requires command`) and by both dispatchers as `blocked`. Shell preflight (`NODE_AGENT_SHELL_PREFLIGHT=1`) and output compaction (`NODE_AGENT_SHELL_CAVEMAN=1`) are opt-in on the worker and use environment only — they never mutate `command`.
+
+## DeepSeek Harness sessions
+
+`dsh` tasks keep one DeepSeek Harness session per card and advance it across
+review rounds. `harness_bindings` stores the binding; the dispatcher sends
+`dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id`,
+`run_id`, and `session_continuation` to node-agent.
+
+Rules:
+
+- The workspace path is fixed per card. A resumed session whose cwd differs from
+  the dispatched workspace is rejected rather than retried.
+- The worker never clears `dsh_session_id` and never creates a new session to
+  escape a failure. A returned session other than the dispatched one fails the
+  result as `worker returned session "...", dispatched session was "..."`.
+- `last_turn_seq` only moves forward. A stale turn sequence or a missing
+  session/workspace id fails finalization, so a stale worker result cannot
+  overwrite a newer run.
+- `last_comment_id` advances only after a successful turn, so failed turns
+  replay unconfirmed review comments.
+- Cards without a binding adopt the legacy `tasks.dsh_session_id` on dispatch.
+
+Looping a card: post the comment, then reopen the card from `review` so the
+dispatcher claims it again.
+
+```sh
+hermes kanban --board <board> comment <card> --author user "<message>"
+hermes kanban --board <board> reopen-review <card>
+```
+
+A plain comment does not reopen a card that is already in `review`.
+
+On the worker, `dsh` runs under an isolated `DSH_HOME` so its session locks stay
+off the `dsh web` daemon's, and finished sessions are published back into
+`~/.dsh` so the UI can list them. Worker-side contract and troubleshooting:
+[node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
 
 ### CommandCode
 
@@ -143,6 +181,28 @@ This repo is the **control plane**. The [node-agent](https://github.com/adityahi
 }
 ```
 
+For `executor: "dsh"` the dispatcher adds the session continuity fields:
+
+```json
+{
+  "task_id": "t1",
+  "board": "saas",
+  "message": "Continue from the last review comment",
+  "workspace": "/Users/<user>/Development/saas",
+  "executor": "dsh",
+  "dsh_workspace_id": "<uuid>",
+  "dsh_session_id": "session-<uuid>",
+  "last_turn_seq": 2,
+  "last_comment_id": 41,
+  "run_id": "<uuid>",
+  "session_continuation": true
+}
+```
+
+The result must echo `dsh_workspace_id`, `dsh_session_id`, and the highest
+consumed `last_turn_seq`. Identity mismatches fail the result; they are never
+silently accepted.
+
 For internal shell dispatch the orchestrator sends `executor: "shell"` plus `command`. The dispatcher resolves the host from the workspace, uses node-agent as the primary route, and may fall back to SSH.
 
 On register each node advertises capabilities:
@@ -151,7 +211,7 @@ On register each node advertises capabilities:
 {
   "node_id": "mac",
   "workspaces": ["/Users/<user>/Development"],
-  "executors": ["hermes", "codex", "commandcode", "shell"],
+  "executors": ["hermes", "codex", "commandcode", "dsh", "shell"],
   "versions": {"commandcode": "..."}
 }
 ```
@@ -206,7 +266,7 @@ The execution pipeline has three context-reduction layers:
 2. **rtk** — reduces verbose shell command and output within bounded timeouts (hook check + rewrite `800 ms` each; `rtk pipe --ultra-compact` with `2 s` cap when `NODE_AGENT_SHELL_CAVEMAN=1`).
 3. **caveman** — optional compact output for shell (`NODE_AGENT_SHELL_CAVEMAN=1`, `>8 KiB`, fail-open). AI executors already produce their own structured result.
 
-Shell agentic path gives a read-only planner workspace visibility, then executes structured commands through shell + RTK with bounded iterations. `body` is task intent; `command` remains the direct-mode input. Workspace routing, hard-guard (`/Users/`/`C:\`) → `ssh`/`mac-tailscale`, flow tracking, and review gate remain as documented in `docs/execution-flow.md`.
+Shell agentic path gives a read-only planner workspace visibility, then executes structured commands through shell + RTK with bounded iterations. `body` is task intent; `command` remains the direct-mode input. Workspace routing, remote-path classification, flow tracking, and review gate remain as documented in `docs/execution-flow.md`.
 
 ## Configuration
 
@@ -221,6 +281,8 @@ Shell agentic path gives a read-only planner workspace visibility, then executes
 | `TYPESAFE_API_KEY` | env | Optional TypeSafe AI key; enables JEV task classification before dispatch |
 | `TYPESAFE_JEV_MODEL` | env | Optional JEV model override (default `jev-latest`) |
 | `TYPESAFE_API_URL` | env | Optional TypeSafe endpoint override (default `https://api.typesafe.ai/v1/systemone`) |
+| `NODE_AGENT_DSH_HOME` | worker env | Isolated DeepSeek Harness home for agent runs (see node-agent docs) |
+| `NODE_AGENT_DSH_PUBLISH` | worker env | `0` stops publishing agent DSH sessions into `~/.dsh` |
 
 ## Build and deploy
 
@@ -285,6 +347,28 @@ If the VPS server is already new but the Mac agent has not been upgraded yet, ne
 ### Remote task tries to run on the VPS
 
 Check `workspace_path`, `workspace_transport`, and `workspace_ssh_target`. Mac/Windows paths must be registered in `workspaces.json`.
+
+### `dsh_session_conflict`
+
+Another process owns the card's DSH write handle — normally the `dsh web` daemon
+on the same home. Confirm the Mac worker uses its isolated `DSH_HOME`
+(`lsof -p <worker-pid> | grep session.lock`). Raising
+`NODE_AGENT_DSH_CONFLICT_RETRIES` does not release a foreign lock. See
+[node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
+
+### DSH card keeps failing identity checks
+
+`worker returned session "..."` / `worker result omitted session id` /
+`worker returned stale turn sequence` mean the worker did not resume the
+dispatched session. The worker must not start a cold session on a continuation.
+Check the worker log at `$TMPDIR/node-agent-<task_id>/run.log` for the
+`--session-id` argument actually used.
+
+### Completed DSH task is missing from the `dsh web` UI
+
+The session is published by the worker after a successful run. Check that
+`NODE_AGENT_DSH_PUBLISH` is not `0` and that the worker log shows
+`dsh session publish: mirrored session ...`.
 
 ### Task stuck in `review`
 

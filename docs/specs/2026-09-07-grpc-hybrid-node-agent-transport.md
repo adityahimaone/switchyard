@@ -521,7 +521,7 @@ grpcurl -plaintext \
 Expected worker diagnostics:
 
 ```text
-transport=grpc session=<id> node=<node-id> executors=codex,commandcode,shell
+transport=grpc session=<id> node=<node-id> executors=hermes,codex,commandcode,dsh,shell
 ```
 
 If gRPC is unhealthy, set `NODE_AGENT_TRANSPORT=http` on a worker or set `auto` and

@@ -31,7 +31,7 @@ Kanban UI
 
 1. Register exact app path in `~/.hermes/workspaces.json`.
 2. Entry must identify `host: mac-tailscale`, `os: mac`, and path.
-3. Task must use SSH/node-agent transport.
+3. Task must use `node-agent` transport. A remote path without an explicit transport is classified by `remoteTransportForPath` — `/Users/...` → `node-agent` + `mac-tailscale`, `C:\...` → `node-agent` + `windows-tailscale`. An explicit `ssh` or `node-agent` value is honored as-is.
 4. VPS must never create or inspect `/Users/...` locally.
 5. Verify target before dispatch:
 
@@ -41,13 +41,15 @@ ssh mac-tailscale 'test -d /Users/adityahimawan/Development/next-portfolio-blog 
 
 Parent path registration does not replace exact child path registration when routing requires a distinct app workspace.
 
+Remote paths must not be downgraded to SSH or to a VPS-local run: the local dispatcher excludes any task whose `workspace_transport` is `ssh` or `node-agent` (`hermes_cli/kanban_db_dispatch.py`), so a misclassified row would otherwise be claimed by the wrong dispatcher instead of failing loudly.
+
 ## Executor matrix
 
 | Executor | Mac process | Preflight | Command source | Proof |
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + project prerequisites | task message | `provenance executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + project prerequisites | task message | `provenance executor=codex` |
-| `dsh` | `dsh --profile headless ...` | CodeGraph + project prerequisites | task message | `provenance executor=dsh` |
+| `dsh` | `dsh --profile headless --json [--session-id <id>]` | `dsh --version` health check + CodeGraph | task message | `provenance executor=dsh` + `dsh_session_id` |
 | `shell` | read-only planner → `bash -lc ...` | bounded iterations; optional shell preflight | task intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | Hermes first, fallback Codex/CommandCode | resolved executor rules | task message | resolved provenance |
 
@@ -65,6 +67,41 @@ Node-agent must follow this contract:
 4. Treat `last_comment_id` as dispatch metadata. Switchyard advances it only after successful turn, so failed turns replay unconfirmed comments.
 
 Review comments use same session with explicit task, card, reviewer, and comment attribution. Comments arriving during active turn requeue card after turn completes. Existing in-flight cards without bindings adopt legacy `tasks.dsh_session_id` when available.
+
+### Worker-side session rules
+
+The binding is only useful if the worker preserves it. The worker must:
+
+- omit `--session-id` on an initial run and adopt the session ID DSH creates,
+  then return it in the result;
+- pass `--session-id <dispatched>` on every continuation and never clear or
+  replace it;
+- fail the run rather than downgrade to a cold session when the session cannot
+  be resumed, returning `dsh_session_conflict` instead of a new session;
+- verify the resumed session's cwd against the dispatched workspace and fail with
+  `dsh_workspace_mismatch` on divergence;
+- emit a `session` event from `--json`; no session event is
+  `dsh_session_missing`, never a silent success.
+
+Switchyard re-checks the returned identity: a session or workspace that differs
+from the dispatch is rejected, and a turn sequence that did not advance past the
+dispatched cursor is rejected as stale.
+
+### Isolated DSH home
+
+The worker runs headless `dsh` under an isolated `DSH_HOME`
+(`~/.dsh-nodeagent` by default) because `dsh web` holds an OS `flock(2)` write
+handle on `session.lock` for its whole process lifetime and the installed build
+never expires that lease. Sharing `~/.dsh` makes every continuation contend with
+the daemon; retry tuning does not fix it.
+
+Legacy sessions under `~/.dsh` are copied (never symlinked) into the isolated
+home on continuation, which gives the isolated home an independent lock inode.
+After a successful run the worker publishes the session back into `~/.dsh` —
+transcript **and** a `storages/workspace.json` registry entry, since the UI
+enumerates from the registry. The lock file is deliberately not published.
+
+Machine-readable worker contract: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
 
 ## Lifecycle
 

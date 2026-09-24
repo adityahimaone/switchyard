@@ -36,7 +36,7 @@ User membuat task dengan data eksplisit:
 - workspace path
 - workspace transport/target jika remote
 - assignee/profile
-- executor: `hermes`, `codex`, `shell`, atau compatibility `auto`
+- executor: `hermes`, `codex`, `commandcode`, `dsh`, `shell`, atau compatibility `auto`
 - priority
 - optional shell `command` for direct mode; new shell tasks default to agentic mode
 
@@ -93,10 +93,22 @@ Semua save wajib merge unknown keys seperti `luvus_workspace_id`, `remote`, dan 
 |---|---|---|---|---|
 | `hermes` | `hermes chat -q ...` | CodeGraph + prerequisites | task message | provenance `executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + prerequisites | task message | provenance `executor=codex` |
+| `commandcode` | `cmd -p ... --yolo` | CodeGraph + prerequisites | task message | provenance `executor=commandcode` |
+| `dsh` | `dsh --profile headless --json [--session-id <id>]` | health check + CodeGraph | task message | provenance `executor=dsh` + `dsh_session_id` |
 | `shell` | planner read-only → `bash -lc ...` | bounded iterations + optional shell preflight | intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | compatibility fallback | resolved runtime | task message | resolved provenance |
 
 Gunakan executor explicit saat membandingkan runtime. Jangan menyimpulkan executor dari durasi, title, atau teks `Sisyphus`.
+
+### DSH session continuity
+
+Task `dsh` memakai satu DeepSeek Harness session per card, disimpan di `harness_bindings`. Dispatcher mengirim `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id`, `run_id`, dan `session_continuation`; result wajib mengembalikan `dsh_workspace_id`, `dsh_session_id`, dan `last_turn_seq` tertinggi yang dikonsumsi.
+
+Worker tidak boleh menghapus `dsh_session_id`, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Session yang dikembalikan berbeda dari yang di-dispatch ditolak; stale turn sequence juga ditolak, sehingga hasil lama tidak menimpa run yang lebih baru.
+
+Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment biasa tidak membuka kembali card yang sudah `review`.
+
+Kontrak worker lengkap: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
 
 ## 7. F — Preflight
 
