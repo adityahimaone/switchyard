@@ -30,7 +30,7 @@ import { RingCenter } from "@/components/charts/ring-center"
 // ── types ──────────────────────────────────────────────────────────────────
 
 interface DaemonHealth { status: string; socket?: string }
-interface NodeHealth { status: string; nodes?: { node_id: string; hostname: string; status: string; last_seen: string }[]; error?: string }
+interface NodeHealth { status: string; nodes?: { node_id: string; hostname: string; status: string; last_seen: string; dsh_health?: { ok: boolean; version?: string; model?: string; provider?: string; error?: string; checked_at?: number } }[]; error?: string }
 
 type Overview = {
   metrics: { cpu_percent: number; memory_used_mb: number; memory_total_mb: number; goroutines: number }
@@ -202,12 +202,25 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
           {list.map((n) => {
             const isUp = n.status === "up" || n.status === "online"
             const last = n.last_seen ? new Date(Number(n.last_seen) > 1e10 ? Number(n.last_seen) : n.last_seen).toLocaleString("en-ID", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—"
+            const dh = n.dsh_health
+            const hasDsh = !!dh
+            const dshOk = hasDsh && dh.ok
             return (
               <div key={n.node_id} className="flex items-center gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 px-3 py-2">
                 <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"}`} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-[var(--color-ink-2)]" title={n.hostname}>{n.hostname}</p>
                   <p className="font-mono text-[10px] text-[var(--color-ink-4)]">last seen {last}</p>
+                  {hasDsh && (
+                    <div className="mt-1 flex items-center gap-2 text-[10px]">
+                      <span className={`size-2 rounded-full ${dshOk ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"}`} />
+                      <span className="font-mono text-[var(--color-ink-3)]">DSH</span>
+                      {dh.version && <span className="text-[var(--color-ink-4)]">{dh.version}</span>}
+                      {dh.model && <span className="text-[var(--color-ink-4)]">{dh.model}</span>}
+                      {dh.provider && <span className="text-[var(--color-ink-4)]">{dh.provider}</span>}
+                      {dh.error && !dshOk && <span className="text-[var(--color-danger)]">{dh.error}</span>}
+                    </div>
+                  )}
                 </div>
                 <span className={`shrink-0 font-mono text-[10px] uppercase ${isUp ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>{n.status}</span>
               </div>

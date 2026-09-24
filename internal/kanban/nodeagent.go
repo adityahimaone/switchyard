@@ -351,16 +351,28 @@ func finalizeRemoteTimeout(db *sql.DB, req NodeDispatchRequest, taskID string) (
 type NodeAgentStatus struct {
 	Status string `json:"status"` // up | down
 	Nodes  []struct {
-		NodeID     string            `json:"node_id"`
-		Hostname   string            `json:"hostname"`
-		Workspaces []string          `json:"workspaces"`
-		Executors  []string          `json:"executors,omitempty"`
-		Versions   map[string]string `json:"versions,omitempty"`
-		Transports []string          `json:"transports,omitempty"`
-		Status     string            `json:"status"`
-		LastSeen   string            `json:"last_seen"`
+		NodeID     string              `json:"node_id"`
+		Hostname   string              `json:"hostname"`
+		Workspaces []string            `json:"workspaces"`
+		Executors  []string            `json:"executors,omitempty"`
+		Versions   map[string]string   `json:"versions,omitempty"`
+		Transports []string            `json:"transports,omitempty"`
+		DSHHealth  *DSHHealthView      `json:"dsh_health,omitempty"`
+		Status     string              `json:"status"`
+		LastSeen   string              `json:"last_seen"`
 	} `json:"nodes,omitempty"`
 	Error string `json:"error,omitempty"`
+}
+
+// DSHHealthView mirrors node-agent's DSHHealth JSON so the Overview can render
+// the liveness snapshot served through /api/remote/nodes.
+type DSHHealthView struct {
+	OK        bool   `json:"ok"`
+	Version   string `json:"version,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Error     string `json:"error,omitempty"`
+	CheckedAt int64  `json:"checked_at"`
 }
 
 // NodeAgentHealth proxies node-agent /health.
