@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, GitBranch, KeyRound, MessageSquare, Terminal, Workflow, XCircle } from "lucide-react"
+import { BookOpen, BrainCircuit, CheckCircle2, GitBranch, KeyRound, MessageSquare, Terminal, Workflow, XCircle } from "lucide-react"
 
 const kanbanSections = [
   {
@@ -39,8 +39,18 @@ const chatSections = [
 const kanbanMatrix = [
   ["hermes", "hermes chat -q", "CodeGraph + prerequisites"],
   ["codex", "codex exec --full-auto", "CodeGraph + prerequisites"],
+  ["dsh", "dsh --profile headless --json", "health check + CodeGraph"],
   ["shell", "planner → bash -lc", "read-only plan + bounded iterations"],
   ["auto", "Hermes first; fallback", "Resolved executor decides"],
+]
+
+const dshContinuity = [
+  ["binding", "harness_bindings per card", "workspace + session + cursors"],
+  ["first run", "no --session-id sent", "DSH creates; worker returns real id"],
+  ["continuation", "--session-id <bound>", "same session, never cold"],
+  ["cursor", "last_turn_seq advances", "stale result rejected"],
+  ["comments", "last_comment_id advances on success", "failed turn replays comment"],
+  ["worker home", "isolated DSH_HOME", "keeps off dsh web flock"],
 ]
 
 const chatMatrix = [
@@ -60,6 +70,7 @@ export default function KnowledgePage() {
           <p className="mt-1 max-w-3xl text-xs text-[var(--color-ink-3)]">Kanban board flow dan Chat flow terpisah. Kanban untuk tracked task execution, Chat untuk direct agent conversation.</p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
             <a href="#kanban" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">kanban-board-flow.md</a>
+            <a href="#dsh" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">dsh-harness.md</a>
             <a href="#chat" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">chat-flow.md</a>
           </div>
         </header>
@@ -108,6 +119,16 @@ export default function KnowledgePage() {
           <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">State</th><th className="pb-2">What</th><th className="pb-2">UI</th></tr></thead><tbody>{chatMatrix.map(([state, what, ui]) => <tr key={state} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{state}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{what}</td><td className="py-2 text-[var(--color-ink-3)]">{ui}</td></tr>)}</tbody></table></div>
         </section>
 
+        <section id="dsh" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+          <div className="flex items-center gap-2"><BrainCircuit className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">DSH Harness — session continuity</h2></div>
+          <p className="mt-1 max-w-3xl text-[11px] text-[var(--color-ink-3)]">Executor DeepSeek Harness memakai satu session per card supaya setiap round review lanjut di session yang sama, bukan cold start. Switchyard menyimpan binding, worker menjaga identity, dan hasil yang berbeda dari yang di-dispatch ditolak.</p>
+          <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
+            <div>card executor dsh → ResolveHarnessBinding</div><div className="pl-4">↓ first run: session_id kosong → DSH create → worker return id</div><div className="pl-4">↓ dispatch: workspace_id + session_id + last_turn_seq + last_comment_id + run_id</div><div className="pl-4">↓ worker: --session-id bound, isolated DSH_HOME, no cold session</div><div className="pl-4">↓ result identity divalidasi (session/workspace/cursor)</div><div className="pl-4">↓ binding diupdate → review | todo (comment baru) | blocked</div><div className="pl-4">↓ comment + reopen-review → continuation round berikutnya</div>
+          </div>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{dshContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{aspect}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{behaviour}</td><td className="py-2 text-[var(--color-ink-3)]">{note}</td></tr>)}</tbody></table></div>
+          <p className="mt-3 text-[11px] leading-5 text-[var(--color-ink-3)]">Loop card: kirim comment lalu <span className="font-mono text-[var(--color-accent)]">reopen-review</span>. Comment biasa tidak membuka kembali card yang sudah <span className="font-mono">review</span>.</p>
+        </section>
+
         <section className="mt-3 grid gap-3 md:grid-cols-2">
           <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
             <div className="flex items-center gap-2"><KeyRound className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Boundary penting</h2></div>
@@ -118,12 +139,14 @@ export default function KnowledgePage() {
               <li>Node-agent job timeout default 10m; dispatcher wait = worker timeout + 2m.</li>
               <li>Review panel shows CodeGraph status and provenance without SSHing to the worker.</li>
               <li>Proof executor dari provenance, bukan dari teks output.</li>
+              <li>Card <span className="font-mono">dsh</span> terikat ke satu workspace dan satu session; pindah workspace atau ganti session ditolak, bukan di-retry.</li>
             </ul>
           </section>
           <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
             <div className="flex items-center gap-2"><BookOpen className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Full reference</h2></div>
             <ul className="mt-2 space-y-1 font-mono text-xs text-[var(--color-ink-3)]">
               <li><span className="text-[var(--color-accent)]">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>
+              <li><span className="text-[var(--color-accent)]">docs/features/dsh-harness.md</span> — DSH session continuity</li>
               <li><span className="text-[var(--color-accent)]">docs/features/chat-flow.md</span> — Chat A–Z</li>
               <li><span className="text-[var(--color-accent)]">docs/features/chat-flow-architecture.md</span> — Current chat internals</li>
               <li><span className="text-[var(--color-accent)]">docs/execution-flow.md</span> — Legacy execution flow</li>

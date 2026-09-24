@@ -108,7 +108,7 @@ Worker tidak boleh menghapus `dsh_session_id`, tidak boleh membuat session baru 
 
 Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment biasa tidak membuka kembali card yang sudah `review`.
 
-Kontrak worker lengkap: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
+Kontrak worker lengkap: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md). Feature knowledge Switchyard: [dsh-harness.md](dsh-harness.md).
 
 ## 7. F — Preflight
 

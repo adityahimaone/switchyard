@@ -101,7 +101,7 @@ After a successful run the worker publishes the session back into `~/.dsh` —
 transcript **and** a `storages/workspace.json` registry entry, since the UI
 enumerates from the registry. The lock file is deliberately not published.
 
-Machine-readable worker contract: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
+Machine-readable worker contract: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md). Switchyard feature knowledge: [docs/features/dsh-harness.md](features/dsh-harness.md).
 
 ## Lifecycle
 
