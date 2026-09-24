@@ -77,22 +77,43 @@ func taskStopRequested(taskID string) bool {
 	return activeRuns.stopped[taskID]
 }
 
-// hardGuardTransport is the permanent exit-code-3 killer: any todo task whose
-// workspace path can't exist on this VPS (/Users/..., C:\...) but has no ssh
-// transport gets auto-fixed to ssh BEFORE anything spawns. If a path looks
-// remote and transport is already 'node-agent' or 'ssh', it is left alone.
-func hardGuardTransport(db *sql.DB, id, ws, transport, target string) (string, string) {
-	remote := strings.HasPrefix(ws, "/Users/") || strings.HasPrefix(ws, "C:\\") || strings.HasPrefix(ws, "C:/")
-	if !remote || transport == "ssh" || transport == "node-agent" {
-		return transport, target
+// remoteTransportForPath classifies a workspace path for dispatch routing.
+// Remote paths (macOS /Users/..., Windows C:\...) can never run in a VPS-local
+// lane, so they must be owned by the node-agent transport — it is the only
+// path with per-session serialization, bounded conflict retry, and an isolated
+// DSH home. SSH transport is legacy; only an explicit 'ssh' is left alone.
+// changed reports whether the caller must persist the corrected routing.
+func remoteTransportForPath(ws, transport, target string) (string, string, bool) {
+	if transport == "ssh" || transport == "node-agent" {
+		return transport, target, false
 	}
 	tgt := target
-	if tgt == "" {
-		tgt = "mac-tailscale"
+	switch {
+	case strings.HasPrefix(ws, "/Users/"):
+		if tgt == "" {
+			tgt = "mac-tailscale"
+		}
+	case strings.HasPrefix(ws, "C:\\"), strings.HasPrefix(ws, "C:/"):
+		if tgt == "" {
+			tgt = "windows-tailscale"
+		}
+	default:
+		return transport, target, false
 	}
-	_, _ = db.Exec(`UPDATE tasks SET workspace_transport='ssh', workspace_ssh_target=? WHERE id=?`, tgt, id)
-	log.Printf("ssh-dispatcher: hard guard fixed %s transport %q->ssh (remote path %s)", id, transport, ws)
-	return "ssh", tgt
+	return "node-agent", tgt, true
+}
+
+// hardGuardTransport is the permanent exit-code-3 killer: any todo task whose
+// workspace path can't exist on this VPS (/Users/..., C:\...) but has no
+// transport gets routed to node-agent BEFORE anything spawns.
+func hardGuardTransport(db *sql.DB, id, ws, transport, target string) (string, string) {
+	next, tgt, changed := remoteTransportForPath(ws, transport, target)
+	if !changed {
+		return transport, target
+	}
+	_, _ = db.Exec(`UPDATE tasks SET workspace_transport=?, workspace_ssh_target=? WHERE id=?`, next, tgt, id)
+	log.Printf("dispatcher: hard guard routed %s transport %q->%s (remote path %s)", id, transport, next, ws)
+	return next, tgt
 }
 
 func dispatchSSHTasks() {
