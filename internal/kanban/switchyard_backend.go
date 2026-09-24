@@ -27,26 +27,36 @@ type TaskRun struct {
 }
 
 func usageFromJSON(raw string) (TaskRunUsage, bool) {
+	values := []any{}
 	var value any
-	if json.Unmarshal([]byte(raw), &value) != nil {
-		if !strings.Contains(raw, "\n") {
-			return TaskRunUsage{}, false
-		}
-		total := TaskRunUsage{}
-		found := false
+	if json.Unmarshal([]byte(raw), &value) == nil {
+		values = append(values, value)
+	} else {
 		for _, line := range strings.Split(raw, "\n") {
-			if strings.TrimSpace(line) == strings.TrimSpace(raw) {
-				continue
-			}
-			if usage, ok := usageFromJSON(strings.TrimSpace(line)); ok {
-				total.InputTokens += usage.InputTokens
-				total.OutputTokens += usage.OutputTokens
-				total.TotalTokens += usage.TotalTokens
-				total.CacheReadTokens += usage.CacheReadTokens
-				found = true
+			var item any
+			if json.Unmarshal([]byte(strings.TrimSpace(line)), &item) == nil {
+				values = append(values, item)
 			}
 		}
-		return total, found
+		if len(values) == 0 {
+			for pos := 0; pos < len(raw); pos++ {
+				if raw[pos] != '{' && raw[pos] != '[' {
+					continue
+				}
+				dec := json.NewDecoder(strings.NewReader(raw[pos:]))
+				var item any
+				if dec.Decode(&item) != nil {
+					continue
+				}
+				values = append(values, item)
+				if consumed := int(dec.InputOffset()); consumed > 0 {
+					pos += consumed - 1
+				}
+			}
+		}
+	}
+	if len(values) == 0 {
+		return TaskRunUsage{}, false
 	}
 	var walk func(any) (TaskRunUsage, bool)
 	walk = func(v any) (TaskRunUsage, bool) {
@@ -96,7 +106,21 @@ func usageFromJSON(raw string) (TaskRunUsage, bool) {
 		}
 		return TaskRunUsage{}, false
 	}
-	return walk(value)
+	total := TaskRunUsage{}
+	found := false
+	for _, item := range values {
+		if usage, ok := walk(item); ok {
+			total.InputTokens += usage.InputTokens
+			total.OutputTokens += usage.OutputTokens
+			total.TotalTokens += usage.TotalTokens
+			total.CacheReadTokens += usage.CacheReadTokens
+			found = true
+		}
+	}
+	if found && total.TotalTokens == 0 {
+		total.TotalTokens = total.InputTokens + total.OutputTokens
+	}
+	return total, found
 }
 
 type TaskDependency struct {

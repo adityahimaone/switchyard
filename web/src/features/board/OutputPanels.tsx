@@ -107,6 +107,12 @@ function prettyJSONLine(line: string) {
   }
 }
 
+function prettyJSONText(text: string) {
+  const whole = prettyJSONLine(text)
+  if (whole) return whole
+  return text.split("\n").flatMap((line) => prettyJSONLine(line)?.split("\n") ?? [line]).join("\n")
+}
+
 // heuristics when no ANSI
 function workerHint(line: string) {
   const l = line.toLowerCase()
@@ -457,8 +463,9 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
   if (executor === "dsh") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} />
   const [wrap, setWrap] = useState(true)
   const [open, setOpen] = useState(defaultOpen !== false)
-  const { copied, copy } = useCopy(text)
-  const lines = useMemo(() => text.split("\n"), [text])
+  const formattedText = useMemo(() => prettyJSONText(text), [text])
+  const { copied, copy } = useCopy(formattedText)
+  const lines = useMemo(() => formattedText.split("\n"), [formattedText])
 
   return (
     <div className="overflow-hidden rounded-xl border border-emerald-500/25 bg-[var(--color-surface-raised)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.08)]">
