@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment, useRef } from "react"
-import { ArrowDownToLine, Check, ChevronDown, Copy, FileCheck2, Terminal, BrainCircuit, ExternalLink, Layers3 } from "lucide-react"
+import { ArrowDownToLine, Check, ChevronDown, Copy, FileCheck2, Terminal, BrainCircuit, ExternalLink, Layers3, MessageCircle } from "lucide-react"
 import { toastGlobal, workerLog, type Task, type TaskEvent } from "../../api"
 
 function useCopy(text: string) {
@@ -175,20 +175,259 @@ function resultLineClass(line: string) {
   if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-red-600 dark:text-red-300"
   if (/^warn/i.test(t)) return "text-amber-600 dark:text-amber-300"
   if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-sky-600 dark:text-sky-300"
-  if (/^[+\-]{3}|^diff --/.test(t)) return t.startsWith("+") ? "text-emerald-600 dark:text-emerald-300" : t.startsWith("-") ? "text-red-500 dark:text-red-300" : "text-zinc-500"
+  if (/^[\+\-]{3}|^diff --/.test(t)) return t.startsWith("+") ? "text-emerald-600 dark:text-emerald-300" : t.startsWith("-") ? "text-red-500 dark:text-red-300" : "text-zinc-500"
   if (/^\s*[-*•]\s/.test(line)) return "text-[var(--color-ink-2)]"
   return "text-[var(--color-ink)]"
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// DSH log structured view
+// ──────────────────────────────────────────────────────────────────────
+
+interface ParsedDshLog {
+  meta: {
+    sessionId?: string
+    cwd?: string
+    workspace?: string
+  }
+  events: Array<{
+    kind: "turn" | "step" | "thinking" | "text" | "final" | "raw"
+    turn?: number
+    step?: number
+    text?: string
+    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; cacheReadTokens?: number }
+    rawLine?: string
+    collapsed?: boolean
+  }>
+  isDsh: boolean
+}
+
+function parseDshLogEvents(raw: string): ParsedDshLog {
+  const lines = raw.split("\n")
+  const events: ParsedDshLog["events"] = []
+  const meta: ParsedDshLog["meta"] = {}
+  let isDsh = false
+  let currentTurn: number | null = null
+  let currentStep: number | null = null
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    // Check for provenance line
+    if (trimmed.startsWith("provenance executor=dsh")) {
+      isDsh = true
+      const wsMatch = trimmed.match(/ws=([^\s]+)/)
+      const sessionMatch = trimmed.match(/dsh_session_id=([^\s]+)/)
+      const cwdMatch = trimmed.match(/dsh_session_cwd=([^\s]+)/)
+      if (wsMatch) meta.workspace = wsMatch[1]
+      if (sessionMatch) meta.sessionId = sessionMatch[1]
+      if (cwdMatch) meta.cwd = cwdMatch[1]
+      continue
+    }
+    // Provenance proof markers (duplicate provenance, EXECUTOR_PROOF) — meta already captured
+    if (trimmed.startsWith("provenance ") || trimmed.startsWith("EXECUTOR_PROOF=")) {
+      if (isDsh) continue
+    }
+
+    // Try parse JSON
+    let parsed: Record<string, unknown> | null = null
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        parsed = JSON.parse(trimmed) as Record<string, unknown>
+      } catch {
+        // not valid JSON
+      }
+    }
+
+    if (!parsed) {
+      events.push({ kind: "raw", rawLine: trimmed })
+      continue
+    }
+
+    const type = parsed.type
+    if (type === "session") {
+      isDsh = true
+      if (typeof parsed.sessionId === "string") meta.sessionId = parsed.sessionId
+      if (typeof parsed.cwd === "string") meta.cwd = parsed.cwd
+      continue
+    }
+    if (type === "status") {
+      isDsh = true
+      const phase = parsed.phase
+      const turn = typeof parsed.turn === "number" ? parsed.turn : undefined
+      const step = typeof parsed.step === "number" ? parsed.step : undefined
+      // eslint-friendly usage narrowing
+      const usageRaw = parsed.usage
+      const usage = usageRaw && typeof usageRaw === "object" ? usageRaw as Record<string, unknown> : undefined
+      const usageNum = (key: string) => {
+        const v = usage?.[key]
+        return typeof v === "number" ? v : undefined
+      }
+      if (phase === "turn_start") {
+        currentTurn = turn ?? null
+        events.push({ kind: "turn", turn: currentTurn ?? undefined })
+      } else if (phase === "step_start") {
+        currentStep = step ?? null
+        events.push({ kind: "step", turn, step: currentStep ?? undefined })
+      } else if (phase === "step_end") {
+        events.push({
+          kind: "text",
+          turn,
+          step,
+          text: `✓ step ${step ?? "?"} · ${usageNum("inputTokens") ?? 0} in / ${usageNum("outputTokens") ?? 0} out / total ${usageNum("totalTokens") ?? 0}${usageNum("cacheReadTokens") ? ` (cache ${usageNum("cacheReadTokens")})` : ""}`,
+        })
+      } else if (phase === "turn_end") {
+        events.push({ kind: "text", turn, text: "✓ turn complete" })
+      }
+      continue
+    }
+    if (type === "thinking") {
+      isDsh = true
+      events.push({
+        kind: "thinking",
+        turn: currentTurn ?? undefined,
+        step: currentStep ?? undefined,
+        text: typeof parsed.text === "string" ? parsed.text : "",
+        collapsed: true,
+      })
+      continue
+    }
+    if (type === "text") {
+      isDsh = true
+      events.push({
+        kind: "text",
+        turn: currentTurn ?? undefined,
+        step: currentStep ?? undefined,
+        text: typeof parsed.text === "string" ? parsed.text : "",
+      })
+      continue
+    }
+    if (type === "final") {
+      isDsh = true
+      events.push({
+        kind: "final",
+        turn: currentTurn ?? undefined,
+        text: typeof parsed.text === "string" ? parsed.text : "",
+      })
+      continue
+    }
+    if (typeof type === "string") {
+      // unknown DSH event type
+      isDsh = true
+      events.push({ kind: "raw", rawLine: trimmed })
+      continue
+    }
+    // Non-DSH line
+    events.push({ kind: "raw", rawLine: trimmed })
+  }
+
+  return { meta, events, isDsh }
+}
+
+function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta: ParsedDshLog["meta"] }) {
+  return (
+    <div className="space-y-2">
+      {meta.sessionId && (
+        <div className="flex flex-wrap gap-3 text-[10px] font-mono text-cyan-200/80 bg-cyan-500/5 rounded-lg p-2 border border-cyan-500/10">
+          {meta.sessionId && <span>Session: <span className="text-cyan-100 truncate max-w-[200px]">{meta.sessionId}</span></span>}
+          {meta.workspace && <span>Workspace: <span className="text-cyan-100 truncate max-w-[150px]">{meta.workspace.split("/").pop()}</span></span>}
+          {meta.cwd && <span>CWD: <span className="text-cyan-100 truncate max-w-[200px]">{meta.cwd}</span></span>}
+        </div>
+      )}
+      {events.map((event, idx) => {
+        switch (event.kind) {
+          case "turn":
+            return (
+              <div key={idx} className="text-xs font-semibold uppercase tracking-wider text-cyan-300 mt-2 mb-1">
+                Turn {event.turn}
+              </div>
+            )
+          case "step":
+            return (
+              <div key={idx} className="text-xs text-cyan-400/70 ml-2 mb-1">
+                Step {event.step}
+              </div>
+            )
+          case "thinking":
+            return (
+              <div key={idx} className="ml-4">
+                <CollapsibleThinking text={event.text ?? ""} defaultCollapsed={event.collapsed ?? true} />
+              </div>
+            )
+          case "text":
+            return (
+              <div key={idx} className={event.text?.startsWith("✓") ? "ml-4 text-emerald-500/80 text-[11px] font-mono" : "ml-4"}>
+                <LogLine line={event.text ?? ""} />
+              </div>
+            )
+          case "final":
+            return (
+              <div key={idx} className="ml-4 mt-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2">
+                <div className="text-xs font-semibold text-cyan-200 mb-1">Answer</div>
+                <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-cyan-100">{event.text}</div>
+              </div>
+            )
+          case "raw":
+            return <LogLine key={idx} line={event.rawLine ?? ""} />
+        }
+      })}
+    </div>
+  )
+}
+
+function CollapsibleThinking({ text, defaultCollapsed }: { text: string; defaultCollapsed: boolean }) {
+  const [open, setOpen] = useState(!defaultCollapsed)
+  return (
+    <div className="border-l-2 border-cyan-500/30 pl-2 ml-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] text-cyan-300/70 hover:text-cyan-200 font-mono"
+      >
+        <MessageCircle className="size-3" />
+        <span>{open ? "▼" : "▶"}</span>
+        <span className="italic">thinking</span>
+        <span className="text-cyan-500/50">…</span>
+      </button>
+      {open && (
+        <div className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-zinc-400 italic pl-2">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LogLine({ line }: { line: string }) {
+  const ansi = hasAnsi(line)
+  const hint = !ansi ? workerHint(line) : ""
+  const segs = ansiSpans(line)
+  return (
+    <div className={hint || "text-zinc-100"}>
+      {segs.map((s, k) => (
+        <span key={k} className={s.cls}>
+          {s.text}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; running?: boolean; slug?: string; taskId?: string }) {
   const [open, setOpen] = useState(true)
   const [wrap, setWrap] = useState(true)
+  const [dshView, setDshView] = useState<"structured" | "raw">("structured")
   const [liveText, setLiveText] = useState(text)
   const [follow, setFollow] = useState(false)
   const logViewportRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
   const initializedRef = useRef(false)
   const { copied, copy } = useCopy(liveText)
+
+  const dshLog = useMemo(() => parseDshLogEvents(liveText), [liveText])
+  const isDsh = dshLog.isDsh && dshLog.events.some((e) => e.kind !== "raw")
+  const effectiveView = isDsh ? dshView : "raw"
 
   useEffect(() => {
     if (!running) {
@@ -264,6 +503,17 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
           <span className={`size-1.5 rounded-full ${running ? "bg-sky-400 animate-pulse" : "bg-zinc-500"}`} />
           {running ? "live" : "exited"}
         </span>
+        {isDsh && (
+          <button
+            type="button"
+            onClick={() => setDshView((v) => (v === "structured" ? "raw" : "structured"))}
+            className="ml-2 inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors border-cyan-400/40 bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/25"
+            title={effectiveView === "structured" ? "Switch to raw JSONL view" : "Switch to structured view"}
+          >
+            <Layers3 className="size-3.5" />
+            <span className="hidden sm:inline">{effectiveView === "structured" ? "structured ▼" : "raw JSONL ▼"}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleFollow}
@@ -317,6 +567,11 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             className={`overflow-auto ${wrap ? "" : "overflow-x-auto"} scroll-smooth`}
             style={{ maxHeight: "28rem" }}
           >
+            {effectiveView === "structured" ? (
+              <div className="p-3">
+                <DshLogTimeline events={dshLog.events} meta={dshLog.meta} />
+              </div>
+            ) : (
             <div className="flex min-w-0">
               <div
                 aria-hidden
@@ -348,6 +603,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
                 })}
               </pre>
             </div>
+            )}
           </div>
           <div className="flex items-center justify-end gap-2 border-t border-white/5 bg-white/[0.02] px-3 py-2 sm:hidden">
             <button
