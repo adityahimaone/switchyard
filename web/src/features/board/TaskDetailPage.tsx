@@ -1,46 +1,59 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, COLUMNS, type Profile, type Status, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
-import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react"
+import { ArrowLeft, Check, ChevronDown, ChevronRight, GitBranch, History, Loader2, MessageSquare, Send, Trash2 } from "lucide-react"
 import { AttachmentChip } from "@/components/AttachmentChip"
 import type { Attachment } from "../../api"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
-import { ResultEmpty, ResultStack, WorkerLogPanel } from "./OutputPanels"
+import { TaskOutput } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
-
-const STATUS_CHIP: Record<string, string> = {
-  done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-  running: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-  blocked: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-  review: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-  archived: "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-400",
-}
+import {
+  AgentPicker, EmptyNote, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
+  Section, StatusBadge, TaskActions,
+} from "./taskDetailParts"
 
 type ReplyState = "idle" | "sent" | "notified" | "replied"
 
+const REPLY_STEPS = [
+  { key: "sent", label: "Sent" },
+  { key: "notified", label: "Agent notified" },
+  { key: "replied", label: "Agent replied" },
+] as const
+
+const REPLY_ORDER: Record<Exclude<ReplyState, "idle">, number> = { sent: 1, notified: 2, replied: 3 }
+
 function ReplyStatus({ state }: { state: ReplyState }) {
   if (state === "idle") return null
-  const steps = [
-    ["Sent", true],
-    ["Agent notified", state === "notified" || state === "replied"],
-    ["Agent replied", state === "replied"],
-  ] as const
+  const reached = REPLY_ORDER[state]
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]" aria-live="polite">
-      {steps.map(([label, active], index) => (
-        <span key={label} className={`rounded-full border px-2 py-0.5 ${active ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-[var(--color-line)] text-neutral-600"}`}>
-          {active ? "✓ " : "○ "}{label}
-          {index < steps.length - 1 && <span className="ml-1.5 text-neutral-600">·</span>}
-        </span>
-      ))}
-    </div>
+    <ol className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-live="polite">
+      {REPLY_STEPS.map((step, index) => {
+        const done = REPLY_ORDER[step.key] <= reached
+        return (
+          <li key={step.key} className="flex items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors ${
+                done
+                  ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                  : "border-[var(--color-line)] text-ink-4"
+              }`}
+            >
+              {done ? <Check className="size-3" aria-hidden /> : <span className="size-1.5 rounded-full bg-ink-4" aria-hidden />}
+              {step.label}
+            </span>
+            {index < REPLY_STEPS.length - 1 && <ChevronRight className="size-3 shrink-0 text-ink-4" aria-hidden />}
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -50,6 +63,8 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
   const [err, setErr] = useState<string | null>(null)
   const [replyState, setReplyState] = useState<ReplyState>("idle")
   const [lastSentAt, setLastSentAt] = useState(0)
+  const threadRef = useRef<HTMLDivElement>(null)
+  const previousCount = useRef(0)
 
   const comments = useQuery({
     queryKey: ["comments", slug, task.id],
@@ -63,6 +78,20 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
     if (replyState === "sent") setReplyState("notified")
     if (lastSentAt && latest.created_at >= lastSentAt && latest.author !== "board-ui") setReplyState("replied")
   }, [comments.data, lastSentAt, replyState])
+
+  /* Keep the newest message in view when one arrives, but only when the user
+     was already at the bottom. Otherwise scrolling fights the reader. */
+  useEffect(() => {
+    const count = comments.data?.length ?? 0
+    if (!count) return
+    const grew = count > previousCount.current
+    previousCount.current = count
+    if (!grew) return
+    const el = threadRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (nearBottom) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+  }, [comments.data])
 
   useEffect(() => openEventStream((event) => {
     if (event.data.task_id !== task.id) return
@@ -82,7 +111,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
       setDraft("")
       setLastSentAt(comment.created_at)
       setReplyState("sent")
-      toastGlobal(comment.requeued ? "Comment saved · task requeued to todo" : "Comment saved · task was not requeued", comment.requeued ? "success" : "info")
+      toastGlobal(comment.requeued ? "Comment sent. Task requeued to todo." : "Comment sent. Task was not requeued.", comment.requeued ? "success" : "info")
       qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
       qc.invalidateQueries({ queryKey: ["tasks", slug] })
@@ -90,65 +119,141 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
     onError: (e: Error) => setErr(e.message),
   })
 
-  // @mention chips: insert "@name " into draft
   function mention(name: string) {
     setDraft((d) => (d.endsWith(" ") || d === "" ? `${d}@${name} ` : `${d} @${name} `))
   }
 
+  const list = comments.data ?? []
+  const agentReplies = list.filter((c) => c.author !== "board-ui").length
+  const canSend = !!draft.trim() && !post.isPending
+
   return (
-    <div className="glass-inset-card rounded-lg p-3">
-      <div className="flex items-center gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Reply to agent</h3>
-        <div className="ml-auto flex flex-wrap gap-1">
-          {profiles.filter((p) => p.valid).map((p) => (
-            <button
-              key={p.name}
-              onClick={() => mention(p.name)}
-              className={`rounded-full border px-1.5 py-0.5 text-[10px] ${task.assignee === p.name ? "border-[var(--color-accent)]/50 bg-[var(--color-accent)]/10 text-[var(--color-accent)]" : "border-[var(--color-line)] text-neutral-400 hover:border-[var(--color-accent)]/40 hover:text-[var(--color-accent)]"}`}
-              title={`tag @${p.name}`}
-            >
-              @{p.name}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
-        {(comments.data ?? []).map((c) => (
-          <div key={c.id} className="rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1.5">
-            <p className="text-[10px] text-neutral-500">
-              <span className="font-medium text-neutral-300">{c.author}</span> · {new Date(c.created_at * 1000).toLocaleString()}
-            </p>
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-neutral-300">{c.body}</p>
+    <div className="flex min-h-0 flex-col">
+      <div className="flex flex-wrap items-center gap-2">
+        <MessageSquare className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+        <h3 className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Discussion</h3>
+        {list.length > 0 && (
+          <span className="text-2xs tabular-nums text-ink-4">
+            {list.length} {list.length === 1 ? "message" : "messages"}
+            {agentReplies > 0 && ` · ${agentReplies} from agent`}
+          </span>
+        )}
+
+        {profiles.filter((p) => p.valid).length > 0 && (
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            <span className="text-2xs text-ink-4">Tag</span>
+            {profiles.filter((p) => p.valid).map((p) => (
+              <button
+                key={p.name}
+                type="button"
+                onClick={() => mention(p.name)}
+                className={`inline-flex h-6 items-center rounded-full border px-2 text-2xs transition-colors ${
+                  task.assignee === p.name
+                    ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                    : "border-[var(--color-line)] text-ink-3 hover:border-[var(--color-line-strong)] hover:text-[var(--color-accent)]"
+                }`}
+                title={`Insert @${p.name} into the reply`}
+                aria-label={`Tag ${p.name}`}
+              >
+                @{p.name}
+              </button>
+            ))}
           </div>
-        ))}
-        {comments.isLoading && <p className="text-[11px] text-neutral-600">Loading comments…</p>}
-        {!comments.isLoading && !(comments.data ?? []).length && (
-          <p className="text-[11px] text-neutral-600">Belum ada komentar — tag agent buat ngobrol.</p>
         )}
       </div>
-      <Textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        rows={3}
-        placeholder={`Tulis balasan… tag @${task.assignee || "agent"} buat minta dia respond`}
-        className="mt-2 min-h-0 resize-none border-[var(--color-line)] bg-[var(--color-surface)] text-xs"
-      />
-      <ReplyStatus state={replyState} />
-      {err && <p className="mt-1 text-[11px] text-red-400">{err}</p>}
-      <div className="mt-1.5 flex justify-end">
-        <Button
-          size="sm"
-          disabled={!draft.trim() || post.isPending}
-          onClick={() => { setErr(null); post.mutate(draft.trim()) }}
-          className="gap-1 bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90"
-        >
-          {post.isPending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-          Send
-        </Button>
+
+      <div
+        ref={threadRef}
+        className="mt-2.5 max-h-[26rem] min-h-[6rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5"
+      >
+        {list.map((c) => {
+          const mine = c.author === "board-ui"
+          return (
+            <article
+              key={c.id}
+              className={`rounded-lg border px-3 py-2 ${
+                mine
+                  ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)]/40"
+                  : "border-[var(--color-line)] bg-[var(--color-surface)]/50"
+              }`}
+            >
+              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className={`text-meta font-semibold ${mine ? "text-[var(--color-accent)]" : "text-ink-2"}`}>
+                  {mine ? "You" : c.author}
+                </span>
+                <time
+                  className="font-mono text-2xs tabular-nums text-ink-4"
+                  dateTime={new Date(c.created_at * 1000).toISOString()}
+                >
+                  {new Date(c.created_at * 1000).toLocaleString()}
+                </time>
+                {!mine && (
+                  <span className="ml-auto shrink-0 rounded-full border border-[var(--color-line)] px-1.5 text-2xs text-ink-4">
+                    agent
+                  </span>
+                )}
+              </header>
+              <p className="mt-1 whitespace-pre-wrap break-words text-body leading-relaxed text-ink-2">{c.body}</p>
+            </article>
+          )
+        })}
+
+        {comments.isLoading && (
+          <div className="space-y-1.5" aria-hidden>
+            {[0, 1].map((i) => (
+              <div key={i} className="h-14 animate-pulse rounded-lg border border-[var(--color-line)] bg-[var(--color-line)]/20" />
+            ))}
+          </div>
+        )}
+
+        {!comments.isLoading && !list.length && (
+          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] px-3 py-8 text-center">
+            <MessageSquare className="size-5 text-ink-4" aria-hidden />
+            <p className="text-meta text-ink-3">No messages yet</p>
+            <p className="max-w-[40ch] text-2xs leading-relaxed text-ink-4">
+              Start a conversation. Comments are delivered into the agent's worker context, so a tagged
+              agent sees them on its next step.
+            </p>
+          </div>
+        )}
       </div>
-      <p className="mt-1 text-[10px] text-neutral-600">
-        Komen masuk ke worker context — kalau task done/blocked dan tag assignee, task auto balik ke todo biar agent respawn & bales.
-      </p>
+
+      <ReplyStatus state={replyState} />
+
+      <div className="mt-2.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/40 focus-within:border-[var(--color-line-strong)]">
+        <label htmlFor={`reply-${task.id}`} className="sr-only">Write a reply</label>
+        <Textarea
+          id={`reply-${task.id}`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSend) {
+              e.preventDefault()
+              setErr(null)
+              post.mutate(draft.trim())
+            }
+          }}
+          rows={3}
+          placeholder={`Reply to the agent… tag @${task.assignee || "an agent"} to get a response`}
+          className="min-h-0 resize-none border-none bg-transparent text-body focus-visible:ring-0"
+        />
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] px-2.5 py-2">
+          <p className="min-w-0 flex-1 text-2xs leading-relaxed text-ink-4">
+            If the task is done or blocked, tagging the assignee requeues it to todo so the agent respawns and replies.
+          </p>
+          <span className="hidden shrink-0 font-mono text-2xs text-ink-4 sm:inline">⌘↵</span>
+          <Button
+            size="sm"
+            disabled={!canSend}
+            onClick={() => { setErr(null); post.mutate(draft.trim()) }}
+            className="shrink-0 gap-1.5"
+          >
+            {post.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            Send
+          </Button>
+        </div>
+      </div>
+      {err && <p className="mt-1.5 text-meta text-danger-text">{err}</p>}
     </div>
   )
 }
@@ -156,47 +261,58 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
 function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone?: string }) {
   const long = value.length > FIELD_TRUNCATE_LEN
   const [expanded, setExpanded] = useState(false)
-  const toneCls = tone === "danger" ? "text-red-300" : tone === "warning" ? "text-amber-300" : "text-neutral-200"
-  if (!long) return <dd className={`break-all text-[11px] ${mono ? "font-mono" : ""} ${toneCls}`}>{value}</dd>
+  const toneCls = tone === "danger" ? "text-danger-text" : tone === "warning" ? "text-amber-300" : "text-ink-2"
+  if (!long) return <dd className={`break-all text-body ${mono ? "font-mono" : ""} ${toneCls}`}>{value}</dd>
   return (
-    <dd className={`break-all text-[11px] ${mono ? "font-mono" : ""} ${toneCls}`}>
-      {expanded ? value : value.slice(0, FIELD_TRUNCATE_LEN) + "…"}
-      <button type="button" onClick={() => setExpanded(v => !v)} className="ml-1 inline text-[10px] text-sky-400 hover:text-sky-300">
-        {expanded ? "collapse" : "expand"}
+    <dd className={`break-all text-body ${mono ? "font-mono" : ""} ${toneCls}`}>
+      {expanded ? value : `${value.slice(0, FIELD_TRUNCATE_LEN)}…`}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        className="-mb-1 ml-1 inline-flex h-6 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--color-line)]/50"
+      >
+        {expanded ? "Show less" : "Show more"}
       </button>
     </dd>
   )
 }
 
-/* Single event card — with collapsible fields for long values */
 function EventCardNode({ card }: { card: EventCard }) {
   const [open, setOpen] = useState(true)
   const hasContent = !!card.note || card.fields.length > 0
   return (
     <article className={`rounded-md border p-2 ${TONE_BORDER[card.tone]}`}>
-      <div className="flex items-center gap-2">
-        {hasContent && (
-          <button type="button" onClick={() => setOpen(v => !v)} className="shrink-0 text-neutral-500 hover:text-neutral-300">
-            {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+      <div className="flex items-center gap-1.5">
+        {hasContent ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={`${open ? "Collapse" : "Expand"} ${card.label}`}
+            onClick={() => setOpen((v) => !v)}
+            className="-ml-1 flex size-6 shrink-0 items-center justify-center rounded text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+          >
+            {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
+        ) : (
+          <span className="size-6 shrink-0" aria-hidden />
         )}
-        {!hasContent && <span className="size-3" />}
-        <span className="text-sm">{card.icon}</span>
-        <span className={`text-xs font-medium ${TONE_TEXT[card.tone]}`}>{card.label}</span>
-        <span className="ml-auto text-[10px] text-neutral-500">
+        <card.icon className={`size-3.5 shrink-0 ${TONE_TEXT[card.tone]}`} aria-hidden />
+        <span className={`min-w-0 flex-1 truncate text-body font-medium ${TONE_TEXT[card.tone]}`}>{card.label}</span>
+        <span className="shrink-0 font-mono text-2xs text-ink-4">
           {new Date(card.at * 1000).toLocaleTimeString()}
         </span>
       </div>
       {open && hasContent && (
         <>
           {card.note && (
-            <p className="mt-1 ml-5 break-words font-mono text-[11px] leading-relaxed text-neutral-300">{card.note}</p>
+            <p className="mt-1.5 ml-7.5 break-words font-mono text-body leading-relaxed text-ink-2">{card.note}</p>
           )}
           {card.fields.length > 0 && (
-            <dl className="mt-1 ml-5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5">
+            <dl className="mt-1.5 ml-7.5 space-y-0.5">
               {card.fields.map((f, i) => (
-                <div key={i} className="col-span-2 grid grid-cols-subgrid">
-                  <dt className="text-[10px] text-neutral-500">{f.label}</dt>
+                <div key={i} className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-2.5">
+                  <dt className="truncate text-2xs text-ink-4">{f.label}</dt>
                   <TruncValue value={f.value} mono={f.mono} tone={f.tone} />
                 </div>
               ))}
@@ -208,20 +324,22 @@ function EventCardNode({ card }: { card: EventCard }) {
   )
 }
 
-/* Collapsible event group (Outcome/Problem etc) — collapsed by default for Problem */
 function CollapsibleGroup({ group }: { group: EventGroup }) {
   const isProblem = group.title === "Problem"
   const [open, setOpen] = useState(!isProblem)
   return (
-    <section className="glass-inset-card min-w-0 rounded-lg p-3">
-      <button type="button" onClick={() => setOpen(v => !v)} className="flex w-full items-center gap-2 text-left hover:opacity-80">
-        {open ? <ChevronDown className="size-3.5 shrink-0 text-neutral-500" /> : <ChevronRight className="size-3.5 shrink-0 text-neutral-500" />}
-        <span className={`size-2 rounded-full ${TONE_DOT[group.tone]}`} />
-        <h4 className={`text-[11px] font-semibold uppercase tracking-wider ${TONE_TEXT[group.tone]}`}>
-          {group.title}
-        </h4>
-        <span className="h-px flex-1 bg-[var(--color-line)]" />
-        <span className="text-[10px] text-neutral-600">{group.cards.length}</span>
+    <Section className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="group/head -mx-1 flex w-full items-center gap-1.5 rounded px-1 text-left"
+      >
+        {open ? <ChevronDown className="size-3.5 shrink-0 text-ink-4" /> : <ChevronRight className="size-3.5 shrink-0 text-ink-4" />}
+        <span className={`size-2 shrink-0 rounded-full ${TONE_DOT[group.tone]}`} aria-hidden />
+        <h3 className={`text-2xs font-semibold uppercase tracking-[0.14em] ${TONE_TEXT[group.tone]}`}>{group.title}</h3>
+        <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
+        <span className="shrink-0 text-2xs tabular-nums text-ink-4">{group.cards.length}</span>
       </button>
       {open && (
         <div className="mt-2 space-y-1.5">
@@ -230,7 +348,7 @@ function CollapsibleGroup({ group }: { group: EventGroup }) {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   )
 }
 
@@ -249,7 +367,7 @@ export default function TaskDetailPage({
   profiles: Profile[]
   workspaces: Workspace[]
   onBack: () => void
-  onMove: (s: Status) => Promise<void>
+  onMove: (s: Task["status"]) => Promise<void>
   onStop: () => Promise<void>
   onReassign: (a: string) => Promise<void>
 }) {
@@ -283,7 +401,7 @@ export default function TaskDetailPage({
   const boardTasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`) })
   const dependencyChoices = useMemo(() => {
     const taken = new Set((dependencies.data ?? []).map((d) => d.depends_on_id))
-    return (boardTasks.data ?? []).filter((t) => t.id !== task.id && !taken.has(t.id)).map((t) => ({ id: t.id, title: t.title, status: t.status }))
+    return (boardTasks.data ?? []).filter((t) => t.id !== task.id && !taken.has(t.id)).map((t) => ({ id: t.id, title: t.title }))
   }, [boardTasks.data, dependencies.data, task.id])
   const dependencyMutation = useMutation({
     mutationFn: (dependsOnId: string) => addTaskDependency(slug, task.id, dependsOnId),
@@ -313,7 +431,10 @@ export default function TaskDetailPage({
     onError: (e: Error) => toastGlobal(e.message, "error"),
   })
   const cancelMutation = useMutation({
-    mutationFn: () => cancelRun(slug, task.id),
+    mutationFn: async () => {
+      await cancelRun(slug, task.id)
+      await onStop()
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks", slug] })
       qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
@@ -330,236 +451,243 @@ export default function TaskDetailPage({
       qc.invalidateQueries({ queryKey: ["health", slug, task.id] })
     },
   })
-  const healthTone = health.data?.health === "healthy" ? "text-emerald-300" : health.data?.health === "silent" ? "text-amber-300" : "text-red-300"
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const groups = events.data ? parseEventCards(events.data) : []
   const resultSplit = task.result ? splitAgentResult(task.result) : null
   const jev = parseTaskExecutionMeta(task.execution_meta)
+  const runReason = queueReason(task, profile)
+  const eventCount = events.data?.length ?? 0
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <div className="mx-auto flex w-full max-w-[1180px] flex-col px-4 py-4 sm:px-5 lg:px-8">
-      {/* top bar: back + title */}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onBack} className="gap-1 border-[var(--color-line)] bg-[var(--color-surface)] text-neutral-300">
-          <ArrowLeft className="size-3.5" /> Board
-        </Button>
-        <h1 className="truncate text-base font-semibold">{task.title}</h1>
-      </div>
-
-      {/* header card */}
-      <div className="mt-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
-          <Badge variant="outline" className="px-1.5 py-0 font-mono text-[9px] leading-none text-neutral-400">{task.id}</Badge>
-          <Badge variant="outline" className={`px-1.5 py-0 text-[9px] leading-none ${STATUS_CHIP[task.status] ?? "border-[var(--color-line)] bg-[var(--color-inset)] text-neutral-300"}`}>{task.status}</Badge>
-          {task.priority > 0 && (
-            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[9px] leading-none text-amber-300">P{task.priority}</Badge>
-          )}
-          {jev && <><Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] leading-none text-violet-200">JEV {jev.case}</Badge><Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-[9px] leading-none text-violet-200">{jev.scope}</Badge></>}
-          <span>dibuat {new Date(task.created_at * 1000).toLocaleString()}</span>
-          {task.completed_at && <span>· selesai {new Date(task.completed_at * 1000).toLocaleString()}</span>}
-        </div>
-        <AgentTaskStatus task={task} events={events.data ?? []} />
-        <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} runs={runs.data ?? []} tasks={boardTasks.data ?? []} />
-
-        {/* meta grid */}
-        <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <div className="glass-inset-card rounded-lg p-2.5">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Agent</label>
-            <Select
-              value={task.assignee || "unassigned"}
-              onValueChange={(v) => onReassign(v === "unassigned" ? "" : v).catch((err: Error) => toastGlobal(err.message, "error"))}
-              disabled={task.status === "running"}
-            >
-              <SelectTrigger className="mt-1 h-8 w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs disabled:opacity-50">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 border-[var(--color-line)] bg-[var(--color-surface)]">
-                <SelectItem value="unassigned" className="text-xs">unassigned</SelectItem>
-                {profiles.map((p) => (
-                  <SelectItem key={p.name} value={p.name} disabled={!p.valid} className="text-xs">
-                    {p.name}{p.active ? " (active)" : ""}{!p.valid ? " (broken)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {profile && (
-              <p className="mt-1 truncate text-[10px] text-neutral-500" title={`${profile.model || "—"} · ${profile.provider || "—"}`}>
-                {profile.model || "—"} · {profile.provider || "—"}
-              </p>
-            )}
-            {profile && !profile.valid && (
-              <p className="mt-0.5 text-[10px] text-red-400">Provider invalid — worker bakal crash.</p>
-            )}
-          </div>
-          <div className="min-w-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-2.5">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Workspace</label>
-            <p className="mt-1 truncate text-xs text-neutral-300" title={task.workspace_path || "scratch"}>
-              {ws ? ws.name : task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "scratch"}
-            </p>
-            <p className="mt-0.5 truncate font-mono text-[10px] text-neutral-500">{task.workspace_kind || "dir"}{ws?.host ? ` · ${ws.host}` : ""}</p>
-            {task.consecutive_failures > 0 && (
-              <p className="mt-0.5 text-[10px] text-red-400">{task.consecutive_failures} consecutive failures</p>
-            )}
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to board" title="Back to board">
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-ink" title={task.title}>{task.title}</h1>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <StatusBadge status={task.status} />
+            <PriorityBadge priority={task.priority} />
           </div>
         </div>
 
-        {jev && (
-          <div className="glass-inset-card mt-3 rounded-lg p-2.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] uppercase tracking-wider text-violet-300/80">JEV routing</label>
-              <span className="text-[10px] text-neutral-500">{jev.source}</span>
+        <Tabs defaultValue="overview" className="mt-4">
+          <TabsList variant="line" className="w-full justify-start gap-1 border-b border-[var(--color-line)] pb-0">
+            <TabsTrigger value="overview" className="gap-1.5 text-meta"><GitBranch className="size-3.5" />Overview</TabsTrigger>
+            <TabsTrigger value="output" className="gap-1.5 text-meta">Output</TabsTrigger>
+            <TabsTrigger value="discussion" className="gap-1.5 text-meta"><MessageSquare className="size-3.5" />Discussion</TabsTrigger>
+            <TabsTrigger value="history" className="gap-1.5 text-meta">
+              <History className="size-3.5" />History
+              {eventCount > 0 && <span className="rounded-full bg-[var(--color-line)]/60 px-1.5 text-2xs tabular-nums text-ink-3">{eventCount}</span>}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ---------------------------------------------------- overview -- */}
+          <TabsContent value="overview" className="mt-4 space-y-3">
+            <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className="px-1.5 py-0 font-mono text-2xs leading-none text-ink-3">{task.id}</Badge>
+                {jev && <Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-2xs leading-none text-violet-200">JEV {jev.case}</Badge>}
+                <span className="text-2xs text-ink-4">created {new Date(task.created_at * 1000).toLocaleString()}</span>
+                {task.completed_at && <span className="text-2xs text-ink-4">· finished {new Date(task.completed_at * 1000).toLocaleString()}</span>}
+              </div>
+
+              <div className="mt-3 space-y-3">
+                <AgentTaskStatus task={task} events={events.data ?? []} />
+                <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} runs={runs.data ?? []} tasks={boardTasks.data ?? []} />
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <AgentPicker
+                  task={task}
+                  profiles={profiles}
+                  onReassign={onReassign}
+                  onError={(m) => toastGlobal(m, "error")}
+                />
+                <Section title="Workspace">
+                  <p className="truncate text-body text-ink-2" title={task.workspace_path || "scratch"}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <OsIcon ws={ws} />
+                      {ws ? ws.name : task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "scratch"}
+                    </span>
+                  </p>
+                  <p className="mt-1.5 truncate font-mono text-2xs text-ink-4">
+                    {task.workspace_kind || "dir"}{ws?.host ? ` · ${ws.host}` : ""}
+                  </p>
+                  {task.consecutive_failures > 0 && (
+                    <p className="mt-1 text-2xs text-danger-text">{task.consecutive_failures} consecutive failures</p>
+                  )}
+                </Section>
+              </div>
+
+              {jev && (
+                <Section title={<span className="text-violet-300">JEV routing</span>} className="mt-2.5">
+                  <FieldList>
+                    <Field label="Case">{jev.case}</Field>
+                    <Field label="Scope">{jev.scope}</Field>
+                    <Field label="Confidence">{(jev.confidence * 100).toFixed(0)}%</Field>
+                    <Field label="Source">{jev.source}</Field>
+                    <Field label="Input tokens">{jev.input_tokens ?? 0}</Field>
+                    {jev.model && <Field label="Model">{jev.model}</Field>}
+                  </FieldList>
+                </Section>
+              )}
+
+              {task.body && (
+                <Section title="Description" className="mt-2.5">
+                  <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body leading-relaxed text-ink-2">
+                    {task.body}
+                  </p>
+                </Section>
+              )}
+
+              {(attachments.data ?? []).length > 0 && (
+                <Section title="Attachments" className="mt-2.5">
+                  <div className="flex flex-wrap gap-2">
+                    {attachments.data!.map((a) => <AttachmentChip key={a.id} att={a} showPreview />)}
+                  </div>
+                </Section>
+              )}
+
+              {task.last_failure_error && <FailureBlock message={task.last_failure_error} className="mt-2.5" />}
+
+              <TaskActions
+                className="mt-3"
+                task={task}
+                health={health.data}
+                canRelease={canRelease}
+                onRun={() => runMutation.mutate()}
+                runPending={runMutation.isPending}
+                runDisabledReason={runReason}
+                onStop={() => cancelMutation.mutate()}
+                stopPending={cancelMutation.isPending}
+                onMove={(s) => onMove(s).catch((e: Error) => toastGlobal(e.message, "error"))}
+                onControl={(a) => control.mutate(a)}
+                controlPending={control.isPending}
+                error={control.error ? (control.error as Error).message : undefined}
+              />
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-              <span className="text-neutral-500">Case <strong className="ml-1 font-medium text-neutral-200">{jev.case}</strong></span>
-              <span className="text-neutral-500">Scope <strong className="ml-1 font-medium text-neutral-200">{jev.scope}</strong></span>
-              <span className="text-neutral-500">Confidence <strong className="ml-1 font-medium text-neutral-200">{(jev.confidence * 100).toFixed(0)}%</strong></span>
-              <span className="text-neutral-500">Input <strong className="ml-1 font-medium text-neutral-200">{jev.input_tokens ?? 0} tokens</strong></span>
+
+            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+              <Section title={<><GitBranch className="size-3" /> Dependencies</>}>
+                <div className="space-y-1">
+                  {(dependencies.data ?? []).map((d) => {
+                    const dep = boardTasks.data?.find((t) => t.id === d.depends_on_id)
+                    return (
+                      <div key={d.depends_on_id} className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-2 py-1.5">
+                        <span className="min-w-0 flex-1 truncate font-mono text-meta" title={dep ? `${dep.id} · ${dep.title}` : d.depends_on_id}>
+                          {dep ? `${dep.id} — ${dep.title}` : d.depends_on_id}
+                        </span>
+                        {dep && <StatusBadge status={dep.status} />}
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`Remove dependency ${dep?.title ?? d.depends_on_id}`}
+                          onClick={() => removeDependency.mutate(d.depends_on_id)}
+                          disabled={removeDependency.isPending}
+                          className="text-danger-text hover:bg-danger/10"
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                  {!(dependencies.data ?? []).length && (
+                    <EmptyNote icon={<GitBranch className="size-4" />} title="No dependencies" hint="This task does not wait on any other task." />
+                  )}
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5">
+                  <label htmlFor={`dep-${task.id}`} className="sr-only">Task to depend on</label>
+                  <Input
+                    id={`dep-${task.id}`}
+                    value={dependencyId}
+                    onChange={(e) => setDependencyId(e.target.value)}
+                    placeholder="Task ID…"
+                    className="h-8 min-w-0 flex-1 font-mono text-body"
+                  />
+                  <Select value={dependencyId} onValueChange={setDependencyId}>
+                    <SelectTrigger size="sm" className="w-32 text-body" aria-label="Pick a task to depend on">
+                      <SelectValue placeholder="Pick" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {dependencyChoices.map((t) => (
+                        <SelectItem key={t.id} value={t.id} className="font-mono text-body">
+                          {t.id} · {t.title.slice(0, 28)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!dependencyId.trim() || dependencyMutation.isPending}
+                    onClick={() => dependencyMutation.mutate(dependencyId.trim())}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </Section>
+
+              <Section title="Runs">
+                <div className="space-y-1.5">
+                  {(runs.data ?? []).map((run) => (
+                    <div key={run.index} className="rounded-md border border-[var(--color-line)] px-2 py-1.5">
+                      <div className="flex items-center gap-2 text-meta">
+                        <span className="font-medium text-ink-2">Run {run.index}</span>
+                        <span className="text-ink-4">{run.outcome}</span>
+                        <span className="ml-auto text-2xs tabular-nums text-ink-4">{run.events.length} events</span>
+                      </div>
+                      {run.usage && run.usage.totalTokens > 0 && (
+                        <dl className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-ink-3">
+                          <span>{run.usage.totalTokens.toLocaleString()} total</span>
+                          <span>{run.usage.inputTokens.toLocaleString()} in</span>
+                          <span>{run.usage.outputTokens.toLocaleString()} out</span>
+                          <span>{run.usage.cacheReadTokens.toLocaleString()} cache</span>
+                        </dl>
+                      )}
+                    </div>
+                  ))}
+                  {!runs.data?.length && (
+                    <EmptyNote title="No runs yet" hint="Each attempt gets its own run record with events and token usage." />
+                  )}
+                </div>
+              </Section>
             </div>
-            {jev.model && <p className="mt-1 truncate text-[10px] text-neutral-600">model: {jev.model}</p>}
-          </div>
-        )}
 
-        {task.body && (
-          <div className="glass-inset-card mt-3 max-h-28 overflow-y-auto rounded-lg p-2.5">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Deskripsi</label>
-            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-300">{task.body}</p>
-          </div>
-        )}
-        {(attachments.data ?? []).length > 0 && (
-          <div className="glass-inset-card mt-3 rounded-lg p-2.5">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Attachments</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {attachments.data!.map((a) => <AttachmentChip key={a.id} att={a} showPreview />)}
-            </div>
-          </div>
-        )}
-        {task.last_failure_error && (
-          <p className="mt-3 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] leading-relaxed text-red-300">{task.last_failure_error}</p>
-        )}
-        {task.status === "running" && (
-          <div className="mt-3">
-            <WorkerLogPanel text={resultSplit?.working ?? ""} running slug={slug} taskId={task.id} />
-          </div>
-        )}
-        {resultSplit ? (
-          <div className="mt-3">
-            <ResultStack task={task} events={events.data || []} />
-          </div>
-        ) : task.status !== "running" ? (
-          <div className="mt-3">
-            <ResultEmpty running={false} />
-          </div>
-        ) : null}
+            {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onBack} />}
+          </TabsContent>
 
-        {task.status === "review" && (
-          <div className="mt-3">
-            <ReviewSection slug={slug} task={task} onDone={onBack} />
-          </div>
-        )}
+          {/* ------------------------------------------------------ output -- */}
+          <TabsContent value="output" className="mt-4 space-y-4">
+            <TaskOutput
+              task={task}
+              events={events.data || []}
+              working={resultSplit?.working ?? ""}
+              running={task.status === "running"}
+              slug={slug}
+            />
+            {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onBack} />}
+          </TabsContent>
 
-        {/* run-control */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {task.status !== "running" && task.status !== "archived" && (() => {
-            const reason = queueReason(task, profile)
-            return <Button variant="outline" size="sm" disabled={!!reason || runMutation.isPending} onClick={() => runMutation.mutate()} title={reason ?? "Queue task now"} className="h-6 px-2 text-[10px]">{runMutation.isPending ? "Queueing…" : "Run now"}</Button>
-          })()}
-          {task.status === "running" && (
-            <Button variant="outline" size="sm" disabled={cancelMutation.isPending} onClick={() => cancelMutation.mutate()} className="h-6 gap-1 rounded border-red-500/40 px-2 text-[10px] text-red-300"><Square className="size-2.5 fill-current" /> {cancelMutation.isPending ? "Stopping…" : "Stop run"}</Button>
-          )}
-          {task.status === "running" && health.data && (
-            <span className={`text-[10px] uppercase tracking-wider ${healthTone}`} title={health.data.reason}>
-              health: {health.data.health}
-            </span>
-          )}
-          {task.status !== "running" && task.status !== "archived" && (
-            <Button variant="outline" size="sm" disabled={control.isPending} onClick={() => control.mutate("retry")} className="h-6 px-2 text-[10px]">Retry</Button>
-          )}
-          {canRelease && (
-            <Button variant="outline" size="sm" disabled={control.isPending} onClick={() => control.mutate("release")} className="h-6 border-red-500/40 px-2 text-[10px] text-red-300">Release stale run</Button>
-          )}
-          {task.status !== "running" && (
-            <Button variant="outline" size="sm" disabled={control.isPending} onClick={() => control.mutate("clone")} className="h-6 px-2 text-[10px]">Clone</Button>
-          )}
-          {control.error && <span className="text-[10px] text-red-300">{(control.error as Error).message}</span>}
-        </div>
+          {/* -------------------------------------------------- discussion -- */}
+          <TabsContent value="discussion" className="mt-4">
+            <CommentSection slug={slug} task={task} profiles={profiles} />
+          </TabsContent>
 
-        {/* status moves */}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {task.status === "running" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onStop().catch((e: Error) => toastGlobal(e.message, "error"))}
-              className="h-6 gap-1 rounded border-red-500/40 px-2 text-[10px] text-red-300 hover:bg-red-500/10 hover:text-red-200"
-            >
-              <Square className="size-2.5 fill-current" /> Stop task
-            </Button>
-          )}
-          {task.status !== "running" && COLUMNS.filter((s) => s !== task.status).map((s) => (
-            <Button
-              key={s}
-              variant="outline"
-              size="sm"
-              onClick={() => onMove(s).catch((e: Error) => toastGlobal(e.message, "error"))}
-              className="h-6 rounded px-2 text-[10px] text-neutral-400 hover:border-[var(--color-accent)]/50 hover:text-[var(--color-accent)]"
-            >
-              → {s}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* reply */}
-      <div className="mt-4">
-        <CommentSection slug={slug} task={task} profiles={profiles} />
-      </div>
-
-      <section className="mt-4 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-        <div className="glass-inset-card rounded-lg p-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Dependencies</h3>
-          <div className="mt-2 space-y-1">
-            {(dependencies.data ?? []).map((d) => {
-              const dep = boardTasks.data?.find((t) => t.id === d.depends_on_id)
-              return <div key={d.depends_on_id} className="flex items-center gap-2 rounded border border-[var(--color-line)] px-2 py-1.5 text-[11px]"><span className="min-w-0 flex-1 truncate font-mono" title={dep ? `${dep.id} · ${dep.title}` : d.depends_on_id}>{dep ? `${dep.id} — ${dep.title}` : d.depends_on_id}</span><span className="shrink-0 text-[10px] text-neutral-500">{dep?.status ?? ""}</span><Button variant="ghost" size="sm" onClick={() => removeDependency.mutate(d.depends_on_id)} disabled={removeDependency.isPending} className="h-6 px-1.5 text-[10px] text-red-300">Remove</Button></div>
-            })}
-            {(dependencies.data ?? []).length === 0 && <p className="text-[11px] text-neutral-600">No dependencies</p>}
-          </div>
-          <div className="mt-2 flex gap-1.5">
-            <Input value={dependencyId} onChange={(e) => setDependencyId(e.target.value)} placeholder="Task ID…" className="h-8 min-w-0 flex-1 border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs" />
-            <Select value={dependencyId} onValueChange={setDependencyId}>
-              <SelectTrigger className="h-8 w-28 border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue placeholder="Pick" /></SelectTrigger>
-              <SelectContent className="max-h-64 border-[var(--color-line)] bg-[var(--color-surface)]">
-                {dependencyChoices.map((t) => <SelectItem key={t.id} value={t.id} className="font-mono text-xs">{t.id} · {t.title.slice(0, 28)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" disabled={!dependencyId.trim() || dependencyMutation.isPending} onClick={() => dependencyMutation.mutate(dependencyId.trim())}>Add</Button>
-          </div>
-        </div>
-        <div className="glass-inset-card rounded-lg p-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Runs</h3>
-          <div className="mt-2 space-y-1.5">
-            {(runs.data ?? []).map((run) => <div key={run.index} className="rounded border border-[var(--color-line)] px-2 py-1.5 text-[11px]"><div className="flex items-center gap-2"><span className="font-mono">Run {run.index}</span><span className="text-neutral-500">{run.outcome}</span><span className="ml-auto text-[10px] text-neutral-600">{run.events.length} events</span></div>{run.usage?.totalTokens > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-violet-300/80"><span>{run.usage.totalTokens.toLocaleString()} total</span><span>{run.usage.inputTokens.toLocaleString()} in</span><span>{run.usage.outputTokens.toLocaleString()} out</span><span>{run.usage.cacheReadTokens.toLocaleString()} cache</span></div>}</div>)}
-            {!runs.data?.length && <p className="text-[11px] text-neutral-600">No runs</p>}
-          </div>
-        </div>
-      </section>
-
-      {/* history — grouped columns */}
-      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-        History {events.data ? `· ${events.data.length} event` : ""}
-      </h3>
-      <div className="mt-2.5 grid grid-cols-1 gap-3.5 pb-5 lg:grid-cols-3">
-        {events.isLoading ? (
-          <p className="text-xs text-neutral-500">Loading…</p>
-        ) : !events.data?.length ? (
-          <p className="text-xs text-neutral-500">No events</p>
-        ) : (
-          groups.map((g) => (
-            <CollapsibleGroup key={g.title} group={g} />
-          ))
-        )}
-      </div>
+          {/* ----------------------------------------------------- history -- */}
+          <TabsContent value="history" className="mt-4">
+            {events.isLoading ? (
+              <EmptyNote title="Loading events…" />
+            ) : !groups.length ? (
+              <EmptyNote icon={<History className="size-4" />} title="No events yet" hint="Lifecycle events appear here as the task is created, assigned and run." />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 pb-4 md:grid-cols-2 xl:grid-cols-3">
+                {groups.map((g) => <CollapsibleGroup key={g.title} group={g} />)}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

@@ -94,19 +94,32 @@ Semua save wajib merge unknown keys seperti `luvus_workspace_id`, `remote`, dan 
 | `hermes` | `hermes chat -q ...` | CodeGraph + prerequisites | task message | provenance `executor=hermes` |
 | `codex` | `codex exec --full-auto ...` | CodeGraph + prerequisites | task message | provenance `executor=codex` |
 | `dsh` | `dsh --profile headless --json [--session-id <id>]` | health check + CodeGraph | task message | provenance `executor=dsh` + `dsh_session_id` |
-| `commandcode` | `cmd -p ... --yolo` | CodeGraph + prerequisites | task message | provenance `executor=commandcode` |
+| `commandcode` | `cmd -p --yolo --output-format json [--resume <id>]` | binary probe + CodeGraph | task message | provenance `executor=commandcode` + `commandcode_session_id` |
 | `shell` | planner read-only → `bash -lc ...` | bounded iterations + optional shell preflight | intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | compatibility fallback | resolved runtime | task message | resolved provenance |
 
 Gunakan executor explicit saat membandingkan runtime. Jangan menyimpulkan executor dari durasi, title, atau teks `Sisyphus`.
 
-### DSH session continuity
+### Session continuity (dsh dan commandcode)
 
-Task `dsh` memakai satu DeepSeek Harness session per card, disimpan di `harness_bindings`. Dispatcher mengirim `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id`, `run_id`, dan `session_continuation`; result wajib mengembalikan `dsh_workspace_id`, `dsh_session_id`, dan `last_turn_seq` tertinggi yang dikonsumsi.
+Task `dsh` dan `commandcode` memakai satu session per card, disimpan di `harness_bindings` dengan kolom `harness_kind` yang mencatat harness pemiliknya. Kind berbeda memakai field identitas berbeda, jadi binding `dsh` tidak akan tertukar dengan `commandcode`.
 
-Worker tidak boleh menghapus `dsh_session_id`, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Session yang dikembalikan berbeda dari yang di-dispatch ditolak; stale turn sequence juga ditolak, sehingga hasil lama tidak menimpa run yang lebih baru.
+Task `dsh` mengirim `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id`, `run_id`, dan `session_continuation`; result wajib mengembalikan `dsh_workspace_id`, `dsh_session_id`, dan `last_turn_seq` tertinggi yang dikonsumsi.
 
-Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment biasa tidak membuka kembali card yang sudah `review`.
+Task `commandcode` mengirim `commandcode_session_id` dan `last_comment_id`; result mengembalikan `commandcode_session_id` dari frame `{"type":"result"}`.
+
+Aturan yang sama berlaku untuk keduanya:
+
+- run pertama mengirim session id **kosong** supaya worker membuat session sungguhan dan mengembalikan id-nya;
+- continuation mengirim id yang terikat dan wajib melanjutkan session itu;
+- `last_comment_id` maju hanya setelah turn sukses, sehingga turn gagal mengulang comment yang belum dikonfirmasi;
+- session yang dikembalikan berbeda dari yang di-dispatch ditolak (`<harness>_identity_rejected`) dan card masuk `blocked`.
+
+Bedanya ada di pagar pengaman. `dsh` melaporkan workspace id dan urutan turn monotonik, sehingga mismatch identity, workspace kosong, dan turn basi semuanya ditolak. `commandcode` tidak melaporkan keduanya — result JSON-nya hanya membawa `sessionId`. Karena itu pemeriksaan khusus `dsh` dilewati dan **pagar kepemilikan run** (`current_run_id` yang diperiksa di dalam transaksi finalize) menjadi satu-satunya pelindung dari hasil basi.
+
+Detail per-harness: [dsh-harness.md](dsh-harness.md) dan [commandcode-executor.md](commandcode-executor.md).
+
+Worker tidak boleh menghapus session id, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment biasa tidak membuka kembali card yang sudah `review`.
 
 Kontrak worker lengkap: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md). Feature knowledge Switchyard: [dsh-harness.md](dsh-harness.md).
 

@@ -28,13 +28,13 @@ function OsInfo({ ws }: { ws?: Workspace }) {
   const path = ws?.path || ""
   const host = (ws?.host || "").toLowerCase()
   if (os === "windows" || host.includes("windows") || /^[A-Za-z]:[\\/]/.test(path)) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-neutral-500/70"><Laptop className="size-3" />win</span>
+    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><Laptop className="size-3" />win</span>
   }
   if (os === "mac" || host.includes("mac") || path.startsWith("/Users/")) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-neutral-500/70"><Apple className="size-3" />mac</span>
+    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><Apple className="size-3" />mac</span>
   }
   if (os === "linux" || ws) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-neutral-500/70"><HardDrive className="size-3" />linux</span>
+    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><HardDrive className="size-3" />linux</span>
   }
   return null
 }
@@ -69,7 +69,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
     >
       {onToggleSelect && (
         <div className="mb-1.5 -ml-1">
-          <label className="inline-flex items-center gap-1.5 text-[10px] leading-none text-neutral-500">
+          <label className="inline-flex items-center gap-1.5 text-[10px] leading-none text-ink-4">
             <input type="checkbox" checked={!!selected} onChange={(e) => onToggleSelect(task.id, e.currentTarget.checked)} className="size-3.5 rounded border-[var(--color-line)] bg-[var(--color-inset)] accent-[var(--color-accent)]" />
             select
           </label>
@@ -78,12 +78,12 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
       {/* title + open-page icon */}
       <div className="flex items-start justify-between gap-2">
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-neutral-100">{task.title}</h3>
+          <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-ink">{task.title}</h3>
         </button>
         <button
           onClick={onOpenPage}
           title="Buka detail page"
-          className="shrink-0 rounded p-1 text-neutral-500 hover:text-[var(--color-accent)]"
+          className="shrink-0 rounded p-1 text-ink-4 hover:text-[var(--color-accent)]"
         >
           <ExternalLink className="size-3.5" />
         </button>
@@ -91,7 +91,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
 
       {/* description */}
       {desc && (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-neutral-400">{desc}</p>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-ink-3">{desc}</p>
       )}
 
       {task.status === "running" && (
@@ -110,7 +110,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
             <SelectTrigger
               size="sm"
               title={profile ? `${profile.name} — ${profile.model}` : "Agent profile"}
-              className="h-7 w-auto max-w-32 gap-1 rounded-md border-none bg-[var(--color-inset)] px-2.5 text-xs font-medium text-neutral-200 shadow-none hover:bg-[var(--color-line)] focus-visible:ring-0"
+              className="h-7 w-auto max-w-32 gap-1 rounded-md border-none bg-[var(--color-inset)] px-2.5 text-xs font-medium text-ink shadow-none hover:bg-[var(--color-line)] focus-visible:ring-0"
             >
               <SelectValue />
             </SelectTrigger>
@@ -140,7 +140,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
           )}
         </div>
         {/* secondary: env · os · id */}
-        <div className="flex min-w-0 items-center gap-2 text-xs text-neutral-500">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-ink-4">
           {(task.workspace_path || task.priority > 0) && (
             <span className="min-w-0 truncate" title={task.workspace_path}>
               {wsIsSsh && "ssh · "}{ws?.name ?? (task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "")}
@@ -154,7 +154,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
               <span className="text-violet-300/50">{jev.scope}</span>
             </span>
           )}
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-neutral-500/40">{task.id}</span>
+          <span className="ml-auto shrink-0 font-mono text-[10px] text-ink-4/40">{task.id}</span>
         </div>
       </div>
 
@@ -173,7 +173,7 @@ export default function TaskCard({ task, profiles, health, workspaces, onOpen, o
             <button
               key={s}
               onClick={() => onMove(s)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--color-line)] hover:text-[var(--color-accent)]"
+              className="rounded px-1.5 py-0.5 text-[10px] text-ink-3 transition-colors hover:bg-[var(--color-line)] hover:text-[var(--color-accent)]"
             >
               → {s}
             </button>

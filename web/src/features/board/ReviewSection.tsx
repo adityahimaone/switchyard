@@ -58,30 +58,30 @@ function DiffDisclosure({ file, complete, copyText, selected, onToggle }: { file
     <section className={`overflow-hidden rounded-lg border bg-black/10 ${selected ? "border-emerald-500/30" : "border-[var(--color-line)]"}`}>
       <div className={`flex items-center gap-2 border-b px-3 py-2 ${selected ? "border-emerald-500/20 bg-emerald-500/5" : "border-[var(--color-line)] bg-white/[0.025]"}`}>
         <input type="checkbox" checked={selected} onChange={onToggle} className="size-3.5 accent-violet-500" aria-label={`Select ${file.name}`} />
-        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-neutral-200">
-          <ChevronDown className={`size-3.5 shrink-0 text-neutral-500 transition-transform ${open ? "" : "-rotate-90"}`} />
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-ink">
+          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform ${open ? "" : "-rotate-90"}`} />
           <FileCode2 className="size-3.5 shrink-0 text-violet-300" />
           <span className="truncate font-mono" title={file.name}>{file.name}</span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
             <span className="text-emerald-300">+{added}</span><span className="text-rose-300">-{removed}</span>
           </span>
         </button>
-        <button type="button" onClick={copy} className="rounded p-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200" title="Copy diff">
+        <button type="button" onClick={copy} className="rounded p-1 text-ink-4 hover:bg-white/10 hover:text-ink" title="Copy diff">
           {copied ? <Check className="size-3.5 text-emerald-300" /> : <Copy className="size-3.5" />}
         </button>
       </div>
       {open && <div className="max-h-72 overflow-auto py-1 font-mono text-[11px] leading-5">
         {file.lines.map((line, index) => (
-          <div key={`${file.name}-${index}`} className={`grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] ${line.type === "added" ? "bg-emerald-500/10 text-emerald-100" : line.type === "removed" ? "bg-rose-500/10 text-rose-100" : "text-neutral-400"}`}>
-            <span className="select-none pr-2 text-right text-neutral-600">{line.oldLine ?? ""}</span>
-            <span className="select-none pr-2 text-right text-neutral-600">{line.newLine ?? ""}</span>
-            <span className={`select-none text-center ${line.type === "added" ? "text-emerald-300" : line.type === "removed" ? "text-rose-300" : "text-neutral-600"}`}>{line.type === "added" ? <Plus className="mx-auto size-3" /> : line.type === "removed" ? <Minus className="mx-auto size-3" /> : " "}</span>
+          <div key={`${file.name}-${index}`} className={`grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] ${line.type === "added" ? "bg-emerald-500/10 text-emerald-100" : line.type === "removed" ? "bg-rose-500/10 text-rose-100" : "text-ink-3"}`}>
+            <span className="select-none pr-2 text-right text-ink-4">{line.oldLine ?? ""}</span>
+            <span className="select-none pr-2 text-right text-ink-4">{line.newLine ?? ""}</span>
+            <span className={`select-none text-center ${line.type === "added" ? "text-emerald-300" : line.type === "removed" ? "text-rose-300" : "text-ink-4"}`}>{line.type === "added" ? <Plus className="mx-auto size-3" /> : line.type === "removed" ? <Minus className="mx-auto size-3" /> : " "}</span>
             <span className="whitespace-pre-wrap break-words pr-3">{line.content || " "}</span>
           </div>
         ))}
-        {!file.lines.length && <p className="px-3 py-4 text-neutral-600">No textual lines returned.</p>}
+        {!file.lines.length && <p className="px-3 py-4 text-ink-4">No textual lines returned.</p>}
       </div>}
-      {!open && complete && <div className="px-3 py-1.5 text-[10px] text-neutral-600">Diff collapsed · click file to expand</div>}
+      {!open && complete && <div className="px-3 py-1.5 text-[10px] text-ink-4">Diff collapsed · click file to expand</div>}
     </section>
   )
 }
@@ -160,11 +160,11 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
             <ChevronDown className={`size-4 shrink-0 text-violet-300 transition-transform ${open ? "" : "-rotate-90"}`} />
-            <div className="min-w-0"><h3 className="text-xs font-semibold text-violet-200">Review changes</h3><p className="mt-0.5 truncate font-mono text-[10px] text-neutral-500">{diff.data?.stat.split("\n")[0] || "workspace diff"}</p></div>
+            <div className="min-w-0"><h3 className="text-xs font-semibold text-violet-200">Review changes</h3><p className="mt-0.5 truncate font-mono text-[10px] text-ink-4">{diff.data?.stat.split("\n")[0] || "workspace diff"}</p></div>
           </button>
           <div className="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
             {diff.isLoading && <Loader2 className="size-3 animate-spin text-violet-300" />}
-            <span className="text-neutral-500">{files.length} files</span>
+            <span className="text-ink-4">{files.length} files</span>
             <span className="text-emerald-300">+{additions}</span>
             <span className="text-rose-300">-{removals}</span>
           </div>
@@ -174,9 +174,9 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
           <details className="rounded-lg border border-sky-500/20 bg-sky-500/[0.04] px-3 py-2">
             <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-sky-200">Execution provenance</summary>
-            <div className="mt-2 space-y-1 font-mono text-[10px] text-neutral-400">
-              <p><span className="text-neutral-600">CodeGraph:</span> {diff.data?.codegraph || "skipped or unavailable"}</p>
-              {(diff.data?.provenance ?? []).map((line, index) => <p key={`${line}-${index}`} className="break-all"><span className="text-neutral-600">Worker:</span> {line}</p>)}
+            <div className="mt-2 space-y-1 font-mono text-[10px] text-ink-3">
+              <p><span className="text-ink-4">CodeGraph:</span> {diff.data?.codegraph || "skipped or unavailable"}</p>
+              {(diff.data?.provenance ?? []).map((line, index) => <p key={`${line}-${index}`} className="break-all"><span className="text-ink-4">Worker:</span> {line}</p>)}
             </div>
           </details>
         )}
@@ -184,19 +184,19 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="sm" onClick={selectAll} disabled={allSelected} className="h-6 px-2 text-[10px]">Select all</Button>
             <Button variant="outline" size="sm" onClick={invert} className="h-6 px-2 text-[10px]">Invert</Button>
-            <span className="ml-auto font-mono text-[10px] text-neutral-500">{selectedCount} selected → {selectedCount === files.length ? "all files" : `${selectedCount} files`} will be committed</span>
+            <span className="ml-auto font-mono text-[10px] text-ink-4">{selectedCount} selected → {selectedCount === files.length ? "all files" : `${selectedCount} files`} will be committed</span>
           </div>
         )}
-        {!diff.data?.clean && !diff.isLoading && <p className="font-mono text-[10px] text-neutral-600">Commit adds only checked files: git add -- &lt;checked&gt; && git commit</p>}
+        {!diff.data?.clean && !diff.isLoading && <p className="font-mono text-[10px] text-ink-4">Commit adds only checked files: git add -- &lt;checked&gt; && git commit</p>}
         {err && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">{err}</p>}
         {diff.error && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">Gagal load diff: {(diff.error as Error).message}</p>}
-        {diff.isLoading ? <div className="flex items-center gap-2 px-2 py-8 font-mono text-[11px] text-neutral-500"><Loader2 className="size-3 animate-spin" /> Loading file changes…</div> : diff.data?.clean ? <p className="px-2 py-6 text-center text-[11px] text-neutral-500">No workspace changes.</p> : files.map((file) => <DiffDisclosure key={file.name} file={file} complete={complete} copyText={file.lines.map((line) => line.content).join("\n")} selected={selected.has(file.name)} onToggle={() => toggle(file.name)} />)}
+        {diff.isLoading ? <div className="flex items-center gap-2 px-2 py-8 font-mono text-[11px] text-ink-4"><Loader2 className="size-3 animate-spin" /> Loading file changes…</div> : diff.data?.clean ? <p className="px-2 py-6 text-center text-[11px] text-ink-4">No workspace changes.</p> : files.map((file) => <DiffDisclosure key={file.name} file={file} complete={complete} copyText={file.lines.map((line) => line.content).join("\n")} selected={selected.has(file.name)} onToggle={() => toggle(file.name)} />)}
       </div>}
       {/* approve bar at card bottom — matches /prototype foot */}
       <div className="flex items-center gap-1.5 border-t border-violet-500/15 bg-violet-500/[0.04] px-3 py-2.5">
         {diff.data?.clean ? (
           <>
-            <span className="font-mono text-[10px] text-neutral-500">No workspace changes — ready to close.</span>
+            <span className="font-mono text-[10px] text-ink-4">No workspace changes — ready to close.</span>
             <Button size="sm" disabled={approve.isPending || diff.isLoading} onClick={() => { setErr(null); approve.mutate("done") }} className="ml-auto h-8 gap-1 bg-violet-500 text-white hover:bg-violet-400">{approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null} Mark done</Button>
           </>
         ) : (

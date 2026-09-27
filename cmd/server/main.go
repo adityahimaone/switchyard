@@ -886,6 +886,23 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, kanban.GetJEVStatus(r.Context()))
 	})
+	mux.HandleFunc("GET /api/settings/executors", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, kanban.LoadExecutorSettings())
+	})
+	mux.HandleFunc("PUT /api/settings/executors", func(w http.ResponseWriter, r *http.Request) {
+		var input kanban.ExecutorSettings
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&input); err != nil {
+			fail(w, fmt.Errorf("invalid executor settings payload"), http.StatusBadRequest)
+			return
+		}
+		saved, err := kanban.SaveExecutorSettings(input)
+		if err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		// Echo the normalized config so the client renders exactly what was stored.
+		writeJSON(w, http.StatusOK, saved)
+	})
 	mux.HandleFunc("GET /api/settings/attachment-analysis", func(w http.ResponseWriter, r *http.Request) {
 		cfg, err := kanban.LoadAttachmentAnalysisConfig()
 		if err != nil {

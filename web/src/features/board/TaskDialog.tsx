@@ -1,6 +1,7 @@
-import { useRef, useState } from "react"
-import type { Profile, Workspace } from "../../api"
-import { api } from "../../api"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import type { ExecutorSettings, Profile, Workspace } from "../../api"
+import { api, getExecutorSettings } from "../../api"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +12,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, Loader2, Paperclip } from "lucide-react"
 import { AttachmentChip } from "@/components/AttachmentChip"
 import { uploadAttachment, type Attachment } from "../../api"
+
+const EXECUTOR_LABELS: Record<string, string> = {
+  auto: "Auto (workspace policy)",
+  hermes: "Hermes",
+  codex: "Codex",
+  commandcode: "Command Code",
+  dsh: "DeepSeek Harness",
+  shell: "Shell agent (workspace access)",
+}
+
+const FALLBACK_EXECUTORS: ExecutorSettings = {
+  order: ["auto", "hermes", "codex", "commandcode", "dsh", "shell"],
+  disabled: [],
+  default_execution_mode: "direct",
+}
+
+// A settings load must never leave the picker empty: fall back to the full list
+// until the real config arrives, and always keep "auto".
+export function visibleExecutorsFor(settings?: ExecutorSettings): string[] {
+  const s = settings ?? FALLBACK_EXECUTORS
+  return s.order.filter((e) => e === "auto" || !s.disabled.includes(e))
+}
 
 function isRemoteWorkspace(w: Workspace): boolean {
   if (w.host && w.host !== "localhost" && w.host !== "127.0.0.1") return true
@@ -51,6 +74,7 @@ export default function TaskDialog({
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "dsh" | "shell">("auto")
+  const [executionMode, setExecutionMode] = useState<"direct" | "agentic">("direct")
   const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")
   const [busy, setBusy] = useState(false)
@@ -61,6 +85,22 @@ export default function TaskDialog({
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const improveCache = useRef(new Map<string, string>())
+
+  // Executor visibility and the default mode come from Settings, so a board can
+  // hide executors it does not use without touching this dialog.
+  const { data: executorSettings } = useQuery({ queryKey: ["executor-settings"], queryFn: getExecutorSettings })
+  const visibleExecutors = useMemo(
+    () => visibleExecutorsFor(executorSettings),
+    [executorSettings],
+  )
+
+  // Seed the default mode once, without stomping a user change on re-render.
+  const seededMode = useRef(false)
+  useEffect(() => {
+    if (seededMode.current || !executorSettings) return
+    setExecutionMode(executorSettings.default_execution_mode)
+    seededMode.current = true
+  }, [executorSettings])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -113,13 +153,17 @@ export default function TaskDialog({
   async function submit() {
     if (uploading) { setErr("Wait for attachment upload to finish"); return }
     if (!title.trim()) { setErr("Title required"); return }
+    // This dialog has no command field, so a shell task can never satisfy the
+    // backend's "direct shell requires command" rule: keep it on the agentic path.
+    const effectiveMode = executor === "shell" ? "agentic" : executionMode
     setBusy(true); setErr(null)
     let created: unknown = null
     try {
       created = await onCreate({
         title: title.trim(),
         body: body.trim(),
-        ...(executor === "shell" ? { execution_mode: "agentic", max_iterations: Number(maxIterations) || 6 } : {}),
+        // Max iterations only mean something for bounded agentic runs.
+        ...(effectiveMode === "agentic" ? { execution_mode: "agentic", max_iterations: Number(maxIterations) || 6 } : { execution_mode: "direct" }),
         workspace_path: ws,
         assignee,
         executor,
@@ -150,11 +194,11 @@ export default function TaskDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="glass-panel-raised w-full max-w-lg rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">New Task</h2>
-        <Label className="mt-3 block text-xs text-neutral-400">Title</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Title</Label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Judul task"
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
         <div className="mt-3 flex items-center justify-between">
-          <Label className="text-xs text-neutral-400">Body</Label>
+          <Label className="text-xs text-ink-3">Body</Label>
           <div className="flex items-center gap-1">
             <Button
               variant="outline" size="sm"
@@ -170,7 +214,7 @@ export default function TaskDialog({
               variant="outline" size="sm"
               disabled={aiBusy || !body.trim()}
               onClick={() => improveBody("deep")}
-              className="h-6 gap-1 border-[var(--color-line)] px-2 text-[11px] text-neutral-300 hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
+              className="h-6 gap-1 border-[var(--color-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
               title="Improve pakai AI model (lebih lambat, hasil lebih kontekstual)"
             >
               {aiMode === "deep" ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
@@ -182,13 +226,13 @@ export default function TaskDialog({
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] text-sm" />
         {executor === "shell" && <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
           <p className="text-xs font-medium text-amber-200">Autonomous shell access</p>
-          <p className="mt-1 text-[11px] leading-4 text-neutral-400">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
-          <div className="mt-2 flex items-center gap-2">
-            <Label className="text-[11px] text-neutral-400">Max iterations</Label>
-            <Input type="number" min="1" max="24" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-          </div>
+          <p className="mt-1 text-[11px] leading-4 text-ink-3">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
         </div>}
-        <Label className="mt-3 block text-xs text-neutral-400">Agent Profile</Label>
+        {executionMode === "agentic" && <div className="mt-3 flex items-center gap-2">
+          <Label className="text-[11px] text-ink-3">Max iterations</Label>
+          <Input type="number" min="1" max="24" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+        </div>}
+        <Label className="mt-3 block text-xs text-ink-3">Agent Profile</Label>
         <Select value={assignee} onValueChange={setAssignee}>
           <SelectTrigger className={`mt-1 ${selCls}`}>
             <SelectValue placeholder="profile" />
@@ -207,21 +251,26 @@ export default function TaskDialog({
             ))}
           </SelectContent>
         </Select>
-        <Label className="mt-3 block text-xs text-neutral-400">Execution</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Execution</Label>
         <Select value={executor} onValueChange={(v) => setExecutor(v as typeof executor)}>
           <SelectTrigger className={`mt-1 ${selCls}`}><SelectValue /></SelectTrigger>
           <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-            <SelectItem value="auto" className="text-sm">Auto (workspace policy)</SelectItem>
-            <SelectItem value="hermes" className="text-sm">Hermes</SelectItem>
-            <SelectItem value="codex" className="text-sm">Codex</SelectItem>
-            <SelectItem value="commandcode" className="text-sm">Command Code</SelectItem>
-            <SelectItem value="dsh" className="text-sm">DeepSeek Harness</SelectItem>
-            <SelectItem value="shell" className="text-sm">Shell agent (workspace access)</SelectItem>
+            {visibleExecutors.map((e) => (
+              <SelectItem key={e} value={e} className="text-sm">{EXECUTOR_LABELS[e] ?? e}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Label className="mt-3 block text-xs text-ink-3">Execution mode</Label>
+        <Select value={executionMode} onValueChange={(v) => setExecutionMode(v as typeof executionMode)}>
+          <SelectTrigger className={`mt-1 ${selCls}`}><SelectValue /></SelectTrigger>
+          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+            <SelectItem value="direct" className="text-sm">Direct</SelectItem>
+            <SelectItem value="agentic" className="text-sm">Agentic (plan and iterate)</SelectItem>
           </SelectContent>
         </Select>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <Label className="block text-xs text-neutral-400">Workspace</Label>
+            <Label className="block text-xs text-ink-3">Workspace</Label>
             <Select value={ws || "__scratch"} onValueChange={(v) => setWs(v === "__scratch" ? "" : v)}>
               <SelectTrigger className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                 <SelectValue placeholder="workspace" />
@@ -238,7 +287,7 @@ export default function TaskDialog({
                         {live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" title={w.status === "local" ? "local" : `connected ${w.ping_ms != null ? Math.round(w.ping_ms) + "ms" : ""}`} />}
                         <span className="min-w-0 flex-1 truncate">{w.name}</span>
                         {ssh && <Badge variant="outline" className="shrink-0 border-violet-500/30 bg-violet-500/10 px-1 py-0 text-[9px] leading-none text-violet-300">ssh</Badge>}
-                        {osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-neutral-400">{osLabel}</Badge>}
+                        {osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-ink-3">{osLabel}</Badge>}
                       </span>
                     </SelectItem>
                   )
@@ -248,7 +297,7 @@ export default function TaskDialog({
             </Select>
           </div>
           <div>
-            <Label className="block text-xs text-neutral-400">Priority</Label>
+            <Label className="block text-xs text-ink-3">Priority</Label>
             <Select value={priority} onValueChange={setPriority}>
               <SelectTrigger className={`mt-1 ${selCls}`}>
                 <SelectValue placeholder="priority" />
@@ -264,7 +313,7 @@ export default function TaskDialog({
         </div>
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-3">
-          <Label className="block text-xs text-neutral-400">Attachments (image / PDF)</Label>
+          <Label className="block text-xs text-ink-3">Attachments (image / PDF)</Label>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files ?? [])} />
           <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
             <Paperclip className="mr-1 size-3" /> {uploading ? "Uploading…" : "Attach file"}

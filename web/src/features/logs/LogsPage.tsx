@@ -35,7 +35,7 @@ function lineTone(l: string): string {
   const low = l.toLowerCase()
   if (low.includes("error") || low.includes("traceback") || low.includes("failed") || low.includes("fatal")) return "border-l-red-500/70 text-red-200/90"
   if (low.includes("warn")) return "border-l-amber-500/70 text-amber-100/90"
-  return "border-l-transparent text-neutral-300"
+  return "border-l-transparent text-ink-2"
 }
 
 export default function LogsPage() {
@@ -67,9 +67,9 @@ export default function LogsPage() {
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Runtime</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Logs</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Live runtime output dari <code className="text-neutral-400">~/.hermes/logs</code>.</p>
+          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Live runtime output dari <code className="text-ink-3">~/.hermes/logs</code>.</p>
         </div>
-        <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-400">~/.hermes/logs</span>
+        <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">~/.hermes/logs</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Select value={file} onValueChange={setFile}>
             <SelectTrigger size="sm" className="w-44 border-[var(--color-line)] bg-[var(--color-bg)] text-xs">
@@ -102,7 +102,7 @@ export default function LogsPage() {
       </div>
 
       <div className="mt-3">
-        <Label className="text-xs text-neutral-400">Filter (case-insensitive, server-side)</Label>
+        <Label className="text-xs text-ink-3">Filter (case-insensitive, server-side)</Label>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -119,12 +119,12 @@ export default function LogsPage() {
         <p className="text-sm text-red-400">Gagal load logs: {(logs.error as Error).message}</p>
       ) : (
         <>
-          <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+          <div className="flex items-center gap-2 text-[11px] text-ink-4">
             <span>{logs.data?.lines.length ?? 0} lines</span>
             <span>·</span>
             <span>total {Math.round((logs.data?.total_bytes ?? 0) / 1024)} KB</span>
             {logs.data?.truncated && <span className="text-amber-400">· truncated to 4MB window</span>}
-            {logs.data?.hint && <span className="text-neutral-400">· {logs.data.hint}</span>}
+            {logs.data?.hint && <span className="text-ink-3">· {logs.data.hint}</span>}
           </div>
           <pre
             ref={preRef}
@@ -134,7 +134,7 @@ export default function LogsPage() {
               ? logs.data.lines.map((l, i) => (
                   <div key={i} className={`border-l-2 pl-2 ${lineTone(l)} break-all`}>{l || " "}</div>
                 ))
-              : <span className="text-neutral-500">No lines matched.</span>}
+              : <span className="text-ink-4">No lines matched.</span>}
           </pre>
         </>
       )}

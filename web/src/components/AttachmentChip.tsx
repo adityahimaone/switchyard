@@ -15,9 +15,9 @@ export function AttachmentChip({ att, onRemove, showPreview = false }: { att: At
       <a href={`/api/attachments/${att.id}/download`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate underline-offset-2 hover:underline" title={`${att.filename} · ${att.size} bytes`}>
         {att.filename}
       </a>
-      <span className="shrink-0 text-[10px] text-neutral-500">{att.mime.split("/")[1]?.toUpperCase()}</span>
+      <span className="shrink-0 text-[10px] text-ink-4">{att.mime.split("/")[1]?.toUpperCase()}</span>
       {onRemove && (
-        <button type="button" onClick={onRemove} className="shrink-0 text-neutral-400 hover:text-red-400" aria-label="remove">
+        <button type="button" onClick={onRemove} className="shrink-0 text-ink-3 hover:text-red-400" aria-label="remove">
           <X className="size-3.5" />
         </button>
       )}

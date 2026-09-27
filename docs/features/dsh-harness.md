@@ -32,6 +32,7 @@ DeepSeek Harness session, so round N sees rounds 1..N-1.
 | Result validation | `internal/kanban/nodeagent.go` | `resolveDSHResultIdentity`, `finalizeRemoteResult` |
 | Worker | node-agent `cmd/agent/main.go` | Runs `dsh`, preserves session, isolated home |
 | Worker contract | node-agent `docs/dsh-harness.md` | Machine-level detail for the worker side |
+| Sibling feature | `docs/features/commandcode-executor.md` | Same binding mechanism, different fences |
 | UI | `web/src/features/board/TaskDialog.tsx` | Executor picker |
 | UI | `web/src/features/board/OutputPanels.tsx` | `DshResultPanel` |
 | Types | `web/src/api.ts` | Executor union |

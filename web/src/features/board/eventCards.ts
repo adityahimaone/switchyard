@@ -1,3 +1,8 @@
+import {
+  Ban, CalendarClock, CheckCircle2, CircleDot, FileEdit, Lock, PauseOctagon,
+  PlayCircle, RefreshCw, Sparkles, TriangleAlert, UserRound, Zap,
+  type LucideIcon,
+} from "lucide-react"
 import type { TaskEvent } from "@/api"
 
 /**
@@ -18,7 +23,7 @@ export interface EventField {
 export interface EventCard {
   kind: string
   label: string
-  icon: string
+  icon: LucideIcon
   tone: EventTone
   at: number
   fields: EventField[]
@@ -34,24 +39,24 @@ export type EventGroup = {
 /* Maximum characters before a field value is truncated + collapsible */
 export const FIELD_TRUNCATE_LEN = 120
 
-const KIND_META: Record<string, { label: string; icon: string; tone: EventTone; group: string }> = {
-  created:     { label: "Task dibuat",        icon: "✦", tone: "accent",  group: "Creation" },
-  updated:     { label: "Task diupdate",      icon: "✎", tone: "neutral", group: "Creation" },
-  assigned:    { label: "Di-assign",          icon: "👤", tone: "accent",  group: "Assignment" },
-  unassigned:  { label: "Di-unassign",        icon: "👤", tone: "neutral", group: "Assignment" },
-  promoted:    { label: "Ke-ready",           icon: "⇪", tone: "accent",  group: "Lifecycle" },
-  demoted:     { label: "Balik ke-todo",      icon: "⇩", tone: "neutral", group: "Lifecycle" },
-  scheduled:   { label: "Dijadwalkan",        icon: "🗓", tone: "info",    group: "Lifecycle" },
-  claimed:     { label: "Diklaim worker",     icon: "🔒", tone: "neutral", group: "Execution" },
-  spawned:     { label: "Worker jalan",       icon: "▶", tone: "accent",  group: "Execution" },
-  heartbeat:   { label: "Heartbeat",          icon: "💗", tone: "neutral", group: "Execution" },
-  reclaimed:   { label: "Di-reclaim manual",  icon: "♻", tone: "warning", group: "Execution" },
-  completed:   { label: "Selesai",            icon: "✔", tone: "success", group: "Outcome" },
-  blocked:     { label: "Diblokir worker",    icon: "⛔", tone: "warning", group: "Problem" },
-  gave_up:     { label: "Diberhentikan",      icon: "⏹", tone: "danger",  group: "Problem" },
-  failed:      { label: "Gagal",              icon: "✖", tone: "danger",  group: "Problem" },
-  protocol_violation: { label: "Pelanggaran protokol", icon: "⚠", tone: "danger", group: "Problem" },
-  spawn_failed: { label: "Spawn gagal",      icon: "⚡", tone: "danger",  group: "Problem" },
+const KIND_META: Record<string, { label: string; icon: LucideIcon; tone: EventTone; group: string }> = {
+  created:     { label: "Task created",     icon: Sparkles,     tone: "accent",  group: "Creation" },
+  updated:     { label: "Task updated",     icon: FileEdit,     tone: "neutral", group: "Creation" },
+  assigned:    { label: "Agent assigned",   icon: UserRound,    tone: "accent",  group: "Assignment" },
+  unassigned:  { label: "Agent unassigned", icon: UserRound,    tone: "neutral", group: "Assignment" },
+  promoted:    { label: "Moved to ready",   icon: PlayCircle,   tone: "accent",  group: "Lifecycle" },
+  demoted:     { label: "Back to todo",     icon: CircleDot,    tone: "neutral", group: "Lifecycle" },
+  scheduled:   { label: "Scheduled",        icon: CalendarClock, tone: "info",    group: "Lifecycle" },
+  claimed:     { label: "Claimed by worker", icon: Lock,         tone: "neutral", group: "Execution" },
+  spawned:     { label: "Worker started",   icon: PlayCircle,   tone: "accent",  group: "Execution" },
+  heartbeat:   { label: "Heartbeat",        icon: CircleDot,    tone: "neutral", group: "Execution" },
+  reclaimed:   { label: "Reclaimed manually", icon: RefreshCw,  tone: "warning", group: "Execution" },
+  completed:   { label: "Completed",        icon: CheckCircle2, tone: "success", group: "Outcome" },
+  blocked:     { label: "Blocked by worker", icon: Ban,          tone: "warning", group: "Problem" },
+  gave_up:     { label: "Stopped",          icon: PauseOctagon, tone: "danger",  group: "Problem" },
+  failed:      { label: "Failed",           icon: TriangleAlert, tone: "danger", group: "Problem" },
+  protocol_violation: { label: "Protocol violation", icon: TriangleAlert, tone: "danger", group: "Problem" },
+  spawn_failed: { label: "Spawn failed",    icon: Zap,          tone: "danger",  group: "Problem" },
 }
 
 const GROUP_ORDER = ["Creation", "Assignment", "Lifecycle", "Execution", "Outcome", "Problem"] as const
@@ -60,12 +65,12 @@ const GROUP_TONE: Record<string, EventTone> = {
   Execution: "neutral", Outcome: "success", Problem: "danger",
 }
 
-const FALLBACK: { label: string; icon: string; tone: EventTone } = {
-  label: undefined as unknown as string, icon: "•", tone: "neutral",
+const FALLBACK: { label: string; icon: LucideIcon; tone: EventTone } = {
+  label: undefined as unknown as string, icon: CircleDot, tone: "neutral",
 }
 
 function fmtBool(v: unknown): string {
-  return v ? "ya" : "tidak"
+  return v ? "yes" : "no"
 }
 
 /** camelCase / snake_case key -> "Friendly Label" */
@@ -169,28 +174,28 @@ export function parseEventCards(events: TaskEvent[]): EventGroup[] {
 }
 
 export const TONE_DOT: Record<EventTone, string> = {
-  accent: "bg-[#10e0dd]",
-  success: "bg-emerald-400",
-  warning: "bg-amber-400",
-  danger: "bg-red-400",
-  neutral: "bg-neutral-500",
-  info: "bg-sky-400",
-} as Record<EventTone, string>
+  accent: "bg-[var(--color-accent)]",
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
+  neutral: "bg-ink-4",
+  info: "bg-info",
+}
 
 export const TONE_TEXT: Record<EventTone, string> = {
-  accent: "text-[#10e0dd]",
+  accent: "text-[var(--color-accent)]",
   success: "text-emerald-300",
-  warning: "text-amber-300",
-  danger: "text-red-300",
-  neutral: "text-neutral-300",
-  info: "text-sky-300",
+  warning: "text-warning",
+  danger: "text-danger-text",
+  neutral: "text-ink-2",
+  info: "text-[var(--color-info)]",
 }
 
 export const TONE_BORDER: Record<EventTone, string> = {
-  accent: "border-[#10e0dd]/40 bg-[#10e0dd]/5",
+  accent: "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)]",
   success: "border-emerald-500/40 bg-emerald-500/5",
-  warning: "border-amber-500/40 bg-amber-500/5",
-  danger: "border-red-500/40 bg-red-500/5",
-  neutral: "border-[#1e2430] bg-[#0b0e14]",
-  info: "border-sky-500/40 bg-sky-500/5",
+  warning: "border-warning/40 bg-warning/5",
+  danger: "border-danger/40 bg-danger/5",
+  neutral: "border-[var(--color-line)] bg-transparent",
+  info: "border-info/40 bg-info/5",
 }

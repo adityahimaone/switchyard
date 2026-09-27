@@ -312,6 +312,11 @@ export interface ProviderModel {
   capabilities: Record<string, ModelCapability>
   api_key_set: boolean
 }
+export interface ExecutorSettings {
+  order: string[]
+  disabled: string[]
+  default_execution_mode: "direct" | "agentic"
+}
 export interface JEVStatus {
   enabled: boolean
   configured: boolean
@@ -502,6 +507,8 @@ export function markAllNotificationsRead(profile = "default") { return api<{ ok:
 export function discoverProviderModels(name: string) { return api<{ name: string; models: string[] }>(`/api/providers/${encodeURIComponent(name)}/models/discover`, { method: "POST" }) }
 export function listSkills(query = "") { return api<SkillMeta[]>(`/api/skills${query ? `?q=${encodeURIComponent(query)}` : ""}`) }
 export function getJEVStatus() { return api<JEVStatus>("/api/settings/jev") }
+export function getExecutorSettings() { return api<ExecutorSettings>("/api/settings/executors") }
+export function saveExecutorSettings(settings: ExecutorSettings) { return api<ExecutorSettings>("/api/settings/executors", { method: "PUT", body: JSON.stringify(settings) }) }
 export function getAttachmentAnalysisConfig() { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis") }
 export function saveAttachmentAnalysisConfig(config: AttachmentAnalysisConfig) { return api<AttachmentAnalysisConfig>("/api/settings/attachment-analysis", { method: "PUT", body: JSON.stringify(config) }) }
 export function stopChatRun(id: string) { return api<{ state: ChatState }>(`/api/chat/runs/${id}/stop`, { method: "POST" }) }

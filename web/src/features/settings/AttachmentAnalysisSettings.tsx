@@ -29,12 +29,12 @@ export default function AttachmentAnalysisSettings({ show }: { show: (...labels:
   }, [models, search])
   useEffect(() => { void Promise.all([getAttachmentAnalysisConfig(), listProviders()]).then(([c, p]) => { setConfig(c); setProviders(p) }).catch((e) => setMessage((e as Error).message)) }, [])
   if (!show("AI", "Vision", "Image", "PDF", "Attachment", "Model")) return null
-  if (!config) return <p className="text-xs text-neutral-500">Loading vision settings…</p>
+  if (!config) return <p className="text-xs text-ink-4">Loading vision settings…</p>
   const update = (patch: Partial<AttachmentAnalysisConfig>) => setConfig({ ...config, ...patch })
   const selectedLabel = config.dedicated_model ? `${config.dedicated_provider} / ${config.dedicated_model}` : "Select model…"
   return <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-    <div><p className="text-sm font-medium text-neutral-200">Attachment Analysis</p><p className="text-xs text-neutral-500">Global model routing for image and PDF analysis.</p></div>
-    <div className="flex items-center justify-between text-xs text-neutral-300"><span>Routing mode</span>
+    <div><p className="text-sm font-medium text-ink">Attachment Analysis</p><p className="text-xs text-ink-4">Global model routing for image and PDF analysis.</p></div>
+    <div className="flex items-center justify-between text-xs text-ink-2"><span>Routing mode</span>
       <Select value={config.mode} onValueChange={(v) => update({ mode: v as AttachmentAnalysisConfig["mode"] })}>
         <SelectTrigger size="sm" className="h-7 w-40 border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue /></SelectTrigger>
         <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -44,7 +44,7 @@ export default function AttachmentAnalysisSettings({ show }: { show: (...labels:
       </Select>
     </div>
     <div className="space-y-2">
-      <p className="text-xs text-neutral-300">Dedicated model</p>
+      <p className="text-xs text-ink-2">Dedicated model</p>
       <Select value={`${config.dedicated_provider}::${config.dedicated_model}`} onValueChange={(v) => {
         const idx = v.indexOf("::")
         update({ dedicated_provider: v.slice(0, idx), dedicated_model: v.slice(idx + 2) })
@@ -55,22 +55,22 @@ export default function AttachmentAnalysisSettings({ show }: { show: (...labels:
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search model…" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
           </div>
           <SelectItem value="::" className="text-sm">Select model…</SelectItem>
-          {filtered.length === 0 && <p className="px-2 py-1.5 text-xs text-neutral-500">No match</p>}
+          {filtered.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-4">No match</p>}
           {filtered.map(({ model, provider, endpoint, capability }) => (
             <SelectItem key={`${provider}::${model}`} value={`${provider}::${model}`} className="text-sm" title={`${provider}/${model}`}>
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate">{provider} / {model}</span>
-                {endpoint && <span className="shrink-0 text-[9px] text-neutral-500">/{endpoint}</span>}
+                {endpoint && <span className="shrink-0 text-[9px] text-ink-4">/{endpoint}</span>}
                 {capability?.vision && <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-0 text-[9px] leading-none text-emerald-400">vision</span>}
                 {capability?.pdf && <span className="shrink-0 rounded border border-blue-500/30 bg-blue-500/10 px-1 py-0 text-[9px] leading-none text-blue-400">pdf</span>}
-                {!capability?.vision && !capability?.pdf && <span className="shrink-0 text-[9px] text-neutral-500">unknown</span>}
+                {!capability?.vision && !capability?.pdf && <span className="shrink-0 text-[9px] text-ink-4">unknown</span>}
               </span>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
-    <div className="flex items-center justify-between"><span className="text-xs text-neutral-500">Unknown current model falls back to dedicated model.</span><Button size="sm" onClick={() => void saveAttachmentAnalysisConfig(config).then(() => setMessage("Saved")).catch((e) => setMessage((e as Error).message))}>Save</Button></div>
-    {message && <p className="text-xs text-neutral-500">{message}</p>}
+    <div className="flex items-center justify-between"><span className="text-xs text-ink-4">Unknown current model falls back to dedicated model.</span><Button size="sm" onClick={() => void saveAttachmentAnalysisConfig(config).then(() => setMessage("Saved")).catch((e) => setMessage((e as Error).message))}>Save</Button></div>
+    {message && <p className="text-xs text-ink-4">{message}</p>}
   </div>
 }

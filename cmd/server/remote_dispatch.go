@@ -13,11 +13,27 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func dispatchDSHSessionID(binding kanban.HarnessBinding, continuation bool) string {
+// dispatchHarnessSessionID returns the session id to put on the wire. A first
+// run deliberately sends an empty id so the worker starts a real session and
+// returns its own id, instead of failing on a placeholder that does not exist.
+func dispatchHarnessSessionID(binding kanban.HarnessBinding, continuation bool) string {
 	if !continuation {
 		return ""
 	}
 	return binding.HarnessSessionID
+}
+
+// harnessLabel names the harness in a prompt so a continuation never claims
+// to resume a "DSH session" when it is actually resuming Command Code.
+func harnessLabel(executor string) string {
+	if executor == "commandcode" {
+		return "Command Code"
+	}
+	return "DSH"
+}
+
+func dispatchDSHSessionID(binding kanban.HarnessBinding, continuation bool) string {
+	return dispatchHarnessSessionID(binding, continuation)
 }
 
 // StartRemoteDispatcher polls all boards every 30s for todo tasks with
@@ -63,17 +79,18 @@ func dispatchPendingRemoteTasks() {
 		rows.Close()
 
 		for _, r := range pending {
+			continuity := kanban.HarnessContinuityEnabled(r.executor)
 			var binding kanban.HarnessBinding
 			var sessionContinuation bool
-			if r.executor == "dsh" {
+			if continuity {
 				var err error
-				binding, sessionContinuation, err = kanban.ResolveHarnessBinding(db, b.Slug, r.id, r.ws)
+				binding, sessionContinuation, err = kanban.ResolveHarnessBindingFor(db, b.Slug, r.id, r.ws, r.executor)
 				if err != nil {
 					log.Printf("remote-dispatcher: %s binding failed: %v", r.id, err)
 					continue
 				}
 			}
-			dshSessionID := dispatchDSHSessionID(binding, sessionContinuation)
+			dshSessionID := dispatchHarnessSessionID(binding, sessionContinuation)
 			msg := r.body
 			focusedGitPrompt := false
 			if msg == "" {
@@ -84,7 +101,7 @@ func dispatchPendingRemoteTasks() {
 				continue
 			}
 			var lastCommentID *int64
-			if r.executor == "dsh" {
+			if continuity {
 				commentCursor := binding.LastCommentID
 				lastCommentID = &commentCursor
 				comments, err := kanban.TaskCommentsAfter(db, r.id, binding.LastCommentID)
@@ -102,10 +119,10 @@ func dispatchPendingRemoteTasks() {
 						msg += "\n\n" + feedback
 					}
 				} else if sessionContinuation {
-					msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
+					msg = fmt.Sprintf("[CONTINUATION] Resume the existing %s session and apply only the new task feedback below.\n\n%s", harnessLabel(r.executor), msg)
 				}
 			}
-			if r.executor == "dsh" {
+			if continuity {
 				if compact, ok := kanban.FocusedGitReviewPrompt(msg); ok {
 					msg, focusedGitPrompt = compact, true
 				}
@@ -118,7 +135,7 @@ func dispatchPendingRemoteTasks() {
 				msg = fmt.Sprintf("[CONTINUATION] This task was requeued after review feedback.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nContinue from the existing workspace and apply the user's feedback:\n\n%s", previous, msg)
 			}
 			commentLimit := 5
-			if r.executor == "dsh" {
+			if continuity {
 				commentLimit = 0
 			}
 			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT ?`, r.id, commentLimit); cr != nil {
@@ -147,7 +164,7 @@ func dispatchPendingRemoteTasks() {
 				msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
 			}
 			model, modelErr := kanban.ProfileModel(r.assignee)
-			if modelErr != nil && r.executor == "dsh" {
+			if modelErr != nil && continuity {
 				log.Printf("remote-dispatcher: %s blocked: %v", r.id, modelErr)
 				continue
 			}
@@ -169,7 +186,15 @@ func dispatchPendingRemoteTasks() {
 				DSHSessionID:        dshSessionID,
 				SessionContinuation: sessionContinuation,
 			}
-			if r.executor == "dsh" {
+			if r.executor == "commandcode" {
+				req.HarnessKind = "commandcode"
+				req.CommandCodeSessionID = dshSessionID
+				req.DSHSessionID = ""
+				req.DSHWorkspaceID = ""
+			} else if continuity {
+				req.HarnessKind = "dsh"
+			}
+			if continuity {
 				req.LastTurnSeq = &binding.LastTurnSeq
 				req.LastCommentID = lastCommentID
 			}

@@ -53,53 +53,72 @@ func nodeAgentToken() string {
 
 // NodeDispatchRequest mirrors transport.DispatchRequest on the node-agent.
 type NodeDispatchRequest struct {
-	TaskID         string `json:"task_id"`
-	CardID         string `json:"-"`
-	Title          string `json:"title,omitempty"`
-	Board          string `json:"board"`
-	Message        string `json:"message"`
-	Workspace      string `json:"workspace"`
-	Model          string `json:"model,omitempty"`
-	Provider       string `json:"provider,omitempty"`
-	Executor       string `json:"executor,omitempty"`
-	Command        string `json:"command,omitempty"`
-	ExecutionMode  string `json:"execution_mode,omitempty"` // direct|agentic
-	NoRTK          bool   `json:"no_rtk,omitempty"`         // preserve machine-readable command output
-	MaxIterations  int    `json:"max_iterations,omitempty"`
-	Acceptance     string `json:"acceptance,omitempty"`
-	DSHWorkspaceID string `json:"dsh_workspace_id,omitempty"`
-	DSHSessionID   string `json:"dsh_session_id,omitempty"`
-	LastTurnSeq    *int64 `json:"last_turn_seq,omitempty"`
-	LastCommentID  *int64 `json:"last_comment_id,omitempty"`
-	RunID          string `json:"run_id,omitempty"`
+	TaskID               string `json:"task_id"`
+	CardID               string `json:"-"`
+	Title                string `json:"title,omitempty"`
+	Board                string `json:"board"`
+	Message              string `json:"message"`
+	Workspace            string `json:"workspace"`
+	Model                string `json:"model,omitempty"`
+	Provider             string `json:"provider,omitempty"`
+	Executor             string `json:"executor,omitempty"`
+	Command              string `json:"command,omitempty"`
+	ExecutionMode        string `json:"execution_mode,omitempty"` // direct|agentic
+	NoRTK                bool   `json:"no_rtk,omitempty"`         // preserve machine-readable command output
+	MaxIterations        int    `json:"max_iterations,omitempty"`
+	Acceptance           string `json:"acceptance,omitempty"`
+	DSHWorkspaceID       string `json:"dsh_workspace_id,omitempty"`
+	DSHSessionID         string `json:"dsh_session_id,omitempty"`
+	HarnessKind          string `json:"harness_kind,omitempty"`
+	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
+	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
+	LastCommentID        *int64 `json:"last_comment_id,omitempty"`
+	RunID                string `json:"run_id,omitempty"`
 	// SessionContinuation tells worker to prompt existing DSHSessionID instead of creating a cold session.
 	SessionContinuation bool `json:"session_continuation,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
 type NodeDispatchResult struct {
-	TaskID         string `json:"task_id"`
-	Success        bool   `json:"success"`
-	Output         string `json:"output"`
-	Error          string `json:"error,omitempty"`
-	DurationMs     int64  `json:"duration_ms"`
-	DSHWorkspaceID string `json:"dsh_workspace_id,omitempty"`
-	WorkspaceID    string `json:"workspace_id,omitempty"`
-	DSHSessionID   string `json:"dsh_session_id,omitempty"`
-	SessionID      string `json:"session_id,omitempty"`
-	LastTurnSeq    *int64 `json:"last_turn_seq,omitempty"`
+	TaskID               string `json:"task_id"`
+	Success              bool   `json:"success"`
+	Output               string `json:"output"`
+	Error                string `json:"error,omitempty"`
+	DurationMs           int64  `json:"duration_ms"`
+	DSHWorkspaceID       string `json:"dsh_workspace_id,omitempty"`
+	WorkspaceID          string `json:"workspace_id,omitempty"`
+	DSHSessionID         string `json:"dsh_session_id,omitempty"`
+	SessionID            string `json:"session_id,omitempty"`
+	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
+	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 }
 
-var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|session_id|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
+var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|commandcode_session_id|session_id|sessionId|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
+
+// HarnessContinuityEnabled reports whether an executor keeps durable per-card
+// session identity. dsh and commandcode both do; the other executors are
+// stateless one-shot spawns and must never carry a binding or a cursor.
+func HarnessContinuityEnabled(executor string) bool {
+	return executor == "dsh" || executor == "commandcode"
+}
 
 type HarnessBinding struct {
 	CardID             string `json:"card_id"`
 	WorkspacePath      string `json:"workspace_path"`
+	HarnessKind        string `json:"harness_kind"`
 	HarnessWorkspaceID string `json:"harness_workspace_id"`
 	HarnessSessionID   string `json:"harness_session_id"`
 	LastTurnSeq        int64  `json:"last_turn_seq"`
 	LastCommentID      int64  `json:"last_comment_id"`
 	Status             string `json:"status"`
+}
+
+// DeterministicHarnessSessionID mints the intended session id for a card before
+// any worker run exists. The kind prefix keeps a commandcode id from ever
+// colliding with the dsh id for the same board/card pair.
+func DeterministicHarnessSessionID(kind, boardID, cardID string) string {
+	h := sha1.Sum([]byte(boardID + "/" + cardID))
+	return "switchyard-" + kind + "-" + hex.EncodeToString(h[:8])
 }
 
 func DeterministicDSHSessionID(boardID, cardID string) string {
@@ -109,6 +128,37 @@ func DeterministicDSHSessionID(boardID, cardID string) string {
 
 // ResolveHarnessBinding returns durable card continuity. existed reports whether worker must prompt an existing session.
 func ResolveHarnessBinding(db *sql.DB, boardID, cardID, workspacePath string) (HarnessBinding, bool, error) {
+	return resolveHarnessBinding(db, boardID, cardID, workspacePath, "dsh")
+}
+
+// ResolveHarnessBindingFor is the executor-aware entry point the dispatchers
+// use; kind selects which legacy column is adopted and which deterministic id
+// is minted.
+func ResolveHarnessBindingFor(db *sql.DB, boardID, cardID, workspacePath, executor string) (HarnessBinding, bool, error) {
+	kind := executor
+	if !HarnessContinuityEnabled(kind) {
+		kind = "dsh"
+	}
+	return resolveHarnessBinding(db, boardID, cardID, workspacePath, kind)
+}
+
+// harnessCanResume reports whether the worker may prompt the bound session.
+// A binding is only resumable once it has completed a turn ("active" is the
+// never-ran placeholder) and owns a session id. dsh additionally requires a
+// workspace id, because it keys its session store by workspace; commandcode
+// resolves sessions per working directory and has no such identity, so
+// requiring one there would make a commandcode card permanently unresumable.
+func harnessCanResume(b HarnessBinding) bool {
+	if b.Status == "active" || b.HarnessSessionID == "" {
+		return false
+	}
+	if b.HarnessKind == "commandcode" {
+		return true
+	}
+	return b.HarnessWorkspaceID != ""
+}
+
+func resolveHarnessBinding(db *sql.DB, boardID, cardID, workspacePath, kind string) (HarnessBinding, bool, error) {
 	if err := ensureHarnessBindingsSchema(db); err != nil {
 		return HarnessBinding{}, false, err
 	}
@@ -116,44 +166,53 @@ func ResolveHarnessBinding(db *sql.DB, boardID, cardID, workspacePath string) (H
 	if workspacePath == "." || workspacePath == "" {
 		return HarnessBinding{}, false, fmt.Errorf("workspace path required")
 	}
+	legacyColumn := "dsh_session_id"
+	if kind == "commandcode" {
+		legacyColumn = "commandcode_session_id"
+	}
 	var b HarnessBinding
-	err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings WHERE card_id=?`, cardID).
-		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status)
+	err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, COALESCE(harness_kind,'dsh') FROM harness_bindings WHERE card_id=?`, cardID).
+		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status, &b.HarnessKind)
 	if err == nil {
 		if filepath.Clean(b.WorkspacePath) != workspacePath {
 			return HarnessBinding{}, false, fmt.Errorf("card %s is bound to workspace %q, not %q", cardID, b.WorkspacePath, workspacePath)
 		}
-		continuation := b.Status != "active" && b.HarnessWorkspaceID != "" && b.HarnessSessionID != ""
-		return b, continuation, nil
+		return b, harnessCanResume(b), nil
 	}
 	if err != sql.ErrNoRows {
 		return HarnessBinding{}, false, err
 	}
 
 	var legacySessionID string
-	_ = db.QueryRow(`SELECT COALESCE(dsh_session_id,'') FROM tasks WHERE id=?`, cardID).Scan(&legacySessionID)
+	_ = db.QueryRow(`SELECT COALESCE(`+legacyColumn+`,'') FROM tasks WHERE id=?`, cardID).Scan(&legacySessionID)
 	legacySessionID = strings.TrimSpace(legacySessionID)
 	existed := legacySessionID != ""
 	status := "active"
 	if existed {
 		status = "idle"
 	}
-	b = HarnessBinding{CardID: cardID, WorkspacePath: workspacePath, HarnessSessionID: legacySessionID, LastTurnSeq: -1, Status: status}
+	b = HarnessBinding{CardID: cardID, WorkspacePath: workspacePath, HarnessKind: kind, HarnessSessionID: legacySessionID, LastTurnSeq: -1, Status: status}
 	if !existed {
-		b.HarnessSessionID = DeterministicDSHSessionID(boardID, cardID)
+		// dsh keeps its historical "switchyard-card-" placeholder so an existing
+		// board and its exported bindings stay byte-compatible.
+		if kind == "dsh" {
+			b.HarnessSessionID = DeterministicDSHSessionID(boardID, cardID)
+		} else {
+			b.HarnessSessionID = DeterministicHarnessSessionID(kind, boardID, cardID)
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := db.Exec(`INSERT OR IGNORE INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?,?)`, b.CardID, b.WorkspacePath, "", b.HarnessSessionID, b.LastTurnSeq, b.Status, now, now); err != nil {
+	if _, err := db.Exec(`INSERT OR IGNORE INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at, harness_kind) VALUES (?,?,?,?,?,0,?,?,?,?)`, b.CardID, b.WorkspacePath, "", b.HarnessSessionID, b.LastTurnSeq, b.Status, now, now, b.HarnessKind); err != nil {
 		return HarnessBinding{}, false, err
 	}
-	if err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings WHERE card_id=?`, cardID).
-		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status); err != nil {
+	if err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, COALESCE(harness_kind,'dsh') FROM harness_bindings WHERE card_id=?`, cardID).
+		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status, &b.HarnessKind); err != nil {
 		return HarnessBinding{}, false, err
 	}
 	if filepath.Clean(b.WorkspacePath) != workspacePath {
 		return HarnessBinding{}, false, fmt.Errorf("card %s is bound to workspace %q, not %q", cardID, b.WorkspacePath, workspacePath)
 	}
-	return b, b.Status != "active" && b.HarnessWorkspaceID != "" && b.HarnessSessionID != "", nil
+	return b, harnessCanResume(b), nil
 }
 
 type dshResultIdentity struct {
@@ -162,8 +221,20 @@ type dshResultIdentity struct {
 	valid       bool
 }
 
+// harnessSessionID picks the per-kind dispatch field so the existing dsh wire
+// contract keeps working untouched.
+func harnessSessionID(req NodeDispatchRequest) string {
+	if strings.TrimSpace(req.CommandCodeSessionID) != "" {
+		return strings.TrimSpace(req.CommandCodeSessionID)
+	}
+	return strings.TrimSpace(req.DSHSessionID)
+}
+
 func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult) (dshResultIdentity, error) {
 	sessionID := strings.TrimSpace(result.DSHSessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(result.CommandCodeSessionID)
+	}
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(result.SessionID)
 	}
@@ -174,12 +245,18 @@ func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult
 		}
 	}
 	returnedSession := sessionID != ""
-	if expected := strings.TrimSpace(req.DSHSessionID); sessionID != "" && expected != "" && sessionID != expected {
+	if expected := harnessSessionID(req); sessionID != "" && expected != "" && sessionID != expected {
 		return dshResultIdentity{}, fmt.Errorf("worker returned session %q, dispatched session was %q", sessionID, expected)
 	}
 	if sessionID == "" && (req.SessionContinuation || !result.Success || result.LastTurnSeq != nil) {
-		sessionID = strings.TrimSpace(req.DSHSessionID)
+		sessionID = harnessSessionID(req)
 	}
+
+	// dsh alone carries a workspace identity and a monotonic turn cursor.
+	// commandcode resolves sessions per working directory and emits no turn
+	// sequence, so its only stale-result fence is the current_run_id ownership
+	// check in finalizeRemoteResult.
+	isDSH := req.Executor == "dsh"
 
 	workspaceID := strings.TrimSpace(result.DSHWorkspaceID)
 	if workspaceID == "" {
@@ -192,22 +269,29 @@ func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult
 	if workspaceID == "" && (req.SessionContinuation || !result.Success || result.LastTurnSeq != nil) {
 		workspaceID = strings.TrimSpace(req.DSHWorkspaceID)
 	}
+	// A failed commandcode run legitimately has no sessionId (the CLI omits it
+	// when the run dies before a session resolves), so only a success must
+	// prove identity.
 	if result.Success && !returnedSession {
 		return dshResultIdentity{}, fmt.Errorf("worker result omitted session id")
 	}
-	if result.Success && !returnedWorkspace {
+	if isDSH && result.Success && !returnedWorkspace {
 		return dshResultIdentity{}, fmt.Errorf("worker result omitted workspace id")
 	}
-	if result.Success && result.LastTurnSeq == nil {
+	if isDSH && result.Success && result.LastTurnSeq == nil {
 		return dshResultIdentity{}, fmt.Errorf("worker result omitted last turn sequence")
 	}
-	if result.Success && req.LastTurnSeq != nil && *result.LastTurnSeq <= *req.LastTurnSeq {
+	if isDSH && result.Success && req.LastTurnSeq != nil && result.LastTurnSeq != nil && *result.LastTurnSeq <= *req.LastTurnSeq {
 		return dshResultIdentity{}, fmt.Errorf("worker returned stale turn sequence %d, dispatched cursor was %d", *result.LastTurnSeq, *req.LastTurnSeq)
 	}
 	return dshResultIdentity{sessionID: sessionID, workspaceID: workspaceID, valid: true}, nil
 }
 
 func updateDSHBindingTx(tx *sql.Tx, taskID string, commentID *int64, result NodeDispatchResult, identity dshResultIdentity) error {
+	return updateHarnessBindingTx(tx, taskID, commentID, result, identity, "")
+}
+
+func updateHarnessBindingTx(tx *sql.Tx, taskID string, commentID *int64, result NodeDispatchResult, identity dshResultIdentity, kind string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if !identity.valid {
 		result, err := tx.Exec(`UPDATE harness_bindings SET status='error', updated_at=? WHERE card_id=?`, now, taskID)
@@ -226,10 +310,17 @@ func updateDSHBindingTx(tx *sql.Tx, taskID string, commentID *int64, result Node
 	if identity.sessionID == "" {
 		return nil
 	}
-	if _, err := tx.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, identity.sessionID, taskID); err != nil {
+	// Mirror into whichever per-card column the kind owns.
+	sessionColumn := "dsh_session_id"
+	if kind == "commandcode" {
+		sessionColumn = "commandcode_session_id"
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET `+sessionColumn+`=? WHERE id=?`, identity.sessionID, taskID); err != nil {
 		return err
 	}
-	ready := result.Success && identity.workspaceID != ""
+	// dsh marks a binding ready only once it also proved a workspace id;
+	// commandcode has no workspace identity, so a success is enough.
+	ready := result.Success && (identity.workspaceID != "" || kind == "commandcode")
 	updated, err := tx.Exec(`UPDATE harness_bindings SET harness_session_id=?, harness_workspace_id=CASE WHEN ?='' THEN harness_workspace_id ELSE ? END, last_turn_seq=CASE WHEN ? IS NOT NULL AND ? > last_turn_seq THEN ? ELSE last_turn_seq END, last_comment_id=CASE WHEN ? AND ? IS NOT NULL AND ? > last_comment_id THEN ? ELSE last_comment_id END, status=CASE WHEN ? THEN 'idle' ELSE 'error' END, updated_at=? WHERE card_id=?`, identity.sessionID, identity.workspaceID, identity.workspaceID, result.LastTurnSeq, result.LastTurnSeq, result.LastTurnSeq, result.Success, commentID, commentID, commentID, ready, now, taskID)
 	if err != nil {
 		return err
@@ -245,7 +336,17 @@ func updateDSHBindingTx(tx *sql.Tx, taskID string, commentID *int64, result Node
 }
 
 func saveDSHSessionID(db *sql.DB, taskID, fallbackSessionID, fallbackWorkspaceID string, fallbackCommentID *int64, continuation bool, result NodeDispatchResult) {
-	req := NodeDispatchRequest{DSHSessionID: fallbackSessionID, DSHWorkspaceID: fallbackWorkspaceID, SessionContinuation: continuation}
+	saveHarnessSessionIDFor(db, taskID, "dsh", fallbackSessionID, fallbackWorkspaceID, fallbackCommentID, continuation, result)
+}
+
+// saveHarnessSessionIDFor is the executor-aware variant of saveDSHSessionID used
+// by out-of-band paths and tests. It resolves identity exactly as a live run
+// would, then persists the binding in one transaction.
+func saveHarnessSessionIDFor(db *sql.DB, taskID, kind, fallbackSessionID, fallbackWorkspaceID string, fallbackCommentID *int64, continuation bool, result NodeDispatchResult) {
+	req := NodeDispatchRequest{Executor: kind, HarnessKind: kind, DSHSessionID: fallbackSessionID, CommandCodeSessionID: fallbackSessionID, DSHWorkspaceID: fallbackWorkspaceID, SessionContinuation: continuation}
+	if kind == "commandcode" {
+		req.DSHWorkspaceID = ""
+	}
 	identity, err := resolveDSHResultIdentity(req, result)
 	if err != nil {
 		return
@@ -254,7 +355,7 @@ func saveDSHSessionID(db *sql.DB, taskID, fallbackSessionID, fallbackWorkspaceID
 	if err != nil {
 		return
 	}
-	if err := updateDSHBindingTx(tx, taskID, fallbackCommentID, result, identity); err != nil {
+	if err := updateHarnessBindingTx(tx, taskID, fallbackCommentID, result, identity, kind); err != nil {
 		_ = tx.Rollback()
 		return
 	}
@@ -294,8 +395,8 @@ func finalizeRemoteResult(db *sql.DB, req NodeDispatchRequest, taskID, eventKind
 	if err != nil || affected != 1 {
 		return false, err
 	}
-	if req.Executor == "dsh" {
-		if err := updateDSHBindingTx(tx, taskID, req.LastCommentID, result, identity); err != nil {
+	if HarnessContinuityEnabled(req.Executor) {
+		if err := updateHarnessBindingTx(tx, taskID, req.LastCommentID, result, identity, req.HarnessKind); err != nil {
 			return false, err
 		}
 	}
@@ -351,15 +452,15 @@ func finalizeRemoteTimeout(db *sql.DB, req NodeDispatchRequest, taskID string) (
 type NodeAgentStatus struct {
 	Status string `json:"status"` // up | down
 	Nodes  []struct {
-		NodeID     string              `json:"node_id"`
-		Hostname   string              `json:"hostname"`
-		Workspaces []string            `json:"workspaces"`
-		Executors  []string            `json:"executors,omitempty"`
-		Versions   map[string]string   `json:"versions,omitempty"`
-		Transports []string            `json:"transports,omitempty"`
-		DSHHealth  *DSHHealthView      `json:"dsh_health,omitempty"`
-		Status     string              `json:"status"`
-		LastSeen   string              `json:"last_seen"`
+		NodeID     string            `json:"node_id"`
+		Hostname   string            `json:"hostname"`
+		Workspaces []string          `json:"workspaces"`
+		Executors  []string          `json:"executors,omitempty"`
+		Versions   map[string]string `json:"versions,omitempty"`
+		Transports []string          `json:"transports,omitempty"`
+		DSHHealth  *DSHHealthView    `json:"dsh_health,omitempty"`
+		Status     string            `json:"status"`
+		LastSeen   string            `json:"last_seen"`
 	} `json:"nodes,omitempty"`
 	Error string `json:"error,omitempty"`
 }
@@ -634,13 +735,17 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 			continue
 		}
 		identity := dshResultIdentity{valid: true}
-		if req.Executor == "dsh" {
+		if HarnessContinuityEnabled(req.Executor) {
 			var identityErr error
 			identity, identityErr = resolveDSHResultIdentity(req, res)
 			if identityErr != nil {
+				kind := req.HarnessKind
+				if kind == "" {
+					kind = req.Executor
+				}
 				identity.valid = false
 				res.Success = false
-				res.Error = "dsh_identity_rejected: " + identityErr.Error()
+				res.Error = kind + "_identity_rejected: " + identityErr.Error()
 			}
 		}
 		evtKind := "completed"

@@ -79,7 +79,9 @@ export function stageNode(stage: FlowStage, nodeId: string): FlowNodeId | null {
 }
 
 export function taskCardPositions(tasks: FlowTaskCard[], center: Point): Point[] {
-  const gap = 68
-  const start = center.y - ((tasks.length - 1) * gap) / 2
-  return tasks.map((_, index) => ({ x: center.x, y: start + index * gap }))
+  // Stack badges BELOW the node card (52px tall, centered at `center`) so they never overlap it.
+  // start = card bottom edge (center.y + 26) + 4px gap + half badge height (~10px)
+  const start = center.y + 40
+  const pitch = 22
+  return tasks.map((_, index) => ({ x: center.x, y: start + index * pitch }))
 }

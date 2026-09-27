@@ -163,6 +163,11 @@ func ensureHarnessBindingsSchema(db *sql.DB) error {
 	if _, err := db.Exec(`ALTER TABLE harness_bindings ADD COLUMN last_comment_id INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return err
 	}
+	// harness_kind keeps one card from confusing a dsh binding with a commandcode
+	// one. It defaults to dsh so every pre-existing row stays valid with no backfill.
+	if _, err := db.Exec(`ALTER TABLE harness_bindings ADD COLUMN harness_kind TEXT NOT NULL DEFAULT 'dsh'`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return err
+	}
 	return nil
 }
 
@@ -175,6 +180,7 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'direct'`,
 		`ALTER TABLE tasks ADD COLUMN max_iterations INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE tasks ADD COLUMN dsh_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN commandcode_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN current_run_id TEXT`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {

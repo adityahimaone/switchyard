@@ -54,12 +54,12 @@ export default function SkillsPage() {
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Registry</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Skills</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Read-only registry dari <code className="text-neutral-400">~/.hermes/skills</code> — klik skill buat liat SKILL.md.</p>
+          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Read-only registry dari <code className="text-ink-3">~/.hermes/skills</code> — klik skill buat liat SKILL.md.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-400">{skills.data?.length ?? 0} installed</span>
+          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">{skills.data?.length ?? 0} installed</span>
           <div className="relative w-64">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari skill…" className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
           </div>
         </div>
@@ -77,8 +77,8 @@ export default function SkillsPage() {
             {grouped.map(([category, categorySkills]) => (
               <section key={category} className="mb-5 last:mb-0">
                 <div className="mb-2 flex items-center gap-2">
-                  <h2 className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400" title={category}>{category}</h2>
-                  <span className="font-mono text-[10px] text-neutral-600">{categorySkills.length}</span>
+                  <h2 className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3" title={category}>{category}</h2>
+                  <span className="font-mono text-[10px] text-ink-4">{categorySkills.length}</span>
                   <div className="h-px flex-1 bg-[var(--color-line)]" />
                 </div>
                 <div className={`grid gap-2 ${active ? "lg:grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
@@ -95,7 +95,7 @@ export default function SkillsPage() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <h3 className="truncate text-sm font-semibold leading-5" title={s.name}>{s.name}</h3>
-                            <p className="mt-1 line-clamp-2 min-h-[30px] text-[11px] leading-snug text-neutral-400">{s.description || "—"}</p>
+                            <p className="mt-1 line-clamp-2 min-h-[30px] text-[11px] leading-snug text-ink-3">{s.description || "—"}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -104,7 +104,7 @@ export default function SkillsPage() {
                 </div>
               </section>
             ))}
-            {!filtered.length && <p className="text-sm text-neutral-500">No skills matched "{q}".</p>}
+            {!filtered.length && <p className="text-sm text-ink-4">No skills matched "{q}".</p>}
           </div>
 
           {active && (
@@ -115,7 +115,7 @@ export default function SkillsPage() {
                   <X className="size-3.5" />
                 </Button>
               </div>
-              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-neutral-300">
+              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-ink-2">
                 {content.isLoading ? "Loading…" : content.isError ? (content.error as Error).message : content.data?.content}
               </pre>
             </div>

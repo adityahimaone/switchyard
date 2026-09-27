@@ -155,23 +155,24 @@ func dispatchSSHTasks() {
 			}
 
 			// Build continuation before claim while result and comments remain queryable.
+			continuity := kanban.HarnessContinuityEnabled(r.executor)
 			var binding kanban.HarnessBinding
 			var sessionContinuation bool
-			if r.executor == "dsh" {
+			if continuity {
 				var err error
-				binding, sessionContinuation, err = kanban.ResolveHarnessBinding(db, b.Slug, r.id, r.ws)
+				binding, sessionContinuation, err = kanban.ResolveHarnessBindingFor(db, b.Slug, r.id, r.ws, r.executor)
 				if err != nil {
 					log.Printf("ssh-dispatcher: %s binding failed: %v", r.id, err)
 					continue
 				}
 			}
-			dshSessionID := dispatchDSHSessionID(binding, sessionContinuation)
+			dshSessionID := dispatchHarnessSessionID(binding, sessionContinuation)
 			msg := r.body
 			if msg == "" {
 				msg = r.title
 			}
 			var lastCommentID *int64
-			if r.executor == "dsh" {
+			if continuity {
 				commentCursor := binding.LastCommentID
 				lastCommentID = &commentCursor
 				comments, err := kanban.TaskCommentsAfter(db, r.id, binding.LastCommentID)
@@ -189,7 +190,7 @@ func dispatchSSHTasks() {
 						msg += "\n\n" + feedback
 					}
 				} else if sessionContinuation {
-					msg = "[CONTINUATION] Resume the existing DSH session and apply only the new task feedback below.\n\n" + msg
+					msg = fmt.Sprintf("[CONTINUATION] Resume the existing %s session and apply only the new task feedback below.\n\n%s", harnessLabel(r.executor), msg)
 				}
 			}
 			if !sessionContinuation && r.result != "" {
@@ -209,10 +210,10 @@ func dispatchSSHTasks() {
 				}
 				msg = fmt.Sprintf("[CONTINUATION] This task was previously completed and requeued for follow-up.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nUser comments requested a follow-up. Continue from where you left off:\n\n%s", trunc, msg)
 			}
-			// A resumed DSH session already contains older board comments; send only
-			// the newest one. Legacy tasks without a session retain the five-comment fallback.
+			// A resumed harness session already contains older board comments; send
+			// only the newest one. Stateless executors keep the five-comment fallback.
 			commentLimit := 5
-			if r.executor == "dsh" {
+			if continuity {
 				commentLimit = 0
 			}
 			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT ?`, r.id, commentLimit); cr != nil {
@@ -233,7 +234,7 @@ func dispatchSSHTasks() {
 			}
 
 			model, modelErr := kanban.ProfileModel(r.assignee)
-			if modelErr != nil && r.executor == "dsh" {
+			if modelErr != nil && continuity {
 				_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=?`, time.Now().Unix(), modelErr.Error(), r.id)
 				log.Printf("ssh-dispatcher: %s blocked: %v", r.id, modelErr)
 				continue
@@ -315,7 +316,15 @@ func dispatchSSHTasks() {
 					Workspace: r.ws, Model: model, Provider: r.assignee, Executor: r.executor, Command: r.command,
 					DSHWorkspaceID: binding.HarnessWorkspaceID, DSHSessionID: dshSessionID, SessionContinuation: sessionContinuation, RunID: runID,
 				}
-				if r.executor == "dsh" {
+				if r.executor == "commandcode" {
+					req.HarnessKind = "commandcode"
+					req.CommandCodeSessionID = dshSessionID
+					req.DSHSessionID = ""
+					req.DSHWorkspaceID = ""
+				} else if continuity {
+					req.HarnessKind = "dsh"
+				}
+				if continuity {
 					req.LastTurnSeq = &binding.LastTurnSeq
 					req.LastCommentID = lastCommentID
 				}
@@ -365,9 +374,12 @@ func dispatchSSHTasks() {
 				failures := 1
 				_ = db2.QueryRow(`SELECT COALESCE(consecutive_failures,0)+1 FROM tasks WHERE id=?`, r.id).Scan(&failures)
 				newStatus := "blocked"
-				// DSH preflight/session failures are deterministic. Retrying while
-				// DSH Web is disabled only requeues same broken run and obscures root cause.
-				if failures < 3 && !strings.Contains(output, "dispatch_wait_timeout:") && !strings.Contains(output, "dsh_unavailable:") && !strings.Contains(output, "dsh_session_missing:") {
+				// Harness preflight/session failures are deterministic. Retrying while
+				// the binary is missing or the session is gone only requeues the same
+				// broken run and obscures root cause.
+				if failures < 3 && !strings.Contains(output, "dispatch_wait_timeout:") &&
+					!strings.Contains(output, "dsh_unavailable:") && !strings.Contains(output, "dsh_session_missing:") &&
+					!strings.Contains(output, "commandcode_session_missing:") {
 					newStatus = "todo" // retry transient failures
 				}
 				_, _ = db2.Exec(`UPDATE tasks SET status=?, consecutive_failures=?, last_failure_error=?, completed_at=? WHERE id=? AND status='blocked' AND current_run_id IS NULL`,

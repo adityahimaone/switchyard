@@ -10,15 +10,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, archiveBoard, getJEVStatus, type Board } from "@/api"
 import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
 import AttachmentAnalysisSettings from "./AttachmentAnalysisSettings"
+import ExecutorSettingsPanel from "./ExecutorSettings"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const TABS = [
   { id: "general", label: "General" },
   { id: "appearance", label: "Appearance" },
   { id: "notifications", label: "Notifications" },
+  { id: "executors", label: "Executors" },
   { id: "boards", label: "Boards" },
-  { id: "advanced", label: "Advanced" },
   { id: "ai", label: "AI / Vision" },
+  { id: "account", label: "Account" },
+  { id: "advanced", label: "Advanced" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -143,11 +146,11 @@ export default function SettingsPage() {
       <header className="flex shrink-0 items-end gap-3 border-b border-[var(--color-line)] px-6 py-4">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Studio</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-neutral-100">Settings</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-ink">Settings</h1>
           <p className="mt-1 text-xs text-[var(--color-ink-3)]">Tune interaction, appearance, navigation, and workspace runtime preferences.</p>
         </div>
         <div className="relative ml-auto w-64">
-          <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" />
+          <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari setting…"
             className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
         </div>
@@ -159,7 +162,7 @@ export default function SettingsPage() {
             <button key={t.id} onClick={() => setTab(t.id)}
               data-cuelume-hover="tick" data-cuelume-press data-cuelume-release
               className={`rounded-md px-3 py-2 text-left text-xs font-medium transition-colors ${
-                tab === t.id ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)]" : "text-neutral-400 hover:bg-[var(--color-line)]/60 hover:text-neutral-200"
+                tab === t.id ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)]" : "text-ink-3 hover:bg-[var(--color-line)]/60 hover:text-ink"
               }`}>
               {t.label}
             </button>
@@ -176,10 +179,10 @@ export default function SettingsPage() {
                 <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {sound.enabled ? <Volume2 className="size-4 text-[var(--color-accent)]" /> : <VolumeX className="size-4 text-neutral-500" />}
+                      {sound.enabled ? <Volume2 className="size-4 text-[var(--color-accent)]" /> : <VolumeX className="size-4 text-ink-4" />}
                       <div>
-                        <p className="text-sm font-medium text-neutral-200">Sound Effects</p>
-                        <p className="text-xs text-neutral-500">Mute all interface sounds globally</p>
+                        <p className="text-sm font-medium text-ink">Sound Effects</p>
+                        <p className="text-xs text-ink-4">Mute all interface sounds globally</p>
                       </div>
                     </div>
                     <Switch checked={sound.enabled} onCheckedChange={sound.setEnabled} />
@@ -188,7 +191,7 @@ export default function SettingsPage() {
                     <div className="space-y-3">
                       {/* Volume */}
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-neutral-400">
+                        <div className="flex items-center justify-between text-xs text-ink-3">
                           <span>Volume</span>
                           <span>{Math.round(sound.volume * 100)}%</span>
                         </div>
@@ -198,25 +201,25 @@ export default function SettingsPage() {
                       </div>
                       {/* Granular toggles */}
                       <div className="space-y-2 rounded-lg border border-[var(--color-line)]/40 bg-[var(--color-bg)]/40 p-3">
-                        <p className="text-[10px] uppercase tracking-wider text-neutral-500">Sound Categories</p>
+                        <p className="text-[10px] uppercase tracking-wider text-ink-4">Sound Categories</p>
                         <div className="flex items-center justify-between py-1">
                           <div className="flex items-center gap-2">
-                            <Mouse className="size-3.5 text-neutral-500" />
-                            <span className="text-xs text-neutral-300">Hover tick</span>
+                            <Mouse className="size-3.5 text-ink-4" />
+                            <span className="text-xs text-ink-2">Hover tick</span>
                           </div>
                           <Switch checked={sound.hover} onCheckedChange={sound.setHover} />
                         </div>
                         <div className="flex items-center justify-between py-1">
                           <div className="flex items-center gap-2">
-                            <MousePointerClick className="size-3.5 text-neutral-500" />
-                            <span className="text-xs text-neutral-300">Click / press</span>
+                            <MousePointerClick className="size-3.5 text-ink-4" />
+                            <span className="text-xs text-ink-2">Click / press</span>
                           </div>
                           <Switch checked={sound.click} onCheckedChange={sound.setClick} />
                         </div>
                         <div className="flex items-center justify-between py-1">
                           <div className="flex items-center gap-2">
-                            <Bell className="size-3.5 text-neutral-500" />
-                            <span className="text-xs text-neutral-300">Outcome feedback</span>
+                            <Bell className="size-3.5 text-ink-4" />
+                            <span className="text-xs text-ink-2">Outcome feedback</span>
                           </div>
                           <Switch checked={sound.outcome} onCheckedChange={sound.setOutcome} />
                         </div>
@@ -229,10 +232,10 @@ export default function SettingsPage() {
               {show("Auto Refresh", "Polling", "Board") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <RefreshCw className="size-4 text-neutral-400" />
+                    <RefreshCw className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Board Auto-Refresh</p>
-                      <p className="text-xs text-neutral-500">Task polling interval</p>
+                      <p className="text-sm font-medium text-ink">Board Auto-Refresh</p>
+                      <p className="text-xs text-ink-4">Task polling interval</p>
                     </div>
                   </div>
                   <Select value={String(refreshMs)} onValueChange={(value) => setRefresh(Number(value))}>
@@ -242,21 +245,33 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {!show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome", "Auto Refresh", "Polling", "Board") && (
+                <p className="text-xs text-ink-4">No match.</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="executors" className="mt-0 space-y-6">
+              <ExecutorSettingsPanel show={show} />
+              {!show("Executor", "Execution", "Agent", "Sort", "Order", "Enable", "Disable", "Mode") && (
+                <p className="text-xs text-ink-4">No match.</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="account" className="mt-0 space-y-6">
               {show("Password", "Security", "Login", "Auth") && (
                 <div className="space-y-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <p className="text-sm font-medium text-neutral-200">Password</p>
-                  <p className="text-xs text-neutral-500">Session stays active for 14 days.</p>
+                  <p className="text-sm font-medium text-ink">Password</p>
+                  <p className="text-xs text-ink-4">Session stays active for 14 days.</p>
                   <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                     <Input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
                     <Input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
                     <Button size="sm" disabled={passwordBusy || !currentPassword || !newPassword} onClick={changePassword} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">Update</Button>
                   </div>
-                  {passwordMsg && <p className="text-xs text-neutral-500">{passwordMsg}</p>}
+                  {passwordMsg && <p className="text-xs text-ink-4">{passwordMsg}</p>}
                 </div>
               )}
-
-              {!show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome", "Auto Refresh", "Polling", "Board", "Password", "Security", "Login", "Auth") && (
-                <p className="text-xs text-neutral-600">No match.</p>
+              {!show("Password", "Security", "Login", "Auth") && (
+                <p className="text-xs text-ink-4">No match.</p>
               )}
             </TabsContent>
 
@@ -280,10 +295,10 @@ export default function SettingsPage() {
               {show("Compact", "Card", "Density") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <LayoutGrid className="size-4 text-neutral-400" />
+                    <LayoutGrid className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Compact Task Cards</p>
-                      <p className="text-xs text-neutral-500">Reduce padding & font size for denser board</p>
+                      <p className="text-sm font-medium text-ink">Compact Task Cards</p>
+                      <p className="text-xs text-ink-4">Reduce padding & font size for denser board</p>
                     </div>
                   </div>
                   <Switch checked={compact} onCheckedChange={setCompact} />
@@ -294,11 +309,11 @@ export default function SettingsPage() {
                 <div className="space-y-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Sidebar Navigation</p>
-                      <p className="text-xs text-neutral-500">Atur urutan fitur dan sembunyikan halaman yang tidak dipakai.</p>
+                      <p className="text-sm font-medium text-ink">Sidebar Navigation</p>
+                      <p className="text-xs text-ink-4">Atur urutan fitur dan sembunyikan halaman yang tidak dipakai.</p>
                     </div>
                     <button type="button" onClick={reset} title="Reset sidebar" aria-label="Reset sidebar navigation"
-                      className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--color-line)] px-2 py-1 text-[11px] text-neutral-400 hover:border-[var(--color-accent)]/60 hover:text-[var(--color-accent)]">
+                      className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--color-line)] px-2 py-1 text-[11px] text-ink-3 hover:border-[var(--color-accent)]/60 hover:text-[var(--color-accent)]">
                       <RotateCcw className="size-3" /> Reset
                     </button>
                   </div>
@@ -308,16 +323,16 @@ export default function SettingsPage() {
                       const visible = isVisible(item.id)
                       return (
                         <div key={item.id} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${visible ? "border-[var(--color-line)] bg-[var(--color-bg)]" : "border-[var(--color-line)]/60 bg-[var(--color-bg)]/40 opacity-65"}`}>
-                          <GripVertical className="size-3.5 shrink-0 text-neutral-600" aria-hidden="true" />
-                          <Icon className="size-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
-                          <span className="min-w-0 flex-1 truncate text-xs text-neutral-200">{item.label}</span>
+                          <GripVertical className="size-3.5 shrink-0 text-ink-4" aria-hidden="true" />
+                          <Icon className="size-3.5 shrink-0 text-ink-3" aria-hidden="true" />
+                          <span className="min-w-0 flex-1 truncate text-xs text-ink">{item.label}</span>
                           <div className="flex shrink-0 items-center gap-0.5">
                             <button type="button" onClick={() => move(item.id, -1)} disabled={index === 0} title={`Move ${item.label} up`} aria-label={`Move ${item.label} up`}
-                              className="rounded p-1 text-neutral-500 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowUp className="size-3.5" /></button>
+                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowUp className="size-3.5" /></button>
                             <button type="button" onClick={() => move(item.id, 1)} disabled={index === items.length - 1} title={`Move ${item.label} down`} aria-label={`Move ${item.label} down`}
-                              className="rounded p-1 text-neutral-500 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowDown className="size-3.5" /></button>
+                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowDown className="size-3.5" /></button>
                             <button type="button" onClick={() => toggle(item.id, !visible)} disabled={item.id === "board"} title={item.id === "board" ? "Task Board selalu tersedia" : visible ? `Hide ${item.label}` : `Show ${item.label}`} aria-label={item.id === "board" ? "Task Board always visible" : visible ? `Hide ${item.label}` : `Show ${item.label}`}
-                              className="rounded p-1 text-neutral-500 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-40">{visible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}</button>
+                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-40">{visible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}</button>
                           </div>
                         </div>
                       )
@@ -327,7 +342,7 @@ export default function SettingsPage() {
               )}
 
               {!show("Theme", "Appearance", "Light", "Dark", "Compact", "Card", "Density", "Sidebar", "Navigation", "Order", "Hide", "Show") && (
-                <p className="text-xs text-neutral-600">No match.</p>
+                <p className="text-xs text-ink-4">No match.</p>
               )}
             </TabsContent>
 
@@ -335,10 +350,10 @@ export default function SettingsPage() {
               {show("Browser", "Notification", "Permission") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <Bell className="size-4 text-neutral-400" />
+                    <Bell className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Browser Notifications</p>
-                      <p className="text-xs text-neutral-500">Desktop notification saat task gagal atau masuk review</p>
+                      <p className="text-sm font-medium text-ink">Browser Notifications</p>
+                      <p className="text-xs text-ink-4">Desktop notification saat task gagal atau masuk review</p>
                     </div>
                   </div>
                   <Switch checked={notifyBrowser} onCheckedChange={(v) => {
@@ -352,10 +367,10 @@ export default function SettingsPage() {
               {show("Failed", "Task", "Gagal") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <XCircle className="size-4 text-neutral-400" />
+                    <XCircle className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Notify on Failure</p>
-                      <p className="text-xs text-neutral-500">Task gagal, stuck, atau lost</p>
+                      <p className="text-sm font-medium text-ink">Notify on Failure</p>
+                      <p className="text-xs text-ink-4">Task gagal, stuck, atau lost</p>
                     </div>
                   </div>
                   <Switch checked={notifyFailure} onCheckedChange={setNotifyFailure} />
@@ -364,10 +379,10 @@ export default function SettingsPage() {
               {show("Review", "Ready") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <Eye className="size-4 text-neutral-400" />
+                    <Eye className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Notify on Review</p>
-                      <p className="text-xs text-neutral-500">Task masuk kolom review, siap di-approve</p>
+                      <p className="text-sm font-medium text-ink">Notify on Review</p>
+                      <p className="text-xs text-ink-4">Task masuk kolom review, siap di-approve</p>
                     </div>
                   </div>
                   <Switch checked={notifyReview} onCheckedChange={setNotifyReview} />
@@ -383,10 +398,10 @@ export default function SettingsPage() {
               {show("Ping", "Workspace", "Heartbeat") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <Activity className="size-4 text-neutral-400" />
+                    <Activity className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Workspace Ping Interval</p>
-                      <p className="text-xs text-neutral-500">Auto-ping frequency for workspace health</p>
+                      <p className="text-sm font-medium text-ink">Workspace Ping Interval</p>
+                      <p className="text-xs text-ink-4">Auto-ping frequency for workspace health</p>
                     </div>
                   </div>
                   <Select value={String(pingMs)} onValueChange={(value) => setPing(Number(value))}>
@@ -399,10 +414,10 @@ export default function SettingsPage() {
               {show("Export", "Backup", "Data") && (
                 <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
                   <div className="flex items-center gap-3">
-                    <Download className="size-4 text-neutral-400" />
+                    <Download className="size-4 text-ink-3" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Export Settings</p>
-                      <p className="text-xs text-neutral-500">Download all preferences as JSON</p>
+                      <p className="text-sm font-medium text-ink">Export Settings</p>
+                      <p className="text-xs text-ink-4">Download all preferences as JSON</p>
                     </div>
                   </div>
                   <button onClick={() => {
@@ -414,7 +429,7 @@ export default function SettingsPage() {
                     URL.revokeObjectURL(a.href)
                   }}
                     data-cuelume-press data-cuelume-release
-                    className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-1.5 text-xs text-neutral-300 hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]">
+                    className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-1.5 text-xs text-ink-2 hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]">
                     Export
                   </button>
                 </div>
@@ -425,9 +440,9 @@ export default function SettingsPage() {
                   <div className="flex items-start gap-3">
                     <Trash2 className="mt-0.5 size-4 text-red-300" />
                     <div>
-                      <p className="text-sm font-medium text-neutral-200">Clear execution history</p>
-                      <p className="mt-1 max-w-lg text-xs leading-5 text-neutral-500">Hapus raw worker logs, execution events, task result, dan failure trace. Tasks, comments, attachments tetap ada. Running task tidak disentuh.</p>
-                      {historyMsg && <p className="mt-2 text-xs text-neutral-400">{historyMsg}</p>}
+                      <p className="text-sm font-medium text-ink">Clear execution history</p>
+                      <p className="mt-1 max-w-lg text-xs leading-5 text-ink-4">Hapus raw worker logs, execution events, task result, dan failure trace. Tasks, comments, attachments tetap ada. Running task tidak disentuh.</p>
+                      {historyMsg && <p className="mt-2 text-xs text-ink-3">{historyMsg}</p>}
                     </div>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => void clearExecutionHistory()} disabled={historyBusy} className="shrink-0 border-red-500/30 text-xs text-red-200 hover:bg-red-500/10">
@@ -437,7 +452,7 @@ export default function SettingsPage() {
               )}
 
               {!show("Ping", "Workspace", "Heartbeat", "Export", "Backup", "Data", "Execution history", "Worker log", "Clear history", "Runtime") && (
-                <p className="text-xs text-neutral-600">No match.</p>
+                <p className="text-xs text-ink-4">No match.</p>
               )}
             </TabsContent>
 
@@ -448,41 +463,41 @@ export default function SettingsPage() {
                     <div className="flex items-start gap-3">
                       <Activity className="mt-0.5 size-4 text-[var(--color-accent)]" aria-hidden="true" />
                       <div>
-                        <p className="text-sm font-medium text-neutral-200">JEV task routing</p>
-                        <p className="mt-1 text-xs leading-5 text-neutral-500">
+                        <p className="text-sm font-medium text-ink">JEV task routing</p>
+                        <p className="mt-1 text-xs leading-5 text-ink-4">
                           Used before Kanban execution to identify the task case and workspace scope, so the worker receives a focused LLM context.
                         </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => void refreshJEV()} disabled={jevRefreshing} aria-label="Refresh JEV status" className="h-8 shrink-0 text-xs text-neutral-400">
+                    <Button size="sm" variant="ghost" onClick={() => void refreshJEV()} disabled={jevRefreshing} aria-label="Refresh JEV status" className="h-8 shrink-0 text-xs text-ink-3">
                       <RefreshCw className={`size-3.5 ${jevRefreshing ? "animate-spin" : ""}`} />
                     </Button>
                   </div>
                   <div className="flex items-center justify-between rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2.5">
                     <div>
-                      <p className="text-xs font-medium text-neutral-200">Enable JEV task routing</p>
-                      <p className="mt-0.5 text-[11px] text-neutral-500">Classify Kanban tasks with JEV before dispatch.</p>
+                      <p className="text-xs font-medium text-ink">Enable JEV task routing</p>
+                      <p className="mt-0.5 text-[11px] text-ink-4">Classify Kanban tasks with JEV before dispatch.</p>
                     </div>
                     <Switch checked={jevStatus?.enabled ?? true} onCheckedChange={(value) => void toggleJEV(value)} disabled={!jevStatus || jevSaving} aria-label="Enable JEV task routing" />
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
                     <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Connection</p>
-                      <p className={`mt-1 text-xs font-medium ${jevStatus?.online ? "text-emerald-400" : jevStatus?.configured ? "text-amber-400" : "text-neutral-400"}`}>
+                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Connection</p>
+                      <p className={`mt-1 text-xs font-medium ${jevStatus?.online ? "text-emerald-400" : jevStatus?.configured ? "text-amber-400" : "text-ink-3"}`}>
                         {jevStatus?.online ? "Online" : jevStatus?.configured ? "Configured · offline" : "Fallback mode"}
                       </p>
                     </div>
                     <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Model</p>
-                      <p className="mt-1 truncate text-xs font-medium text-neutral-300">{jevStatus?.model ?? "Checking…"}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Model</p>
+                      <p className="mt-1 truncate text-xs font-medium text-ink-2">{jevStatus?.model ?? "Checking…"}</p>
                     </div>
                     <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Classifications</p>
-                      <p className="mt-1 text-xs font-medium text-neutral-300">{jevStatus ? `${jevStatus.successful_calls} JEV · ${jevStatus.fallback_calls} fallback · chat ${jevStatus.chat_calls} · kanban ${jevStatus.kanban_calls}` : "Checking…"}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Classifications</p>
+                      <p className="mt-1 text-xs font-medium text-ink-2">{jevStatus ? `${jevStatus.successful_calls} JEV · ${jevStatus.fallback_calls} fallback · chat ${jevStatus.chat_calls} · kanban ${jevStatus.kanban_calls}` : "Checking…"}</p>
                     </div>
                   </div>
                   {jevStatus && jevStatus.calls > 0 && (
-                    <p className="text-[11px] text-neutral-500">
+                    <p className="text-[11px] text-ink-4">
                       Last classification: {jevStatus.last_latency_ms} ms · {jevStatus.last_input_tokens || "—"} input tokens. Usage metrics are persisted in chat.db.
                     </p>
                   )}
@@ -510,27 +525,27 @@ function BoardArchiveManager() {
   return (
     <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
       <div className="flex items-center gap-3">
-        <Archive className="size-4 text-neutral-400" />
+        <Archive className="size-4 text-ink-3" />
         <div>
-          <p className="text-sm font-medium text-neutral-200">Board Archive</p>
-          <p className="text-xs text-neutral-500">Archive or restore boards. Archived boards hidden dari board selector.</p>
+          <p className="text-sm font-medium text-ink">Board Archive</p>
+          <p className="text-xs text-ink-4">Archive or restore boards. Archived boards hidden dari board selector.</p>
         </div>
       </div>
       <div className="space-y-1.5">
         {active.map((b) => (
           <div key={b.slug} className="flex items-center justify-between rounded border border-[var(--color-line)]/40 bg-[var(--color-bg)] px-3 py-2">
-            <span className="text-xs text-neutral-200">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
-            <Button size="sm" variant="outline" onClick={() => toggle(b.slug, true)} className="gap-1 border-[var(--color-line)] text-neutral-400 hover:text-red-400">
+            <span className="text-xs text-ink">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
+            <Button size="sm" variant="outline" onClick={() => toggle(b.slug, true)} className="gap-1 border-[var(--color-line)] text-ink-3 hover:text-red-400">
               <Archive className="size-3" /> Archive
             </Button>
           </div>
         ))}
         {archived.length > 0 && (
           <>
-            <p className="pt-2 text-[10px] uppercase tracking-wider text-neutral-600">Archived</p>
+            <p className="pt-2 text-[10px] uppercase tracking-wider text-ink-4">Archived</p>
             {archived.map((b) => (
               <div key={b.slug} className="flex items-center justify-between rounded border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                <span className="text-xs text-neutral-400">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
+                <span className="text-xs text-ink-3">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
                 <Button size="sm" variant="outline" onClick={() => toggle(b.slug, false)} className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">
                   <ArchiveRestore className="size-3" /> Restore
                 </Button>
@@ -538,7 +553,7 @@ function BoardArchiveManager() {
             ))}
           </>
         )}
-        {boards.length === 0 && <p className="text-xs text-neutral-600">No boards.</p>}
+        {boards.length === 0 && <p className="text-xs text-ink-4">No boards.</p>}
       </div>
     </div>
   )

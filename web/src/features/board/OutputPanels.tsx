@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, Fragment, useRef } from "react"
-import { ArrowDownToLine, Check, ChevronDown, Copy, FileCheck2, Terminal, BrainCircuit, ExternalLink, Layers3, MessageCircle } from "lucide-react"
+import { ArrowDownToLine, BrainCircuit, Check, ChevronDown, Copy, CornerDownRight, FileCheck2, Layers3, Terminal, WrapText } from "lucide-react"
 import { toastGlobal, workerLog, type Task, type TaskEvent } from "../../api"
+import { AgentMarkdown } from "./AgentMarkdown"
 
 function useCopy(text: string) {
   const [copied, setCopied] = useState(false)
@@ -116,11 +117,11 @@ function prettyJSONText(text: string) {
 // heuristics when no ANSI
 function workerHint(line: string) {
   const l = line.toLowerCase()
-  if (/(^|\W)(error|fail|failed|exception|panic|fatal)(\W|$)/.test(l) || line.includes("✗") || line.includes("×")) return "text-red-300"
-  if (/(warn|warning)/.test(l)) return "text-amber-300"
-  if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-emerald-300"
-  if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-sky-300"
-  if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-cyan-300/90"
+  if (/(^|\W)(error|fail|failed|exception|panic|fatal)(\W|$)/.test(l) || line.includes("✗") || line.includes("×")) return "text-danger-text"
+  if (/(warn|warning)/.test(l)) return "text-warning"
+  if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-success"
+  if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-[var(--color-info)]"
+  if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-ink-4"
   return ""
 }
 
@@ -132,7 +133,7 @@ function ResultSpans({ line }: { line: string }) {
       {parts.map((p, i) => {
         if (/^`[^`]+`$/.test(p)) {
           return (
-            <span key={i} className="rounded bg-emerald-500/10 px-1 py-0.5 font-mono text-[12px] text-sky-700 ring-1 ring-sky-500/15 dark:bg-white/10 dark:text-sky-200">
+            <span key={i} className="rounded border border-[var(--color-line)] bg-[var(--color-line)]/40 px-1 font-mono text-meta text-[var(--color-info)]">
               {p.slice(1, -1)}
             </span>
           )
@@ -144,16 +145,21 @@ function ResultSpans({ line }: { line: string }) {
             {urlParts.map((u, j) => {
               if (/^https?:\/\//.test(u)) {
                 return (
-                  <span key={j} className="text-sky-600 underline decoration-sky-500/30 underline-offset-2 dark:text-sky-300">
+                  <a
+                    key={j}
+                    href={u}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="text-[var(--color-info)] underline decoration-[var(--color-line-strong)] underline-offset-2"
+                  >
                     {u}
-                  </span>
+                  </a>
                 )
               }
-              // highlight file paths and numbers subtly
               // file paths: foo/bar.ts:12:3
               if (/^[\w./-]+\.[a-z]{1,5}(:\d+)?/.test(u.trim()) && u.includes(".")) {
                 return (
-                  <span key={j} className="text-violet-600 dark:text-violet-300">
+                  <span key={j} className="text-violet-300">
                     {u}
                   </span>
                 )
@@ -169,15 +175,21 @@ function ResultSpans({ line }: { line: string }) {
 
 function resultLineClass(line: string) {
   const t = line.trim()
-  if (!t) return "text-[var(--color-ink-3)]"
-  if (/^#{1,6}\s/.test(t)) return "text-emerald-700 dark:text-emerald-300 font-semibold"
-  if (/^(✔|✓|✅|🎉|✨)/.test(t) || /success|completed|done/i.test(t) && /[✓✔]/.test(line)) return "text-emerald-600 dark:text-emerald-300"
-  if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-red-600 dark:text-red-300"
-  if (/^warn/i.test(t)) return "text-amber-600 dark:text-amber-300"
-  if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-sky-600 dark:text-sky-300"
-  if (/^[\+\-]{3}|^diff --/.test(t)) return t.startsWith("+") ? "text-emerald-600 dark:text-emerald-300" : t.startsWith("-") ? "text-red-500 dark:text-red-300" : "text-zinc-500"
-  if (/^\s*[-*•]\s/.test(line)) return "text-[var(--color-ink-2)]"
-  return "text-[var(--color-ink)]"
+  if (!t) return "text-ink-4"
+  if (/^#{1,6}\s/.test(t)) return "font-semibold text-ink"
+  if (/^(✔|✓|✅|🎉|✨)/.test(t) || (/success|completed|done/i.test(t) && /[✓✔]/.test(line))) return "text-success"
+  if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-danger-text"
+  if (/^warn/i.test(t)) return "text-warning"
+  if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-[var(--color-info)]"
+  if (/^[\+\-]{3}|^diff --/.test(t)) {
+    return t.startsWith("+")
+      ? "text-success"
+      : t.startsWith("-")
+        ? "text-danger-text"
+        : "text-ink-4"
+  }
+  if (/^\s*[-*•]\s/.test(line)) return "text-ink-2"
+  return "text-ink-2"
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -202,7 +214,7 @@ interface ParsedDshLog {
   isDsh: boolean
 }
 
-function parseDshLogEvents(raw: string): ParsedDshLog {
+export function parseHarnessLogEvents(raw: string): ParsedDshLog {
   const lines = raw.split("\n")
   const events: ParsedDshLog["events"] = []
   const meta: ParsedDshLog["meta"] = {}
@@ -215,10 +227,10 @@ function parseDshLogEvents(raw: string): ParsedDshLog {
     if (!trimmed) continue
 
     // Check for provenance line
-    if (trimmed.startsWith("provenance executor=dsh")) {
+    if (trimmed.startsWith("provenance executor=dsh") || trimmed.startsWith("provenance executor=commandcode")) {
       isDsh = true
       const wsMatch = trimmed.match(/ws=([^\s]+)/)
-      const sessionMatch = trimmed.match(/dsh_session_id=([^\s]+)/)
+      const sessionMatch = trimmed.match(/(?:dsh_session_id|commandcode_session_id)=([^\s]+)/)
       const cwdMatch = trimmed.match(/dsh_session_cwd=([^\s]+)/)
       if (wsMatch) meta.workspace = wsMatch[1]
       if (sessionMatch) meta.sessionId = sessionMatch[1]
@@ -312,6 +324,28 @@ function parseDshLogEvents(raw: string): ParsedDshLog {
       })
       continue
     }
+    // Command Code streams progress as {"type":"event","event":{…}} wrappers and
+    // closes with a single {"type":"result"} frame.
+    if (type === "event") {
+      isDsh = true
+      const inner = parsed.event
+      const innerObj = inner && typeof inner === "object" ? inner as Record<string, unknown> : undefined
+      const toolName = typeof innerObj?.toolName === "string" ? innerObj.toolName : undefined
+      const description = typeof innerObj?.description === "string" ? innerObj.description : undefined
+      const innerType = typeof innerObj?.type === "string" ? innerObj.type : undefined
+      const label = [innerType, toolName, description].filter(Boolean).join(" · ") || "event"
+      events.push({ kind: "text", turn: currentTurn ?? undefined, step: currentStep ?? undefined, text: `• ${label}` })
+      continue
+    }
+    if (type === "result") {
+      isDsh = true
+      if (typeof parsed.sessionId === "string") meta.sessionId = parsed.sessionId
+      const finalText = typeof parsed.finalText === "string" ? parsed.finalText : ""
+      if (finalText) {
+        events.push({ kind: "final", turn: currentTurn ?? undefined, text: finalText })
+      }
+      continue
+    }
     if (typeof type === "string") {
       // unknown DSH event type
       isDsh = true
@@ -327,45 +361,58 @@ function parseDshLogEvents(raw: string): ParsedDshLog {
 
 function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta: ParsedDshLog["meta"] }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {meta.sessionId && (
-        <div className="flex flex-wrap gap-3 text-[10px] font-mono text-cyan-200/80 bg-cyan-500/5 rounded-lg p-2 border border-cyan-500/10">
-          {meta.sessionId && <span>Session: <span className="text-cyan-100 truncate max-w-[200px]">{meta.sessionId}</span></span>}
-          {meta.workspace && <span>Workspace: <span className="text-cyan-100 truncate max-w-[150px]">{meta.workspace.split("/").pop()}</span></span>}
-          {meta.cwd && <span>CWD: <span className="text-cyan-100 truncate max-w-[200px]">{meta.cwd}</span></span>}
-        </div>
+        <dl className="mb-2 flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-[var(--color-line)] bg-[var(--color-line)]/20 px-2.5 py-1.5">
+          {[
+            ["Session", meta.sessionId, "max-w-[14rem]"],
+            ["Workspace", meta.workspace?.split("/").pop(), "max-w-[10rem]"],
+            ["CWD", meta.cwd, "max-w-[14rem]"],
+          ].filter(([, value]) => value).map(([label, value, maxW]) => (
+            <div key={label as string} className="flex min-w-0 items-baseline gap-1.5">
+              <dt className="shrink-0 text-2xs text-ink-4">{label}</dt>
+              <dd className={`truncate font-mono text-meta text-ink-2 ${maxW}`} title={value as string}>{value as string}</dd>
+            </div>
+          ))}
+        </dl>
       )}
       {events.map((event, idx) => {
         switch (event.kind) {
           case "turn":
             return (
-              <div key={idx} className="text-xs font-semibold uppercase tracking-wider text-cyan-300 mt-2 mb-1">
-                Turn {event.turn}
+              <div key={idx} className="mt-3 mb-1 flex items-center gap-2 first:mt-0">
+                <span className="rounded border border-[var(--color-line)] bg-[var(--color-line)]/30 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-[0.14em] text-ink-3">
+                  Turn {event.turn}
+                </span>
+                <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
               </div>
             )
           case "step":
             return (
-              <div key={idx} className="text-xs text-cyan-400/70 ml-2 mb-1">
+              <div key={idx} className="flex items-center gap-1.5 py-0.5 pl-1 text-meta text-ink-4">
+                <CornerDownRight className="size-3 shrink-0" aria-hidden />
                 Step {event.step}
               </div>
             )
           case "thinking":
             return (
-              <div key={idx} className="ml-4">
+              <div key={idx} className="pl-4">
                 <CollapsibleThinking text={event.text ?? ""} defaultCollapsed={event.collapsed ?? true} />
               </div>
             )
-          case "text":
+          case "text": {
+            const isTick = event.text?.startsWith("✓")
             return (
-              <div key={idx} className={event.text?.startsWith("✓") ? "ml-4 text-emerald-500/80 text-[11px] font-mono" : "ml-4"}>
+              <div key={idx} className={isTick ? "pl-4 font-mono text-meta text-success" : "pl-4"}>
                 <LogLine line={event.text ?? ""} />
               </div>
             )
+          }
           case "final":
             return (
-              <div key={idx} className="ml-4 mt-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2">
-                <div className="text-xs font-semibold text-cyan-200 mb-1">Answer</div>
-                <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-cyan-100">{event.text}</div>
+              <div key={idx} className="mt-2 mb-1 rounded-md border border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] px-2.5 py-2">
+                <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">Answer</p>
+                <p className="whitespace-pre-wrap break-words text-body leading-relaxed text-ink-2">{event.text}</p>
               </div>
             )
           case "raw":
@@ -378,22 +425,23 @@ function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta
 
 function CollapsibleThinking({ text, defaultCollapsed }: { text: string; defaultCollapsed: boolean }) {
   const [open, setOpen] = useState(!defaultCollapsed)
+  const preview = text.length > 80 ? `${text.slice(0, 80).trimEnd()}…` : text.trim()
   return (
-    <div className="border-l-2 border-cyan-500/30 pl-2 ml-2">
+    <div>
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-[11px] text-cyan-300/70 hover:text-cyan-200 font-mono"
+        className="-mx-1.5 flex h-7 w-[calc(100%+0.75rem)] items-center gap-1.5 rounded px-1.5 text-left transition-colors hover:bg-[var(--color-line)]/40"
       >
-        <MessageCircle className="size-3" />
-        <span>{open ? "▼" : "▶"}</span>
-        <span className="italic">thinking</span>
-        <span className="text-cyan-500/50">…</span>
+        <BrainCircuit className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+        <span className="shrink-0 text-2xs italic text-ink-4">thinking</span>
+        {!open && preview && <span className="min-w-0 flex-1 truncate text-2xs text-ink-4/80">{preview}</span>}
       </button>
       {open && (
-        <div className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-zinc-400 italic pl-2">
+        <p className="whitespace-pre-wrap break-words border-l-2 border-[var(--color-line)] py-1 pl-3 text-meta italic leading-relaxed text-ink-3">
           {text}
-        </div>
+        </p>
       )}
     </div>
   )
@@ -404,7 +452,7 @@ function LogLine({ line }: { line: string }) {
   const hint = !ansi ? workerHint(line) : ""
   const segs = ansiSpans(line)
   return (
-    <div className={hint || "text-zinc-100"}>
+    <div className={`font-mono text-meta leading-5 ${hint || "text-ink-2"}`}>
       {segs.map((s, k) => (
         <span key={k} className={s.cls}>
           {s.text}
@@ -425,7 +473,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
   const initializedRef = useRef(false)
   const { copied, copy } = useCopy(liveText)
 
-  const dshLog = useMemo(() => parseDshLogEvents(liveText), [liveText])
+  const dshLog = useMemo(() => parseHarnessLogEvents(liveText), [liveText])
   const isDsh = dshLog.isDsh && dshLog.events.some((e) => e.kind !== "raw")
   const effectiveView = isDsh ? dshView : "raw"
 
@@ -487,76 +535,91 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
   const lines = useMemo(() => liveText.split("\n").flatMap((line) => prettyJSONLine(line)?.split("\n") ?? [line]), [liveText])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-700/40 bg-[#0d1426] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-2.5">
-        <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.35)]" />
-          <span className="size-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.3)]" />
-          <span className="size-3 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.3)]" />
-        </span>
-        <span className="ml-2 flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300">
-          <Terminal className="size-3.5" /> Worker log
-        </span>
+    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
+        <Terminal className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+        <h4 className="text-meta font-semibold text-ink">Worker log</h4>
         <span
-          className={`ml-1.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${running ? "border-sky-400/30 bg-sky-500/15 text-sky-200" : "border-white/10 bg-white/5 text-zinc-400"}`}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs ${
+            running
+              ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+              : "border-[var(--color-line)] text-ink-4"
+          }`}
         >
-          <span className={`size-1.5 rounded-full ${running ? "bg-sky-400 animate-pulse" : "bg-zinc-500"}`} />
+          <span className={`size-1.5 rounded-full ${running ? "bg-[var(--color-accent)]" : "bg-ink-4"}`} aria-hidden />
           {running ? "live" : "exited"}
         </span>
-        {isDsh && (
+        <span className="text-2xs tabular-nums text-ink-4">{lines.length} lines</span>
+
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {isDsh && (
+            <button
+              type="button"
+              aria-pressed={effectiveView === "structured"}
+              onClick={() => setDshView((v) => (v === "structured" ? "raw" : "structured"))}
+              title={effectiveView === "structured" ? "Switch to raw JSONL" : "Switch to structured view"}
+              className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
+                effectiveView === "structured"
+                  ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                  : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+              }`}
+            >
+              <Layers3 className="size-3.5" />
+              <span className="hidden sm:inline">{effectiveView === "structured" ? "structured" : "raw"}</span>
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setDshView((v) => (v === "structured" ? "raw" : "structured"))}
-            className="ml-2 inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors border-cyan-400/40 bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/25"
-            title={effectiveView === "structured" ? "Switch to raw JSONL view" : "Switch to structured view"}
+            onClick={toggleFollow}
+            aria-pressed={follow}
+            aria-label={follow ? "Stop following worker log" : "Follow worker log"}
+            title={follow ? "Stop following worker log" : "Follow worker log to the bottom"}
+            className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
+              follow
+                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            }`}
           >
-            <Layers3 className="size-3.5" />
-            <span className="hidden sm:inline">{effectiveView === "structured" ? "structured ▼" : "raw JSONL ▼"}</span>
+            <ArrowDownToLine className="size-3.5" />
+            <span className="hidden sm:inline">follow</span>
           </button>
-        )}
-        <button
-          type="button"
-          onClick={toggleFollow}
-          aria-pressed={follow}
-          aria-label={follow ? "Stop following worker log" : "Follow worker log"}
-          title={follow ? "Stop following worker log" : "Follow worker log to bottom"}
-          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors ${follow ? "border-sky-400/40 bg-sky-400/15 text-sky-200" : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200"}`}
-        >
-          <ArrowDownToLine className={`size-3.5 ${follow ? "animate-pulse" : ""}`} />
-          <span className="hidden sm:inline">{follow ? "following" : "follow"}</span>
-        </button>
-        <span className="ml-auto hidden items-center gap-2 sm:flex">
           <button
             type="button"
+            aria-pressed={wrap}
             onClick={() => setWrap((v) => !v)}
-            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] font-medium text-zinc-300 hover:bg-white/10 hover:text-white"
-            title={wrap ? "wrap on" : "wrap off"}
+            aria-label={wrap ? "Disable line wrap" : "Enable line wrap"}
+            title={wrap ? "Disable line wrap" : "Enable line wrap"}
+            className={`inline-flex size-7 items-center justify-center rounded-md transition-colors ${
+              wrap
+                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            }`}
           >
-            {wrap ? "wrap" : "no-wrap"}
+            <WrapText className="size-3.5" />
           </button>
           <button
             type="button"
             onClick={() => copy()}
             aria-label="Copy worker log"
-            className="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white"
+            title="Copy worker log"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
           >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
-        </span>
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="ml-1 inline-flex h-7 items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-sky-200 hover:bg-sky-500/15"
-        >
-          <span className={`transition-transform duration-200 ${open ? "rotate-90" : ""}`}>▸</span>
-          {open ? "hide" : "show"}
-        </button>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? "Collapse worker log" : "Expand worker log"}
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+          >
+            <ChevronDown className={`size-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          </button>
+        </div>
       </div>
 
       {open ? (
-        <div className="relative bg-[#090f1e]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-500/20 to-transparent" />
+        <div className="bg-[var(--color-void)]">
           <div
             ref={logViewportRef}
             onScroll={(event) => {
@@ -564,7 +627,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
               const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
               if (distance > 48 && follow) setFollow(false)
             }}
-            className={`overflow-auto ${wrap ? "" : "overflow-x-auto"} scroll-smooth`}
+            className="overflow-auto"
             style={{ maxHeight: "28rem" }}
           >
             {effectiveView === "structured" ? (
@@ -572,58 +635,44 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
                 <DshLogTimeline events={dshLog.events} meta={dshLog.meta} />
               </div>
             ) : (
-            <div className="flex min-w-0">
-              <div
-                aria-hidden
-                className="sticky left-0 select-none border-r border-white/5 bg-[#0a1120] px-2 py-3 text-right font-mono text-[11px] leading-6 text-zinc-500"
-              >
-                {lines.map((_, i) => (
-                  <div key={i} className="tabular-nums">
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-              <pre
-                className={`flex-1 p-3 font-mono text-[13px] leading-6 selection:bg-sky-500/30 selection:text-white ${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
-              >
-                {lines.map((line, idx) => {
-                  const ansi = hasAnsi(line)
-                  const hint = !ansi ? workerHint(line) : ""
-                  const segs = ansiSpans(line)
-                  return (
-                    <div key={idx} className={hint || "text-zinc-100"}>
-                      {segs.map((s, k) => (
-                        <span key={k} className={s.cls}>
-                          {s.text}
-                        </span>
-                      ))}
-                      {idx < lines.length - 1 ? "\n" : ""}
+              <div className="flex min-w-0">
+                <div
+                  aria-hidden
+                  className="sticky left-0 shrink-0 select-none border-r border-[var(--color-line)] bg-[var(--color-void)] px-2 py-3 text-right font-mono text-2xs leading-5 text-ink-4"
+                >
+                  {lines.map((_, i) => (
+                    <div key={i} className="tabular-nums">
+                      {i + 1}
                     </div>
-                  )
-                })}
-              </pre>
-            </div>
+                  ))}
+                </div>
+                <pre
+                  className={`min-w-0 flex-1 p-3 font-mono text-meta leading-5 ${
+                    wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                  }`}
+                >
+                  {lines.map((line, idx) => {
+                    const ansi = hasAnsi(line)
+                    const hint = !ansi ? workerHint(line) : ""
+                    const segs = ansiSpans(line)
+                    return (
+                      <div key={idx} className={hint || "text-ink-2"}>
+                        {segs.map((s, k) => (
+                          <span key={k} className={s.cls}>
+                            {s.text}
+                          </span>
+                        ))}
+                        {idx < lines.length - 1 ? "\n" : ""}
+                      </div>
+                    )
+                  })}
+                </pre>
+              </div>
             )}
-          </div>
-          <div className="flex items-center justify-end gap-2 border-t border-white/5 bg-white/[0.02] px-3 py-2 sm:hidden">
-            <button
-              type="button"
-              onClick={() => setWrap((v) => !v)}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] text-zinc-300"
-            >
-              {wrap ? "wrap on" : "wrap off"}
-            </button>
-            <button
-              type="button"
-              onClick={() => copy()}
-              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 font-mono text-[10px] text-zinc-300"
-            >
-              {copied ? <Check className="size-3" /> : <Copy className="size-3" />} copy
-            </button>
           </div>
         </div>
       ) : (
-        <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">Hidden — tap show.</p>
+        <p className="px-3 py-2.5 text-meta text-ink-4">Log collapsed. {lines.length} lines available.</p>
       )}
     </div>
   )
@@ -635,18 +684,31 @@ type DshResult = {
   events: { type: string; text?: string; phase?: string; label?: string }[]
 }
 
-function parseDshResult(raw: string): DshResult {
+// parseHarnessResult handles both continuity harnesses. dsh emits flat
+// {type,text} events; Command Code emits {"type":"event"} progress wrappers plus a
+// single terminal {"type":"result"} frame carrying finalText and sessionId.
+export function parseHarnessResult(raw: string, executor: Task["executor"]): DshResult {
+  const provenancePrefix = executor === "commandcode" ? "provenance executor=commandcode" : "provenance executor=dsh"
   const lines = raw.split("\n")
-  const provenanceLine = lines.find((line) => line.startsWith("provenance executor=dsh")) ?? ""
+  const provenanceLine = lines.find((line) => line.startsWith(provenancePrefix)) ?? ""
   const field = (name: string) => provenanceLine.match(new RegExp(`${name}=([^\\s]+)`))?.[1]
   const events: DshResult["events"] = []
   const answer: string[] = []
   const finals: string[] = []
+  let resultSessionId: string | undefined
   for (const line of lines) {
     try {
       const event = JSON.parse(line) as DshResult["events"][number]
       if (!event || typeof event.type !== "string") continue
       events.push(event)
+      if (event.type === "result") {
+        // Command Code's terminal frame carries the answer and the session id.
+        const frame = event as unknown as { sessionId?: string; finalText?: string }
+        if (typeof frame.sessionId === "string" && frame.sessionId) resultSessionId = frame.sessionId
+        if (typeof frame.finalText === "string" && frame.finalText) finals.push(frame.finalText)
+        continue
+      }
+      if (event.type === "event") continue // progress wrapper, never part of the answer
       if (event.type === "final" && event.text) finals.push(event.text)
       else if (event.type === "text" && event.text) answer.push(event.text)
     } catch { /* provenance and proof lines are intentionally not JSON */ }
@@ -654,7 +716,7 @@ function parseDshResult(raw: string): DshResult {
   return {
       provenance: provenanceLine ? {
         workspace: field("ws"),
-        sessionId: field("dsh_session_id"),
+        sessionId: field("commandcode_session_id") ?? field("dsh_session_id") ?? resultSessionId,
         cwd: field("dsh_session_cwd"),
         bin: field("bin"),
         args: provenanceLine.match(/args=(\[.*?\])\s+ws=/)?.[1],
@@ -664,136 +726,161 @@ function parseDshResult(raw: string): DshResult {
     }
 }
 
-function DshResultPanel({ text, hasWorking, title, defaultOpen }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean }) {
+function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
   const [open, setOpen] = useState(defaultOpen !== false)
   const [traceOpen, setTraceOpen] = useState(false)
   const { copied, copy } = useCopy(text)
-  const parsed = useMemo(() => parseDshResult(text), [text])
+  const parsed = useMemo(() => parseHarnessResult(text, executor ?? "dsh"), [text, executor])
+  const harnessName = executor === "commandcode" ? "Command Code" : "DeepSeek Harness"
   const trace = parsed.events.filter((event) => event.type !== "text")
   const answer = parsed.answer || "No final answer text returned. Open raw trace to inspect the run."
+  const panelId = `result-panel-${title || harnessName}`
 
   return (
-    <div className="overflow-hidden rounded-xl border border-cyan-400/25 bg-[var(--color-surface-raised)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_rgba(8,145,178,0.1)]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-cyan-400/15 bg-cyan-400/[0.07] px-3 py-2.5">
-        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 items-center gap-1.5 text-left">
-          <ChevronDown className={`size-3.5 shrink-0 text-cyan-300 transition-transform ${open ? "" : "-rotate-90"}`} />
-          <span className="flex size-7 items-center justify-center rounded-full bg-cyan-400/15 text-cyan-200"><BrainCircuit className="size-3.5" /></span>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-100">{title || "DeepSeek Harness result"}</span>
+    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 items-center gap-1.5 rounded text-left"
+        >
+          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--color-accent-tint)] text-[var(--color-accent)]">
+            <BrainCircuit className="size-3.5" />
+          </span>
+          <span className="truncate text-meta font-semibold text-ink">{title || `${harnessName} answer`}</span>
         </button>
-        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100">session-aware</span>
-        <span className="ml-auto hidden items-center gap-2 sm:flex">
-          <span className="font-mono text-[10px] text-cyan-200/65">{trace.length} trace events</span>
-          <button type="button" onClick={() => copy()} aria-label="Copy raw DeepSeek Harness result" className="inline-flex size-7 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        <span className="rounded-full border border-[var(--color-line)] px-2 py-0.5 text-2xs text-ink-4">{harnessName}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <span className="hidden text-2xs tabular-nums text-ink-4 sm:inline">{trace.length} trace events</span>
+          <button
+            type="button"
+            onClick={() => copy()}
+            aria-label="Copy raw result"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+          >
+            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
-        </span>
+        </div>
       </div>
+
       {open && (
-        <div className="space-y-3 bg-[#07141a]/55 p-3">
+        <div id={panelId} className="p-3">
           {parsed.provenance && (
-            <div className="grid gap-2 rounded-lg border border-cyan-300/10 bg-cyan-300/[0.04] p-2.5 text-[10px] sm:grid-cols-2">
-              <div className="min-w-0"><span className="text-cyan-200/50">session</span><p className="mt-0.5 truncate font-mono text-cyan-100" title={parsed.provenance.sessionId}>{parsed.provenance.sessionId || "unknown"}</p></div>
-              <div className="min-w-0"><span className="text-cyan-200/50">workspace</span><p className="mt-0.5 truncate font-mono text-cyan-100" title={parsed.provenance.workspace}>{parsed.provenance.workspace || "unknown"}</p></div>
-            </div>
+            <dl className="mb-3 grid gap-x-4 gap-y-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-line)]/20 p-2.5 sm:grid-cols-2">
+              {[
+                ["Session", parsed.provenance.sessionId],
+                ["Workspace", parsed.provenance.workspace],
+                ["CWD", parsed.provenance.cwd],
+                ["Binary", parsed.provenance.bin],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <div key={label as string} className="min-w-0">
+                  <dt className="text-2xs text-ink-4">{label}</dt>
+                  <dd className="truncate font-mono text-meta text-ink-2" title={value as string}>{value as string}</dd>
+                </div>
+              ))}
+            </dl>
           )}
-          <div className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-200/65"><Layers3 className="size-3.5" /> Answer</div>
-            <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-100">{answer}</div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setTraceOpen((value) => !value)} className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100/75 hover:bg-white/[0.08]">
-              <ExternalLink className="size-3.5" /> {traceOpen ? "Hide raw trace" : "Show raw trace"}
+
+          <AgentMarkdown text={answer} />
+
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] pt-2.5">
+            <button
+              type="button"
+              aria-expanded={traceOpen}
+              onClick={() => setTraceOpen((value) => !value)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            >
+              <Layers3 className="size-3.5" />
+              {traceOpen ? "Hide raw trace" : "Show raw trace"}
             </button>
-            <button type="button" onClick={() => copy()} className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-100/75 hover:bg-white/[0.08] sm:hidden">
-              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} Copy raw
-            </button>
+            {hasWorking && <span className="text-2xs text-ink-4">Working trace is in the worker log above.</span>}
           </div>
-          {traceOpen && <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-black/25 p-3 font-mono text-[11px] leading-5 text-slate-300">{text}</pre>}
+          {traceOpen && (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--color-line)] bg-[var(--color-void)] p-3 font-mono text-meta leading-relaxed text-ink-2">
+              {text}
+            </pre>
+          )}
         </div>
       )}
-      {!open && <p className="px-3 py-2 font-mono text-[11px] text-cyan-100/50">Collapsed · session {parsed.provenance?.sessionId || "unknown"}</p>}
-      {hasWorking && <p className="border-t border-cyan-400/10 bg-cyan-400/[0.03] px-3 py-2 font-mono text-[11px] text-cyan-100/50">Working trace is available above in Worker log.</p>}
     </div>
   )
 }
 
 export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
-  if (executor === "dsh") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} />
+  if (executor === "dsh" || executor === "commandcode") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} />
   const [wrap, setWrap] = useState(true)
   const [open, setOpen] = useState(defaultOpen !== false)
   const formattedText = useMemo(() => prettyJSONText(text), [text])
   const { copied, copy } = useCopy(formattedText)
   const lines = useMemo(() => formattedText.split("\n"), [formattedText])
+  const panelId = `result-panel-${title || "result"}`
 
   return (
-    <div className="overflow-hidden rounded-xl border border-emerald-500/25 bg-[var(--color-surface-raised)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.08)]">
-      <div className="flex items-center gap-2 border-b border-emerald-500/15 bg-emerald-500/[0.07] px-3 py-2.5">
-        <button type="button" onClick={() => setOpen(v => !v)} className="flex min-w-0 items-center gap-1.5 text-left">
-          <ChevronDown className={`size-3.5 shrink-0 text-emerald-500 transition-transform ${open ? "" : "-rotate-90"}`} />
-          <span className="flex size-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
+      <div className="flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 items-center gap-1.5 rounded text-left"
+        >
+          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--color-accent-tint)] text-[var(--color-accent)]">
             <FileCheck2 className="size-3.5" />
           </span>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">{title || "Result"}</span>
+          <span className="truncate text-meta font-semibold text-ink">{title || "Result"}</span>
         </button>
-        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-200">
-          pure output
-        </span>
-        <span className="ml-auto hidden items-center gap-2 sm:flex">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
+            aria-pressed={wrap}
             onClick={() => setWrap((v) => !v)}
-            className="rounded-full border border-emerald-500/15 bg-white px-2.5 py-1 font-mono text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 dark:bg-white/5 dark:text-emerald-200 dark:hover:bg-white/10"
+            className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
+              wrap
+                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            }`}
           >
-            {wrap ? "wrap" : "no-wrap"}
+            <WrapText className="size-3.5" />
+            <span className="hidden sm:inline">wrap</span>
           </button>
           <button
             type="button"
             onClick={() => copy()}
             aria-label="Copy result"
-            className="inline-flex size-7 items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-200"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
           >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
-        </span>
-        <button
-          type="button"
-          onClick={() => copy()}
-          aria-label="Copy result mobile"
-          className="inline-flex size-7 items-center justify-center rounded-md border border-emerald-500/20 bg-white text-emerald-700 hover:bg-emerald-50 dark:bg-white/5 dark:text-emerald-200 sm:hidden"
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </button>
+        </div>
       </div>
-      {open && (
-        <div className="relative bg-[var(--color-bg)]/50 dark:bg-[#0a1410]/40">
-          <div className="absolute bottom-0 left-0 top-0 w-[3px] bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.35)]" />
+      {open ? (
+        <div id={panelId} className="relative bg-[var(--color-void)]">
+          <div className="absolute inset-y-0 left-0 w-0.5 bg-[var(--color-accent)]/50" aria-hidden />
           <pre
-            className={`max-h-[30rem] overflow-auto p-4 pl-5 font-mono text-[13px] leading-6 tracking-[-0.01em] selection:bg-emerald-500/25 ${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
+            className={`max-h-[30rem] overflow-auto py-3 pl-4 pr-3 font-mono text-body leading-relaxed ${
+              wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+            }`}
           >
             {lines.map((line, idx) => (
               <div key={idx} className={resultLineClass(line)}>
                 <ResultSpans line={line} />
-                {idx < lines.length - 1 ? "" : ""}
               </div>
             ))}
           </pre>
         </div>
+      ) : (
+        <p className="px-3 py-2.5 text-meta text-ink-4">Collapsed</p>
       )}
-      {!open && <p className="px-3 py-2 font-mono text-[11px] text-emerald-700/60 dark:text-emerald-200/60">Collapsed</p>}
       {!hasWorking && open && (
-        <p className="border-t border-emerald-500/10 bg-emerald-500/[0.04] px-3 py-2 font-mono text-[11px] leading-relaxed text-emerald-700/60 dark:text-emerald-200/60">
-          Single-block output — no separate working log detected for this task.
+        <p className="border-t border-[var(--color-line)] bg-[var(--color-line)]/20 px-3 py-2 text-2xs text-ink-4">
+          Single-block output. No separate working log was detected for this task.
         </p>
       )}
-      <div className="flex items-center justify-end gap-2 border-t border-emerald-500/10 px-3 py-2 sm:hidden">
-        <button
-          type="button"
-          onClick={() => setWrap((v) => !v)}
-          className="rounded-full border border-emerald-500/15 bg-white px-2.5 py-1 font-mono text-[10px] text-emerald-700 dark:bg-white/5 dark:text-emerald-200"
-        >
-          {wrap ? "wrap on" : "wrap off"}
-        </button>
-      </div>
     </div>
   )
 }
@@ -825,7 +912,10 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
 
   return (
     <div className="space-y-2">
-      <h4 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-emerald-300">Results · {results.length}</h4>
+      <div className="flex items-baseline gap-2">
+        <h4 className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Results</h4>
+        <span className="text-2xs tabular-nums text-ink-4">{results.length}</span>
+      </div>
       {results.map((r, i) => (
         <ResultPanel key={i} text={r.text} hasWorking={false} title={`Result ${r.index} · ${r.outcome}`} defaultOpen={i === results.length - 1} executor={task.executor} />
       ))}
@@ -835,11 +925,44 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
 
 export function ResultEmpty({ running }: { running?: boolean }) {
   return (
-    <div className="rounded-xl border border-dashed border-emerald-500/20 bg-emerald-500/[0.04] px-3 py-3">
-      <p className="flex items-center gap-1.5 font-mono text-[12px] leading-relaxed text-emerald-700/70 dark:text-emerald-200/60">
-        <FileCheck2 className="size-3.5" />
-        {running ? "Worker still running — pure result will appear here when the HERMES block completes." : "No result yet."}
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] px-3 py-6 text-center">
+      <FileCheck2 className="size-5 text-ink-4" aria-hidden />
+      <p className="text-meta text-ink-3">
+        {running ? "Worker still running" : "No result yet"}
       </p>
+      <p className="max-w-[36ch] text-2xs leading-relaxed text-ink-4">
+        {running
+          ? "The answer appears here once the worker finishes its run."
+          : "Run the task to produce an answer. Output from each run is kept separately."}
+      </p>
+    </div>
+  )
+}
+
+/* Log and answer as peers in one column: the log streams while running, the
+   answer settles beneath it. Both stay reachable without a sub-tab, so the
+   same component backs the drawer and the page. */
+export function TaskOutput({ task, events, working, running, slug, compact = false }: {
+  task: Task
+  events: TaskEvent[]
+  working: string
+  running: boolean
+  slug: string
+  compact?: boolean
+}) {
+  const showLog = running || !!working
+  const showResult = !!task.result
+
+  if (!showLog && !showResult) {
+    return <ResultEmpty running={running} />
+  }
+
+  return (
+    <div className={compact ? "space-y-3" : "space-y-4"}>
+      {showLog && (
+        <WorkerLogPanel text={working} running={running} slug={slug} taskId={task.id} />
+      )}
+      {showResult && <ResultStack task={task} events={events} />}
     </div>
   )
 }

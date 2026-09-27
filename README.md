@@ -137,10 +137,37 @@ off the `dsh web` daemon's, and finished sessions are published back into
 Node-agent follows the official CommandCode CLI:
 
 ```sh
-cmd -p "<prompt>" --yolo --skip-onboarding --output-format text
+cmd -p "<prompt>" --yolo --skip-onboarding --output-format json
 ```
 
+A follow-up turn on the same card resumes that exact session, so review feedback
+does not restart the work from scratch:
+
+```sh
+cmd -p "<prompt>" --yolo --skip-onboarding --output-format json --resume <session-id>
+```
+
+Switchyard stores the session in `harness_bindings` (`harness_kind=commandcode`) and sends an empty session id on the first run so Command Code mints a real one. The terminal `{"type":"result"}` frame supplies `sessionId`, `finalText`, and `usage`; a run that fails before a session resolves omits `sessionId`, which Switchyard accepts. A worker build without `--output-format json` falls back to `text` once per binary — such a run cannot prove continuity and is treated as a first run.
+
 On Windows the binary alias is `cmdc`. Node-agent probes `cmd`, `cmdc`, or `command-code` depending on platform. `--yolo` allows the worker to edit files and run shell commands — use it only on trusted nodes.
+
+Session continuity uses the same `harness_bindings` mechanism as `dsh`, keyed by
+`harness_kind`. Two differences are worth knowing:
+
+- **No workspace identity.** DSH keys its session store by workspace, so Switchyard
+  requires a workspace id before it will resume. CommandCode resolves sessions per
+  working directory, so a `commandcode` card is resumable without one.
+- **No stale-turn rejection.** `last_turn_seq` is sent on the wire but never
+  returned for CommandCode, so the stale-turn check does not apply. The only guard
+  against a late result is the `current_run_id` ownership fence.
+
+A successful run must return a `sessionId` matching the dispatched one, or the card
+is blocked with `commandcode_identity_rejected`. A failed run may omit `sessionId`.
+`commandcode_session_missing:` is deterministic and is never retried.
+
+Full detail: [docs/features/commandcode-executor.md](docs/features/commandcode-executor.md).
+Worker-side contract and troubleshooting:
+[node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
 
 ## Review gate
 

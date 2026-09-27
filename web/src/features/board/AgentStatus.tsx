@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { Check, ChevronDown, RotateCw, X } from "lucide-react"
 import type { Task, TaskEvent } from "../../api"
 
 const CHEVRON = Array.from({ length: 9 }, (_, index) => {
@@ -74,28 +75,30 @@ function ProgressRing({ step, total, period = 1100 }: { step: number; total: num
   return (
     <span className="relative inline-flex size-6 shrink-0 items-center justify-center">
       <svg width={size} height={size} className="absolute inset-0">
-        <circle cx={12} cy={12} r={radius} fill="none" stroke="var(--line)" strokeWidth={stroke} />
+        <circle cx={12} cy={12} r={radius} fill="none" stroke="var(--color-line-strong)" strokeWidth={stroke} />
         <circle
           cx={12}
           cy={12}
           r={radius}
           fill="none"
-          stroke="var(--ink-3)"
+          stroke="var(--color-accent)"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${circumference * share} ${circumference * (1 - share)}`}
           style={{ animation: `ring-sweep ${period}ms linear infinite`, transformOrigin: "12px 12px", transform: `rotate(${(step - 1) * 137.5}deg)` }}
         />
       </svg>
-      <span className="relative text-[10.5px] font-semibold tabular-nums text-ink">{step}</span>
+      <span className="relative text-2xs font-semibold tabular-nums text-ink">{step}</span>
     </span>
   )
 }
 
-function Badge({ tone, children }: { tone: "red" | "green"; children: ReactNode }) {
+function ToneBadge({ tone, children }: { tone: "danger" | "success"; children: ReactNode }) {
   return (
     <span
-      className={`flex size-5.5 shrink-0 items-center justify-center rounded-full text-white ${tone === "red" ? "bg-red" : "bg-green"}`}
+      className={`flex size-5 shrink-0 items-center justify-center rounded-full ${
+        tone === "danger" ? "bg-danger text-white" : "bg-success text-white"
+      }`}
       style={{ animation: "pop-in 300ms cubic-bezier(0.23,1,0.32,1) both" }}
     >
       {children}
@@ -103,9 +106,9 @@ function Badge({ tone, children }: { tone: "red" | "green"; children: ReactNode 
   )
 }
 
-const CheckIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-const XIcon = <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-const RetryIcon = <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></svg>
+const CheckIcon = <Check className="size-3" strokeWidth={3} />
+const XIcon = <X className="size-3" strokeWidth={3} />
+const RetryIcon = <RotateCw className="size-3" strokeWidth={2.5} />
 
 function eventLabel(event: TaskEvent) {
   return EVENT_LABELS[event.kind] ?? event.kind.replaceAll("_", " ")
@@ -144,7 +147,7 @@ export function RunningIndicator({ startedAt, endAt, compact = false }: { starte
   return (
     <span role="status" aria-label={`Running for ${elapsed}`} className={`inline-flex items-center ${compact ? "gap-2" : "gap-2.5"}`}>
       <LoaderGrid />
-      <span className="font-mono text-[11px] tabular-nums text-neutral-400">{elapsed}</span>
+      <span className="font-mono text-meta tabular-nums text-ink-3">{elapsed}</span>
     </span>
   )
 }
@@ -178,14 +181,14 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
   const totalSeconds = settled ? Math.max(0, (completedAt - startedAt)) : null
 
   return (
-    <section className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-2.5" aria-label="Agent progress">
+    <section className="glass-inset-card min-w-0 rounded-lg p-2.5" aria-label="Agent progress">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {live ? <LoaderGrid /> : <span className={`size-2 rounded-full ${task.status === "done" || task.status === "review" ? "bg-emerald-400" : "bg-neutral-500"}`} />}
-          <h3 className="truncate text-[10px] font-semibold uppercase tracking-wider text-sky-300">Agent progress</h3>
+          {live ? <LoaderGrid /> : <span className={`size-2 shrink-0 rounded-full ${task.status === "done" || task.status === "review" ? "bg-success" : "bg-ink-4"}`} aria-hidden />}
+          <h3 className="truncate text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Agent progress</h3>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-[11px] tabular-nums text-neutral-400">
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="font-mono text-meta tabular-nums text-ink-3">
             {totalSeconds != null && !live
               ? `done in ${totalSeconds < 60 ? `${totalSeconds}s` : `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`}`
               : elapsed}
@@ -195,18 +198,16 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
             aria-expanded={!minimized}
             aria-label={minimized ? "Expand agent progress" : "Minimize agent progress"}
             onClick={() => setMinimized((value) => !value)}
-            className="flex size-6 items-center justify-center rounded-full text-ink-3 hover:bg-inset hover:text-ink"
+            className="flex size-7 items-center justify-center rounded-md text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-300" style={{ transform: minimized ? "rotate(0)" : "rotate(180deg)" }}>
-              <path d="m6 9 6 6 6-6" />
-            </svg>
+            <ChevronDown className="size-3.5 transition-transform duration-200" style={{ transform: minimized ? undefined : "rotate(180deg)" }} />
           </button>
         </div>
       </div>
 
       {/* minimized keeps the active step visible so progress is preserved */}
       {minimized ? (
-        <p className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-2">
+        <p className="mt-1.5 flex items-center gap-2 text-meta text-ink-2">
           {activeEvent ? (
             <>
               <ProgressRing step={rows.findIndex((row) => row.id === activeEvent.id) + 1} total={rows.length} />
@@ -218,7 +219,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
         </p>
       ) : (
         <>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-neutral-500">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-ink-4">
             <span className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-1.5 py-0.5">{task.status}</span>
             {task.assignee && <span>agent: {task.assignee}</span>}
             {remote && <span>node: remote workspace</span>}
@@ -226,48 +227,58 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
 
           {rows.length > 0 ? (
             <div className="mt-2 max-h-48 overflow-y-auto pr-1">
-              <div className="flex flex-col gap-2">
-                {visibleRows.map((event, index) => {
+              <div className="flex flex-col gap-1.5">
+                {visibleRows.map((event) => {
                   const tone = eventTone(event.kind)
                   const details = eventData(event)
-                  const isActive = index === activeIndex
+                  const absoluteIndex = rows.findIndex((row) => row.id === event.id)
+                  const isActive = event.id === activeEvent?.id
                   const open = openRows[event.id] ?? isActive
-                  const sequenceIndex = expanded ? rows.findIndex((row) => row.id === event.id) : index
                   return (
-                    <div key={event.id} className="overflow-hidden rounded-[14px] bg-surface shadow-card" style={{ animation: `fade-up 450ms cubic-bezier(0.23,1,0.32,1) ${sequenceIndex * 80}ms both` }}>
+                    <div key={event.id} className="overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)]/50">
                       <button
                         type="button"
-                        className="flex min-h-11 w-full items-center gap-2.5 px-2.5 text-left hover:bg-inset"
+                        className="flex min-h-11 w-full items-center gap-2 px-2.5 text-left hover:bg-[var(--color-line)]/40"
                         aria-expanded={open}
                         onClick={() => setOpenRows((current) => ({ ...current, [event.id]: !open }))}
                       >
                         <span className="flex size-6 shrink-0 items-center justify-center">
                           {tone === "running" && isActive
-                            ? <ProgressRing step={rows.findIndex((row) => row.id === event.id) + 1} total={rows.length} />
+                            ? <ProgressRing step={absoluteIndex + 1} total={rows.length} />
                             : tone === "green"
-                              ? <Badge tone="green">{CheckIcon}</Badge>
+                              ? <ToneBadge tone="success">{CheckIcon}</ToneBadge>
                               : tone === "red"
-                                ? <Badge tone="red">{XIcon}</Badge>
-                                : <ProgressRing step={sequenceIndex + 1} total={rows.length} period={0} />}
+                                ? <ToneBadge tone="danger">{XIcon}</ToneBadge>
+                                : <ProgressRing step={absoluteIndex + 1} total={rows.length} period={0} />}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{eventLabel(event)}</span>
-                        {tone === "red" && <span className="inline-flex h-5.5 items-center gap-1.5 rounded-full bg-red-tint px-2 text-[11.5px] font-medium text-red">Failed <span className="flex" style={{ animation: "spin 1.2s linear infinite" }}>{RetryIcon}</span></span>}
-                        {tone === "green" && <span className="inline-flex h-5.5 items-center rounded-full bg-green-tint px-2 text-[11.5px] font-medium text-green">Completed</span>}
-                        <span className="shrink-0 font-mono text-[10px] text-ink-3">{formatTime(event.created_at)}</span>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="shrink-0 text-ink-3 transition-transform duration-300" style={{ transform: open ? "rotate(180deg)" : undefined }}><path d="m6 9 6 6 6-6" /></svg>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{eventLabel(event)}</span>
+                        {tone === "red" && (
+                          <span className="inline-flex h-5 items-center gap-1 rounded-full bg-danger/10 px-2 text-2xs font-medium text-danger-text">
+                            Failed
+                            <span className="flex" style={{ animation: "spin 1.2s linear infinite" }} aria-hidden>{RetryIcon}</span>
+                          </span>
+                        )}
+                        {tone === "green" && (
+                          <span className="inline-flex h-5 items-center rounded-full bg-success/10 px-2 text-2xs font-medium text-success">Completed</span>
+                        )}
+                        <span className="shrink-0 font-mono text-2xs tabular-nums text-ink-4">{formatTime(event.created_at)}</span>
+                        <ChevronDown className="size-3.5 shrink-0 text-ink-4 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : undefined }} aria-hidden />
                       </button>
-                      <div className="grid transition-[grid-template-rows,opacity] duration-300" style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0, transitionTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}>
+                      <div
+                        className="grid transition-[grid-template-rows,opacity] duration-200"
+                        style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0, transitionTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
+                      >
                         <div className="overflow-hidden">
-                          <div className="mb-2.5 grid grid-cols-[24px_1fr] gap-2.5 px-2.5">
-                            <span aria-hidden className="mx-auto h-full w-px bg-line" />
-                            <div className="flex flex-col gap-1.5">
-                              {details.length > 0 ? details.map(([key, value], detailIndex) => (
-                                <div key={`${key}-${value}`} className="flex items-center justify-between gap-3" style={{ animation: open ? `fade-up 300ms cubic-bezier(0.23,1,0.32,1) ${120 + detailIndex * 80}ms both` : undefined }}>
-                                  <span className="truncate text-[12px] capitalize text-ink-2">{key}</span>
-                                  <span className="max-w-[62%] whitespace-pre-wrap break-words text-right font-mono text-[11.5px] text-ink-3 tabular-nums">{value}</span>
+                          <div className="mb-2 grid grid-cols-[16px_1fr] gap-2.5 px-2.5">
+                            <span aria-hidden className="mx-auto h-full w-px bg-[var(--color-line)]" />
+                            <dl className="flex flex-col gap-1">
+                              {details.length > 0 ? details.map(([key, value]) => (
+                                <div key={`${key}-${value}`} className="flex items-baseline justify-between gap-3">
+                                  <dt className="truncate text-meta text-ink-3">{key}</dt>
+                                  <dd className="max-w-[62%] whitespace-pre-wrap break-words text-right font-mono text-meta tabular-nums text-ink-2">{value}</dd>
                                 </div>
-                              )) : <span className="text-[12px] text-ink-3">No event details</span>}
-                            </div>
+                              )) : <p className="text-meta text-ink-4">No event details</p>}
+                            </dl>
                           </div>
                         </div>
                       </div>
@@ -276,9 +287,18 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                 })}
               </div>
             </div>
-          ) : <p className="mt-2 text-[11px] text-neutral-500">Waiting for worker events…</p>}
+          ) : <p className="mt-2 text-meta text-ink-4">Waiting for worker events…</p>}
 
-          {rows.length > 6 && <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="mt-2 text-[10px] text-sky-300 hover:text-sky-200">{expanded ? "Show latest 6" : `Show full timeline (${rows.length})`}</button>}
+          {rows.length > 6 && (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              className="-mx-1 mt-2 inline-flex h-7 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--color-line)]/50"
+            >
+              {expanded ? "Show latest 6" : `Show full timeline (${rows.length})`}
+            </button>
+          )}
         </>
       )}
     </section>

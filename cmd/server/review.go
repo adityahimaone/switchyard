@@ -60,6 +60,11 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 	return t, nil
 }
 
+// runGitFunc runs a git command inside the task workspace over the task's
+// transport. Indirected through a var so tests can exercise handleTaskDiff
+// without a live Mac/Windows node.
+var runGitFunc = runGit
+
 // runGit executes a git command inside the task workspace over SSH.
 func runGit(t *reviewTask, args string) (string, int) {
 	if t.Transport == "node-agent" {
@@ -89,7 +94,7 @@ func runGit(t *reviewTask, args string) (string, int) {
 
 func reviewWorkspaceClean(t *reviewTask) (bool, string, int) {
 	// git diff --quiet ignores untracked files; review must treat new files as changes.
-	out, code := runGit(t, reviewScopeSetup+`git diff --quiet HEAD -- "$scope"; diff_code=$?; untracked=$(untracked | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
+	out, code := runGitFunc(t, reviewScopeSetup+`git diff --quiet HEAD -- "$scope"; diff_code=$?; untracked=$(untracked | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
 	if code == 0 {
 		return true, out, 0
 	}
@@ -106,7 +111,46 @@ type reviewSnapshot struct {
 	clean bool
 }
 
+// reviewSnapshotBody returns raw with any leading preamble removed, so the
+// markers are found in the script's real output.
+//
+// node-agent prepends a "provenance executor=... args=[...]" line that echoes
+// the entire command, including the literal strings printf '__STAT__\n' and
+// printf '__NAMES__\n'. Searching for the first occurrence of a marker matched
+// that echo instead of the real output, so the checklist came back empty and
+// the diff body was the tail of the echoed command.
+//
+// The real markers are always printed alone on their own line, so match on a
+// whole line rather than anywhere in the text.
+func reviewSnapshotBody(raw string) string {
+	markers := map[string]bool{"__STAT__": true, "__NAMES__": true, "__CLEAN__": true, "__DIFF__": true}
+	lines := strings.Split(raw, "\n")
+	for i, line := range lines {
+		if markers[strings.TrimSpace(line)] {
+			return strings.Join(lines[i:], "\n")
+		}
+	}
+	return raw
+}
+
+// reviewSnapshotErr reports why a remote git run is untrustworthy, or nil when
+// the output really is a snapshot. The __CLEAN__ marker is written last, so its
+// presence proves the script ran to completion; without it the run aborted
+// (node unreachable, workspace unknown, cwd missing) and any partial text is an
+// error message, not a diff.
+func reviewSnapshotErr(snapshot string, code int) error {
+	if strings.Contains(reviewSnapshotBody(snapshot), "__CLEAN__") {
+		return nil
+	}
+	detail := strings.TrimSpace(snapshot)
+	if detail == "" {
+		detail = fmt.Sprintf("no output (exit %d)", code)
+	}
+	return fmt.Errorf("git diff failed (exit %d): %s", code, truncate(detail, 500))
+}
+
 func parseReviewSnapshot(raw string) reviewSnapshot {
+	raw = reviewSnapshotBody(raw)
 	part := func(name, next string) string {
 		value := raw
 		if i := strings.Index(value, name); i >= 0 {
@@ -145,9 +189,14 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 	// Keep the clean-workspace path cheap. In particular, do not run a full
 	// diff after Git has already told us there is nothing to review. Limit the
 	// remote diff too, before it is sent back over SSH/node-agent.
-	snapshot, code := runGit(t, reviewScopeSetup+`printf '__STAT__\n'; git diff --stat HEAD -- "$scope"; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index --stat /dev/null "$f" || true; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- "$scope"; untracked; printf '__CLEAN__\n'; if git diff --quiet HEAD -- "$scope" && [ -z "$(untracked)" ]; then printf '1\n'; printf '__DIFF__\n'; exit 0; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- "$scope" | head -8000; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index /dev/null "$f" || true; done | head -8000`)
-	if code != 0 && strings.TrimSpace(snapshot) == "" {
-		fail(w, fmt.Errorf("git diff failed"), 500)
+	snapshot, code := runGitFunc(t, reviewScopeSetup+`printf '__STAT__\n'; git diff --stat HEAD -- "$scope"; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index --stat /dev/null "$f" || true; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- "$scope"; untracked; printf '__CLEAN__\n'; if git diff --quiet HEAD -- "$scope" && [ -z "$(untracked)" ]; then printf '1\n'; printf '__DIFF__\n'; exit 0; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- "$scope" | head -8000; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index /dev/null "$f" || true; done | head -8000`)
+	// A transport failure (unreachable node, unknown workspace, bad cwd)
+	// returns only an error string with no __STAT__ marker. Parsing that as a
+	// snapshot yields an empty file list with clean=false, which the UI
+	// renders as a review with no changes — hiding a hard failure behind an
+	// empty card. Require a real marker before trusting the output.
+	if err := reviewSnapshotErr(snapshot, code); err != nil {
+		fail(w, err, 502)
 		return
 	}
 	review := parseReviewSnapshot(snapshot)
@@ -258,7 +307,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	if req.Action == "commit_push" {
 		script += " && git push"
 	}
-	out, code := runGit(t, reviewScopeSetup+script)
+	out, code := runGitFunc(t, reviewScopeSetup+script)
 	if code != 0 {
 		fail(w, fmt.Errorf("git failed (exit %d): %s", code, truncate(out, 500)), 500)
 		return
@@ -333,7 +382,7 @@ func parseDiffNames(raw string) []string {
 }
 
 func changedFiles(t *reviewTask) []string {
-	out, code := runGit(t, reviewScopeSetup+`git diff --name-only HEAD -- "$scope"; untracked`)
+	out, code := runGitFunc(t, reviewScopeSetup+`git diff --name-only HEAD -- "$scope"; untracked`)
 	if code != 0 {
 		return nil
 	}

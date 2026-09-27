@@ -20,7 +20,7 @@ type WsStatus = "connected" | "unreachable" | "unknown" | "local"
 const STATUS_STYLE: Record<WsStatus, { dot: string; text: string; label: string }> = {
   connected: { dot: "bg-emerald-400", text: "text-emerald-300", label: "connected" },
   unreachable: { dot: "bg-red-400", text: "text-red-300", label: "unreachable" },
-  unknown: { dot: "bg-neutral-500", text: "text-neutral-400", label: "not pinged" },
+  unknown: { dot: "bg-ink-4", text: "text-ink-3", label: "not pinged" },
   local: { dot: "bg-sky-400", text: "text-sky-300", label: "local" },
 }
 
@@ -44,7 +44,7 @@ function platformBadge(w: Workspace): { label: string; Icon: typeof Monitor; tin
     return { label: "windows", Icon: Laptop, tint: "border-sky-500/30 bg-sky-500/10 text-sky-300" }
   }
   if (os === "mac" || host.includes("mac") || path.startsWith("/users/aditya") || path.includes("/users/")) {
-    return { label: "mac", Icon: Apple, tint: "border-neutral-700 bg-[var(--color-bg)] text-neutral-300" }
+    return { label: "mac", Icon: Apple, tint: "border-[var(--color-line)] bg-[var(--color-bg)] text-ink-2" }
   }
   if (!host || host === "localhost" || host === "127.0.0.1" || os === "linux") {
     return { label: "vps", Icon: Monitor, tint: "border-[var(--color-line)] bg-[var(--color-inset)] text-[var(--color-ink-2)]" }
@@ -148,7 +148,7 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
         />
       )}
       {!live && (
-        <span className={`absolute inset-0 flex items-center justify-center text-[10px] ${pts.length ? "text-[var(--color-danger)]/80" : "text-neutral-600"}`}>
+        <span className={`absolute inset-0 flex items-center justify-center text-[10px] ${pts.length ? "text-[var(--color-danger)]/80" : "text-ink-4"}`}>
           {pts.length ? "offline" : "no pings yet"}
         </span>
       )}
@@ -164,7 +164,7 @@ function StatusChip({ ws }: { ws: Workspace }) {
       style={{ background: "rgba(0,0,0,0.2)" }}>
       <span className={`size-2 rounded-full ${s.dot} ${live ? "animate-pulse" : ""}`} />
       {s.label}
-      {ws.ping_ms != null && <span className="text-neutral-500">{Math.round(ws.ping_ms)}ms</span>}
+      {ws.ping_ms != null && <span className="text-ink-4">{Math.round(ws.ping_ms)}ms</span>}
     </span>
   )
 }
@@ -233,11 +233,11 @@ function WorkspaceForm({
         <h2 className="text-sm font-semibold">{editing ? `Edit workspace ${initial?.id}` : "New workspace"}</h2>
         {!editing && (
           <>
-            <Label className="mt-3 block text-xs text-neutral-400">ID</Label>
+            <Label className="mt-3 block text-xs text-ink-3">ID</Label>
             <Input value={id} onChange={(e) => setId(e.target.value)} placeholder="mac-dev" className={`mt-1 ${inpCls}`} />
           </>
         )}
-        <Label className="mt-3 block text-xs text-neutral-400">Transport</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Transport</Label>
         <Select value={transport} onValueChange={pickTransport}>
           <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
             <SelectValue />
@@ -249,7 +249,7 @@ function WorkspaceForm({
         </Select>
         {transport === "ssh" && (
           <>
-            <Label className="mt-3 block text-xs text-neutral-400">SSH host</Label>
+            <Label className="mt-3 block text-xs text-ink-3">SSH host</Label>
             <Select value={host} onValueChange={pickHost}>
               <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
                 <SelectValue placeholder="pilih host" />
@@ -263,9 +263,9 @@ function WorkspaceForm({
             </Select>
           </>
         )}
-        <Label className="mt-3 block text-xs text-neutral-400">Name</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Name</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mac Dev" className={`mt-1 ${inpCls}`} />
-        <Label className="mt-3 block text-xs text-neutral-400">OS</Label>
+        <Label className="mt-3 block text-xs text-ink-3">OS</Label>
         <Select value={os || "__auto"} onValueChange={(v) => setOs(v === "__auto" ? "" : v)}>
           <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
             <SelectValue />
@@ -274,14 +274,14 @@ function WorkspaceForm({
             {OS_OPTIONS.map((o) => (
               <SelectItem key={o.value} value={o.value} className="text-sm">{o.label}</SelectItem>
             ))}
-            <SelectItem value="__auto" className="text-sm text-neutral-400">Auto-detect (dari host/path)</SelectItem>
+            <SelectItem value="__auto" className="text-sm text-ink-3">Auto-detect (dari host/path)</SelectItem>
           </SelectContent>
         </Select>
-        <Label className="mt-3 block text-xs text-neutral-400">Path (di host)</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Path (di host)</Label>
         <Input value={path} onChange={(e) => setPath(e.target.value)}
           placeholder={transport === "ssh" ? SSH_PRESETS[host]?.path ?? "/Users/... atau C:\\..." : "/home/adityahimaone/apps"}
           className={`mt-1 ${inpCls}`} />
-        <Label className="mt-3 block text-xs text-neutral-400">Prequest / constraints</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Prequest / constraints</Label>
         <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -289,7 +289,7 @@ function WorkspaceForm({
           placeholder="Tech stack, requirements, limitasi agent di workspace ini… (mis. 'Next.js 15 + Tailwind, no new deps, pnpm only')"
           className={`mt-1 min-h-0 resize-y text-sm ${inpCls}`}
         />
-        <Label className="mt-3 block text-xs text-neutral-400">Kind</Label>
+        <Label className="mt-3 block text-xs text-ink-3">Kind</Label>
         <Select value={kind} onValueChange={setKind}>
           <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
             <SelectValue />
@@ -325,7 +325,7 @@ function LogsDialog({ ws, onClose }: { ws: Workspace; onClose: () => void }) {
           <Button variant="ghost" size="sm" className="ml-auto" onClick={onClose}>✕</Button>
         </div>
         <Separator className="my-2" />
-        <pre className="flex-1 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-neutral-300">
+        <pre className="flex-1 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-ink-2">
           {logs.isLoading ? "Loading…" : logs.data?.length ? logs.data.join("\n") : "No activity matched this workspace."}
         </pre>
       </div>
@@ -359,30 +359,30 @@ function FileBrowser({ ws }: { ws: Workspace }) {
   return <>
     <div className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-2.5">
       <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-inset)]"><Folder className="size-3.5 text-[var(--color-accent)]" /></div>
-      <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Workspace files</p><p className="truncate text-[10px] text-neutral-600">Browse, preview, edit, and download files</p></div>
+      <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">Workspace files</p><p className="truncate text-[10px] text-ink-4">Browse, preview, edit, and download files</p></div>
       <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 text-[11px]" onClick={() => setOpenDialog(true)}><FolderOpen className="size-3.5" /> Open files</Button>
     </div>
     {openDialog && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-5" onClick={() => setOpenDialog(false)}>
       <section role="dialog" aria-modal="true" aria-labelledby={`workspace-files-title-${ws.id}`} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] shadow-2xl sm:max-h-[min(860px,calc(100dvh-2.5rem))]" onClick={(event) => event.stopPropagation()}>
         <header className="flex shrink-0 items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur-xl">
-          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[.14em] text-neutral-500">Workspace files</p><h2 id={`workspace-files-title-${ws.id}`} className="truncate text-sm font-semibold text-neutral-100">{ws.name}</h2></div>
-          <span className="hidden min-w-0 truncate font-mono text-[10px] text-neutral-600 sm:block">{ws.path}</span>
+          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[.14em] text-ink-4">Workspace files</p><h2 id={`workspace-files-title-${ws.id}`} className="truncate text-sm font-semibold text-ink">{ws.name}</h2></div>
+          <span className="hidden min-w-0 truncate font-mono text-[10px] text-ink-4 sm:block">{ws.path}</span>
           <Button variant="outline" size="sm" aria-label="Close workspace files" className="ml-auto size-9 shrink-0 p-0" onClick={() => setOpenDialog(false)}><X className="size-4" /></Button>
         </header>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,250px)_minmax(0,1fr)] md:overflow-hidden">
           <aside className="min-h-0 border-b border-[var(--color-line)] bg-[var(--color-bg)]/45 p-3 md:overflow-y-auto md:border-b-0 md:border-r" aria-label="File tree">
-            <div className="mb-2 flex items-center justify-between gap-2"><span className="truncate font-mono text-[10px] text-neutral-500">{path}</span>{files.isFetching && <Loader2 className="size-3 shrink-0 animate-spin text-neutral-500" />}</div>
+            <div className="mb-2 flex items-center justify-between gap-2"><span className="truncate font-mono text-[10px] text-ink-4">{path}</span>{files.isFetching && <Loader2 className="size-3 shrink-0 animate-spin text-ink-4" />}</div>
             <div className="space-y-0.5" role="tree" aria-label={`Files in ${ws.name}`}>
-              {path !== "." && <button type="button" role="treeitem" className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[11px] text-neutral-500 hover:bg-[var(--color-inset)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]" onClick={() => setPath(parentPath())}><ChevronRight className="size-3 -rotate-180" /><span>Parent folder</span></button>}
-              {entries.map((file) => <button type="button" role="treeitem" key={file.path} aria-selected={selected?.path === file.path} className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[11px] transition-colors ${selected?.path === file.path ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]" : "text-neutral-400 hover:bg-[var(--color-inset)] hover:text-neutral-200"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]`} onClick={() => open(file)}>{file.is_dir ? <Folder className="size-3.5 shrink-0 text-[var(--color-info)]" /> : <FileCode2 className="size-3.5 shrink-0 text-neutral-500" />}<span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>{file.is_dir && <ChevronRight className="size-3 shrink-0 text-neutral-600" />}</button>)}
-              {files.isLoading && <p className="px-2 py-3 text-[11px] text-neutral-600">Loading files…</p>}
-              {!files.isLoading && !entries.length && !files.isError && <p className="px-2 py-3 text-[11px] text-neutral-600">This folder is empty.</p>}
+              {path !== "." && <button type="button" role="treeitem" className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[11px] text-ink-4 hover:bg-[var(--color-inset)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]" onClick={() => setPath(parentPath())}><ChevronRight className="size-3 -rotate-180" /><span>Parent folder</span></button>}
+              {entries.map((file) => <button type="button" role="treeitem" key={file.path} aria-selected={selected?.path === file.path} className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[11px] transition-colors ${selected?.path === file.path ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]" : "text-ink-3 hover:bg-[var(--color-inset)] hover:text-ink"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]`} onClick={() => open(file)}>{file.is_dir ? <Folder className="size-3.5 shrink-0 text-[var(--color-info)]" /> : <FileCode2 className="size-3.5 shrink-0 text-ink-4" />}<span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>{file.is_dir && <ChevronRight className="size-3 shrink-0 text-ink-4" />}</button>)}
+              {files.isLoading && <p className="px-2 py-3 text-[11px] text-ink-4">Loading files…</p>}
+              {!files.isLoading && !entries.length && !files.isError && <p className="px-2 py-3 text-[11px] text-ink-4">This folder is empty.</p>}
               {files.isError && <p className="break-words px-2 py-3 text-[10px] text-red-300">{(files.error as Error).message}</p>}
             </div>
           </aside>
           <main className="flex min-h-0 flex-col bg-[var(--color-surface)] p-3 sm:p-4">
-            <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-[var(--color-line)] pb-3"><FileCode2 className="size-4 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-200">{selected?.path ?? "No file selected"}</span>{selected && !selected.is_dir && <a className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-accent)] hover:bg-[var(--color-accent-tint)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}><Download className="size-3.5" /> Download</a>}</div>
-            <div className="min-h-0 flex-1 pt-3">{preview.data?.is_binary ? <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-neutral-500">Binary file · preview unavailable</div> : selected ? <div className="flex h-full min-h-64 flex-col gap-2"><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-0 flex-1 resize-none font-mono text-[11px] leading-relaxed" placeholder="Loading preview…" /><div className="flex shrink-0 justify-end"><Button size="sm" className="min-h-9" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save changes"}</Button></div></div> : <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-neutral-600">Select a file from the tree to preview it.</div>}</div>
+            <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-[var(--color-line)] pb-3"><FileCode2 className="size-4 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">{selected?.path ?? "No file selected"}</span>{selected && !selected.is_dir && <a className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-accent)] hover:bg-[var(--color-accent-tint)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}><Download className="size-3.5" /> Download</a>}</div>
+            <div className="min-h-0 flex-1 pt-3">{preview.data?.is_binary ? <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-ink-4">Binary file · preview unavailable</div> : selected ? <div className="flex h-full min-h-64 flex-col gap-2"><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-0 flex-1 resize-none font-mono text-[11px] leading-relaxed" placeholder="Loading preview…" /><div className="flex shrink-0 justify-end"><Button size="sm" className="min-h-9" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save changes"}</Button></div></div> : <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-ink-4">Select a file from the tree to preview it.</div>}</div>
           </main>
         </div>
       </section>
@@ -480,11 +480,11 @@ export default function WorkspacesPage() {
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Execution</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Sumber: <code className="text-neutral-400">~/.hermes/workspaces.yaml</code> — status ping live tiap kali lu buka halaman.
+            Sumber: <code className="text-ink-3">~/.hermes/workspaces.yaml</code> — status ping live tiap kali lu buka halaman.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-400">
+          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
             {workspaces.data?.length ?? 0}
           </span>
           <div className="flex gap-2">
@@ -524,7 +524,7 @@ export default function WorkspacesPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <h3 className="truncate text-sm font-semibold">{ws.name}</h3>
-                      <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-500">{ws.id}</span>
+                      <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-4">{ws.id}</span>
                       {isSsh && (
                         <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-[10px] text-violet-300">
                           ssh
@@ -534,12 +534,12 @@ export default function WorkspacesPage() {
                         <plat.Icon className="size-3" /> {plat.label}
                       </Badge>
                     </div>
-                    <p className="mt-0.5 truncate font-mono text-[11px] text-neutral-400" title={ws.path}>{ws.path}</p>
-                    <p className="mt-0.5 text-[11px] text-neutral-500">
+                    <p className="mt-0.5 truncate font-mono text-[11px] text-ink-3" title={ws.path}>{ws.path}</p>
+                    <p className="mt-0.5 text-[11px] text-ink-4">
                       host: <span className="font-mono">{ws.host || "localhost"}</span> · kind: {ws.kind}
                     </p>
                     {ws.note && (
-                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words rounded border border-[var(--color-line)]/60 bg-[var(--color-bg)] px-2 py-1 text-[10px] leading-relaxed text-neutral-400" title={ws.note}>
+                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words rounded border border-[var(--color-line)]/60 bg-[var(--color-bg)] px-2 py-1 text-[10px] leading-relaxed text-ink-3" title={ws.note}>
                         {ws.note}
                       </p>
                     )}
@@ -549,7 +549,7 @@ export default function WorkspacesPage() {
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <StatusChip ws={ws} />
                   {ws.status_message && (
-                    <span className="max-w-48 truncate text-[10px] text-neutral-500" title={ws.status_message}>
+                    <span className="max-w-48 truncate text-[10px] text-ink-4" title={ws.status_message}>
                       {ws.status_message}
                     </span>
                   )}

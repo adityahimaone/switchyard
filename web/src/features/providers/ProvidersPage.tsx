@@ -80,15 +80,15 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
           <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Registry</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Providers</h1>
           <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Roster model dari <code className="text-neutral-400">~/.hermes/config.yaml</code> custom_providers. Pakai di profile lewat dropdown bawah.
+            Roster model dari <code className="text-ink-3">~/.hermes/config.yaml</code> custom_providers. Pakai di profile lewat dropdown bawah.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-400">
+          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
             {providers.data?.length ?? 0}
           </span>
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" />
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
             <input
               value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari provider…"
               className="w-44 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] py-1.5 pl-8 pr-2 text-xs outline-none focus:border-[var(--color-accent)]/50"
@@ -97,7 +97,7 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
         </div>
       </div>
       <Card className="mt-4 border-[var(--color-line)] bg-[var(--color-surface)]">
-        <CardHeader className="p-3.5 pb-1"><CardTitle className="text-xs uppercase tracking-wider text-neutral-400">Add provider</CardTitle></CardHeader>
+        <CardHeader className="p-3.5 pb-1"><CardTitle className="text-xs uppercase tracking-wider text-ink-3">Add provider</CardTitle></CardHeader>
         <CardContent className="grid gap-2 p-3.5 pt-2 md:grid-cols-4">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
           <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.example.com/v1" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
@@ -133,9 +133,9 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
                 </CardTitle>
               </CardHeader>
               <CardContent className="relative p-3.5 pt-0">
-                <p className="truncate font-mono text-[11px] text-neutral-500" title={p.base_url}>{p.base_url || "—"}</p>
+                <p className="truncate font-mono text-[11px] text-ink-4" title={p.base_url}>{p.base_url || "—"}</p>
                 <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" className="border-[var(--color-line)] text-[10px] text-neutral-300">
+                  <Badge variant="outline" className="border-[var(--color-line)] text-[10px] text-ink-2">
                     {p.models.length} models
                   </Badge>
                   {p.default_model && (
@@ -150,10 +150,10 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
                     <div className="max-h-40 overflow-y-auto">
                       <div className="flex flex-wrap gap-1">
                         {p.models.slice(0, 60).map((m) => (
-                          <span key={m} className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">{m}</span>
+                          <span key={m} className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3">{m}</span>
                         ))}
                         {p.models.length > 60 && (
-                          <span className="px-1 py-0.5 text-[10px] text-neutral-600">+{p.models.length - 60} more</span>
+                          <span className="px-1 py-0.5 text-[10px] text-ink-4">+{p.models.length - 60} more</span>
                         )}
                       </div>
                     </div>
@@ -168,14 +168,14 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
               </CardContent>
             </Card>
           ))}
-          {!list.length && <p className="text-sm text-neutral-500">No provider matched.</p>}
+          {!list.length && <p className="text-sm text-ink-4">No provider matched.</p>}
         </div>
       )}
 
       {/* link providers -> profiles */}
       <Card className="decorative-card mt-6 border-[var(--color-line)] bg-[var(--color-surface)]">
         <CardHeader className="p-3.5 pb-1">
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-ink-3">
             Pakai provider di agent profile
           </CardTitle>
         </CardHeader>
@@ -201,16 +201,16 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
             </SelectContent>
           </Select>
           {selected && (
-            <span className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <span className="flex items-center gap-1.5 text-xs text-ink-3">
               <X className="size-3" /> clear: klik kartu lagi
             </span>
           )}
           {selected ? (
-            <span className="text-xs text-neutral-500">
-              akan set model=<span className="font-mono text-neutral-300">{selected.default_model || "?"}</span> provider=<span className="font-mono text-neutral-300">custom</span>
+            <span className="text-xs text-ink-4">
+              akan set model=<span className="font-mono text-ink-2">{selected.default_model || "?"}</span> provider=<span className="font-mono text-ink-2">custom</span>
             </span>
           ) : (
-            <span className="text-xs text-neutral-500">klik satu provider card, lalu pilih profile target</span>
+            <span className="text-xs text-ink-4">klik satu provider card, lalu pilih profile target</span>
           )}
           {onUseInProfile && (
             <Button variant="outline" size="sm" className="ml-auto" onClick={() => selected && onUseInProfile(selected.name, selected.default_model)}>

@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AppShell } from "@/components/app-shell"
 import { AppHeader } from "@/components/app-header"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -26,7 +25,8 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
-import { Archive, CheckSquare, Inbox, Plus, Pencil, Search, X } from "lucide-react"
+import { Archive, CheckSquare, Inbox, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu"
 import { useSettings } from "./hooks/useSettings"
 import LoadingState from "./components/LoadingState"
 import { pagePath, parseRoute } from "./lib/routes"
@@ -312,7 +312,7 @@ export default function App() {
             }}
             className={`kanban-column ${COLUMN_TONES[col]} flex h-full shrink-0 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface/60 backdrop-blur supports-[backdrop-filter]:bg-surface/60 ${col === "archived" ? "w-60 opacity-90" : "w-72"} ${dropTarget?.status === col ? "ring-1 ring-[var(--color-accent)]" : ""}`}
           >
-            <h2 className="kanban-column-title flex shrink-0 items-center justify-between px-3 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            <h2 className="kanban-column-title flex shrink-0 items-center justify-between px-3 py-3 text-xs font-semibold uppercase tracking-wider text-ink-3">
               <span className="flex items-center gap-1.5">
                 {col === "archived" && <Archive className="size-3" />}
                 {col}
@@ -360,8 +360,8 @@ export default function App() {
                 ) : (
                   <div className="flex min-h-[104px] flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] bg-[color-mix(in_srgb,var(--color-inset)_40%,transparent)] px-3 py-6 text-center">
                     <Inbox className="size-5 text-[color-mix(in_srgb,var(--column-accent)_55%,transparent)]" />
-                    <span className="text-[11px] font-medium text-neutral-500">Belum ada task</span>
-                    <span className="text-[10px] leading-snug text-neutral-600">Tarik kartu ke sini atau buat baru</span>
+                    <span className="text-[11px] font-medium text-ink-4">Belum ada task</span>
+                    <span className="text-[10px] leading-snug text-ink-4">Tarik kartu ke sini atau buat baru</span>
                   </div>
                 )
               )}
@@ -375,25 +375,25 @@ export default function App() {
   const filterRail = page === "board" && !detailId && filtersOpen && (
     <aside className="glass-panel flex h-full w-72 shrink-0 flex-col rounded-none border-y-0 border-l-0">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--color-line)] px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Filters</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Filters</span>
         {filtersActive && <span className="size-2 rounded-full bg-[var(--color-accent)]" />}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-neutral-300">{filtered.length} / {tasks.data?.length ?? 0} match</span>
+            <span className="text-xs font-medium text-ink-2">{filtered.length} / {tasks.data?.length ?? 0} match</span>
             {filtersActive && (
-              <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-neutral-400" onClick={clearFilters}>
+              <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-ink-3" onClick={clearFilters}>
                 <X className="size-3" /> reset
               </Button>
             )}
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-neutral-500" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari judul / body / id / result…"
               className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
+            <label className="mb-1 block text-[11px] text-ink-4">Status</label>
             <Select value={fStatus} onValueChange={setFStatus}>
               <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -405,7 +405,7 @@ export default function App() {
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Agent</label>
+            <label className="mb-1 block text-[11px] text-ink-4">Agent</label>
             <Select value={fAgent} onValueChange={setFAgent}>
               <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -420,7 +420,7 @@ export default function App() {
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-neutral-500">Workspace</label>
+            <label className="mb-1 block text-[11px] text-ink-4">Workspace</label>
             <Select value={fWorkspace} onValueChange={setFWorkspace}>
               <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -435,7 +435,7 @@ export default function App() {
             </Select>
           </div>
         <div>
-          <label className="mb-1 block text-[11px] text-neutral-500">Priority</label>
+          <label className="mb-1 block text-[11px] text-ink-4">Priority</label>
           <Select value={fPriority} onValueChange={setFPriority}>
             <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -448,7 +448,7 @@ export default function App() {
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-[11px] text-neutral-500">Saved views</label>
+          <label className="mb-1 block text-[11px] text-ink-4">Saved views</label>
           <div className="flex gap-1.5">
             <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Nama view…" className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
             <Button variant="outline" size="sm" disabled={!viewName.trim()} onClick={saveView} className="shrink-0 border-[var(--color-line)] text-xs">Save</Button>
@@ -456,7 +456,7 @@ export default function App() {
           {savedViews.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {savedViews.map((v) => (
-                <button key={v.name} onClick={() => applyView(v.name)} className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] text-neutral-400 hover:border-[var(--color-accent)]/50 hover:text-[var(--color-accent)]">{v.name}</button>
+                <button key={v.name} onClick={() => applyView(v.name)} className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] text-ink-3 hover:border-[var(--color-accent)]/50 hover:text-[var(--color-accent)]">{v.name}</button>
               ))}
             </div>
           )}
@@ -465,46 +465,79 @@ export default function App() {
     </aside>
   )
 
-  const headerControls = page === "board" && !detailId ? (
-    <div className="flex min-w-0 items-center gap-2">
-      <Select value={slug} onValueChange={(next) => { setSlug(next); go(pagePath("board", next)) }}>
-        <SelectTrigger size="sm" className="w-auto gap-1.5 border-[var(--color-line)] bg-[var(--color-bg)] text-xs">
-          <SelectValue placeholder="board" />
-        </SelectTrigger>
-        <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-          {active.map((b) => (
-            <SelectItem key={b.slug} value={b.slug} className="text-xs">
-              {b.icon ? `${b.icon} ` : ""}{b.name}
-            </SelectItem>
-          ))}
-          {active.length > 0 && archivedBoards.length > 0 && <SelectItem value="__sep" disabled className="text-[10px]">— archived —</SelectItem>}
-          {archivedBoards.map((b) => (
-            <SelectItem key={b.slug} value={b.slug} className="text-xs text-neutral-500">
-              {b.icon ? `${b.icon} ` : ""}{b.name} (archived)
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button variant="outline" size="sm" onClick={() => setCreatingBoard(true)} className="gap-1 border-[var(--color-line)] bg-[var(--color-surface)] text-neutral-300">
-        <Plus className="size-3.5" /> New Board
-      </Button>
-      <Button variant="outline" size="sm" onClick={() => setEditingBoard(true)} disabled={!currentBoard} className="gap-1 border-[var(--color-line)] bg-[var(--color-surface)] text-neutral-300 disabled:opacity-40">
-        <Pencil className="size-3.5" /> Edit
-      </Button>
-      <Separator orientation="vertical" className="h-5" />
-      <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-neutral-400">
-        {filtersActive ? `${filtered.length}/${tasks.data?.length ?? 0}` : `${tasks.data?.length ?? 0}`} tasks
-      </span>
-      <Button size="sm" variant={bulkMode ? "default" : "outline"} onClick={() => { setBulkMode((v) => !v); if (bulkMode) setSelectedTasks(new Set()) }} className={`gap-1 border-[var(--color-line)] ${bulkMode ? "bg-[var(--color-accent)] text-black" : "bg-[var(--color-surface)] text-neutral-300"}`}>
-        <CheckSquare className="size-3.5" /> Bulk
-      </Button>
-      <Button size="sm" onClick={() => setCreating(true)}
-        className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
+  const boardSwitcher = page === "board" ? (
+    <Select value={slug} onValueChange={(next) => { setSlug(next); go(pagePath("board", next)) }}>
+      <SelectTrigger
+        size="sm"
+        className="h-8 max-w-44 gap-1.5 border-[var(--color-line)] bg-[var(--color-bg)] text-xs"
+        aria-label="Switch board"
+      >
+        <SelectValue placeholder="board" />
+      </SelectTrigger>
+      <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+        {active.map((b) => (
+          <SelectItem key={b.slug} value={b.slug} className="text-xs">
+            {b.icon ? `${b.icon} ` : ""}{b.name}
+          </SelectItem>
+        ))}
+        {active.length > 0 && archivedBoards.length > 0 && <SelectItem value="__sep" disabled className="text-[10px]">- archived -</SelectItem>}
+        {archivedBoards.map((b) => (
+          <SelectItem key={b.slug} value={b.slug} className="text-xs text-ink-4">
+            {b.icon ? `${b.icon} ` : ""}{b.name} (archived)
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : null
+
+  const boardMenuItems = (
+    <>
+      <DropdownMenuItem onSelect={() => setCreatingBoard(true)}>
+        <Plus className="size-4" /> New Board
+      </DropdownMenuItem>
+      <DropdownMenuItem disabled={!currentBoard} onSelect={() => setEditingBoard(true)}>
+        <Pencil className="size-4" /> Edit Board
+      </DropdownMenuItem>
+    </>
+  )
+
+  const boardMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon-sm" variant="outline" className="text-ink-2" aria-label="Board actions">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{boardMenuItems}</DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  const taskActions = page === "board" && !detailId ? (
+    <div className="flex h-8 min-w-0 shrink-0 items-center gap-2">
+      <div className="hidden items-center lg:flex">
+        <Button
+          size="sm"
+          variant={bulkMode ? "default" : "outline"}
+          onClick={() => { setBulkMode((v) => !v); if (bulkMode) setSelectedTasks(new Set()) }}
+          aria-pressed={bulkMode}
+          className={bulkMode ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]" : "text-ink-2"}
+        >
+          <CheckSquare className="size-3.5" /> Bulk
+        </Button>
+      </div>
+      <div className="lg:hidden">{boardMenu}</div>
+      <Button
+        size="sm"
+        onClick={() => setCreating(true)}
+        className="bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent)]/90"
+      >
         <Plus className="size-3.5" /> New Task
       </Button>
     </div>
   ) : detailId ? (
-    <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">{detailId}</span>
+    <span className="hidden min-w-0 truncate rounded-md bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3 md:inline">
+      {detailId}
+    </span>
   ) : null
 
   return (
@@ -514,7 +547,13 @@ export default function App() {
       header={
         <AppHeader
           breadcrumb={breadcrumb}
-          right={<><NotificationCenter />{headerControls}</>}
+          context={boardSwitcher}
+          right={
+            <div className="flex h-8 min-w-0 shrink-0 items-center gap-2">
+              <NotificationCenter />
+              {taskActions}
+            </div>
+          }
           onOpenPalette={() => setPaletteOpen(true)}
           onSettings={() => handleSelectPage("settings")}
           onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
@@ -540,10 +579,10 @@ export default function App() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {page === "board" && !detailId && bulkMode && (
           <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-xs">
-            <span className="font-medium text-neutral-200">{selectedTasks.size} selected</span>
+            <span className="font-medium text-ink">{selectedTasks.size} selected</span>
             <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkMove("ready")}>Move ready</Button>
             <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkMove("blocked")}>Block</Button>
-            <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkArchive()} className="gap-1 text-neutral-400 hover:text-red-400"><Archive className="size-3" /> Archive</Button>
+            <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkArchive()} className="gap-1 text-ink-3 hover:text-red-400"><Archive className="size-3" /> Archive</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedTasks(new Set())}>Clear</Button>
           </div>
         )}
@@ -655,13 +694,13 @@ function NewBoardDialog({ onClose, onCreated }: { onClose: () => void; onCreated
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="glass-panel-raised w-full max-w-sm rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">New Board</h2>
-        <label className="mt-3 block text-xs text-neutral-400">Slug</label>
+        <label className="mt-3 block text-xs text-ink-3">Slug</label>
         <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="f8-gadjian"
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-neutral-400">Name</label>
+        <label className="mt-3 block text-xs text-ink-3">Name</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="F8 Gadjian"
           className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-neutral-400">Icon (emoji)</label>
+        <label className="mt-3 block text-xs text-ink-3">Icon (emoji)</label>
         <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[var(--color-line)] bg-[var(--color-bg)]" />
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-4 flex justify-end gap-2">
@@ -697,11 +736,11 @@ function EditBoardDialog({ board, onClose, onSaved }: { board: Board; onClose: (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="glass-panel-raised w-full max-w-sm rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">Edit Board · {board.slug}</h2>
-        <label className="mt-3 block text-xs text-neutral-400">Slug (read-only)</label>
+        <label className="mt-3 block text-xs text-ink-3">Slug (read-only)</label>
         <Input value={board.slug} disabled className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] opacity-60" />
-        <label className="mt-3 block text-xs text-neutral-400">Name</label>
+        <label className="mt-3 block text-xs text-ink-3">Name</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-neutral-400">Icon (emoji)</label>
+        <label className="mt-3 block text-xs text-ink-3">Icon (emoji)</label>
         <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[var(--color-line)] bg-[var(--color-bg)]" />
         {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
         <div className="mt-4 flex justify-end gap-2">

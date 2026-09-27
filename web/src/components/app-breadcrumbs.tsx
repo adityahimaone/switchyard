@@ -12,21 +12,33 @@ export type AppBreadcrumbPage = {
 	icon?: ReactNode;
 };
 
-export function AppBreadcrumbs({ page }: { page?: AppBreadcrumbPage | null }) {
+export function AppBreadcrumbs({
+	page,
+	context,
+}: {
+	page?: AppBreadcrumbPage | null;
+	/** Page-scoped context (e.g. board switcher) shown after the title. */
+	context?: ReactNode;
+}) {
 	if (!page?.title) {
 		return null;
 	}
 
 	return (
-		<Breadcrumb>
-			<BreadcrumbList>
-				<BreadcrumbItem>
-					<BreadcrumbPage className="flex items-center gap-2 [&>svg]:size-3.5">
-						{page.icon}
-						{page.title}
-					</BreadcrumbPage>
-				</BreadcrumbItem>
-			</BreadcrumbList>
-		</Breadcrumb>
+		<div className="flex min-w-0 flex-1 items-center gap-2">
+			<Breadcrumb className="min-w-0">
+				<BreadcrumbList>
+					<BreadcrumbItem>
+						<BreadcrumbPage className="flex items-center gap-2 [&>svg]:size-3.5">
+							{page.icon}
+							<span className="min-w-0 truncate">{page.title}</span>
+						</BreadcrumbPage>
+					</BreadcrumbItem>
+				</BreadcrumbList>
+			</Breadcrumb>
+			{context && (
+				<div className="flex min-w-0 shrink-0 items-center gap-2">{context}</div>
+			)}
+		</div>
 	);
 }

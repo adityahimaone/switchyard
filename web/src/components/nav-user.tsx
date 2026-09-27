@@ -1,4 +1,4 @@
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Settings, UserRound } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -9,29 +9,55 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function NavUser({ onSettings, onLogout }: { onSettings?: () => void; onLogout?: () => void }) {
+/**
+ * Auth is a single shared password with no user record, so there is no
+ * identity to display. We render a neutral account affordance rather than
+ * inventing a name. Pass `name`/`role` once a user table exists.
+ */
+export function NavUser({
+	name,
+	role,
+	onSettings,
+	onLogout,
+}: {
+	name?: string;
+	role?: string;
+	onSettings?: () => void;
+	onLogout?: () => void;
+}) {
+	const initial = name?.trim().charAt(0).toUpperCase();
+	const hasIdentity = Boolean(name?.trim() || role?.trim());
+
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<button className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground hover:bg-muted/80">
-					A
+				<button
+					type="button"
+					aria-label="Account menu"
+					className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--color-inset)] text-ink-2 outline-none transition-colors hover:bg-[var(--color-surface-raised)] hover:text-ink focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+				>
+					{initial ? <span className="text-xs font-medium">{initial}</span> : <UserRound className="size-4" aria-hidden="true" />}
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-56">
 				<DropdownMenuLabel className="font-normal">
-					<div className="flex flex-col gap-1">
-						<span className="text-sm font-medium">Adit</span>
-						<span className="text-xs text-muted-foreground">Frontend Dev</span>
-					</div>
+					{hasIdentity ? (
+						<div className="flex flex-col gap-1">
+							<span className="text-sm font-medium">{name}</span>
+							{role?.trim() && <span className="text-xs text-muted-foreground">{role}</span>}
+						</div>
+					) : (
+						<span className="text-xs text-muted-foreground">Signed in</span>
+					)}
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
-					<DropdownMenuItem onClick={onSettings}>
+					<DropdownMenuItem onSelect={onSettings}>
 						<Settings className="mr-2 size-4" />
 						Settings
 					</DropdownMenuItem>
 					{onLogout && (
-						<DropdownMenuItem onClick={onLogout} className="text-red-400 focus:text-red-300">
+						<DropdownMenuItem onSelect={onLogout} className="text-red-400 focus:text-red-300">
 							<LogOut className="mr-2 size-4" />
 							Logout
 						</DropdownMenuItem>
