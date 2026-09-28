@@ -15,7 +15,7 @@ import (
 	"kanban-board/internal/kanban"
 )
 
-var version = "v0.1.0"
+var version = "v0.2.0"
 
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
