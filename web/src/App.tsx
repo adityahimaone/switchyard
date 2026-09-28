@@ -1,14 +1,14 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AppShell } from "@/components/app-shell"
-import { AppHeader } from "@/components/app-header"
+import { AppShell } from "@/components/app/app-shell"
+import { AppHeader } from "@/components/app/app-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, boardHealth, bulkTasks, COLUMNS, openEventStream, reorderTasks, toastGlobal, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
 import TaskCard from "./features/board/TaskCard"
-import CommandPalette from "./components/command-palette"
-import { Toaster } from "./components/toaster"
+import CommandPalette from "@/components/app/command-palette"
+import { Toaster } from "@/components/app/toaster"
 const TaskDialog = lazy(() => import("./features/board/TaskDialog"))
 const TaskDetail = lazy(() => import("./features/board/TaskDetail"))
 const TaskDetailPage = lazy(() => import("./features/board/TaskDetailPage"))
@@ -28,7 +28,7 @@ const ChatPage = lazy(() => import("./features/chat/ChatPage"))
 import { Archive, CheckSquare, Inbox, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu"
 import { useSettings } from "./hooks/useSettings"
-import LoadingState from "./components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 import { pagePath, parseRoute } from "./lib/routes"
 import { SIDEBAR_ITEMS, type Page } from "./lib/sidebar-preferences"
 import NotificationCenter from "./features/notifications/NotificationCenter"

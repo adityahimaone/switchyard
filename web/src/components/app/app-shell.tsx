@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppSidebar } from "@/components/app/app-sidebar";
 import type { Page } from "@/lib/sidebar-preferences";
 
 export function AppShell({

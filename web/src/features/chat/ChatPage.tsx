@@ -15,7 +15,7 @@ import { TaskList, type TaskListTask } from "@/TodoList"
 import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemModal } from "@/components/ui/system-modal"
-import { AttachmentChip } from "@/components/AttachmentChip"
+import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { SessionMenu } from "@/components/chat/SessionMenu"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 

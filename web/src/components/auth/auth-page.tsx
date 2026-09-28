@@ -2,8 +2,8 @@ import { useState } from "react"
 import { KeyRound, LockKeyhole } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "../api"
-import { FloatingPaths } from "./floating-paths"
+import { api } from "../../api"
+import { FloatingPaths } from "../feedback/floating-paths"
 
 export default function AuthPage({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [password, setPassword] = useState("")

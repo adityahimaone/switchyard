@@ -6,7 +6,7 @@ import {
 	formatChartAxisTick,
 	formatChartTooltipDate,
 	parseIsoCalendarDate,
-} from "@/components/formater";
+} from "@/components/feedback/formater";
 import {
 	Card,
 	CardContent,
@@ -27,7 +27,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/dashboard/delta";
 
 type PeriodDays = 7 | 30 | 60;
 

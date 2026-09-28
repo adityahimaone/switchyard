@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Brain, CheckCircle2, FileText, Heart, RefreshCw, Save, Search, User } from "lucide-react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 
 interface MemorySnapshot {
   memory: string

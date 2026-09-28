@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Activity, CheckCircle2, Cpu, Database, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
 import { api, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 import {
   HeatmapChart,
   HeatmapCells,

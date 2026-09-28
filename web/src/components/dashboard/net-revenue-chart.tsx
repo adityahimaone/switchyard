@@ -13,8 +13,8 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
-import { DashboardCard } from "@/components/dashboard-card";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/dashboard/delta";
+import { DashboardCard } from "@/components/dashboard/dashboard-card";
 
 /** Demo: last 7 days. */
 const salesDaily7 = [

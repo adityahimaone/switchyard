@@ -1,7 +1,7 @@
 
 import { useId } from "react";
 import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
-import { formatDate } from "@/components/formater";
+import { formatDate } from "@/components/feedback/formater";
 import {
 	CardContent,
 	CardDescription,
@@ -14,8 +14,8 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
-import { DashboardCard } from "@/components/dashboard-card";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/dashboard/delta";
+import { DashboardCard } from "@/components/dashboard/dashboard-card";
 
 const VISIBLE_DAYS = 7;
 

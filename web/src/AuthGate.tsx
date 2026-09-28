@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import App from "./App"
-import AuthPage from "./components/auth-page"
-import LoadingState from "./components/LoadingState"
+import AuthPage from "@/components/auth/auth-page"
+import LoadingState from "@/components/feedback/loading-state"
 
 export default function AuthGate() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)

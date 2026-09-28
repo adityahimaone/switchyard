@@ -1,4 +1,4 @@
-import { HtLoader } from "@/components/HtLoader"
+import { HtLoader } from "@/components/feedback/ht-loader"
 
 type LoadingVariant = "board" | "detail" | "page"
 

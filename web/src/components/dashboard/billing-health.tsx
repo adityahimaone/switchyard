@@ -13,7 +13,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import { DashboardCard } from "@/components/dashboard-card";
+import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { CircleCheckIcon, ArrowRightIcon } from "lucide-react";
 
 export function BillingHealth() {

@@ -22,7 +22,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { StatusIndicator } from "@/components/indicator";
+import { StatusIndicator } from "@/components/feedback/indicator";
 import { EllipsisIcon, SendIcon, ListChecksIcon } from "lucide-react";
 
 type Teammate = {

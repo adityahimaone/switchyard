@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { toastGlobal } from "../api"
+import { toastGlobal } from "../../api"
 
 type Props = { children: ReactNode }
 type State = { error: Error | null }

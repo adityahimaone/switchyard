@@ -5,7 +5,7 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import type { SidebarNavGroup } from "@/components/app-shared";
+import type { SidebarNavGroup } from "@/components/app/app-shared";
 import type { Page } from "@/lib/sidebar-preferences";
 
 export function NavGroup({

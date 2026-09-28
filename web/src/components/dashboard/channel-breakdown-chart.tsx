@@ -15,7 +15,7 @@ import {
 	ChartLegend,
 	ChartLegendContent,
 } from "@/components/ui/chart";
-import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/dashboard/delta";
 
 type ChannelKey = "direct" | "email" | "social";
 

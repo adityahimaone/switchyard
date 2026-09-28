@@ -2,9 +2,9 @@ import { Command } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
-import { CustomSidebarTrigger } from "@/components/custom-sidebar-trigger";
-import { NavUser } from "@/components/nav-user";
+import { AppBreadcrumbs } from "@/components/app/app-breadcrumbs";
+import { CustomSidebarTrigger } from "@/components/app/custom-sidebar-trigger";
+import { NavUser } from "@/components/app/nav-user";
 import {
 	Tooltip,
 	TooltipContent,

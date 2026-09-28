@@ -4,7 +4,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { DashboardCard } from "@/components/dashboard-card";
+import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { CreditCardIcon, UserPlusIcon, FileTextIcon, RocketIcon } from "lucide-react";
 
 const items = [

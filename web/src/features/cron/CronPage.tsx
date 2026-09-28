@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import LoadingState from "@/components/LoadingState"
-import { HtLoader } from "@/components/HtLoader"
+import LoadingState from "@/components/feedback/loading-state"
+import { HtLoader } from "@/components/feedback/ht-loader"
 
 type Form = { name: string; schedule: string; prompt: string; deliver: string; script: string; no_agent: boolean; workdir: string; skills: string; paused: boolean; paused_reason: string }
 const emptyForm: Form = { name: "", schedule: "", prompt: "", deliver: "local", script: "", no_agent: false, workdir: "", skills: "", paused: false, paused_reason: "" }

@@ -8,9 +8,9 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { NavGroup } from "@/components/nav-group";
-import { buildNavGroups, buildFooterNavLinks } from "@/components/app-shared";
-import { LatestChange } from "@/components/latest-change";
+import { NavGroup } from "@/components/app/nav-group";
+import { buildNavGroups, buildFooterNavLinks } from "@/components/app/app-shared";
+import { LatestChange } from "@/components/dashboard/latest-change";
 import { PlusIcon } from "lucide-react";
 import type { Page } from "@/lib/sidebar-preferences";
 

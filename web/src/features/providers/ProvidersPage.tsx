@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Server, Search, X, KeyRound } from "lucide-react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 
 export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (name: string, model: string) => void }) {
   const [q, setQ] = useState("")

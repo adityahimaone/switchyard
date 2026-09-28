@@ -12,7 +12,7 @@ import { useSettings } from "@/hooks/useSettings"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { ChevronRight, Download, FileCode2, Folder, FolderGit2, FolderOpen, Plus, RefreshCw, ScrollText, Trash2, Pencil, Loader2, Monitor, Apple, Laptop, HardDrive, Radio, X } from "lucide-react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 import { CodeGraphPanel } from "./CodeGraphPanel"
 
 type WsStatus = "connected" | "unreachable" | "unknown" | "local"

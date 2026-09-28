@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Puzzle, Search, X } from "lucide-react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 
 interface SkillMeta {
   name: string

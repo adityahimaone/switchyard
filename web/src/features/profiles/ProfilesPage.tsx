@@ -14,7 +14,7 @@ import {
   Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { AlertCircle, Bot, ImagePlus, Link2, Loader2, Plus, Trash2, Pencil, ShieldAlert, ShieldCheck, Activity, X } from "lucide-react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/loading-state"
 
 const FALLBACK_PROVIDERS = [
   "custom", "auto", "anthropic", "openai", "openrouter", "google",
