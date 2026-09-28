@@ -227,10 +227,10 @@ export function parseHarnessLogEvents(raw: string): ParsedDshLog {
     if (!trimmed) continue
 
     // Check for provenance line
-    if (trimmed.startsWith("provenance executor=dsh") || trimmed.startsWith("provenance executor=commandcode")) {
+    if (trimmed.startsWith("provenance executor=dsh") || trimmed.startsWith("provenance executor=commandcode") || trimmed.startsWith("provenance executor=omp")) {
       isDsh = true
       const wsMatch = trimmed.match(/ws=([^\s]+)/)
-      const sessionMatch = trimmed.match(/(?:dsh_session_id|commandcode_session_id)=([^\s]+)/)
+      const sessionMatch = trimmed.match(/(?:dsh_session_id|commandcode_session_id|omp_session_id)=([^\s]+)/)
       const cwdMatch = trimmed.match(/dsh_session_cwd=([^\s]+)/)
       if (wsMatch) meta.workspace = wsMatch[1]
       if (sessionMatch) meta.sessionId = sessionMatch[1]
@@ -684,11 +684,11 @@ type DshResult = {
   events: { type: string; text?: string; phase?: string; label?: string }[]
 }
 
-// parseHarnessResult handles both continuity harnesses. dsh emits flat
-// {type,text} events; Command Code emits {"type":"event"} progress wrappers plus a
-// single terminal {"type":"result"} frame carrying finalText and sessionId.
+// parseHarnessResult handles every continuity harness. dsh emits flat
+// {type,text} events; commandcode and omp emit {"type":"event"} progress wrappers
+// plus a single terminal {"type":"result"} frame carrying finalText and sessionId.
 export function parseHarnessResult(raw: string, executor: Task["executor"]): DshResult {
-  const provenancePrefix = executor === "commandcode" ? "provenance executor=commandcode" : "provenance executor=dsh"
+  const provenancePrefix = `provenance executor=${executor === "auto" || !executor ? "dsh" : executor}`
   const lines = raw.split("\n")
   const provenanceLine = lines.find((line) => line.startsWith(provenancePrefix)) ?? ""
   const field = (name: string) => provenanceLine.match(new RegExp(`${name}=([^\\s]+)`))?.[1]
@@ -702,7 +702,7 @@ export function parseHarnessResult(raw: string, executor: Task["executor"]): Dsh
       if (!event || typeof event.type !== "string") continue
       events.push(event)
       if (event.type === "result") {
-        // Command Code's terminal frame carries the answer and the session id.
+        // commandcode/omp's terminal frame carries the answer and the session id.
         const frame = event as unknown as { sessionId?: string; finalText?: string }
         if (typeof frame.sessionId === "string" && frame.sessionId) resultSessionId = frame.sessionId
         if (typeof frame.finalText === "string" && frame.finalText) finals.push(frame.finalText)
@@ -716,7 +716,7 @@ export function parseHarnessResult(raw: string, executor: Task["executor"]): Dsh
   return {
       provenance: provenanceLine ? {
         workspace: field("ws"),
-        sessionId: field("commandcode_session_id") ?? field("dsh_session_id") ?? resultSessionId,
+        sessionId: field("commandcode_session_id") ?? field("omp_session_id") ?? field("dsh_session_id") ?? resultSessionId,
         cwd: field("dsh_session_cwd"),
         bin: field("bin"),
         args: provenanceLine.match(/args=(\[.*?\])\s+ws=/)?.[1],
@@ -731,7 +731,7 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
   const [traceOpen, setTraceOpen] = useState(false)
   const { copied, copy } = useCopy(text)
   const parsed = useMemo(() => parseHarnessResult(text, executor ?? "dsh"), [text, executor])
-  const harnessName = executor === "commandcode" ? "Command Code" : "DeepSeek Harness"
+  const harnessName = executor === "commandcode" ? "Command Code" : executor === "omp" ? "omp" : "DeepSeek Harness"
   const trace = parsed.events.filter((event) => event.type !== "text")
   const answer = parsed.answer || "No final answer text returned. Open raw trace to inspect the run."
   const panelId = `result-panel-${title || harnessName}`
@@ -810,7 +810,7 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
 }
 
 export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
-  if (executor === "dsh" || executor === "commandcode") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} />
+  if (executor === "dsh" || executor === "commandcode" || executor === "omp") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} />
   const [wrap, setWrap] = useState(true)
   const [open, setOpen] = useState(defaultOpen !== false)
   const formattedText = useMemo(() => prettyJSONText(text), [text])

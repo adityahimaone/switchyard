@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
 import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Workspace, type WorkspaceFile } from "@/api"
@@ -36,6 +36,20 @@ const OS_OPTIONS = [
   { value: "linux", label: "Linux" },
 ]
 
+// Platform group order. "vps" is the local/loopback bucket platformBadge
+// returns, so it needs its own group: the Go inferOS() calls the same hosts
+// "linux", and filtering on ws.os directly would disagree with the badge.
+const PLATFORM_ORDER = ["mac", "windows", "linux", "vps"] as const
+type PlatformKey = (typeof PLATFORM_ORDER)[number] | "other"
+
+const PLATFORM_META: Record<PlatformKey, { label: string; Icon: typeof Monitor }> = {
+  mac: { label: "macOS", Icon: Apple },
+  windows: { label: "Windows", Icon: Laptop },
+  linux: { label: "Linux", Icon: HardDrive },
+  vps: { label: "This VPS", Icon: Monitor },
+  other: { label: "Other", Icon: HardDrive },
+}
+
 function platformBadge(w: Workspace): { label: string; Icon: typeof Monitor; tint: string } {
   const os = (w.os || "").toLowerCase()
   const path = (w.path || "").toLowerCase()
@@ -50,6 +64,25 @@ function platformBadge(w: Workspace): { label: string; Icon: typeof Monitor; tin
     return { label: "vps", Icon: Monitor, tint: "border-[var(--color-line)] bg-[var(--color-inset)] text-[var(--color-ink-2)]" }
   }
   return { label: "linux", Icon: HardDrive, tint: "border-amber-500/30 bg-amber-500/10 text-amber-300" }
+}
+
+function platformKey(w: Workspace): PlatformKey {
+  const label = platformBadge(w).label
+  return (PLATFORM_ORDER as readonly string[]).includes(label) ? (label as PlatformKey) : "other"
+}
+
+// groupWorkspacesByPlatform buckets workspaces by the same label platformBadge
+// renders, so the group header and the card badge can never disagree. Groups
+// with no members are dropped, and PLATFORM_ORDER fixes the display order.
+export function groupWorkspacesByPlatform(workspaces: Workspace[]): [PlatformKey, Workspace[]][] {
+  const buckets = new Map<PlatformKey, Workspace[]>()
+  for (const ws of workspaces) {
+    const key = platformKey(ws)
+    buckets.set(key, [...(buckets.get(key) ?? []), ws])
+  }
+  return PLATFORM_ORDER.filter((k) => (buckets.get(k)?.length ?? 0) > 0).map(
+    (k) => [k, buckets.get(k) ?? []] as [PlatformKey, Workspace[]],
+  )
 }
 
 // EkgTrace: heart-rate monitor fed by REAL ping history. The trace scrolls
@@ -396,6 +429,7 @@ export default function WorkspacesPage() {
   const [logsFor, setLogsFor] = useState<Workspace | null>(null)
   const [pinging, setPinging] = useState<string | null>(null)
   const [codeGraphOpen, setCodeGraphOpen] = useState<Record<string, boolean>>({})
+  const [platform, setPlatform] = useState<PlatformKey | "all">("all")
   const { pingMs } = useSettings()
   const [autoPing, setAutoPing] = useState(true)
   const pingingRef = useRef(false)
@@ -405,6 +439,20 @@ export default function WorkspacesPage() {
     queryFn: () => api<Workspace[]>("/api/workspaces"),
     refetchInterval: 60_000,
   })
+
+  // Group by the platform the card badge already shows, so the section header
+  // and the badge on each card can never disagree. "all" keeps every group.
+  const allGroups = useMemo(() => groupWorkspacesByPlatform(workspaces.data ?? []), [workspaces.data])
+  const platformGroups = useMemo(
+    () => (platform === "all" ? allGroups : allGroups.filter(([key]) => key === platform)),
+    [allGroups, platform],
+  )
+  const platformCounts = useMemo(() => {
+    const counts = new Map<PlatformKey, number>()
+    for (const [key, list] of allGroups) counts.set(key, list.length)
+    return counts
+  }, [allGroups])
+  const visibleCount = platformGroups.reduce((n, [, list]) => n + list.length, 0)
 
   // background auto-ping: probe all workspaces every 30s without user trigger,
   // then merge statuses into the query cache
@@ -475,19 +523,49 @@ export default function WorkspacesPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Execution</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Sumber: <code className="text-ink-3">~/.hermes/workspaces.yaml</code> — status ping live tiap kali lu buka halaman.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
-            {workspaces.data?.length ?? 0}
+      <div className="min-w-0">
+        <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Execution</p>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h1>
+        <p className="mt-1 text-xs text-[var(--color-ink-3)]">
+          Sumber: <code className="text-ink-3">~/.hermes/workspaces.yaml</code> — status ping live tiap kali lu buka halaman.
+        </p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-4">Filter</span>
+          <div className="h-4 w-px bg-[var(--color-line)]" aria-hidden />
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter workspaces per OS">
+            {(["all", ...PLATFORM_ORDER] as const).map((key) => {
+              const count = key === "all" ? (workspaces.data?.length ?? 0) : (platformCounts.get(key) ?? 0)
+              const meta = key === "all" ? null : PLATFORM_META[key]
+              const Icon = meta?.Icon
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={platform === key}
+                  onClick={() => setPlatform(key)}
+                  className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
+                    platform === key
+                      ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                      : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                  }`}
+                >
+                  {Icon ? <Icon className="size-3" aria-hidden /> : null}
+                  {meta ? meta.label : "Semua"}
+                  <span className="font-mono text-[10px] opacity-70">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+          <span className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
+            {visibleCount === (workspaces.data?.length ?? 0) ? `${workspaces.data?.length ?? 0}` : `${visibleCount}/${workspaces.data?.length ?? 0}`}
           </span>
-          <div className="flex gap-2">
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden h-4 w-px bg-[var(--color-line)] sm:block" aria-hidden />
           <Button
             variant={autoPing ? "default" : "outline"} size="sm"
             onClick={() => setAutoPing((v) => !v)}
@@ -502,15 +580,32 @@ export default function WorkspacesPage() {
           <Button size="sm" onClick={() => setForm({ open: true, edit: null })} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
             <Plus className="size-3.5" /> New workspace
           </Button>
-          </div>
         </div>
       </div>
 
       {workspaces.isLoading ? (
         <LoadingState label="Memuat workspaces" />
+      ) : !platformGroups.length ? (
+        <p className="mt-4 text-sm text-ink-4">
+          {workspaces.data?.length
+            ? `Tidak ada workspace untuk platform "${platform === "all" ? "semua" : platform}".`
+            : "Belum ada workspace. Tambah dulu."}
+        </p>
       ) : (
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          {(workspaces.data ?? []).map((ws) => {
+        <div className="mt-4 flex flex-col gap-5">
+          {platformGroups.map(([key, list]) => {
+            const meta = PLATFORM_META[key] ?? PLATFORM_META.other
+            const GroupIcon = meta.Icon
+            return (
+            <section key={key}>
+              <div className="mb-2 flex items-center gap-2">
+                <GroupIcon className="size-3.5 text-[var(--color-accent)]" aria-hidden />
+                <h2 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">{meta.label}</h2>
+                <span className="font-mono text-[10px] text-ink-4">{list.length}</span>
+                <div className="h-px flex-1 bg-[var(--color-line)]" />
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {list.map((ws) => {
             const plat = platformBadge(ws)
             const isSsh = !!ws.host && ws.host !== "localhost" && ws.host !== "127.0.0.1"
             const live = ws.status === "connected" || ws.status === "local"
@@ -584,6 +679,10 @@ export default function WorkspacesPage() {
                 {del.isError && <p className="mt-2 text-xs text-red-400">{(del.error as Error).message}</p>}
               </CardContent>
             </Card>
+            )
+          })}
+              </div>
+            </section>
             )
           })}
         </div>

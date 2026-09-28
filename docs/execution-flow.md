@@ -51,35 +51,37 @@ Remote paths must not be downgraded to SSH or to a VPS-local run: the local disp
 | `codex` | `codex exec --full-auto ...` | CodeGraph + project prerequisites | task message | `provenance executor=codex` |
 | `dsh` | `dsh --profile headless --json [--session-id <id>]` | `dsh --version` health check + CodeGraph | task message | `provenance executor=dsh` + `dsh_session_id` |
 | `commandcode` | `cmd -p --yolo --skip-onboarding --output-format json [--resume <id>]` | binary probe (`cmd`/`cmdc`/`command-code`) | task message | `provenance executor=commandcode` + `commandcode_session_id` |
+| `omp` | `omp -p --auto-approve --mode json [--resume <id>]` | binary probe (`omp`) | task message | `provenance executor=omp` + `omp_session_id` |
 | `shell` | read-only planner → `bash -lc ...` | bounded iterations; optional shell preflight | task intent (agentic) atau `command` (direct) | provenance + iteration events |
-| `auto` | Hermes first, fallback Codex/CommandCode | resolved executor rules | task message | resolved provenance |
+| `auto` | Hermes first, fallback Codex/CommandCode/omp | resolved executor rules | task message | resolved provenance |
 
 Shell agentic mode gives a read-only planner workspace visibility, then executes only its structured command through the shell worker. Body remains task intent, direct mode uses `command`. Max iterations are bounded (default 6, hard cap 12), destructive patterns are blocked, and success still lands in review. RTK may rewrite shell commands within its bounded timeout (`rtk hook check` → `rtk rewrite`, 800 ms each), then the resulting command runs directly in the remote workspace. Output >8 KiB may be compacted via `rtk pipe --ultra-compact` when `NODE_AGENT_SHELL_CAVEMAN=1` (2 s cap, fail-open).
 
-## Harness session continuity (dsh and commandcode)
+## Harness session continuity (dsh, commandcode, and omp)
 
-Switchyard stores one `harness_bindings` row per card and sends the identity fields for the selected harness to node-agent. The `harness_kind` column records which harness owns the row, so a card never confuses a `dsh` binding with a `commandcode` one.
+Switchyard stores one `harness_bindings` row per card and sends the identity fields for the selected harness to node-agent. The `harness_kind` column records which harness owns the row, so a card never confuses a `dsh` binding with a `commandcode` or `omp` one.
 
 | Harness | Identity sent | Cursor | Result fields |
 |---|---|---|---|
 | `dsh` | `harness_kind`, `dsh_workspace_id`, `dsh_session_id` | `last_turn_seq` | `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq` |
 | `commandcode` | `harness_kind`, `commandcode_session_id` | `last_comment_id` only | `commandcode_session_id` |
+| `omp` | `harness_kind`, `omp_session_id` | `last_comment_id` only | `omp_session_id` |
 
-Both harnesses share the same control-plane rules:
+All three harnesses share the same control-plane rules:
 
 - a first run sends an **empty** session id so the worker starts a real session and returns its own id, rather than failing on a placeholder that does not exist;
 - a continuation sends the bound id and must resume that exact session;
 - `last_comment_id` advances only after a successful turn, so a failed turn replays unconfirmed review comments;
 - a returned session that differs from the dispatched one is rejected (`<harness>_identity_rejected`), and the card lands in `blocked`.
 
-The two differ in the fences they can support:
+They differ in the fences they can support:
 
 - **dsh** reports a workspace id and a monotonic turn sequence, so it enforces identity mismatch, missing workspace, and stale-turn rejection.
-- **commandcode** reports neither — its JSON result carries `sessionId` but no workspace or turn sequence. Those dsh-only checks are skipped, and the **run-ownership fence** (`current_run_id` checked inside the finalize transaction) is its only stale-result protection. A resumable `commandcode` binding therefore needs a session id and a non-`active` status, but no workspace id.
+- **commandcode** and **omp** report neither — their JSON result carries a session id but no workspace or turn sequence. Those dsh-only checks are skipped, and the **run-ownership fence** (`current_run_id` checked inside the finalize transaction) is their only stale-result protection. A resumable binding for either therefore needs a session id and a non-`active` status, but no workspace id. `omp` resumes by session-id prefix, exactly like `commandcode`.
 
 `commandcode` also has no DSH-style home isolation to configure: Command Code headless sessions are hidden from the interactive `/resume` picker by design, so there is no daemon write-handle contention and no `DSH_HOME` requirement.
 
-`commandcode_session_missing:` is a deterministic worker signal and is never retried — the card goes straight to `blocked`. Per-executor detail: [features/commandcode-executor.md](features/commandcode-executor.md).
+`commandcode_session_missing:` and `omp_unavailable:` / `omp_session_missing:` are deterministic worker signals and are never retried — the card goes straight to `blocked`. Per-executor detail: [features/commandcode-executor.md](features/commandcode-executor.md) and [features/omp-executor.md](features/omp-executor.md).
 
 A worker build that predates `--output-format json` falls back to `--output-format text` once per binary path. A text run cannot prove continuity, so it is treated as a first run; only a genuine unknown-flag error triggers the fallback, never a task failure.
 

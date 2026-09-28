@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -17,6 +18,27 @@ var allowedExtensionCapabilities = map[string]bool{
 	"read_tasks": true,
 	"read_logs":  true,
 	"read_nodes": true,
+}
+
+// ValidationError marks a rejected registry payload, so HTTP handlers can
+// answer 400 and distinguish bad input from a filesystem failure.
+type ValidationError struct{ Err error }
+
+func (e *ValidationError) Error() string { return e.Err.Error() }
+func (e *ValidationError) Unwrap() error { return e.Err }
+
+func invalid(msg string) error { return &ValidationError{Err: errors.New(msg)} }
+func invalidErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &ValidationError{Err: err}
+}
+
+// IsValidationError reports whether err came from registry validation.
+func IsValidationError(err error) bool {
+	var ve *ValidationError
+	return errors.As(err, &ve)
 }
 
 type MCPServer struct {
@@ -39,8 +61,7 @@ type ExtensionManifest struct {
 }
 
 type ecosystemStore struct {
-	mu  sync.RWMutex
-	dir string
+	mu sync.RWMutex
 }
 
 var ecosystem = &ecosystemStore{}
@@ -121,21 +142,21 @@ func validEcosystemID(id string) bool {
 
 func ValidateExtensionManifest(m ExtensionManifest) error {
 	if !validEcosystemID(m.ID) {
-		return errors.New("invalid extension id")
+		return invalid("invalid extension id")
 	}
 	if strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Version) == "" {
-		return errors.New("name and version required")
+		return invalid("name and version required")
 	}
 	if len(m.Capabilities) == 0 {
-		return errors.New("at least one capability required")
+		return invalid("at least one capability required")
 	}
 	seen := map[string]bool{}
 	for _, c := range m.Capabilities {
 		if !allowedExtensionCapabilities[c] {
-			return fmt.Errorf("unsupported capability %q", c)
+			return invalidErr(fmt.Errorf("unsupported capability %q", c))
 		}
 		if seen[c] {
-			return errors.New("duplicate capability")
+			return invalid("duplicate capability")
 		}
 		seen[c] = true
 	}
@@ -144,24 +165,21 @@ func ValidateExtensionManifest(m ExtensionManifest) error {
 
 func ValidateMCPServer(m MCPServer) error {
 	if !validEcosystemID(m.ID) {
-		return errors.New("invalid mcp id")
+		return invalid("invalid mcp id")
 	}
 	if strings.TrimSpace(m.Name) == "" {
-		return errors.New("name required")
+		return invalid("name required")
 	}
 	if m.Transport != "stdio" && m.Transport != "http" {
-		return errors.New("transport must be stdio or http")
+		return invalid("transport must be stdio or http")
 	}
 	if m.Transport == "stdio" {
 		if strings.TrimSpace(m.Command) == "" {
-			return errors.New("command required for stdio transport")
+			return invalid("command required for stdio transport")
 		}
 		return nil
 	}
-	if err := validateEndpointURL(m.Endpoint); err != nil {
-		return err
-	}
-	return nil
+	return invalidErr(validateEndpointURL(m.Endpoint))
 }
 
 func validateEndpointURL(endpoint string) error {
@@ -241,15 +259,16 @@ func UpsertMCPServer(profile string, m MCPServer) ([]MCPServer, error) {
 	replaced := false
 	for i := range items {
 		if items[i].ID == m.ID {
+			// Preserve the original creation timestamp across replacement;
+			// it is server-owned, not client-supplied.
+			m.CreatedAt = items[i].CreatedAt
 			items[i] = m
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		if m.CreatedAt == 0 {
-			m.CreatedAt = time.Now().Unix()
-		}
+		m.CreatedAt = time.Now().Unix()
 		items = append(items, m)
 	}
 	if err := ecosystem.write(profile, "mcp.json", items); err != nil {
@@ -281,7 +300,7 @@ func DeleteMCPServer(profile, id string) ([]MCPServer, error) {
 		}
 	}
 	if len(kept) == len(items) {
-		return nil, errors.New("mcp server not found")
+		return nil, fmt.Errorf("mcp server %q: %w", id, fs.ErrNotExist)
 	}
 	if err := ecosystem.write(profile, "mcp.json", kept); err != nil {
 		return nil, err
@@ -313,8 +332,11 @@ func UpsertExtension(profile string, m ExtensionManifest) ([]ExtensionManifest, 
 	for i := range items {
 		if items[i].ID == m.ID {
 			items[i] = m
+			if err := ecosystem.write(profile, "extensions.json", items); err != nil {
+				return nil, err
+			}
 			broadcastEvent("ecosystem_extensions_changed", map[string]any{"profile": profile, "id": m.ID})
-			return items, ecosystem.write(profile, "extensions.json", items)
+			return items, nil
 		}
 	}
 	items = append(items, m)
@@ -347,7 +369,7 @@ func DeleteExtension(profile, id string) ([]ExtensionManifest, error) {
 		}
 	}
 	if len(kept) == len(items) {
-		return nil, errors.New("extension not found")
+		return nil, fmt.Errorf("extension %q: %w", id, fs.ErrNotExist)
 	}
 	if err := ecosystem.write(profile, "extensions.json", kept); err != nil {
 		return nil, err
@@ -363,8 +385,14 @@ type GatewayStatus struct {
 }
 
 func GatewayStatusReport() GatewayStatus {
-	if v := os.Getenv("KANBAN_GATEWAY_URL"); strings.TrimSpace(v) == "" {
+	raw := strings.TrimSpace(os.Getenv("KANBAN_GATEWAY_URL"))
+	if raw == "" {
 		return GatewayStatus{State: "disabled"}
 	}
-	return GatewayStatus{State: "up", URL: os.Getenv("KANBAN_GATEWAY_URL")}
+	// Validate before echoing: this value reaches the browser, and an invalid
+	// URL must not be reported as a healthy gateway.
+	if err := validateEndpointURL(raw); err != nil {
+		return GatewayStatus{State: "down", Error: err.Error()}
+	}
+	return GatewayStatus{State: "up", URL: raw}
 }

@@ -37,7 +37,7 @@ flowchart TB
     Review[Review gate<br/>diff + approve]
   end
   subgraph Workers[Execution plane — workers]
-    Mac[Mac agent<br/>hermes / codex / dsh / commandcode / shell]
+    Mac[Mac agent<br/>hermes / codex / dsh / commandcode / omp / shell]
     Win[Windows agent]
   end
 
@@ -61,6 +61,7 @@ flowchart TB
 | `codex` | node-agent | Codex on workspace host |
 | `dsh` | node-agent | DeepSeek Harness session on workspace host |
 | `commandcode` | node-agent | CommandCode on workspace host |
+| `omp` | node-agent | omp (oh-my-pi) on workspace host |
 
 `auto` is kept for backward compatibility with old tasks. New tasks that need a local worker should pick an explicit executor. Node-agent prefers gRPC when available and falls back to HTTP long-poll when the gRPC stream is down.
 
@@ -92,7 +93,7 @@ Tasks store human intent as `title` + `description`. Users pick an AI executor o
 {"executor": "commandcode"}
 ```
 
-Valid values: `auto`, `hermes`, `codex`, `commandcode`, `dsh`, `shell`.
+Valid values: `auto`, `hermes`, `codex`, `commandcode`, `dsh`, `omp`, `shell`.
 
 `shell` is a normal task executor for direct remote commands. `command` is the only executed input; `body` is descriptive text and is never executed. Empty/whitespace `command` is rejected at task create (`400 shell executor requires command`) and by both dispatchers as `blocked`. Shell preflight (`NODE_AGENT_SHELL_PREFLIGHT=1`) and output compaction (`NODE_AGENT_SHELL_CAVEMAN=1`) are opt-in on the worker and use environment only — they never mutate `command`.
 
@@ -169,6 +170,64 @@ Full detail: [docs/features/commandcode-executor.md](docs/features/commandcode-e
 Worker-side contract and troubleshooting:
 [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
 
+### omp (oh-my-pi)
+
+[`omp`](https://omp.sh) is a coding agent with a native Rust core and a TUI,
+shipped as a single cross-platform binary. Node-agent drives it headlessly:
+
+```sh
+omp -p --auto-approve --mode json "<prompt>"
+omp -p --auto-approve --mode json --resume <session-id> "<prompt>"
+```
+
+The binary is named `omp` on macOS and Linux and `omp.exe` on Windows, so no
+per-platform alias is needed. It is probed, not installed, by the worker:
+
+```sh
+# macOS / Linux
+curl -fsSL https://omp.sh/install | sh
+
+# Windows
+irm https://omp.sh/install.ps1 | iex
+```
+
+If a host has a `bun` older than 1.3.14, the default installer path fails the
+version check. Force the prebuilt binary instead:
+
+```powershell
+& ([scriptblock]::Create((irm https://omp.sh/install.ps1))) -Binary
+```
+
+After installing on a worker host, restart node-agent so it re-advertises its
+capabilities, and confirm the node reports `versions.omp`.
+
+Switchyard stores the session in `harness_bindings` (`harness_kind=omp`) and
+sends an empty `omp_session_id` on the first run so omp mints a real one.
+`--mode json` makes the run emit NDJSON, which is what lets the worker prove
+session identity; a successful run that emits no session id fails with
+`omp_session_missing:` rather than binding a guessed id.
+
+Session continuity uses the same `harness_bindings` mechanism as `dsh` and
+`commandcode`, and the same two differences worth knowing:
+
+- **No workspace identity.** omp resolves sessions by id prefix, not by
+  workspace, so an `omp` card is resumable without a workspace id.
+- **No stale-turn rejection.** omp returns no turn sequence, so the only guard
+  against a late result is the `current_run_id` ownership fence.
+
+`--auto-approve` lets the agent edit files and run shell commands without an
+interactive prompt — a headless worker cannot answer one. Use it only on trusted
+nodes. Unlike `dsh`, the worker does not pin a model, so omp resolves the model
+from the host's own config; a board-level `model` is ignored for this executor.
+
+A successful run must return a session id matching the dispatched one, or the
+card is blocked with `omp_identity_rejected`. `omp_unavailable:` and
+`omp_session_missing:` are deterministic and never retried.
+
+Full detail: [docs/features/omp-executor.md](docs/features/omp-executor.md).
+Worker-side contract and troubleshooting:
+[node-agent docs/omp-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/omp-harness.md).
+
 ## Review gate
 
 Every executor uses the same gate:
@@ -238,8 +297,8 @@ On register each node advertises capabilities:
 {
   "node_id": "mac",
   "workspaces": ["/Users/<user>/Development"],
-  "executors": ["hermes", "codex", "dsh", "commandcode", "shell"],
-  "versions": {"commandcode": "..."}
+  "executors": ["hermes", "codex", "dsh", "commandcode", "omp", "shell"],
+  "versions": {"commandcode": "...", "omp": "omp/18.4.0"}
 }
 ```
 
@@ -369,7 +428,7 @@ curl -H "X-Node-Agent-Token: <token>" http://<vps>:8788/health
 
 A healthy node is `idle`. gRPC workers show `transports: ["grpc", "http"]`. When the gRPC stream drops, `auto` mode falls back to HTTP and the transport badge in Flow switches to `http`.
 
-If the VPS server is already new but the Mac agent has not been upgraded yet, new executors like `commandcode` will not appear on that node — expected until the Mac installer is re-run.
+If the VPS server is already new but the Mac agent has not been upgraded yet, new executors like `commandcode` or `omp` will not appear on that node — expected until the Mac installer is re-run.
 
 ### Remote task tries to run on the VPS
 
@@ -401,9 +460,29 @@ The session is published by the worker after a successful run. Check that
 
 Expected. Open the diff, then pick **Commit** or **Commit & Push**.
 
+### omp card fails with `omp_unavailable:` or no edits
+
+`omp_unavailable:` means the binary is not on the worker's PATH — install it on
+that host (`curl -fsSL https://omp.sh/install | sh`, or the PowerShell
+installer on Windows) and restart node-agent.
+
+If omp starts but makes no edits, check the worker log for
+`No models available`: omp needs a provider credential **of its own** and does
+not read it from the node-agent environment, so a node with working `dsh` and
+`codex` can still have none usable for omp. Run `omp setup` as the node-agent
+user, or put a provider key in the service environment and restart the worker.
+The worker does not pin a model for this executor, so a board-level `model` is
+ignored.
+
+`omp_session_missing:` after a successful run means omp emitted no session frame
+in `--mode json`, so the worker refused to bind a guessed id. Check
+`$TMPDIR/node-agent-<task_id>/run.log`.
+
 ## Related repositories
 
 - [node-agent](https://github.com/adityahimaone/node-agent) — execution plane (worker service)
+- [omp (oh-my-pi)](https://omp.sh) — coding agent with the IDE wired in
+- [omp CLI reference](https://omp.sh/docs/cli)
 - [CommandCode headless mode](https://commandcode.ai/docs/headless)
 - [CommandCode CLI reference](https://commandcode.ai/docs/reference/cli)
 - [RTK](https://github.com/rtk-ai/rtk)

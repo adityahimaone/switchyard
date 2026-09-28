@@ -316,13 +316,8 @@ func dispatchSSHTasks() {
 					Workspace: r.ws, Model: model, Provider: r.assignee, Executor: r.executor, Command: r.command,
 					DSHWorkspaceID: binding.HarnessWorkspaceID, DSHSessionID: dshSessionID, SessionContinuation: sessionContinuation, RunID: runID,
 				}
-				if r.executor == "commandcode" {
-					req.HarnessKind = "commandcode"
-					req.CommandCodeSessionID = dshSessionID
-					req.DSHSessionID = ""
-					req.DSHWorkspaceID = ""
-				} else if continuity {
-					req.HarnessKind = "dsh"
+				if continuity {
+					kanban.ApplyHarnessIdentity(&req, r.executor, dshSessionID)
 				}
 				if continuity {
 					req.LastTurnSeq = &binding.LastTurnSeq
@@ -379,7 +374,8 @@ func dispatchSSHTasks() {
 				// broken run and obscures root cause.
 				if failures < 3 && !strings.Contains(output, "dispatch_wait_timeout:") &&
 					!strings.Contains(output, "dsh_unavailable:") && !strings.Contains(output, "dsh_session_missing:") &&
-					!strings.Contains(output, "commandcode_session_missing:") {
+					!strings.Contains(output, "commandcode_session_missing:") &&
+					!strings.Contains(output, "omp_unavailable:") && !strings.Contains(output, "omp_session_missing:") {
 					newStatus = "todo" // retry transient failures
 				}
 				_, _ = db2.Exec(`UPDATE tasks SET status=?, consecutive_failures=?, last_failure_error=?, completed_at=? WHERE id=? AND status='blocked' AND current_run_id IS NULL`,

@@ -20,7 +20,7 @@ var ValidStatuses = map[string]bool{
 }
 
 var ValidExecutors = map[string]bool{
-	"auto": true, "hermes": true, "codex": true, "commandcode": true, "dsh": true, "shell": true,
+	"auto": true, "hermes": true, "codex": true, "commandcode": true, "dsh": true, "omp": true, "shell": true,
 }
 
 const maxTaskIterations = 24
@@ -181,6 +181,7 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN max_iterations INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE tasks ADD COLUMN dsh_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN commandcode_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN omp_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN current_run_id TEXT`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {

@@ -19,11 +19,12 @@ const EXECUTOR_LABELS: Record<string, string> = {
   codex: "Codex",
   commandcode: "Command Code",
   dsh: "DeepSeek Harness",
+  omp: "omp (oh-my-pi)",
   shell: "Shell agent (workspace access)",
 }
 
 const FALLBACK_EXECUTORS: ExecutorSettings = {
-  order: ["auto", "hermes", "codex", "commandcode", "dsh", "shell"],
+  order: ["auto", "hermes", "codex", "commandcode", "dsh", "omp", "shell"],
   disabled: [],
   default_execution_mode: "direct",
 }
@@ -73,7 +74,7 @@ export default function TaskDialog({
   const [body, setBody] = useState("")
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
-  const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "dsh" | "shell">("auto")
+  const [executor, setExecutor] = useState<"auto" | "hermes" | "codex" | "commandcode" | "dsh" | "omp" | "shell">("auto")
   const [executionMode, setExecutionMode] = useState<"direct" | "agentic">("direct")
   const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")

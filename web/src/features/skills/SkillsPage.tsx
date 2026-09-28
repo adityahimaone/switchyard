@@ -4,20 +4,44 @@ import { api } from "@/api"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Puzzle, Search, X } from "lucide-react"
+import { Download, Puzzle, Search, X } from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
+
+export type SkillOrigin = "npx" | "hermes"
 
 interface SkillMeta {
   name: string
   description: string
   category?: string
   path?: string
+  origin?: string
+  origin_source?: string
+}
+
+const ORIGIN_FILTERS: { value: SkillOrigin | "all"; label: string; hint: string }[] = [
+  { value: "all", label: "Semua", hint: "Semua skill" },
+  { value: "npx", label: "npx skills", hint: "Terinstall lewat `npx skills add` (ada di .hub/lock.json)" },
+  { value: "hermes", label: "Hermes", hint: "Builtin hermes, dikelola web UI, atau tanpa catatan asal" },
+]
+
+// originBadgeTints keeps the per-card chip consistent with the segmented filter.
+function originBadgeTint(skill: SkillMeta): string {
+  if (skill.origin === "npx") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+  if (skill.origin_source === "official") return "border-[var(--color-line)] bg-[var(--color-bg)] text-ink-2"
+  return "border-[var(--color-line)] bg-[var(--color-inset)] text-ink-4"
+}
+
+export function skillOriginLabel(skill: SkillMeta): string {
+  if (skill.origin === "npx") return "npx"
+  return skill.origin_source === "official" ? "builtin" : "hermes"
 }
 
 export default function SkillsPage() {
   const [q, setQ] = useState("")
   const [active, setActive] = useState<string | null>(null)
+  const [origin, setOrigin] = useState<SkillOrigin | "all">("all")
 
   const skills = useQuery({
     queryKey: ["skills"],
@@ -30,14 +54,25 @@ export default function SkillsPage() {
     enabled: !!active,
   })
 
+  const originCounts = useMemo(() => {
+    const counts: Record<string, number> = { npx: 0, hermes: 0 }
+    for (const s of skills.data ?? []) {
+      if (s.origin === "npx") counts.npx += 1
+      else counts.hermes += 1
+    }
+    return counts
+  }, [skills.data])
+
+  // Origin is applied before the search short-circuit: a filtered list must not
+  // reappear just because the search box is empty.
   const filtered = useMemo(() => {
-    const list = skills.data ?? []
+    const list = (skills.data ?? []).filter((s) => (origin === "all" ? true : s.origin === origin))
     const needle = q.trim().toLowerCase()
     if (!needle) return list
     return list.filter(
       (s) => s.name.toLowerCase().includes(needle) || s.description.toLowerCase().includes(needle) || (s.category ?? "").toLowerCase().includes(needle),
     )
-  }, [skills.data, q])
+  }, [skills.data, q, origin])
 
   const grouped = useMemo(() => {
     const groups = new Map<string, SkillMeta[]>()
@@ -57,7 +92,31 @@ export default function SkillsPage() {
           <p className="mt-1 text-xs text-[var(--color-ink-3)]">Read-only registry dari <code className="text-ink-3">~/.hermes/skills</code> — klik skill buat liat SKILL.md.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">{skills.data?.length ?? 0} installed</span>
+          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
+            {filtered.length === (skills.data?.length ?? 0) ? `${skills.data?.length ?? 0}` : `${filtered.length}/${skills.data?.length ?? 0}`} installed
+          </span>
+          <div className="flex items-center gap-1" role="group" aria-label="Filter asal skill">
+            {ORIGIN_FILTERS.map((f) => {
+              const count = f.value === "all" ? (skills.data?.length ?? 0) : originCounts[f.value] ?? 0
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  aria-pressed={origin === f.value}
+                  title={f.hint}
+                  onClick={() => setOrigin(f.value)}
+                  className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
+                    origin === f.value
+                      ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
+                      : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                  }`}
+                >
+                  {f.label}
+                  <span className="font-mono text-[10px] opacity-70">{count}</span>
+                </button>
+              )
+            })}
+          </div>
           <div className="relative w-64">
             <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari skill…" className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
@@ -94,7 +153,15 @@ export default function SkillsPage() {
                             <Puzzle className="size-3.5 text-[var(--color-accent)]" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h3 className="truncate text-sm font-semibold leading-5" title={s.name}>{s.name}</h3>
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="truncate text-sm font-semibold leading-5" title={s.name}>{s.name}</h3>
+                              {s.origin && (
+                                <Badge variant="outline" className={`shrink-0 gap-1 px-1.5 py-0 text-[9px] leading-none ${originBadgeTint(s)}`}>
+                                  {s.origin === "npx" && <Download className="size-2.5" aria-hidden />}
+                                  {skillOriginLabel(s)}
+                                </Badge>
+                              )}
+                            </div>
                             <p className="mt-1 line-clamp-2 min-h-[30px] text-[11px] leading-snug text-ink-3">{s.description || "—"}</p>
                           </div>
                         </div>
@@ -104,7 +171,11 @@ export default function SkillsPage() {
                 </div>
               </section>
             ))}
-            {!filtered.length && <p className="text-sm text-ink-4">No skills matched "{q}".</p>}
+            {!filtered.length && (
+              <p className="text-sm text-ink-4">
+                {q.trim() ? `No skills matched "${q}".` : `Tidak ada skill untuk asal "${origin === "all" ? "semua" : origin}".`}
+              </p>
+            )}
           </div>
 
           {active && (

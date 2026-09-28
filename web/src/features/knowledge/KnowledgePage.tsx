@@ -40,6 +40,8 @@ const kanbanMatrix = [
   ["hermes", "hermes chat -q", "CodeGraph + prerequisites"],
   ["codex", "codex exec --full-auto", "CodeGraph + prerequisites"],
   ["dsh", "dsh --profile headless --json", "health check + CodeGraph"],
+  ["commandcode", "cmd -p --yolo --output-format json", "binary probe"],
+  ["omp", "omp -p --auto-approve --mode json", "binary probe"],
   ["shell", "planner → bash -lc", "read-only plan + bounded iterations"],
   ["auto", "Hermes first; fallback", "Resolved executor decides"],
 ]
@@ -70,12 +72,21 @@ const commandCodeContinuity = [
 ]
 
 const continuityFences = [
-  ["workspace identity", "required", "not required", "dsh keys its session store by workspace"],
-  ["turn cursor", "last_turn_seq checked", "not returned", "commandcode has no stale-turn rejection"],
-  ["session id on success", "required", "required", "mismatch → identity_rejected, card blocked"],
-  ["session id on failure", "required", "may be omitted", "a failed first run legitimately has none"],
-  ["home isolation", "isolated DSH_HOME", "none", "no daemon write-handle contention"],
-  ["stale-result guard", "turn seq + run fence", "run fence only", "current_run_id drops a superseded result"],
+  ["workspace identity", "required", "not required", "not required", "only dsh keys its session store by workspace"],
+  ["turn cursor", "last_turn_seq checked", "not returned", "not returned", "commandcode and omp have no stale-turn rejection"],
+  ["session id on success", "required", "required", "required", "mismatch → identity_rejected, card blocked"],
+  ["session id on failure", "required", "may be omitted", "may be omitted", "a failed first run legitimately has none"],
+  ["home isolation", "isolated DSH_HOME", "none", "none", "no daemon write-handle contention"],
+  ["stale-result guard", "turn seq + run fence", "run fence only", "run fence only", "current_run_id drops a superseded result"],
+]
+
+const ompContinuity = [
+  ["harness_kind", "omp", "binds one card to one omp session"],
+  ["session id", "switchyard-omp-<hash>", "deterministic, minted by Switchyard"],
+  ["first run", "empty omp_session_id", "worker mints the real id, returns it"],
+  ["continuation", "--resume <bound id>", "same session, never cold"],
+  ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
+  ["binary", "omp / omp.exe", "no alias; probed directly on each host"],
 ]
 
 const commandCodeIdentity = [
@@ -99,6 +110,7 @@ export default function KnowledgePage() {
             <a href="#kanban" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">kanban-board-flow.md</a>
             <a href="#dsh" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">dsh-harness.md</a>
             <a href="#commandcode" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">commandcode-executor.md</a>
+            <a href="#omp" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">omp-executor.md</a>
             <a href="#chat" className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 font-mono text-[var(--color-accent)]">chat-flow.md</a>
           </div>
         </header>
@@ -134,12 +146,23 @@ export default function KnowledgePage() {
               <li className="flex gap-1.5"><span className="text-[var(--color-accent)]">→</span><span>Tidak butuh <span className="font-mono">DSH_HOME</span>: session headless tersembunyi dari picker <span className="font-mono">/resume</span> secara design.</span></li>
             </ul>
           </section>
+
+          <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+            <div className="flex items-center gap-2"><Terminal className="size-4 text-[var(--color-accent)]" /><h3 className="text-xs font-semibold">omp — oh-my-pi coding agent</h3></div>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--color-ink-3)]">Menjalankan <span className="font-mono">omp -p --auto-approve --mode json [--resume &lt;id&gt;]</span> di workspace host. Binary <span className="font-mono">omp</span>, atau <span className="font-mono">omp.exe</span> di Windows.</p>
+            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-[var(--color-ink-3)]">
+              <li className="flex gap-1.5"><span className="text-[var(--color-accent)]">→</span><span>Resume by session-id prefix, jadi tidak butuh workspace identity.</span></li>
+              <li className="flex gap-1.5"><span className="text-[var(--color-accent)]">→</span><span>Frame <span className="font-mono">result</span> membawa <span className="font-mono">sessionId</span> dan <span className="font-mono">finalText</span>, tanpa turn cursor.</span></li>
+              <li className="flex gap-1.5"><span className="text-[var(--color-accent)]">→</span><span>Karena itu <strong className="font-medium text-[var(--color-ink-2)]">tidak ada stale-turn rejection</strong>; satu-satunya pagar adalah <span className="font-mono">current_run_id</span>.</span></li>
+              <li className="flex gap-1.5"><span className="text-[var(--color-accent)]">→</span><span><span className="font-mono">--auto-approve</span> mengizinkan edit dan shell tanpa prompt; hanya untuk node tepercaya.</span></li>
+            </ul>
+          </section>
         </div>
 
         <section className="mt-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
           <h2 className="text-sm font-semibold">Continuity fence matrix</h2>
-          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Keduanya memakai tabel binding dan resolver yang sama; yang membedakan hanya <span className="font-mono">harness_kind</span> dan tiga pemeriksaan di bawah.</p>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Fence</th><th className="pb-2">dsh</th><th className="pb-2">commandcode</th><th className="pb-2">Effect</th></tr></thead><tbody>{continuityFences.map(([fence, dsh, cc, effect]) => <tr key={fence} className="border-t border-[var(--color-line)]"><td className="py-2 text-[var(--color-ink-2)]">{fence}</td><td className="py-2 font-mono text-[var(--color-ink-3)]">{dsh}</td><td className="py-2 font-mono text-[var(--color-accent)]">{cc}</td><td className="py-2 text-[var(--color-ink-3)]">{effect}</td></tr>)}</tbody></table></div>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">Ketiganya memakai tabel binding dan resolver yang sama; yang membedakan hanya <span className="font-mono">harness_kind</span> dan tiga pemeriksaan di bawah.</p>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Fence</th><th className="pb-2">dsh</th><th className="pb-2">commandcode</th><th className="pb-2">omp</th><th className="pb-2">Effect</th></tr></thead><tbody>{continuityFences.map(([fence, dsh, cc, ompv, effect]) => <tr key={fence} className="border-t border-[var(--color-line)]"><td className="py-2 text-[var(--color-ink-2)]">{fence}</td><td className="py-2 font-mono text-[var(--color-ink-3)]">{dsh}</td><td className="py-2 font-mono text-[var(--color-accent)]">{cc}</td><td className="py-2 font-mono text-[var(--color-accent)]">{ompv}</td><td className="py-2 text-[var(--color-ink-3)]">{effect}</td></tr>)}</tbody></table></div>
         </section>
 
         <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -197,6 +220,15 @@ export default function KnowledgePage() {
           <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{commandCodeContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{aspect}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{behaviour}</td><td className="py-2 text-[var(--color-ink-3)]">{note}</td></tr>)}</tbody></table></div>
         </section>
 
+        <section id="omp" className="mt-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
+          <div className="flex items-center gap-2"><Terminal className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">omp Executor — session continuity</h2></div>
+          <p className="mt-1 max-w-3xl text-[11px] text-[var(--color-ink-3)]">Executor <span className="font-mono text-[var(--color-accent)]">omp</span> memakai mechanism harness yang sama dengan DSH dan Command Code. omp me-<span className="font-mono">resume</span> session berdasarkan id prefix, bukan workspace, jadi tidak butuh workspace identity. Binding disimpan di <span className="font-mono">harness_bindings</span> dengan <span className="font-mono">harness_kind=omp</span>.</p>
+          <div className="mt-3 font-mono text-[11px] leading-6 text-[var(--color-ink-2)]">
+            <div>card executor omp → HarnessContinuityEnabled</div><div className="pl-4">↓ resolve binding: session id empty (first run) → worker mints</div><div className="pl-4">↓ POST /api/dispatch · harness_kind=omp · omp_session_id</div><div className="pl-4">↓ worker: omp -p --auto-approve --mode json [--resume &lt;id&gt;]</div><div className="pl-4">↓ result frame: sessionId + finalText</div><div className="pl-4">↓ identity check: session mismatch ditolak → omp_identity_rejected</div><div className="pl-4">↓ binding diupdate → review | todo (comment baru) | blocked</div><div className="pl-4">↓ review comment → todo → running → --resume session yang sama</div>
+          </div>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{ompContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-[var(--color-line)]"><td className="py-2 font-mono text-[var(--color-accent)]">{aspect}</td><td className="py-2 font-mono text-[var(--color-ink-2)]">{behaviour}</td><td className="py-2 text-[var(--color-ink-3)]">{note}</td></tr>)}</tbody></table></div>
+        </section>
+
         <section className="mt-3 grid gap-3 md:grid-cols-2">
           <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4">
             <div className="flex items-center gap-2"><Fingerprint className="size-4 text-[var(--color-accent)]" /><h2 className="text-sm font-semibold">Identity fence</h2></div>
@@ -245,6 +277,7 @@ export default function KnowledgePage() {
               <li><span className="text-[var(--color-accent)]">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>
               <li><span className="text-[var(--color-accent)]">docs/features/dsh-harness.md</span> — DSH session continuity</li>
               <li><span className="text-[var(--color-accent)]">docs/features/commandcode-executor.md</span> — CommandCode execution</li>
+              <li><span className="text-[var(--color-accent)]">docs/features/omp-executor.md</span> — omp execution</li>
               <li><span className="text-[var(--color-accent)]">docs/features/chat-flow.md</span> — Chat A–Z</li>
               <li><span className="text-[var(--color-accent)]">docs/features/chat-flow-architecture.md</span> — Current chat internals</li>
               <li><span className="text-[var(--color-accent)]">docs/execution-flow.md</span> — Legacy execution flow</li>

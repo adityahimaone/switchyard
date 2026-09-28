@@ -71,6 +71,7 @@ type NodeDispatchRequest struct {
 	DSHSessionID         string `json:"dsh_session_id,omitempty"`
 	HarnessKind          string `json:"harness_kind,omitempty"`
 	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
+	OMPSessionID         string `json:"omp_session_id,omitempty"`
 	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 	LastCommentID        *int64 `json:"last_comment_id,omitempty"`
 	RunID                string `json:"run_id,omitempty"`
@@ -90,16 +91,37 @@ type NodeDispatchResult struct {
 	DSHSessionID         string `json:"dsh_session_id,omitempty"`
 	SessionID            string `json:"session_id,omitempty"`
 	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
+	OMPSessionID         string `json:"omp_session_id,omitempty"`
 	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 }
 
-var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|commandcode_session_id|session_id|sessionId|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
+var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|commandcode_session_id|omp_session_id|session_id|sessionId|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
 
 // HarnessContinuityEnabled reports whether an executor keeps durable per-card
-// session identity. dsh and commandcode both do; the other executors are
+// session identity. dsh, commandcode and omp all do; the other executors are
 // stateless one-shot spawns and must never carry a binding or a cursor.
 func HarnessContinuityEnabled(executor string) bool {
-	return executor == "dsh" || executor == "commandcode"
+	return executor == "dsh" || executor == "commandcode" || executor == "omp"
+}
+
+// harnessUsesWorkspaceIdentity reports whether a harness keys its session store
+// by workspace. dsh does and must return a matching workspace id. commandcode
+// and omp resolve sessions globally by id prefix, so demanding a workspace
+// identity from them would make every card permanently unresumable.
+func harnessUsesWorkspaceIdentity(kind string) bool {
+	return kind == "dsh"
+}
+
+// harnessSessionColumn is the per-card tasks column a harness kind mirrors its
+// session id into. Kinds without a dedicated column fall back to the dsh one.
+func harnessSessionColumn(kind string) string {
+	switch kind {
+	case "commandcode":
+		return "commandcode_session_id"
+	case "omp":
+		return "omp_session_id"
+	}
+	return "dsh_session_id"
 }
 
 type HarnessBinding struct {
@@ -146,13 +168,13 @@ func ResolveHarnessBindingFor(db *sql.DB, boardID, cardID, workspacePath, execut
 // A binding is only resumable once it has completed a turn ("active" is the
 // never-ran placeholder) and owns a session id. dsh additionally requires a
 // workspace id, because it keys its session store by workspace; commandcode
-// resolves sessions per working directory and has no such identity, so
-// requiring one there would make a commandcode card permanently unresumable.
+// and omp resolve sessions per id prefix and have no such identity, so
+// requiring one there would make those cards permanently unresumable.
 func harnessCanResume(b HarnessBinding) bool {
 	if b.Status == "active" || b.HarnessSessionID == "" {
 		return false
 	}
-	if b.HarnessKind == "commandcode" {
+	if !harnessUsesWorkspaceIdentity(b.HarnessKind) {
 		return true
 	}
 	return b.HarnessWorkspaceID != ""
@@ -166,10 +188,7 @@ func resolveHarnessBinding(db *sql.DB, boardID, cardID, workspacePath, kind stri
 	if workspacePath == "." || workspacePath == "" {
 		return HarnessBinding{}, false, fmt.Errorf("workspace path required")
 	}
-	legacyColumn := "dsh_session_id"
-	if kind == "commandcode" {
-		legacyColumn = "commandcode_session_id"
-	}
+	legacyColumn := harnessSessionColumn(kind)
 	var b HarnessBinding
 	err := db.QueryRow(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, COALESCE(harness_kind,'dsh') FROM harness_bindings WHERE card_id=?`, cardID).
 		Scan(&b.CardID, &b.WorkspacePath, &b.HarnessWorkspaceID, &b.HarnessSessionID, &b.LastTurnSeq, &b.LastCommentID, &b.Status, &b.HarnessKind)
@@ -224,16 +243,42 @@ type dshResultIdentity struct {
 // harnessSessionID picks the per-kind dispatch field so the existing dsh wire
 // contract keeps working untouched.
 func harnessSessionID(req NodeDispatchRequest) string {
-	if strings.TrimSpace(req.CommandCodeSessionID) != "" {
-		return strings.TrimSpace(req.CommandCodeSessionID)
+	if id := strings.TrimSpace(req.CommandCodeSessionID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(req.OMPSessionID); id != "" {
+		return id
 	}
 	return strings.TrimSpace(req.DSHSessionID)
+}
+
+// ApplyHarnessIdentity stamps a request with the per-harness session fields.
+// A kind that does not key its session store by workspace (commandcode, omp)
+// must not carry dsh workspace identity onto the wire: borrowing those fields
+// would make the worker validate against an identity it never had.
+func ApplyHarnessIdentity(req *NodeDispatchRequest, kind, sessionID string) {
+	req.HarnessKind = kind
+	switch kind {
+	case "commandcode":
+		req.CommandCodeSessionID = sessionID
+		req.DSHSessionID = ""
+		req.DSHWorkspaceID = ""
+	case "omp":
+		req.OMPSessionID = sessionID
+		req.DSHSessionID = ""
+		req.DSHWorkspaceID = ""
+	default:
+		req.DSHSessionID = sessionID
+	}
 }
 
 func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult) (dshResultIdentity, error) {
 	sessionID := strings.TrimSpace(result.DSHSessionID)
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(result.CommandCodeSessionID)
+	}
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(result.OMPSessionID)
 	}
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(result.SessionID)
@@ -311,16 +356,13 @@ func updateHarnessBindingTx(tx *sql.Tx, taskID string, commentID *int64, result 
 		return nil
 	}
 	// Mirror into whichever per-card column the kind owns.
-	sessionColumn := "dsh_session_id"
-	if kind == "commandcode" {
-		sessionColumn = "commandcode_session_id"
-	}
+	sessionColumn := harnessSessionColumn(kind)
 	if _, err := tx.Exec(`UPDATE tasks SET `+sessionColumn+`=? WHERE id=?`, identity.sessionID, taskID); err != nil {
 		return err
 	}
 	// dsh marks a binding ready only once it also proved a workspace id;
-	// commandcode has no workspace identity, so a success is enough.
-	ready := result.Success && (identity.workspaceID != "" || kind == "commandcode")
+	// commandcode and omp have no workspace identity, so a success is enough.
+	ready := result.Success && (identity.workspaceID != "" || !harnessUsesWorkspaceIdentity(kind))
 	updated, err := tx.Exec(`UPDATE harness_bindings SET harness_session_id=?, harness_workspace_id=CASE WHEN ?='' THEN harness_workspace_id ELSE ? END, last_turn_seq=CASE WHEN ? IS NOT NULL AND ? > last_turn_seq THEN ? ELSE last_turn_seq END, last_comment_id=CASE WHEN ? AND ? IS NOT NULL AND ? > last_comment_id THEN ? ELSE last_comment_id END, status=CASE WHEN ? THEN 'idle' ELSE 'error' END, updated_at=? WHERE card_id=?`, identity.sessionID, identity.workspaceID, identity.workspaceID, result.LastTurnSeq, result.LastTurnSeq, result.LastTurnSeq, result.Success, commentID, commentID, commentID, ready, now, taskID)
 	if err != nil {
 		return err

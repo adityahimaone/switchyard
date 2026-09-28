@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { visibleExecutorsFor } from "./TaskDialog"
 
-const ALL = ["auto", "hermes", "codex", "commandcode", "dsh", "shell"]
+const ALL = ["auto", "hermes", "codex", "commandcode", "dsh", "omp", "shell"]
 
 describe("visibleExecutorsFor", () => {
   it("shows every executor when settings have not loaded yet", () => {
@@ -21,17 +21,17 @@ describe("visibleExecutorsFor", () => {
 
   it("follows the configured order", () => {
     const got = visibleExecutorsFor({
-      order: ["dsh", "commandcode", "auto", "hermes", "codex", "shell"],
+      order: ["dsh", "commandcode", "auto", "hermes", "codex", "omp", "shell"],
       disabled: [],
       default_execution_mode: "direct",
     })
-    expect(got).toEqual(["dsh", "commandcode", "auto", "hermes", "codex", "shell"])
+    expect(got).toEqual(["dsh", "commandcode", "auto", "hermes", "codex", "omp", "shell"])
   })
 
   it("can leave auto as the only option", () => {
     const got = visibleExecutorsFor({
       order: ALL,
-      disabled: ["hermes", "codex", "commandcode", "dsh", "shell"],
+      disabled: ["hermes", "codex", "commandcode", "dsh", "omp", "shell"],
       default_execution_mode: "direct",
     })
     expect(got).toEqual(["auto"])

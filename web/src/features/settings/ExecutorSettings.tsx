@@ -11,11 +11,12 @@ const LABELS: Record<string, { title: string; hint: string }> = {
   codex: { title: "Codex", hint: "OpenAI Codex CLI session." },
   commandcode: { title: "Command Code", hint: "Command Code headless session, with per-card continuity." },
   dsh: { title: "DeepSeek Harness", hint: "DSH headless profile, with per-card session continuity." },
+  omp: { title: "omp (oh-my-pi)", hint: "omp headless session, with per-card session continuity." },
   shell: { title: "Shell", hint: "Agentic or direct shell access in the workspace." },
 }
 
 const FALLBACK: ExecutorSettings = {
-  order: ["auto", "hermes", "codex", "commandcode", "dsh", "shell"],
+  order: ["auto", "hermes", "codex", "commandcode", "dsh", "omp", "shell"],
   disabled: [],
   default_execution_mode: "direct",
 }

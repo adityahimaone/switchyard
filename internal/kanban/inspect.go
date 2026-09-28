@@ -2,6 +2,7 @@ package kanban
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -105,12 +106,26 @@ func ReadLogTail(fileKey, rawTail string) (LogTail, error) {
 
 // ---- Skills (read-only, mirrors hermes-web-go skillsmem) ----
 
+// Skill origins. Only "npx" is backed by an explicit install record; everything
+// else — hermes-bundled, web-UI managed, and skills with no provenance file at
+// all — is reported as OriginHermes because that is the only other bucket the
+// filter offers. The distinction between those sub-cases is not surfaced, so
+// callers must not read OriginHermes as "authored by hermes".
+const (
+	OriginNpx    = "npx"
+	OriginHermes = "hermes"
+)
+
 // SkillMeta is one entry for GET /api/skills.
 type SkillMeta struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Category    string `json:"category,omitempty"`
 	Path        string `json:"path,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	// OriginSource is the raw provenance value behind Origin, for display only:
+	// "skills.sh", "github", "local", "official", or "untracked".
+	OriginSource string `json:"origin_source,omitempty"`
 }
 
 const skillMaxDescription = 200
@@ -119,10 +134,71 @@ var skillExcludedDirs = map[string]bool{
 	".git": true, ".archive": true, "__pycache__": true, "node_modules": true, ".venv": true, "venv": true,
 }
 
+// hubLock mirrors the subset of <skills>/.hub/lock.json that identifies origin.
+// The file is written by the `npx skills` installer; entries carrying
+// trust_level "community" were installed through it, while "official" entries
+// ship with hermes.
+type hubLock struct {
+	Installed map[string]struct {
+		Source      string `json:"source"`
+		TrustLevel  string `json:"trust_level"`
+		InstallPath string `json:"install_path"`
+	} `json:"installed"`
+}
+
+// skillOrigins maps a skill's relative path to its provenance. Missing or
+// malformed lockfiles yield an empty map, which classifies every skill as
+// OriginHermes rather than failing the listing.
+func skillOrigins() map[string]hubEntry {
+	raw, err := os.ReadFile(filepath.Join(hermesHome(), "skills", ".hub", "lock.json"))
+	if err != nil {
+		return nil
+	}
+	var lock hubLock
+	if json.Unmarshal(raw, &lock) != nil {
+		return nil
+	}
+	out := make(map[string]hubEntry, len(lock.Installed))
+	for name, e := range lock.Installed {
+		// Key on install_path because it matches ListSkills' rel path; fall
+		// back to the map key, which is the skill name.
+		key := strings.TrimSpace(filepath.ToSlash(e.InstallPath))
+		if key == "" {
+			key = strings.TrimSpace(filepath.ToSlash(name))
+		}
+		if key == "" {
+			continue
+		}
+		out[key] = hubEntry{source: e.Source, trust: e.TrustLevel}
+	}
+	return out
+}
+
+type hubEntry struct {
+	source string
+	trust  string
+}
+
+// classifySkillOrigin maps a lockfile entry to one of the two filter buckets.
+// Only community-trust entries were installed via `npx skills`; official
+// entries ship with hermes.
+func classifySkillOrigin(e hubEntry) (origin, source string) {
+	source = strings.ToLower(strings.TrimSpace(e.source))
+	if source == "" {
+		source = "untracked"
+	}
+	if strings.EqualFold(strings.TrimSpace(e.trust), "community") {
+		return OriginNpx, source
+	}
+	return OriginHermes, source
+}
+
 // ListSkills walks <hermes>/skills for SKILL.md files and returns
-// frontmatter-derived name/description with category from the rel path.
+// frontmatter-derived name/description with category from the rel path and
+// origin from the `npx skills` hub lockfile.
 func ListSkills() ([]SkillMeta, error) {
 	root := filepath.Join(hermesHome(), "skills")
+	origins := skillOrigins()
 	var out []SkillMeta
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -154,11 +230,20 @@ func ListSkills() ([]SkillMeta, error) {
 			desc = desc[:skillMaxDescription-3] + "..."
 		}
 		rel, _ := filepath.Rel(root, filepath.Dir(path))
+		rel = filepath.ToSlash(rel)
+		// Absent from the lockfile means no install record at all, which the
+		// two-bucket filter reports as hermes rather than dropping the skill.
+		origin, source := classifySkillOrigin(origins[rel])
+		if source == "" {
+			source = "untracked"
+		}
 		out = append(out, SkillMeta{
-			Name:        name,
-			Description: desc,
-			Category:    categoryFor(rel),
-			Path:        rel,
+			Name:         name,
+			Description:  desc,
+			Category:     categoryFor(rel),
+			Path:         rel,
+			Origin:       origin,
+			OriginSource: source,
 		})
 		return nil
 	})

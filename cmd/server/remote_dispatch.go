@@ -24,10 +24,13 @@ func dispatchHarnessSessionID(binding kanban.HarnessBinding, continuation bool) 
 }
 
 // harnessLabel names the harness in a prompt so a continuation never claims
-// to resume a "DSH session" when it is actually resuming Command Code.
+// to resume a "DSH session" when it is actually resuming another harness.
 func harnessLabel(executor string) string {
-	if executor == "commandcode" {
+	switch executor {
+	case "commandcode":
 		return "Command Code"
+	case "omp":
+		return "omp"
 	}
 	return "DSH"
 }
@@ -186,13 +189,8 @@ func dispatchPendingRemoteTasks() {
 				DSHSessionID:        dshSessionID,
 				SessionContinuation: sessionContinuation,
 			}
-			if r.executor == "commandcode" {
-				req.HarnessKind = "commandcode"
-				req.CommandCodeSessionID = dshSessionID
-				req.DSHSessionID = ""
-				req.DSHWorkspaceID = ""
-			} else if continuity {
-				req.HarnessKind = "dsh"
+			if continuity {
+				kanban.ApplyHarnessIdentity(&req, r.executor, dshSessionID)
 			}
 			if continuity {
 				req.LastTurnSeq = &binding.LastTurnSeq

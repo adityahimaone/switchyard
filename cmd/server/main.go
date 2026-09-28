@@ -2,14 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"kanban-board/internal/kanban"
@@ -34,6 +37,25 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func fail(w http.ResponseWriter, err error, code int) {
 	writeJSON(w, code, map[string]string{"error": err.Error()})
+}
+
+// ecosystemStatus maps a registry error to an HTTP status. Validation failures
+// stay 400; filesystem failures report their real class so the client can tell
+// "your input was wrong" from "the server is broken".
+func ecosystemStatus(err error) int {
+	if kanban.IsValidationError(err) {
+		return http.StatusBadRequest
+	}
+	switch {
+	case errors.Is(err, os.ErrNotExist), errors.Is(err, fs.ErrNotExist):
+		return http.StatusNotFound
+	case errors.Is(err, os.ErrPermission), errors.Is(err, fs.ErrPermission):
+		return http.StatusForbidden
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EROFS):
+		return http.StatusInsufficientStorage
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func main() {
@@ -1324,7 +1346,7 @@ func main() {
 	mux.HandleFunc("GET /api/ecosystem/mcp", func(w http.ResponseWriter, r *http.Request) {
 		items, err := kanban.ListMCPServers(profileQuery(r))
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -1337,7 +1359,7 @@ func main() {
 		}
 		items, err := kanban.UpsertMCPServer(profileQuery(r), item)
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -1345,7 +1367,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/ecosystem/mcp/{id}", func(w http.ResponseWriter, r *http.Request) {
 		items, err := kanban.DeleteMCPServer(profileQuery(r), r.PathValue("id"))
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -1353,7 +1375,7 @@ func main() {
 	mux.HandleFunc("GET /api/ecosystem/extensions", func(w http.ResponseWriter, r *http.Request) {
 		items, err := kanban.ListExtensions(profileQuery(r))
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -1366,7 +1388,7 @@ func main() {
 		}
 		items, err := kanban.UpsertExtension(profileQuery(r), item)
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -1374,13 +1396,40 @@ func main() {
 	mux.HandleFunc("DELETE /api/ecosystem/extensions/{id}", func(w http.ResponseWriter, r *http.Request) {
 		items, err := kanban.DeleteExtension(profileQuery(r), r.PathValue("id"))
 		if err != nil {
-			fail(w, err, http.StatusBadRequest)
+			fail(w, err, ecosystemStatus(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
 	})
 	mux.HandleFunc("GET /api/ecosystem/gateway", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, kanban.GatewayStatusReport())
+	})
+
+	// Hermes owns MCP configuration in ~/.hermes/config.yaml; these routes read
+	// the live agent state rather than a parallel registry.
+	mux.HandleFunc("GET /api/ecosystem/mcp/servers", func(w http.ResponseWriter, r *http.Request) {
+		items, err := kanban.ListHermesMCPServers(profileQuery(r))
+		if err != nil {
+			fail(w, err, ecosystemStatus(err))
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+	mux.HandleFunc("GET /api/ecosystem/mcp/toolsets", func(w http.ResponseWriter, r *http.Request) {
+		toolsets, err := kanban.HermesMCPToolsetReport(profileQuery(r))
+		if err != nil {
+			fail(w, err, ecosystemStatus(err))
+			return
+		}
+		writeJSON(w, http.StatusOK, toolsets)
+	})
+	mux.HandleFunc("POST /api/ecosystem/mcp/{id}/test", func(w http.ResponseWriter, r *http.Request) {
+		health, err := kanban.TestHermesMCPServer(r.Context(), profileQuery(r), r.PathValue("id"))
+		if err != nil {
+			fail(w, err, ecosystemStatus(err))
+			return
+		}
+		writeJSON(w, http.StatusOK, health)
 	})
 
 	mux.Handle("/", spa(dist))

@@ -52,7 +52,7 @@ func TestNormalizeExecutorSettingsRepairsPartialInput(t *testing.T) {
 		t.Fatalf("known executors dropped: %v", s.Order)
 	}
 	// The explicit order leads; the rest are appended in canonical order.
-	want := []string{"shell", "dsh", "auto", "hermes", "codex", "commandcode"}
+	want := []string{"shell", "dsh", "auto", "hermes", "codex", "commandcode", "omp"}
 	if len(s.Order) != len(want) {
 		t.Fatalf("order = %v, want %v", s.Order, want)
 	}
@@ -82,7 +82,7 @@ func TestSaveAndLoadExecutorSettingsRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HERMES_HOME", home)
 	want, err := SaveExecutorSettings(ExecutorSettings{
-		Order:                []string{"dsh", "commandcode", "auto", "hermes", "codex", "shell"},
+		Order:                []string{"dsh", "commandcode", "auto", "hermes", "codex", "omp", "shell"},
 		Disabled:             []string{"hermes"},
 		DefaultExecutionMode: ExecutionModeAgentic,
 	})
@@ -93,7 +93,7 @@ func TestSaveAndLoadExecutorSettingsRoundTrip(t *testing.T) {
 	if got.DefaultExecutionMode != want.DefaultExecutionMode {
 		t.Fatalf("mode = %q, want %q", got.DefaultExecutionMode, want.DefaultExecutionMode)
 	}
-	if len(got.Order) != 6 || got.Order[0] != "dsh" {
+	if len(got.Order) != 7 || got.Order[0] != "dsh" {
 		t.Fatalf("order not persisted: %v", got.Order)
 	}
 	if ExecutorEnabled("hermes", got) {

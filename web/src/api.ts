@@ -14,7 +14,7 @@ export interface Task {
   status: Status
   priority: number
   assignee: string
-  executor: "auto" | "hermes" | "codex" | "commandcode" | "dsh" | "shell"
+  executor: "auto" | "hermes" | "codex" | "commandcode" | "dsh" | "omp" | "shell"
   command?: string
   execution_mode?: "direct" | "agentic"
   max_iterations?: number
@@ -273,7 +273,34 @@ export function saveExtension(item: ExtensionManifest, profile = "default") { re
 export function deleteExtension(id: string, profile = "default") { return api<ExtensionManifest[]>(`/api/ecosystem/extensions/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile)}`, { method: "DELETE" }) }
 export function gatewayStatus() { return api<GatewayStatus>("/api/ecosystem/gateway") }
 
-/* ponytail: registry UI only; add invocation after MCP auth/transport contract exists. */
+// Live MCP state read from the hermes agent's own config.yaml (mcp_servers:).
+// Secrets are never returned — only key names and a secret_set flag.
+export interface HermesMCPServer {
+  name: string
+  transport: "stdio" | "http"
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: string[]
+  env_keys?: string[]
+  secret_set: boolean
+  enabled: boolean
+  timeout?: number
+  auth_hint?: string
+}
+export interface MCPServerHealth {
+  name: string
+  state: "ok" | "failed" | "disabled" | "unknown"
+  enabled: boolean
+  transport: "stdio" | "http"
+  tools: number
+  tool_names?: string[]
+  latency_ms?: number
+  error?: string
+}
+export function listHermesMCPServers(profile = "default") { return api<HermesMCPServer[]>(`/api/ecosystem/mcp/servers?profile=${encodeURIComponent(profile)}`) }
+export function listMCPToolsets(profile = "default") { return api<Record<string, string[]>>(`/api/ecosystem/mcp/toolsets?profile=${encodeURIComponent(profile)}`) }
+export function testMCPServer(name: string, profile = "default") { return api<MCPServerHealth>(`/api/ecosystem/mcp/${encodeURIComponent(name)}/test?profile=${encodeURIComponent(profile)}`, { method: "POST" }) }
 
 export interface PingPoint {
   at: number
@@ -465,7 +492,7 @@ export interface ChatMessage { id: string; session_id: string; role: "user" | "a
 export interface Attachment { id: string; filename: string; mime: string; size: number; sha256: string; storage_provider: string; storage_key: string; created_at: number }
 export interface ChatRun { id: string; session_id: string; message_id: string; agent: ChatAgent; profile: string; workspace: string; model: string; state: ChatState; prompt: string; output: string; error: string; started_at: number; ended_at?: number | null }
 export interface ChatRunEvent { id: number; run_id: string; kind: string; payload: string; created_at: number }
-export interface SkillMeta { name: string; description: string; category?: string; path?: string }
+export interface SkillMeta { name: string; description: string; category?: string; path?: string; origin?: string; origin_source?: string }
 export function listChatSessions(archived = false, filters: { q?: string; pinned?: boolean; project?: string; tag?: string } = {}) { const params = new URLSearchParams(); if (archived) params.set("archived", "1"); if (filters.q?.trim()) params.set("q", filters.q.trim()); if (filters.pinned) params.set("pinned", "1"); if (filters.project) params.set("project", filters.project); if (filters.tag) params.set("tag", filters.tag); const query = params.toString(); return api<ChatSession[]>(`/api/chat/sessions${query ? `?${query}` : ""}`) }
 export function createChatSession(input: Partial<ChatSession>) { return api<ChatSession>("/api/chat/sessions", { method: "POST", body: JSON.stringify(input) }) }
 export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
