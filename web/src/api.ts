@@ -370,6 +370,12 @@ export const COLUMNS: Status[] = [
   "triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done",
 ]
 
+// Concurrent 401s (polling refetch + SSE invalidation) would each call
+// reload() and tear the page down mid-navigation, which surfaces as a blank
+// screen. One reload per page instance is enough: AuthGate re-checks
+// /api/auth/status after the reload and falls back to the login screen.
+let reloadingForAuth = false
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -377,7 +383,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (res.status === 401) {
-    window.location.reload()
+    if (!reloadingForAuth) {
+      reloadingForAuth = true
+      window.location.reload()
+    }
     throw new Error("Authentication expired")
   }
   if (!res.ok) {

@@ -1440,15 +1440,31 @@ func spa(dir string) http.Handler {
 		p := filepath.Join(dir, rel)
 		if st, err := os.Stat(p); err == nil {
 			if !st.IsDir() {
+				setStaticCacheHeaders(w, r)
 				fs.ServeHTTP(w, r)
 				return
 			}
 			idx := filepath.Join(p, "index.html")
 			if _, err := os.Stat(idx); err == nil {
+				setStaticCacheHeaders(w, r)
 				http.ServeFile(w, r, idx)
 				return
 			}
 		}
+		setStaticCacheHeaders(w, r)
 		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 	})
+}
+
+// setStaticCacheHeaders keeps the HTML shell revalidated so a redeploy cannot
+// leave a browser holding an index.html that references deleted asset hashes.
+// Hashed build output is immutable and cached hard; everything else is
+// revalidated on each visit.
+func setStaticCacheHeaders(w http.ResponseWriter, r *http.Request) {
+	path := filepath.Clean(r.URL.Path)
+	if path == "/index.html" || !strings.HasPrefix(path, "/assets/") {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 }

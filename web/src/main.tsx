@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { bind } from "cuelume"
+import AppErrorBoundary from "./components/AppErrorBoundary"
 import AuthGate from "./AuthGate"
 import "./index.css"
 import { applyTheme, readTheme } from "./hooks/useSettings"
@@ -21,8 +22,10 @@ const qc = new QueryClient({
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={qc}>
-      <AuthGate />
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={qc}>
+        <AuthGate />
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 )
