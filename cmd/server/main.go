@@ -1500,9 +1500,27 @@ func spa(dir string) http.Handler {
 				return
 			}
 		}
+		// Hashed build output that no longer exists must 404, never fall back to
+		// the HTML shell. A 200 with an HTML body is cached as immutable by the
+		// service worker under the .js URL, so the chunk fails to parse forever
+		// and no later deploy can recover it.
+		if isAssetPath(cleaned) {
+			w.Header().Set("Cache-Control", "no-store")
+			http.NotFound(w, r)
+			return
+		}
 		setStaticCacheHeaders(w, r)
 		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 	})
+}
+
+// isAssetPath reports whether a path is content-hashed build output, which must
+// never be answered with the SPA shell.
+func isAssetPath(path string) bool {
+	return strings.HasPrefix(path, "/assets/") ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".mjs") ||
+		strings.HasSuffix(path, ".css")
 }
 
 // setStaticCacheHeaders keeps the HTML shell revalidated so a redeploy cannot

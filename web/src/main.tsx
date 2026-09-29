@@ -6,6 +6,7 @@ import AppErrorBoundary from "@/components/app/app-error-boundary"
 import AuthGate from "./AuthGate"
 import "./index.css"
 import { applyTheme, readTheme } from "./hooks/useSettings"
+import { armChunkRecovery } from "./lib/chunk-recovery"
 import { syncSoundEngine, watchSoundPreferences } from "./lib/sound"
 
 bind()
@@ -13,7 +14,14 @@ applyTheme(readTheme())
 syncSoundEngine()
 watchSoundPreferences()
 if ("serviceWorker" in navigator && window.location.protocol === "https:") {
-  window.addEventListener("load", () => { void navigator.serviceWorker.register("/sw.js") })
+  window.addEventListener("load", () => {
+    armChunkRecovery()
+    void navigator.serviceWorker.register("/sw.js")
+    // Clear asset entries left by the previous service worker, which cached an
+    // HTML body under deleted chunk URLs. Without this those chunks stay broken
+    // until the user manually clears site data.
+    navigator.serviceWorker.controller?.postMessage("purge-assets")
+  })
 }
 
 const qc = new QueryClient({

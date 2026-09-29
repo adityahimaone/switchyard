@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { toastGlobal } from "../../api"
+import { isChunkLoadError, recoverFromChunkError } from "@/lib/chunk-recovery"
 
 type Props = { children: ReactNode }
 type State = { error: Error | null }
@@ -18,6 +19,14 @@ export default class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // A lazy route whose chunk was deleted by a redeploy rejects on navigation.
+    // Reload first so the app picks up the current index.html, and only fall
+    // through to the error UI if that does not resolve it.
+    if (isChunkLoadError(error)) {
+      console.warn("[switchyard] lazy chunk failed to load, reloading", error)
+      recoverFromChunkError()
+      return
+    }
     console.error("[switchyard] unhandled render error", error, info.componentStack)
   }
 
