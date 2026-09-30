@@ -21,7 +21,7 @@ function Switch({
         "disabled:cursor-not-allowed disabled:opacity-45",
         "data-[size=default]:h-[1.15rem] data-[size=default]:w-8",
         "data-[size=sm]:h-3.5 data-[size=sm]:w-6",
-        "data-[state=checked]:border-lantern data-[state=checked]:bg-lantern",
+        "data-[state=checked]:border-accent data-[state=checked]:bg-accent",
         className
       )}
       {...props}
@@ -32,7 +32,7 @@ function Switch({
           "pointer-events-none block rounded-full bg-ink ring-0",
           "transition-transform duration-100 ease-[var(--ease-out-quint)]",
           "group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3",
-          "data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=checked]:bg-lantern-ink",
+          "data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=checked]:bg-accent-ink",
           "data-[state=unchecked]:translate-x-0"
         )}
       />

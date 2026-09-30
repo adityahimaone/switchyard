@@ -103,7 +103,7 @@ export function AppRail({
                     active ? "bg-raised text-ink" : "text-ink-2 hover:bg-raised/60 hover:text-ink",
                   )}
                 >
-                  {active && <span aria-hidden className="absolute top-2 bottom-2 -left-2 w-0.5 rounded-full bg-lantern" />}
+                  {active && <span aria-hidden className="absolute top-2 bottom-2 -left-2 w-0.5 rounded-full bg-accent" />}
                   <Icon className="size-4 shrink-0" aria-hidden />
                   <span className="hidden truncate group-hover/rail:inline group-data-[expanded]/rail:inline">{label}</span>
                 </button>
@@ -151,7 +151,7 @@ function RailButton({
         active ? "bg-raised text-ink" : "text-ink-2 hover:bg-raised/60 hover:text-ink",
       )}
     >
-      {active && <span aria-hidden className="absolute top-2 bottom-2 -left-2 w-0.5 rounded-full bg-lantern" />}
+      {active && <span aria-hidden className="absolute top-2 bottom-2 -left-2 w-0.5 rounded-full bg-accent" />}
       <Icon className="size-4 shrink-0" aria-hidden />
       <span className="hidden truncate group-hover/rail:inline group-data-[expanded]/rail:inline">{label}</span>
     </button>

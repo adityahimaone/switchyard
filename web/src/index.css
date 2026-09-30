@@ -1,64 +1,62 @@
 @import "tailwindcss";
-@import "@fontsource/barlow/400.css";
-@import "@fontsource/barlow/500.css";
-@import "@fontsource/barlow/600.css";
-@import "@fontsource/barlow-semi-condensed/600.css";
+@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 /* ==========================================================================
-   Signal & Track — "Night yard" (dark) is the default
-   Neutrals are flat tonal steps. Lantern yellow is the only accent, and it is
-   reserved for the one forward action per screen plus selection outlines.
+   Signal Blue — light is the default, dark is a tuned first-class theme.
+   Blue is the only accent and it means "interactive": the signal button,
+   selection, focus, links. It never means status — every status has its own
+   hue, so "selected" and "running" can never be confused.
    ========================================================================== */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
   /* surfaces: well < canvas < surface < raised */
-  --c-canvas: #14181d;
-  --c-well: #101317;
-  --c-surface: #1a1f26;
-  --c-raised: #212832;
-  --c-line: #2b333e;
-  --c-line-strong: #3b4654;
+  --c-canvas: #f7f8fa;
+  --c-well: #eef1f6;
+  --c-surface: #ffffff;
+  --c-raised: #ffffff;
+  --c-line: #e3e8ef;
+  --c-line-strong: #cbd3de;
 
-  --c-ink: #e9edf2;
-  --c-ink-2: #b4bdc9;
-  --c-ink-3: #8791a0;
-  --c-ink-4: #5f6a79;
+  --c-ink: #0f172a;
+  --c-ink-2: #475569;
+  --c-ink-3: #64748b;
+  --c-ink-4: #94a3b8;
 
-  --c-lantern: #ffc83d;
-  --c-lantern-ink: #1b1400;
-  --c-lantern-tint: rgb(255 200 61 / 0.12);
-  --c-accent-text: #ffc83d;
-  --c-focus: #ffc83d;
+  --c-accent: #2563eb;
+  --c-accent-ink: #ffffff;
+  --c-accent-tint: rgb(37 99 235 / 0.1);
+  --c-focus: #2563eb;
 
-  --c-danger: #ff6b6b;
-  --c-danger-text: #ff9a9a;
-  --c-danger-tint: rgb(255 107 107 / 0.12);
-  --c-warning: #ff9a4d;
-  --c-success: #4ade9c;
-  --c-success-tint: rgb(74 222 156 / 0.12);
-  --c-warning-tint: rgb(255 154 77 / 0.12);
+  --c-danger: #dc2626;
+  --c-danger-text: #b91c1c;
+  --c-danger-tint: rgb(220 38 38 / 0.08);
+  --c-warning: #b45309;
+  --c-success: #15803d;
+  --c-success-tint: rgb(21 128 61 / 0.1);
+  --c-warning-tint: rgb(180 83 9 / 0.1);
 
-  /* status lamps: filled = has a state, hollow = waiting or parked */
-  --c-st-triage: #8791a0;
-  --c-st-todo: #b4bdc9;
-  --c-st-scheduled: #8791a0;
-  --c-st-ready: #7cc4ff;
-  --c-st-running: #ffc83d;
-  --c-st-blocked: #ff6b6b;
-  --c-st-review: #a995ff;
-  --c-st-done: #4ade9c;
-  --c-st-archived: #5f6a79;
+  /* status lamps: filled = has a state, hollow = waiting or parked.
+     None of these equal the accent, so "selected" never reads as "running". */
+  --c-st-triage: #94a3b8;
+  --c-st-todo: #475569;
+  --c-st-scheduled: #94a3b8;
+  --c-st-ready: #2563eb;
+  --c-st-running: #4f46e5;
+  --c-st-blocked: #dc2626;
+  --c-st-review: #7c3aed;
+  --c-st-done: #15803d;
+  --c-st-archived: #94a3b8;
 
-  /* single-hue activity ramp for the heatmap */
-  --c-heat-0: #2b333e;
-  --c-heat-1: #4a3d14;
-  --c-heat-2: #8a6b17;
-  --c-heat-3: #d1a028;
-  --c-heat-4: #ffc83d;
+  /* single-hue blue ramp for the heatmap */
+  --c-heat-0: #e2e8f0;
+  --c-heat-1: #bfdbfe;
+  --c-heat-2: #93c5fd;
+  --c-heat-3: #60a5fa;
+  --c-heat-4: #2563eb;
 
   /* chart tokens — neutral ramp, light-theme values for the light block below */
   --chart-1: oklch(0.32 0 none);
@@ -107,10 +105,10 @@
   --color-ink-3: var(--c-ink-3);
   --color-ink-4: var(--c-ink-4);
   --color-dim: var(--c-ink-4);
-  --color-accent: var(--c-accent-text);
-  --color-accent-foreground: var(--c-lantern-ink);
-  --color-accent-tint: var(--c-lantern-tint);
-  --color-blue-glow: var(--c-lantern-tint);
+  --color-accent: var(--c-accent);
+  --color-accent-foreground: var(--c-accent-ink);
+  --color-accent-tint: var(--c-accent-tint);
+  --color-blue-glow: var(--c-accent-tint);
   --color-success: var(--c-success);
   --color-warning: var(--c-warning);
   --color-danger: var(--c-danger);
@@ -139,59 +137,58 @@
   --color-danger-tint: var(--c-danger-tint);
   --sidebar: var(--c-surface);
   --sidebar-foreground: var(--c-ink);
-  --sidebar-primary: var(--c-accent-text);
-  --sidebar-primary-foreground: var(--c-lantern-ink);
-  --sidebar-accent: var(--c-lantern-tint);
+  --sidebar-primary: var(--c-accent);
+  --sidebar-primary-foreground: var(--c-accent-ink);
+  --sidebar-accent: var(--c-accent-tint);
   --sidebar-accent-foreground: var(--c-ink);
   --sidebar-border: var(--c-line);
   --sidebar-ring: var(--c-focus);
 }
 
-/* "Day yard" */
-.light {
-  color-scheme: light;
+/* Dark theme. Applied via the `dark` class, which useSettings toggles. */
+.dark {
+  color-scheme: dark;
 
-  --c-canvas: #eef0ec;
-  --c-well: #e6e9e4;
-  --c-surface: #fbfbf9;
-  --c-raised: #ffffff;
-  --c-line: #d3d8d0;
-  --c-line-strong: #b9c0b6;
+  --c-canvas: #0f1319;
+  --c-well: #0a0d12;
+  --c-surface: #161b23;
+  --c-raised: #1d242e;
+  --c-line: #252d38;
+  --c-line-strong: #36404e;
 
-  --c-ink: #171c22;
-  --c-ink-2: #3a4350;
-  --c-ink-3: #5b6573;
-  --c-ink-4: #8a93a0;
+  --c-ink: #e8edf5;
+  --c-ink-2: #b0bbcb;
+  --c-ink-3: #8592a3;
+  --c-ink-4: #5b6775;
 
-  --c-lantern: #f5b70a;
-  --c-lantern-ink: #1b1400;
-  --c-lantern-tint: rgb(245 183 10 / 0.16);
-  --c-accent-text: #7a5200;
-  --c-focus: #2457d6;
+  --c-accent: #60a5fa;
+  --c-accent-ink: #0a0d12;
+  --c-accent-tint: rgb(96 165 250 / 0.16);
+  --c-focus: #7cb0ff;
 
-  --c-danger: #c43d3d;
-  --c-danger-text: #9a2222;
-  --c-danger-tint: rgb(196 61 61 / 0.1);
-  --c-warning: #b45f00;
-  --c-success: #167a4e;
-  --c-success-tint: rgb(22 122 78 / 0.1);
-  --c-warning-tint: rgb(180 95 0 / 0.1);
+  --c-danger: #f87171;
+  --c-danger-text: #fca5a5;
+  --c-danger-tint: rgb(248 113 113 / 0.14);
+  --c-warning: #fbbf24;
+  --c-success: #4ade80;
+  --c-success-tint: rgb(74 222 128 / 0.14);
+  --c-warning-tint: rgb(251 191 36 / 0.14);
 
-  --c-st-triage: #5b6573;
-  --c-st-todo: #3a4350;
-  --c-st-scheduled: #5b6573;
-  --c-st-ready: #1f6fb8;
-  --c-st-running: #b77b00;
-  --c-st-blocked: #c43d3d;
-  --c-st-review: #6146d9;
-  --c-st-done: #167a4e;
-  --c-st-archived: #8a93a0;
+  --c-st-triage: #5b6775;
+  --c-st-todo: #b0bbcb;
+  --c-st-scheduled: #5b6775;
+  --c-st-ready: #60a5fa;
+  --c-st-running: #818cf8;
+  --c-st-blocked: #f87171;
+  --c-st-review: #a78bfa;
+  --c-st-done: #4ade80;
+  --c-st-archived: #5b6775;
 
-  --c-heat-0: #dde1d9;
-  --c-heat-1: #f6e2a6;
-  --c-heat-2: #f0c95a;
-  --c-heat-3: #d9a012;
-  --c-heat-4: #a87700;
+  --c-heat-0: #1e293b;
+  --c-heat-1: #1e3a5f;
+  --c-heat-2: #1d4ed8;
+  --c-heat-3: #3b82f6;
+  --c-heat-4: #60a5fa;
 
   --chart-1: oklch(1 0 none);
   --chart-2: oklch(0.73 0 none);
@@ -222,7 +219,7 @@
 }
 
 @theme inline {
-  /* ---- Signal & Track names ---- */
+  /* ---- Signal Blue names ---- */
   --color-canvas: var(--c-canvas);
   --color-well: var(--c-well);
   --color-surface: var(--c-surface);
@@ -233,9 +230,9 @@
   --color-ink-2: var(--c-ink-2);
   --color-ink-3: var(--c-ink-3);
   --color-ink-4: var(--c-ink-4);
-  --color-lantern: var(--c-lantern);
-  --color-lantern-ink: var(--c-lantern-ink);
-  --color-lantern-tint: var(--c-lantern-tint);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-tint: var(--c-accent-tint);
   --color-focus: var(--c-focus);
   --color-danger: var(--c-danger);
   --color-danger-text: var(--c-danger-text);
@@ -255,11 +252,9 @@
   --color-bg: var(--c-canvas);
   --color-inset: var(--c-well);
   --color-surface-raised: var(--c-raised);
-  --color-accent: var(--c-accent-text);
-  --color-accent-tint: var(--c-lantern-tint);
   --color-dim: var(--c-ink-4);
   --color-info: var(--c-st-ready);
-  --color-blue-glow: var(--c-lantern-tint);
+  --color-blue-glow: var(--c-accent-tint);
   --color-void: var(--c-well);
 
   /* ---- shadcn semantic aliases ---- */
@@ -269,8 +264,8 @@
   --color-card-foreground: var(--c-ink);
   --color-popover: var(--c-raised);
   --color-popover-foreground: var(--c-ink);
-  --color-primary: var(--c-ink);
-  --color-primary-foreground: var(--c-canvas);
+  --color-primary: var(--c-accent);
+  --color-primary-foreground: var(--c-accent-ink);
   --color-secondary: var(--c-raised);
   --color-secondary-foreground: var(--c-ink);
   --color-muted: var(--c-raised);
@@ -280,12 +275,12 @@
   --color-input: var(--c-line-strong);
   --color-ring: var(--c-focus);
   --color-destructive: var(--c-danger);
-  --color-destructive-foreground: var(--c-canvas);
+  --color-destructive-foreground: var(--c-accent-ink);
   --color-sidebar: var(--c-surface);
   --color-sidebar-foreground: var(--c-ink);
-  --color-sidebar-primary: var(--c-accent-text);
-  --color-sidebar-primary-foreground: var(--c-lantern-ink);
-  --color-sidebar-accent: var(--c-lantern-tint);
+  --color-sidebar-primary: var(--c-accent);
+  --color-sidebar-primary-foreground: var(--c-accent-ink);
+  --color-sidebar-accent: var(--c-accent-tint);
   --color-sidebar-accent-foreground: var(--c-ink);
   --color-sidebar-border: var(--c-line);
   --color-sidebar-ring: var(--c-focus);
@@ -318,8 +313,9 @@
   --color-chart-scale-pattern-color: var(--chart-scale-pattern-color);
 
   /* ---- type ---- */
-  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Barlow Semi Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  /* One family carries hierarchy now, so display is the same face at a heavier weight. */
+  --font-display: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   --text-2xs: 0.6875rem; --text-2xs--line-height: 1rem;
@@ -333,24 +329,25 @@
   --text-meta: 0.75rem; --text-meta--line-height: 1.125rem;
   --text-body: 0.8125rem; --text-body--line-height: 1.3125rem;
 
-  /* ---- shape: radii follow hierarchy, not one global value ---- */
+  /* ---- shape: three steps, not one global value ---- */
   --radius-control: 6px;
-  --radius-card: 10px;
-  --radius-panel: 14px;
+  --radius-card: 8px;
+  --radius-panel: 10px;
   /* legacy shadcn radii, remapped onto the new scale */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
 
   /* ---- elevation: floating things only ---- */
-  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.55), 0 0 0 1px var(--c-line-strong);
+  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.18), 0 0 0 1px var(--c-line-strong);
 
   /* ---- motion ---- */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --animate-lamp: lamp-pulse 2s var(--ease-out-quint) infinite;
+  --animate-lamp: lamp-pulse 2s var(--ease-out-expo) infinite;
 }
 
 @layer base {
@@ -463,13 +460,13 @@
 .glass-control:focus-visible { border-color: var(--c-line-strong); outline: 2px solid var(--c-focus); outline-offset: 2px; }
 .glass-control:disabled { opacity: 0.45; }
 .glass-icon-button { border: 1px solid var(--c-line); background: var(--c-well); transition: border-color 120ms var(--ease-out-quint), background-color 120ms var(--ease-out-quint); }
-.glass-icon-button:hover, .glass-icon-button:focus-visible { border-color: var(--c-line-strong); background: var(--c-lantern-tint); color: var(--c-accent-text); }
+.glass-icon-button:hover, .glass-icon-button:focus-visible { border-color: var(--c-line-strong); background: var(--c-accent-tint); color: var(--c-accent); }
 .glass-tooltip { border: 1px solid var(--c-line); background: var(--c-raised); color: var(--c-ink); }
 .aurora-button { background: var(--c-ink); color: var(--c-canvas); }
-.aurora-nav-active { background: var(--c-lantern-tint); }
+.aurora-nav-active { background: var(--c-accent-tint); }
 .blue-glow, .surface-texture { position: relative; }
 .status-pill { display: inline-flex; align-items: center; gap: .375rem; border: 1px solid var(--c-line); border-radius: 999px; padding: .125rem .5rem; font-size: 11px; color: var(--c-ink-3); background: var(--c-well); }
-.simple-loader { display: block; width: 28px; height: 28px; border: 2px solid var(--c-line-strong); border-top-color: var(--c-accent-text); border-radius: 50%; animation: simple-loader-spin 800ms linear infinite; }
+.simple-loader { display: block; width: 28px; height: 28px; border: 2px solid var(--c-line-strong); border-top-color: var(--c-accent); border-radius: 50%; animation: simple-loader-spin 800ms linear infinite; }
 @keyframes simple-loader-spin { to { transform: rotate(360deg); } }
 .ht { --dur: 2.8s; }
 .ht-base { opacity: .26; }

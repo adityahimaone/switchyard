@@ -95,7 +95,7 @@ export default function TaskCard({
         "group relative rounded-card border border-line bg-surface p-[var(--card-pad)] pl-4",
         "transition-[border-color,background-color] duration-100",
         "hover:border-line-strong focus-within:border-line-strong",
-        "data-[selected]:border-lantern data-[selected]:bg-lantern-tint",
+        "data-[selected]:border-accent data-[selected]:bg-accent-tint",
         "data-[dragging=true]:opacity-40 active:cursor-grabbing",
       )}
     >
@@ -110,7 +110,7 @@ export default function TaskCard({
             checked={!!selected}
             onChange={(e) => onToggleSelect(task.id, e.currentTarget.checked)}
             className={cn(
-              "mt-0.5 size-3.5 shrink-0 accent-lantern transition-opacity",
+              "mt-0.5 size-3.5 shrink-0 accent-accent transition-opacity",
               "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 checked:opacity-100",
             )}
           />

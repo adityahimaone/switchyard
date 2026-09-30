@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils"
 
 /**
  * Variant names match the existing shadcn button (default, destructive, outline,
- * secondary, ghost, link) so call sites keep working. `signal` is new: the single
- * lantern-yellow "move work forward" action. Use at most one per screen.
+ * secondary, ghost, link) so call sites keep working. `signal` is the name for
+ * the one "move work forward" action per screen; use at most one per screen.
+ * Both resolve to the accent fill, so there is only ever one accent in view.
  */
 export const buttonVariants = cva(
   [
@@ -23,8 +24,10 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-ink text-canvas hover:bg-ink/85",
-        signal: "bg-lantern text-lantern-ink hover:brightness-95",
+        default: "bg-accent text-accent-ink hover:bg-accent/90",
+        // Kept as a name so call sites can mark the one forward action per
+        // screen. In Signal Blue it resolves to the same accent fill.
+        signal: "bg-accent text-accent-ink hover:bg-accent/90",
         secondary: "border border-line bg-raised text-ink hover:border-line-strong",
         outline: "border border-line-strong bg-transparent text-ink hover:bg-raised",
         ghost: "text-ink-2 hover:bg-raised hover:text-ink",

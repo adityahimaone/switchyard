@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,15 +8,20 @@
     <link rel="icon" type="image/x-icon" href="/favicon_io/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#f7f8fa" />
     <title>Switchyard</title>
     <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong surface. Light is the default in Signal Blue, so `dark` is the
+      // class that gets added. Must stay in sync with applyTheme() in
+      // src/hooks/useSettings.ts, which re-applies it on boot.
       (() => {
         try {
           const preference = localStorage.getItem("kb-theme") || "system"
-          const light = preference === "light" || (preference === "system" && matchMedia("(prefers-color-scheme: light)").matches)
-          document.documentElement.classList.toggle("light", light)
-          document.documentElement.classList.toggle("dark", !light)
+          const dark =
+            preference === "dark" ||
+            (preference === "system" && !matchMedia("(prefers-color-scheme: light)").matches)
+          document.documentElement.classList.toggle("dark", dark)
           document.documentElement.dataset.theme = preference
         } catch {}
       })()

@@ -15,9 +15,11 @@ export function readTheme(): ThemePreference {
 }
 
 export function applyTheme(preference: ThemePreference) {
-  const light = preference === "light" || (preference === "system" && window.matchMedia("(prefers-color-scheme: light)").matches)
-  document.documentElement.classList.toggle("light", light)
-  document.documentElement.classList.toggle("dark", !light)
+  // Light is the default in Signal Blue, so the `dark` class is the one that
+  // gets added. Both classes are kept in sync because `dark:` variants and the
+  // `.dark` token block still key off `dark`.
+  const dark = preference === "dark" || (preference === "system" && !window.matchMedia("(prefers-color-scheme: light)").matches)
+  document.documentElement.classList.toggle("dark", dark)
   document.documentElement.dataset.theme = preference
 }
 
