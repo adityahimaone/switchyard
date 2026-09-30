@@ -36,19 +36,33 @@ they are not copied.
 
 ## 2. Reference: what we take, what we leave
 
-Reference: `https://kravio-dashboard.vercel.app/`. Structure and density only.
-No assets, no branding, no copy.
+Reference: `https://github.com/salungp/kravio-dashboard` (read at
+`.scratch/kravio-ref`). The shell, sidebar, button and input are ported from its
+actual source, with the palette swapped for blue. No assets, branding or copy are
+reused — the icons, logo, nav manifest and page content are Switchyard's.
 
 | Take from the reference | Do not take |
 |---|---|
-| 250px sidebar, collapses to 56px, state persisted | Monochrome grey palette — replaced with blue |
-| Logo + collapse toggle in the sidebar header | KPI tiles with sparklines (no equivalent data here) |
-| Search field at the top of the sidebar | "Hello, <name> 👋" greeting headline |
-| Uppercase tracked group labels, 12px | "MAIN NAVIGATION" wording — ours are Work / Agents / Infrastructure / Observe |
-| Nested sub-items with a rotating chevron | Nested sub-items — our 12 destinations are flat |
-| Breadcrumb in a top bar, icon actions right | Weekly range picker (board has no time range) |
-| Hairline `black/0.04` borders, 0.5rem base radius | Account avatar with online dot (single shared password, no user) |
-| `--ease-out-expo: cubic-bezier(.16,1,.3,1)` | |
+| 250px sidebar, collapses to zero width, state persisted | Monochrome grey palette — replaced with blue |
+| Nav rows: 32px, `gap-0.5`, 13px, `rounded-lg`, 0.8px border | Nested sub-items — our 12 destinations are flat (the `children` API exists for when they are not) |
+| Active pill: `bg-card`, 0.8px border, `shadow-[0px_4px_7px]` | Account card with avatar and online dot — there is one shared password and no user record, so actions take its place |
+| Content on `bg-card` with `shadow-[inset_0_0_0_0.8px_var(--border)]` | KPI tiles, sparklines, greeting headline — support-desk features with no equivalent here |
+| Header: 52px, breadcrumb, icon actions right, sidebar toggle | Weekly range picker (the board has no time range) |
+| 0.8px hairlines, 4px radius ladder, `shadow-float` / `shadow-lift` set | `font-variation-settings: "opsz"` is kept, since it is what makes Inter read right at 13px |
+| `--ease-out-expo`, `active:scale-[0.97]`, 3px focus rings | |
+
+**Corrections to an earlier draft of this spec.** The first port was built from a
+screenshot and got the structure roughly right but the details wrong. Measured
+against the source:
+
+- Nav rows are a `gap-0.5` list, **not** hairline-separated. The 1px bottom
+  borders seen in the DOM belong to a parent, not the rows.
+- The active pill border is `0.8px` and the shadow is `0px_4px_7px`, not a
+  generic 1px border.
+- The sidebar collapses to `w-0` and is `inert`, not to a 56px icon rail.
+- The shell `main` is the only `main`; pages must not render their own.
+- Focus is `ring-[3px] ring-ring/40`, not a 2px outline.
+
 
 ## 3. Colour
 
@@ -202,29 +216,32 @@ it never sits underneath.
 └────────────────┴──────────────────────────────────────────────────────────┘
 ```
 
-Sidebar, top to bottom. Geometry is measured from the reference, not estimated:
+Sidebar, ported from the reference's source:
 
 | Part | Spec |
 |---|---|
-| Width | 250px, collapses to 56px, state persisted |
-| Header | 52px, 1px bottom hairline. Logo lockup left, 24px collapse toggle right |
-| Search | 32px, `raised` fill, 1px `line`, `radius-card`, at x=12, 226px wide, with a `Kbd` hint |
-| Group label | 12px, uppercase, `ink-3`, `padding 0 10px` |
-| Group gap | 20px between groups |
-| Row | 32px, 1px bottom hairline (a list, not a gap-separated stack), `padding 0 10px`, 13px text |
-| Active row | `raised` fill, 1px `line`, `radius-card`, `shadow-xs`, accent text and icon. It lifts off the canvas rather than tinting it |
-| Footer | 1px top hairline, 32px rows: New chat, Settings, Sign out |
+| Width | 250px. Collapses to `w-0` and is `inert`; a menu button appears in the header to reopen it |
+| Brand | 250px row, `px-3 py-3.5`, logo left, 24px collapse toggle right in a tooltip |
+| Divider | 1px `line` between brand and search |
+| Search | 32px `InputGroup`, 0.8px `line`, `rounded-lg`, 226px wide, `⌘K` badge that hides on focus |
+| Group label | 12px, uppercase, `ink-3`, `leading-[1.6]` |
+| Row | 32px, `gap-0.5` between rows, 13px, `rounded-lg`, `px-2.5` |
+| Active row | `surface` fill, 0.8px `line`, `shadow-active`, accent icon and ink text |
+| Icon | 16px, `ink-3` at rest, `scale-110` on hover |
+| Focus | `ring-[3px] ring-focus/40` on every control |
+| Sub-items | 28px, `text-xs`, `ink-3`, behind a tree connector; expand with a `grid-template-rows` transition |
+| Footer | New chat, Settings, Sign out at 32px rows |
 
 The logo is `currentColor`, so it inherits the theme. `Logo` is the full lockup
 (mark plus wordmark, viewBox `0 0 114 24`) and `LogoIcon` is the mark alone; they
 are alternatives, not siblings, because `hidden` is unconditional and cannot be
-overridden by a variant. The wordmark is legible at 18px on `canvas` in both
-themes.
+overridden by a variant.
 
-Top bar, 52px: a 16px `LayoutGrid` icon, then breadcrumb segments joined by
-`/` in `ink-3`, with the last segment in `ink`. Icon actions right (command
-palette, notifications). Page-scoped controls such as the board switcher sit in
-the page header, not the top bar.
+Content is a `<main>` on `surface` with `shadow-[inset_0_0_0_0.8px_var(--c-line)]`.
+**It is the only `main` in the document** — pages must not render their own.
+
+Top bar, 52px: sidebar toggle (only when hidden), breadcrumb segments joined by
+`/`, icon actions right.
 
 ### Board
 

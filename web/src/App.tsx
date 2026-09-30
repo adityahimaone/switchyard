@@ -179,13 +179,15 @@ export default function App() {
       onNewChat={() => { setChatSidebarOpen(true); setChatRouteID(undefined); setPage("chat"); go("/chat") }}
       onSettings={() => handleSelectPage("settings")}
       onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
-      header={
+      renderHeader={({ hidden, expand }) => (
         <AppHeader
           segments={breadcrumb}
+          sidebarHidden={hidden}
+          onExpandSidebar={expand}
           right={<NotificationCenter />}
           onOpenPalette={() => setPaletteOpen(true)}
         />
-      }
+      )}
     >
       <CommandPalette
         open={paletteOpen}
@@ -201,8 +203,7 @@ export default function App() {
       />
       <Toaster />
       <Suspense fallback={<LoadingState variant="detail" label="Loading page" />}>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {page === "board" && !detailId && (
+        {page === "board" && !detailId && (
             <BoardPage
               slug={slug}
               boardName={currentBoard?.name}
@@ -242,7 +243,6 @@ export default function App() {
           {page === "board" && detailId && !detailPage && (
             <LoadingState variant="detail" label="Loading task" />
           )}
-        </div>
       </Suspense>
 
       <Suspense fallback={<LoadingState variant="detail" label="Memuat dialog" />}>

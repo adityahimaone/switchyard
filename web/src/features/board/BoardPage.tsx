@@ -218,10 +218,10 @@ export function BoardPage({
   const total = tasks.data?.length ?? 0
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* The board is a single full-bleed surface, so the page title lives in the
           breadcrumb bar. This h1 keeps the document outline correct without
-          adding a second visible title. */}
+          adding a second visible title. The shell already owns the <main>. */}
       <h1 className="sr-only">Board</h1>
 
       {/* Page header: title, description and actions, matching the reference. */}
@@ -443,6 +443,6 @@ export function BoardPage({
           })}
         </div>
       )}
-    </main>
+    </div>
   )
 }

@@ -332,18 +332,23 @@
   --text-meta: 0.75rem; --text-meta--line-height: 1.125rem;
   --text-body: 0.8125rem; --text-body--line-height: 1.3125rem;
 
-  /* ---- shape: three steps, not one global value ---- */
-  --radius-control: 6px;
-  --radius-card: 8px;
-  --radius-panel: 10px;
-  /* legacy shadcn radii, remapped onto the new scale */
+  /* ---- shape: the reference's 4px radius ladder, plus our three steps ---- */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-xl: 10px;
+  --radius-xl: 12px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-panel: 12px;
 
-  /* ---- elevation: floating things only ---- */
-  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.18), 0 0 0 1px var(--c-line-strong);
+  /* ---- elevation: the reference's shadow set ---- */
+  --shadow-float: 0 2.8px 2.2px rgb(0 0 0 / 0.034), 0 6.7px 5.3px rgb(0 0 0 / 0.048),
+    0 12.5px 10px rgb(0 0 0 / 0.06), 0 22.3px 17.9px rgb(0 0 0 / 0.072),
+    0 41.8px 33.4px rgb(0 0 0 / 0.086), 0 100px 80px rgb(0 0 0 / 0.12);
+  /* The reference's control hover lift, reused for nav rows and buttons. */
+  --shadow-lift: 0 2px 3px -1px rgb(0 0 0 / 0.1), 0 1px 0 0 rgb(25 28 33 / 0.02),
+    0 0 0 1px rgb(25 28 33 / 0.08);
+  --shadow-active: 0 4px 7px 0 rgb(0 0 0 / 0.04);
 
   /* ---- motion ---- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -353,11 +358,23 @@
   --animate-lamp: lamp-pulse 2s var(--ease-out-expo) infinite;
 }
 
+/* Hairline width. The reference uses 0.8px everywhere, which reads finer than
+   1px and is why its UI looks lighter at the same contrast. */
+@utility hairline {
+  border-width: 0.8px;
+}
+
 @layer base {
   html,
   body,
   #root {
     height: 100%;
+  }
+  /* Every border defaults to the hairline token, as the reference does. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--c-line);
   }
   body {
     background: var(--c-canvas);
@@ -365,13 +382,27 @@
     font-family: var(--font-sans);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
+    /* The reference sets Inter's optical-size axis; this is what makes it read
+       the way it does at 13px. */
+    font-variation-settings: "opsz" 32;
+    font-feature-settings: "cv11" 0;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   h1,
   h2,
   h3 {
     font-family: var(--font-display);
     letter-spacing: -0.01em;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  img {
+    user-select: none;
+    -webkit-user-drag: none;
   }
   * {
     scrollbar-width: thin;

@@ -1,24 +1,23 @@
-import { useState, type ComponentType, type SVGProps } from "react"
+import * as React from "react"
 import {
-  Activity, Boxes, Brain, ChevronsLeft, Clock, FolderGit2, KanbanSquare, LogOut,
+  Activity, Boxes, Brain, ChevronUp, Clock, FolderGit2, KanbanSquare, LogOut, PanelRight,
   MessageSquare, Network, Plus, Route, ScrollText, Search, ServerCog, Settings, UserCog,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Kbd } from "@/components/ui/kbd"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { LogoIcon, Logo } from "@/components/app/logo"
 import { cn } from "@/lib/utils"
 
-type Icon = ComponentType<SVGProps<SVGSVGElement>>
-
-export interface NavItem {
+export interface NavLeaf {
   /** Matches `Page` in lib/routes.ts, so navigation and routing share one source. */
   id: string
   label: string
-  icon: Icon
+  icon: React.ComponentType<{ className?: string }>
+  /** Optional second level. Rendered with a tree connector, as the reference does. */
+  children?: { id: string; label: string }[]
 }
 
-export interface NavGroup { label: string; items: NavItem[] }
+export interface NavGroup { label: string; items: NavLeaf[] }
 
 /**
  * The single nav manifest. Hrefs are omitted on purpose: the app has no router,
@@ -48,154 +47,238 @@ export const NAV: NavGroup[] = [
   ] },
 ]
 
+/** Section label. The reference styles these 12px uppercase in muted foreground. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs leading-[1.6] whitespace-nowrap text-ink-3 uppercase">{children}</p>
+}
+
+/** Active pill: white card, 0.8px hairline, the reference's soft lift. */
+const activePill =
+  "rounded-lg border-[0.8px] border-line bg-surface text-ink shadow-active"
+const idleItem =
+  "border-[0.8px] border-transparent hover:bg-raised hover:text-ink"
+
 /**
- * 250px sidebar, collapsing to 56px. Geometry follows the reference exactly:
- * 52px header, 32px items separated by 1px hairlines rather than gaps, a 12px
- * inset, and a white active row with a 1px border instead of a tint.
+ * 250px sidebar, ported from the reference's source. Rows are 32px with a 2px
+ * gap (not hairlines), text is 13px, focus is a 3px ring, and sub-items expand
+ * with a grid-rows transition behind a tree connector.
  */
 export function AppSidebar({
   activeId,
-  collapsed,
-  onToggleCollapse,
+  onCollapse,
   onNewChat,
   onNavigate,
   onSettings,
   onLogout,
 }: {
   activeId: string
-  collapsed: boolean
-  onToggleCollapse: () => void
+  onCollapse: () => void
   onNewChat: () => void
   onNavigate: (id: string) => void
   onSettings: () => void
   onLogout?: () => void
 }) {
-  const [query, setQuery] = useState("")
-  const needle = query.trim().toLowerCase()
+  const [open, setOpen] = React.useState<Record<string, boolean>>({})
+  const searchRef = React.useRef<HTMLInputElement>(null)
 
-  const groups = NAV.map((g) => ({
-    ...g,
-    items: g.items.filter((i) => needle === "" || i.label.toLowerCase().includes(needle)),
-  })).filter((g) => g.items.length > 0)
+  // The reference focuses sidebar search on Cmd/Ctrl+K.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   return (
-    <aside
-      data-collapsed={collapsed || undefined}
-      className={cn(
-        "group/sidebar flex h-full shrink-0 flex-col border-r border-line bg-canvas",
-        "w-62 transition-[width] duration-150 ease-[var(--ease-out-expo)]",
-        "data-[collapsed]:w-14",
-      )}
-    >
-      {/* Header: logo lockup plus a 24px collapse toggle, 52px tall with a hairline. */}
-      <div className="flex h-13 shrink-0 items-center gap-2 border-b border-line px-3">
-        {collapsed ? (
-          <LogoIcon className="size-6 shrink-0 text-ink" aria-label="Switchyard" />
-        ) : (
-          <Logo className="h-[18px] w-auto min-w-0 flex-1 text-ink" aria-label="Switchyard" />
-        )}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onToggleCollapse}
-          className="ml-auto shrink-0 text-ink-3 hover:text-ink"
-          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          aria-expanded={!collapsed}
-        >
-          <ChevronsLeft className={cn("transition-transform duration-150", collapsed && "rotate-180")} />
-        </Button>
-      </div>
-
-      {/* Search: a white 32px field with a 1px border, matching the nav rows. */}
-      <div className="px-3 pt-4 pb-2 group-data-[collapsed]/sidebar:px-2">
-        <div className="relative">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3"
-          />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search"
-            aria-label="Search pages"
-            className="h-8 rounded-card border-line bg-raised pr-9 pl-8 group-data-[collapsed]/sidebar:hidden"
-          />
-          <Kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-[4px] border border-line bg-surface text-2xs text-ink-2 group-data-[collapsed]/sidebar:hidden">
-            K
-          </Kbd>
+    <aside className="flex h-full w-[250px] shrink-0 flex-col" aria-label="Primary">
+      {/* Brand */}
+      <div className="flex w-[250px] items-center justify-between overflow-clip px-3 py-3.5">
+        <div className="flex w-[200px] items-center gap-3 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40">
+          <span className="relative size-6 shrink-0 transition-transform duration-300 ease-[var(--ease-out-expo)] hover:rotate-[-8deg] hover:scale-105">
+            <LogoIcon className="size-6 text-ink" />
+          </span>
+          <Logo className="flex-1 text-lg leading-none font-semibold text-ink" aria-label="Switchyard" />
         </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="Collapse sidebar"
+              className="-m-1 rounded-md p-1 text-ink-3 outline-none transition-colors hover:bg-raised focus-visible:ring-[3px] focus-visible:ring-focus/40"
+            >
+              <PanelRight className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Collapse sidebar</TooltipContent>
+        </Tooltip>
       </div>
 
-      {/* Groups: uppercase 12px labels, then a hairline-separated list of rows. */}
-      <nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto px-3 group-data-[collapsed]/sidebar:px-2">
-        {groups.length === 0 && (
-          <p className="py-3 text-xs text-ink-3 group-data-[collapsed]/sidebar:hidden">
-            No pages match &ldquo;{query}&rdquo;
-          </p>
-        )}
-        {groups.map((group, gi) => (
-          <section key={group.label} className={cn(gi > 0 && "mt-5")}>
-            <h2 className="px-2.5 pb-2 text-xs text-ink-3 uppercase group-data-[collapsed]/sidebar:sr-only">
-              {group.label}
-            </h2>
-            <ul className="flex flex-col">
-              {group.items.map(({ id, label, icon: Icon }) => (
-                <li key={id}>
-                  <NavButton
-                    icon={Icon}
-                    label={label}
-                    active={id === activeId}
-                    onClick={() => onNavigate(id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </nav>
+      <div className="flex min-h-0 w-[250px] flex-1 flex-col gap-4 px-3 pb-4">
+        <div aria-hidden className="h-px w-full shrink-0 bg-line" />
 
-      {/* Footer: a hairline-separated New chat, Settings and Sign out. */}
-      <div className="shrink-0 border-t border-line p-3 pt-2 group-data-[collapsed]/sidebar:px-2">
-        <NavButton icon={Plus} label="New chat" onClick={onNewChat} />
-        <NavButton icon={Settings} label="Settings" active={activeId === "settings"} onClick={onSettings} />
-        {onLogout && <NavButton icon={LogOut} label="Sign out" onClick={onLogout} />}
+        {/* Search */}
+        <InputGroup className="w-full shrink-0">
+          <Search className="size-4 shrink-0 text-ink-3" aria-hidden />
+          <InputGroupInput
+            ref={searchRef}
+            type="search"
+            placeholder="Search anything"
+            aria-label="Search pages"
+          />
+          <InputGroupAddon aria-hidden className="transition-opacity group-focus-within/input:opacity-0">
+            <span className="flex size-4 items-center justify-center rounded p-0.5 text-xs leading-none font-medium text-ink-2">
+              K
+            </span>
+          </InputGroupAddon>
+        </InputGroup>
+
+        {/* Navigation: groups scroll, the account card pins to the bottom. */}
+        <nav className="flex min-h-0 w-[226px] flex-1 flex-col items-center justify-between gap-5 overflow-y-auto overflow-x-hidden [scrollbar-width:none]">
+          <div className="flex w-full flex-col gap-5">
+            {NAV.map((group) => (
+              <div key={group.label} className="flex w-full flex-col gap-3">
+                <SectionLabel>{group.label}</SectionLabel>
+                <div className="flex w-full flex-col gap-0.5">
+                  {group.items.map((item) => (
+                    <NavItem
+                      key={item.id}
+                      item={item}
+                      active={item.id === activeId}
+                      onSelect={onNavigate}
+                      open={!!open[item.id]}
+                      onToggle={() => setOpen((o) => ({ ...o, [item.id]: !o[item.id] }))}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
+
+        {/* Footer: the reference pins an account card here. Switchyard has a single
+            shared password and no user record, so the actions take its place
+            rather than inventing an identity. */}
+        <div className="flex w-[226px] shrink-0 flex-col gap-0.5">
+          <SidebarAction icon={Plus} label="New chat" onClick={onNewChat} />
+          <SidebarAction icon={Settings} label="Settings" onClick={onSettings} />
+          {onLogout && <SidebarAction icon={LogOut} label="Sign out" onClick={onLogout} />}
+        </div>
       </div>
     </aside>
   )
 }
 
-function NavButton({
+function NavItem({
+  item,
+  active,
+  onSelect,
+  open,
+  onToggle,
+}: {
+  item: NavLeaf
+  active: boolean
+  onSelect: (id: string) => void
+  open: boolean
+  onToggle: () => void
+}) {
+  const hasChildren = !!item.children?.length
+  const Icon = item.icon
+  return (
+    <div className="flex w-full flex-col">
+      <button
+        type="button"
+        onClick={() => (hasChildren ? onToggle() : onSelect(item.id))}
+        aria-expanded={hasChildren ? open : undefined}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group/nav flex w-full items-center justify-between rounded-lg text-left text-[13px] leading-none outline-none",
+          "transition-[background-color,box-shadow,border-color,color] duration-150 ease-out",
+          "focus-visible:ring-[3px] focus-visible:ring-focus/40",
+          "h-8 px-2.5",
+          active ? activePill : cn(idleItem, "text-ink-2"),
+        )}
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="flex transition-transform duration-200 ease-out group-hover/nav:scale-110">
+            <Icon className={cn("size-4", active ? "text-accent" : "text-ink-3")} />
+          </span>
+          <span className="whitespace-nowrap">{item.label}</span>
+        </span>
+        {hasChildren && (
+          <span
+            className={cn(
+              "flex transition-transform duration-300 ease-[var(--ease-out-expo)]",
+              !open && "rotate-180",
+            )}
+          >
+            <ChevronUp className="size-3" />
+          </span>
+        )}
+      </button>
+
+      {hasChildren && (
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[var(--ease-out-expo)]",
+            open ? "mt-0.5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="flex flex-col gap-0.5">
+              {item.children!.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  tabIndex={open ? 0 : -1}
+                  onClick={() => onSelect(`${item.id}/${c.id}`)}
+                  className="group/sub relative flex h-7 w-full items-center justify-end pl-2.5 outline-none"
+                >
+                  <span className="flex h-full w-[188px] items-center rounded-md px-0 text-xs leading-none text-ink-3 transition-[color,background-color,padding] duration-200 group-hover/sub:bg-raised group-hover/sub:pl-1.5 group-hover/sub:text-ink focus-visible:ring-[3px]">
+                    {c.label}
+                  </span>
+                  {/* tree connector, drawn as the reference does */}
+                  <span aria-hidden className="pointer-events-none absolute top-[-5px] left-[18px] h-5 w-2 border-l hairline border-line" />
+                  <span aria-hidden className="pointer-events-none absolute top-[13px] left-[23px] size-1 rounded-full bg-line-strong" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SidebarAction({
   icon: Icon,
   label,
-  active,
   onClick,
 }: {
-  icon: Icon
+  icon: React.ComponentType<{ className?: string }>
   label: string
-  active?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
-      title={label}
-      aria-label={label}
-      aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        // 32px rows divided by 1px hairlines, not gaps. Active is a white row
-        // with a 1px border, so it lifts off the canvas instead of tinting.
-        "flex h-8 w-full items-center gap-2.5 border-b border-line px-2.5 text-sm outline-none",
-        "transition-[background-color,color,box-shadow] duration-100",
-        "hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus",
-        "group-data-[collapsed]/sidebar:justify-center group-data-[collapsed]/sidebar:px-0",
-        active
-          ? "rounded-card border border-line bg-raised text-ink shadow-xs"
-          : "text-ink-2 hover:text-ink",
+        "group/nav flex w-full items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2.5 text-left",
+        "text-[13px] leading-none text-ink-2 outline-none",
+        "transition-[background-color,color] duration-150 ease-out",
+        "hover:bg-raised hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40",
+        "h-8",
       )}
     >
-      <Icon className={cn("size-4 shrink-0", active ? "text-accent" : "text-ink-3")} aria-hidden />
-      <span className="truncate group-data-[collapsed]/sidebar:hidden">{label}</span>
+      <span className="flex transition-transform duration-200 ease-out group-hover/nav:scale-110">
+        <Icon className="size-4 text-ink-3" />
+      </span>
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   )
 }

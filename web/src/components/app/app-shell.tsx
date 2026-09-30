@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { AppSidebar } from "@/components/app/app-sidebar"
+import { cn } from "@/lib/utils"
 import type { Page } from "@/lib/sidebar-preferences"
 
 const COLLAPSED_KEY = "kb-sidebar-collapsed"
@@ -14,7 +15,7 @@ export function AppShell({
   onNewChat,
   onSettings,
   onLogout,
-  header,
+  renderHeader,
   children,
 }: {
   page: Page
@@ -22,17 +23,20 @@ export function AppShell({
   onNewChat: () => void
   onSettings: () => void
   onLogout?: () => void
-  header: ReactNode
+  /** The header needs the sidebar state, and must be able to reopen it. */
+  renderHeader: (state: { hidden: boolean; expand: () => void }) => ReactNode
   children: ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed)
 
-  const toggle = useCallback(() => {
-    setCollapsed((v) => {
-      const next = !v
-      try { localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0") } catch {}
-      return next
-    })
+  const collapse = useCallback(() => {
+    setCollapsed(true)
+    try { localStorage.setItem(COLLAPSED_KEY, "1") } catch {}
+  }, [])
+
+  const expand = useCallback(() => {
+    setCollapsed(false)
+    try { localStorage.setItem(COLLAPSED_KEY, "0") } catch {}
   }, [])
 
   useEffect(() => {
@@ -41,21 +45,35 @@ export function AppShell({
     return () => window.removeEventListener("storage", sync)
   }, [])
 
+  const sidebarHidden = collapsed
+
   return (
-    <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
-      <AppSidebar
-        activeId={page}
-        collapsed={collapsed}
-        onToggleCollapse={toggle}
-        onNewChat={onNewChat}
-        onNavigate={(id) => onSelectPage(id as Page)}
-        onSettings={onSettings}
-        onLogout={onLogout}
-      />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {header}
-        <div className="flex min-h-0 flex-1 overflow-hidden">{children}</div>
+    <div className="flex min-h-dvh w-full bg-canvas">
+      {/* Desktop sidebar. Collapses to zero width, as the reference does: the
+          content does not shift, it takes the space back. */}
+      <div
+        className={cn(
+          "sticky top-0 hidden h-dvh shrink-0 overflow-hidden transition-[width] duration-300 ease-[var(--ease-out-expo)] lg:block",
+          collapsed ? "w-0" : "w-[250px]",
+        )}
+        inert={collapsed || undefined}
+      >
+        <AppSidebar
+          activeId={page}
+          onCollapse={collapse}
+          onNewChat={onNewChat}
+          onNavigate={(id) => onSelectPage(id as Page)}
+          onSettings={onSettings}
+          onLogout={onLogout}
+        />
       </div>
+
+      {/* Content sits on its own white surface with an inset hairline, which is
+          what separates it from the canvas in the reference. */}
+      <main className="flex min-w-0 flex-1 flex-col bg-surface shadow-[inset_0_0_0_0.8px_var(--c-line)] lg:min-h-dvh">
+        {renderHeader({ hidden: sidebarHidden, expand })}
+        {children}
+      </main>
     </div>
   )
 }
