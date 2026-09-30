@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Archive, CheckSquare, Plus, Search, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -24,6 +24,60 @@ const BOARD_COLUMNS: Status[] = [...COLUMNS, "archived"]
 
 const PROFILE_OPTIONS = [{ value: "__all", label: "All agents" }]
 const WORKSPACE_OPTIONS = [{ value: "__all", label: "All workspaces" }]
+
+/**
+ * Horizontal scroll for the column grid, with edges that make it obvious more
+ * columns exist. Nine 296px columns do not fit a 1440px viewport, and the board
+ * genuinely should scroll; the problem was that a clipped card at the edge gave
+ * no hint you could scroll. The shadows appear only when there is actually
+ * something in that direction, and they are pointer-events-none so they never
+ * swallow a drag.
+ */
+function BoardScroller({ children, enter }: { children: ReactNode; enter: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [edges, setEdges] = useState({ left: false, right: false })
+
+  const measure = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    setEdges({
+      left: el.scrollLeft > 1,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+    })
+  }, [])
+
+  useEffect(() => {
+    measure()
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    for (const child of Array.from(el.children)) ro.observe(child)
+    return () => ro.disconnect()
+  }, [measure])
+
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={ref}
+        onScroll={measure}
+        className={cn(
+          "flex h-full min-h-0 gap-3 overflow-x-auto overflow-y-hidden p-3",
+          "[scrollbar-width:thin] [&::-webkit-scrollbar]:h-8",
+          enter && "board-enter",
+        )}
+      >
+        {children}
+      </div>
+      {edges.left && (
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-canvas to-transparent" />
+      )}
+      {edges.right && (
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent" />
+      )}
+    </div>
+  )
+}
 
 interface SavedView {
   name: string
@@ -374,7 +428,7 @@ export function BoardPage({
           action={<Button variant="secondary" onClick={() => void tasks.refetch()}>Retry</Button>}
         />
       ) : (
-        <div className={cn("flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3", enterBoard && "board-enter")}>
+        <BoardScroller enter={enterBoard}>
           {BOARD_COLUMNS.map((col, colIndex) => {
             const cards = byCol(col)
             return (
@@ -441,7 +495,7 @@ export function BoardPage({
               </BoardColumn>
             )
           })}
-        </div>
+        </BoardScroller>
       )}
     </div>
   )

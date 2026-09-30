@@ -167,7 +167,7 @@ export default function CronPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {doctor.data && (
-          <pre className="mx-auto mt-4 max-h-48 w-full max-w-[1200px] overflow-auto whitespace-pre-wrap rounded-control border border-warning/30 bg-warning-tint p-3 font-mono text-2xs text-ink-2 md:px-6">
+          <pre className="mx-auto mt-4 max-h-48 w-full max-w-[1680px] overflow-auto whitespace-pre-wrap rounded-control border border-warning/30 bg-warning-tint p-3 font-mono text-2xs text-ink-2 md:px-6">
             {doctor.data.output}
           </pre>
         )}
@@ -193,7 +193,7 @@ export default function CronPage() {
             }
           />
         ) : (
-          <div className="mx-auto w-full max-w-[1200px] px-4 py-4 md:px-6">
+          <div className="mx-auto w-full max-w-[1680px] px-4 py-4 md:px-6">
             <table className="w-full border-collapse text-sm">
               <caption className="sr-only">Scheduled jobs</caption>
               <thead>

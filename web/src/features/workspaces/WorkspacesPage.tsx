@@ -778,7 +778,7 @@ export default function WorkspacesPage() {
             }
           />
         ) : (
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-8 p-4 md:p-6">
             {shownGroups.map(([key, list]) => {
               const meta = PLATFORM_META[key] ?? PLATFORM_META.other
               return (
@@ -787,7 +787,7 @@ export default function WorkspacesPage() {
                     title={meta.label}
                     description={`${list.length} ${list.length === 1 ? "host" : "hosts"}`}
                   />
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     {list.map((ws) => (
                       <WorkspaceCard
                         key={ws.id}

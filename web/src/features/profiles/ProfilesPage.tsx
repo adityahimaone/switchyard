@@ -509,7 +509,7 @@ export default function ProfilesPage() {
             }
           />
         ) : (
-          <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6">
+          <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6 xl:grid-cols-3 2xl:grid-cols-4">
             {filtered.map((p) => (
               <EntryCard
                 key={p.name}

@@ -124,7 +124,7 @@ export default function EcosystemPage() {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
+        <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-8 p-4 md:p-6">
           <section className="flex flex-col gap-3">
             <SectionHeader
               title="Gateway"
@@ -160,7 +160,7 @@ export default function EcosystemPage() {
                 hint="Add one on the agent host with `hermes mcp add`."
               />
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {liveItems.map((item) => {
                   const status = health[item.name]
                   const endpoint =
@@ -252,7 +252,7 @@ export default function EcosystemPage() {
                 action={<Button variant="signal" onClick={() => setMcpDraft({ ...emptyMCP })}>Add MCP server</Button>}
               />
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {mcpItems.map((item) => (
                   <EntryCard
                     key={item.id}
@@ -301,7 +301,7 @@ export default function EcosystemPage() {
                 action={<Button variant="signal" onClick={() => setExtDraft({ ...emptyExtension })}>Add extension</Button>}
               />
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {extItems.map((item) => (
                   <EntryCard
                     key={item.id}

@@ -101,7 +101,7 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {note && (
-          <p role="status" className="mx-auto w-full max-w-[1200px] px-4 pt-4 text-sm text-ink-2 md:px-6">
+          <p role="status" className="mx-auto w-full max-w-[1680px] px-4 pt-4 text-sm text-ink-2 md:px-6">
             {note}
           </p>
         )}
@@ -125,7 +125,7 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
             }
           />
         ) : (
-          <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6">
+          <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6 xl:grid-cols-3 2xl:grid-cols-4">
             {list.map((p) => (
               <EntryCard
                 key={p.name}
@@ -215,7 +215,7 @@ export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (na
 
         {/* Link providers to profiles. */}
         {all.length > 0 && (
-          <div className="mx-auto w-full max-w-[1200px] px-4 pb-6 md:px-6">
+          <div className="mx-auto w-full max-w-[1680px] px-4 pb-6 md:px-6">
             <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
               <SectionHeader
                 title="Use a provider in a profile"

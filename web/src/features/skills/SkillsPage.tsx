@@ -132,15 +132,15 @@ export default function SkillsPage() {
             }
           />
         ) : (
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-8 p-4 md:p-6">
             {grouped.map(([category, categorySkills]) => (
               <section key={category} className="flex flex-col gap-3">
                 <SectionHeader
                   title={category}
                   description={`${categorySkills.length} ${categorySkills.length === 1 ? "skill" : "skills"}`}
                 />
-                {/* Denser than the other collections: 3 across on large screens. */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Denser than the other collections: 4 across on very wide screens. */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                   {categorySkills.map((s) => (
                     <SkillCard
                       key={s.path || s.name}

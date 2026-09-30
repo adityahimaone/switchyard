@@ -185,6 +185,12 @@ ladder, but keep three distinct steps rather than one global value.
 - **Blur** is allowed only on the command palette scrim (4px), never on content.
 - **Spacing:** 4px base. Card padding 12, column gap 12, card gap 8, page
   gutter 24 (16 on mobile).
+- **Content width:** Collection pages use a centred column capped at **1680px**,
+  with the grid going 1 → 2 → 3 → 4 columns at `md` / `xl` / `2xl`. Prose inside
+  stays capped separately at 64ch, which is the constraint that actually governs
+  reading. A single fixed 1200px cap was wrong: exact at 1440px, but it wasted
+  235px per side at 1920 and 555px at 2560, which reads as broken rather than
+  sparse. These figures are measured, not estimated.
 - **Density:** `data-density="comfortable"` (default, 32px rows) or `"compact"`
   (28px rows, 10px card padding). Stored in settings.
 
@@ -267,6 +273,11 @@ home.
 - Column order: Triage, Todo, Scheduled, Ready, Running, Blocked, Review, Done,
   Archived. Rarely used columns (Triage, Scheduled, Archived) collapse to a 40px
   vertical strip showing the lamp and count.
+- **Scroll.** The grid scrolls horizontally: nine 296px columns cannot fit a
+  1440px viewport, and a board genuinely should scroll. A clipped card at the
+  edge gave no hint that scrolling was possible, so the scroller shows a gradient
+  on whichever side has more content and hides it when there is none. Both are
+  `pointer-events-none` so they never swallow a drag.
 - Left-aligned everywhere. No centred text except empty states.
 
 ### Task detail
