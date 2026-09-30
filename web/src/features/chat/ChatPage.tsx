@@ -1,29 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Activity, Archive, ArrowUp, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Square, Trash2, X } from "lucide-react"
+import { Activity, Archive, Check, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { StatusLamp } from "@/components/ui/status-lamp"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { BorderBeam } from "@/components/ui/border-beam"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
 import { AgentProgress } from "@/components/agents/loading-states"
 import { TaskList, type TaskListTask } from "@/TodoList"
-import { ThinkingOrb } from "thinking-orbs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { SystemModal } from "@/components/ui/system-modal"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { SessionMenu } from "@/components/chat/SessionMenu"
+import { Composer } from "@/components/chat/composer"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
 type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 
-function stateLabel(state?: ChatState) { return state ? state.toUpperCase() : "READY" }
-function stateTone(state?: ChatState) { return state === "done" ? "text-emerald-400" : state === "error" || state === "cancelled" ? "text-red-400" : state === "running" || state === "loading" ? "text-amber-300" : "text-ink-4" }
+/** Sentence case, and a name that matches what the user would say. */
+function stateLabel(state?: ChatState): string {
+  switch (state) {
+    case "running": return "Running"
+    case "loading": return "Loading"
+    case "done": return "Done"
+    case "error": return "Failed"
+    case "cancelled": return "Cancelled"
+    default: return "Ready"
+  }
+}
 
 function elapsedLabel(startedAt?: number, endedAt?: number | null, now = Date.now()) {
   if (!startedAt) return "0.0s"
@@ -43,14 +51,22 @@ function MessageFooter({ run, sessionID, messageCreatedAt, isStreaming }: { run?
   }, [active, run])
   const elapsed = run ? elapsedLabel(run.started_at, run.ended_at, now) : ""
   const clockTime = messageCreatedAt ? new Date(messageCreatedAt * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : ""
-  return <span tabIndex={0} aria-label={`Message details${run?.profile ? `, profile ${run.profile}` : ""}`} className="chat-message-footer inline-flex items-center gap-1.5 text-[11px] leading-none text-[var(--color-ink-3)]">
+  return <span tabIndex={0} aria-label={`Message details${run?.profile ? `, profile ${run.profile}` : ""}`} className="chat-message-footer inline-flex items-center gap-1.5 text-2xs leading-none text-[var(--c-ink-3)]">
     {clockTime && <span className="font-mono tabular-nums">{clockTime}</span>}
     {run?.profile && <span className="chat-message-profile">{run.profile}</span>}
     <span className="chat-message-hover-meta items-center gap-1.5">
-      <span className="max-w-[110px] truncate font-mono text-[11px] text-[var(--color-ink-3)]" title={modelLabel}>{modelLabel}</span>
-      {run && elapsed && <><span className="text-[var(--color-ink-4)]">·</span><span className="font-mono tabular-nums" title="elapsed">{elapsed}</span></>}
-      {sessionID && <><span className="text-[var(--color-ink-4)]">·</span><span className="font-mono text-[10px]" title="Switchyard room session ID">{sessionID}</span></>}
-      {isError && run && <><span className="text-[var(--color-ink-4)]">·</span><span className={stateTone(run.state)}>{stateLabel(run.state)}</span></>}
+      <span className="max-w-[110px] truncate font-mono text-2xs text-ink-3" title={modelLabel}>{modelLabel}</span>
+      {run && elapsed && <><span className="text-ink-3">·</span><span className="font-mono tabular-nums" title="elapsed">{elapsed}</span></>}
+      {sessionID && <><span className="text-ink-3">·</span><span className="font-mono text-2xs" title="Switchyard room session ID">{sessionID}</span></>}
+      {isError && run && (
+        <>
+          <span className="text-ink-3">·</span>
+          {/* Text on the surface, not a tint, so danger-text is the right token. */}
+          <span className={run.state === "done" ? "text-success-text" : "text-danger-text"}>
+            {stateLabel(run.state)}
+          </span>
+        </>
+      )}
     </span>
   </span>
 }
@@ -111,13 +127,13 @@ function LiveWorkerLog({ text, active }: { text: string; active: boolean }) {
   const lines = text.split("\n").filter(Boolean)
   if (!lines.length) return null
   const visible = lines.slice(-12)
-  return <details open={active} className="mt-3 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-inset)]">
-    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] text-[var(--color-ink-3)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
-      <Activity className="size-3.5 shrink-0 text-[var(--color-accent)]" aria-hidden />
-      <span className="font-medium text-[var(--color-ink-2)]">Live worker log</span>
-      <span className="ml-auto font-mono text-[10px] tabular-nums">{lines.length} lines</span>
+  return <details open={active} className="mt-3 overflow-hidden rounded-card border border-[var(--c-line)] bg-[var(--c-well)]">
+    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-2xs text-[var(--c-ink-3)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-accent)]">
+      <Activity className="size-3.5 shrink-0 text-[var(--c-accent)]" aria-hidden />
+      <span className="font-medium text-[var(--c-ink-2)]">Live worker log</span>
+      <span className="ml-auto font-mono text-2xs tabular-nums">{lines.length} lines</span>
     </summary>
-    <pre className="max-h-48 overflow-auto border-t border-[var(--color-line)] px-3 py-2 font-mono text-[10px] leading-5 text-[var(--color-ink-3)]">{visible.join("\n")}</pre>
+    <pre className="max-h-48 overflow-auto border-t border-[var(--c-line)] px-3 py-2 font-mono text-2xs leading-5 text-[var(--c-ink-3)]">{visible.join("\n")}</pre>
   </details>
 }
 
@@ -190,7 +206,6 @@ function groupKeyFor(ts: number): GroupKey {
   return "older"
 }
 
-function isSshWorkspace(w: Workspace): boolean { return !!w.host && w.host !== "localhost" && w.host !== "127.0.0.1" }
 function isLive(w: Workspace): boolean { return w.status === "connected" || w.status === "local" }
 
 function Markdown({ text }: { text: string }) {
@@ -223,8 +238,8 @@ function splitResponseText(text: string) {
 
 function SessionNotice({ text }: { text: string }) {
   if (!text) return null
-  return <div className="mb-3 flex max-w-full items-start gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)] px-3 py-2 text-[11px] text-[var(--color-ink-3)]">
-    <span aria-hidden className="mt-0.5 text-[var(--color-accent)]">↻</span>
+  return <div className="mb-3 flex max-w-full items-start gap-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-well)] px-3 py-2 text-2xs text-[var(--c-ink-3)]">
+    <span aria-hidden className="mt-0.5 text-[var(--c-accent)]">↻</span>
     <span className="min-w-0 whitespace-pre-wrap break-words font-mono leading-5">{text.replace(/^↻\s*/, "")}</span>
   </div>
 }
@@ -533,44 +548,49 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   })
   const runEventsMap = messageRunEvents.data ?? {}
 
-  return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--color-bg)]">
-    {sidebarOpen && <aside className="flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)]">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] px-2">
+  return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--c-canvas)]">
+    {sidebarOpen && <aside className="flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-[var(--c-line)] bg-[var(--c-surface)]">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] px-2">
         <span className="px-1 text-sm font-semibold tracking-tight">{showArchived ? "Archived chats" : "Chats"}</span>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className={`size-7 ${showArchived ? "text-[var(--color-accent)]" : ""}`} onClick={() => setShowArchived((value) => !value)} title={showArchived ? "Show active chats" : "Show archived chats"}><Archive className="size-3.5" /></Button>
+          <Button size="icon" variant="ghost" className={`size-7 ${showArchived ? "text-[var(--c-accent)]" : ""}`} onClick={() => setShowArchived((value) => !value)} title={showArchived ? "Show active chats" : "Show archived chats"}><Archive className="size-3.5" /></Button>
           {!showArchived && <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} title="New chat"><Plus className="size-4" /></Button>}
         </div>
       </div>
-      <div className="border-b border-[var(--color-line)] p-2">
-        <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--color-ink-3)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search chats" className="h-8 pl-7 text-xs" /></div>
+      <div className="border-b border-[var(--c-line)] p-2">
+        <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--c-ink-3)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search chats" className="h-8 pl-7 text-xs" /></div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {filteredSessions.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[var(--color-line)] p-4 text-center text-xs text-muted-foreground">No chat for this filter</div>
+          <div className="rounded-md border border-dashed border-[var(--c-line)] p-4 text-center text-xs text-ink-3">No chat for this filter</div>
         ) : (
           GROUP_ORDER.map((key) => {
             const items = grouped[key]
             if (items.length === 0) return null
             return (
               <div key={key} className="mb-3">
-                <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-[var(--color-ink-3)]">{GROUP_LABEL[key]} <span className="font-normal normal-case tracking-normal text-[var(--color-ink-4)]">· {items.length}</span></div>
+                <div className="px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">{GROUP_LABEL[key]} <span className="font-normal tracking-normal text-ink-3 normal-case">· {items.length}</span></div>
                 <div className="space-y-1">
                   {items.map((item) => (
-                    <div key={item.id} className={`group flex w-full items-stretch rounded-lg border transition-colors ${item.id === sessionID ? "border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10" : "border-transparent bg-transparent hover:bg-white/[0.04]"}`}>
+                    <div key={item.id} className={`group flex w-full items-stretch rounded-lg border transition-colors ${item.id === sessionID ? "border-[var(--c-accent)]/30 bg-[var(--c-accent)]/10" : "border-transparent bg-transparent hover:bg-raised"}`}>
                       <button type="button" onClick={() => void selectSession(item)} title={item.title} className="min-w-0 flex-1 px-2.5 py-2 text-left">
                         <div className="max-w-full truncate text-xs font-medium leading-none">{item.title}</div>
-                        <div className="mt-1 flex max-w-full items-center gap-1 truncate text-[11px] text-[var(--color-ink-3)]">
+                        <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
                           <span className="truncate">{item.workspace || "local"}</span>
-                          {item.model && <><span className="text-[var(--color-ink-4)]">·</span><span className="truncate font-mono text-[10px]">{item.model.split("/").pop()}</span></>}
-                          {activeRunBySession.has(item.id) && <ThinkingOrb state="working" size={20} aria-label="Agent running" className="ml-auto size-4 shrink-0" />}
+                          {item.model && <><span className="text-ink-3">·</span><span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span></>}
+                          {/* A lamp, not a spinner: the row already says the
+                              session is busy, and the lamp matches the rest
+                              of the app's running state. */}
+                          {activeRunBySession.has(item.id) && (
+                            <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />
+                          )}
                         </div>
                       </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button type="button" aria-label={`Actions for ${item.title}`} className="mr-1 self-center rounded-md p-1.5 text-[var(--color-ink-3)] opacity-0 transition-opacity hover:bg-[var(--color-inset)] hover:text-[var(--color-ink)] focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
+                          <button type="button" aria-label={`Actions for ${item.title}`} className="mr-1 self-center rounded-md p-1.5 text-[var(--c-ink-3)] opacity-0 transition-opacity hover:bg-[var(--c-well)] hover:text-[var(--c-ink)] focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[var(--c-accent)] group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+                        <DropdownMenuContent align="end" className="border-[var(--c-line)] bg-[var(--c-raised)]">
                           <DropdownMenuItem onSelect={() => openSessionAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => openSessionAction(showArchived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {showArchived ? "Restore" : "Archive"}</DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -585,27 +605,27 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           })
         )}
       </div>
-      <div className="border-t border-[var(--color-line)] px-2 py-2 text-[11px] text-[var(--color-ink-3)]">{filteredSessions.length} {showArchived ? "archived" : "active"} chats</div>
+      <div className="border-t border-[var(--c-line)] px-2 py-2 text-2xs text-[var(--c-ink-3)]">{filteredSessions.length} {showArchived ? "archived" : "active"} chats</div>
     </aside>}
-    <main className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-line)] bg-[var(--color-surface)]/60 px-4 backdrop-blur">
+      <div className="flex min-w-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] bg-[var(--c-surface)] px-4">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</div>
+          <h1 className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</h1>
         </div>
         {current.data && <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />}
       </header>
       <MessageScroller busy={isRunning} showJump={showJumpToLatest} onFollowChange={(following) => { shouldFollowChatRef.current = following; setShowJumpToLatest(!following) }} onJump={() => { shouldFollowChatRef.current = true; setShowJumpToLatest(false); bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }) }}>
         <div className="mx-auto max-w-3xl space-y-6">
         {activeMessages.length === 0 && !run ? (
-          <div className="rounded-xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-6">
+          <div className="rounded-card border border-dashed border-[var(--c-line)] bg-[var(--c-surface)] p-6">
             <div className="text-sm font-medium">Start a conversation</div>
-            <div className="mt-1 text-sm leading-6 text-[var(--color-ink-3)]">Pick a prompt or type your own. Agent runs show live context activity.</div>
-            <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-1.5 text-xs hover:border-[var(--color-line-strong)]">{example}</button>)}</div>
+            <div className="mt-1 text-sm leading-6 text-[var(--c-ink-3)]">Pick a prompt or type your own. Agent runs show live context activity.</div>
+            <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-[var(--c-line)] bg-[var(--c-canvas)] px-3 py-1.5 text-xs hover:border-[var(--c-line-strong)]">{example}</button>)}</div>
           </div>
         ) : activeMessages.map((message) => (
           <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
             {message.role === "user" ? (
-              <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+              <div className="max-w-[80%] rounded-card bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
                 <div>{message.content}</div>
                 {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
               </div>
@@ -628,96 +648,227 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         <div ref={bottomRef} aria-hidden="true" />
         </div>
       </MessageScroller>
-      <div className="border-t border-[var(--color-line)] bg-[var(--color-surface)]/40 p-3 backdrop-blur">
-        <BorderBeam size="md" colorVariant="colorful" strength={0.7} className="mx-auto max-w-3xl">
-          <div className="rounded-2xl bg-[var(--color-surface)] p-2">
-          <div className="relative overflow-visible">
-            {autocompleteOpen && (commandMatches.length > 0 || skillMatches.length > 0) && <div className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-full overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1 shadow-lg">
-              {commandMatches.map((item) => <button key={item.command} type="button" className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.06]" onMouseDown={(event) => event.preventDefault()} onClick={() => { setPrompt((value) => value.replace(/(?:^|\s)\/[^\s]*$/, `${item.command} `)); if (item.command === "/clear" || item.command === "/stop" || item.command === "/new") executeCommand(item.command) }}><span className="w-14 shrink-0 font-mono text-[11px] text-[var(--color-accent)]">{item.command}</span><span className="text-xs"><span className="block">{item.label}</span><span className="text-[10px] text-[var(--color-ink-3)]">{item.description}</span></span></button>)}
-              {skillMatches.slice(0, 12).map((item) => <button key={item.name} type="button" className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.06]" onMouseDown={(event) => event.preventDefault()} onClick={() => insertSkill(item.name)}><Puzzle className="mt-0.5 size-3.5 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 text-xs"><span className="block font-mono">${item.name}</span><span className="block truncate text-[10px] text-[var(--color-ink-3)]">{item.description}</span></span></button>)}
-            </div>}
-            <Textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && autocompleteOpen) { event.preventDefault(); setPrompt((value) => value.replace(/(?:^|\s)[/$][^\s]*$/, "")); return }
-                if (event.key === "Enter" && !event.shiftKey) {
-                  if (commandMatches.length > 0 && commandQuery) { event.preventDefault(); const item = commandMatches[0]; setPrompt((value) => value.replace(/(?:^|\s)\/[^\s]*$/, `${item.command} `)); executeCommand(item.command); return }
-                  if (skillMatches.length > 0 && skillQuery) { event.preventDefault(); insertSkill(skillMatches[0].name); return }
-                  event.preventDefault(); if (prompt.trim() && sessionID && !send.isPending && !isRunning && !uploading) send.mutate()
-                }
-              }}
-              placeholder="Message agent..."
-              rows={1}
-              className="field-sizing-content max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 pr-12 shadow-none focus-visible:ring-0"
-            />
-
-          </div>
-          <div className="relative mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+      <Composer
+        value={prompt}
+        onChange={setPrompt}
+        onSend={() => send.mutate()}
+        onStop={() => void stopChatRun(run!.id).then(() => getChatRun(run!.id).then(setSelectedRun))}
+        running={isRunning}
+        phase={run?.state === "error" ? "Failed" : run?.state === "done" ? "Finished" : "Working"}
+        placeholder={profile ? `Message ${profile}` : "Message the agent"}
+        disabled={!sessionID || send.isPending || uploading}
+        autocomplete={
+          autocompleteOpen && (commandMatches.length > 0 || skillMatches.length > 0) ? (
+            <>
+              {commandMatches.map((item) => (
+                <button
+                  key={item.command}
+                  type="button"
+                  className="flex w-full items-start gap-2 rounded-control px-2.5 py-2 text-left outline-none hover:bg-raised focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setPrompt((value) => value.replace(/(?:^|\s)\/[^\s]*$/, `${item.command} `));
+                    if (item.command === "/clear" || item.command === "/stop" || item.command === "/new") {
+                      executeCommand(item.command);
+                    }
+                  }}
+                >
+                  <span className="w-14 shrink-0 font-mono text-2xs text-accent-text">{item.command}</span>
+                  <span className="text-xs">
+                    <span className="block">{item.label}</span>
+                    <span className="block text-2xs text-ink-3">{item.description}</span>
+                  </span>
+                </button>
+              ))}
+              {skillMatches.slice(0, 12).map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  className="flex w-full items-start gap-2 rounded-control px-2.5 py-2 text-left outline-none hover:bg-raised focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => insertSkill(item.name)}
+                >
+                  <Puzzle className="mt-0.5 size-3.5 shrink-0 text-accent-text" aria-hidden />
+                  <span className="min-w-0 text-xs">
+                    <span className="block font-mono">${item.name}</span>
+                    <span className="block truncate text-2xs text-ink-3">{item.description}</span>
+                  </span>
+                </button>
+              ))}
+            </>
+          ) : undefined
+        }
+        controls={
+          <>
             <DropdownMenu open={composerMenuOpen} onOpenChange={setComposerMenuOpen}>
-              <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="outline" className="size-8 rounded-full" aria-label="Add to message"><Plus className="size-4" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56 border-[var(--color-line)] bg-[var(--color-surface-raised)]">
-                <DropdownMenuItem onSelect={() => fileRef.current?.click()}><FileImage className="size-4" /> Attach image</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}$`)}><Puzzle className="size-4" /> Use skill</DropdownMenuItem>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="icon-sm" variant="outline" aria-label="Add to message">
+                  <Plus className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
+                  <FileImage className="size-4" /> Attach image
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}$`)}>
+                  <Puzzle className="size-4" /> Use skill
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
             <Select value={profile || "default"} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className="h-7 w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="profile" /></SelectTrigger>
-              <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]">{profiles.map((item) => <SelectItem key={item.name} value={item.name} disabled={!item.valid} className="text-sm">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Avatar className="size-4 shrink-0">
-                    {item.avatar_url && <AvatarImage src={item.avatar_url} alt={item.name} />}
-                    <AvatarFallback className="bg-[var(--color-inset)] text-[7px] text-[var(--color-accent)]">{item.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <span className="min-w-0 truncate">{item.name}{item.model ? ` — ${item.model}` : ""}{item.active ? " (active)" : ""}{!item.valid ? " (broken config)" : ""}</span>
-                </span>
-              </SelectItem>)}</SelectContent>
-            </Select>
-            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-7 max-w-36 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue /></SelectTrigger>
-              <SelectContent className="max-w-80 border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="__local">local</SelectItem>{workspaces.map((v) => { const live = isLive(v); const ssh = isSshWorkspace(v); const os = (v.os || "").toLowerCase(); const osLabel = os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : ""; return <SelectItem key={v.id} value={v.path} className="min-w-0 text-sm" title={v.path}><span className="flex min-w-0 items-center gap-1.5">{live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" /> }<span className="min-w-0 flex-1 truncate">{v.name}</span>{ssh && <Badge variant="outline" className="shrink-0 border-violet-500/30 bg-violet-500/10 px-1 py-0 text-[9px] leading-none text-violet-300">ssh</Badge>}{osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-ink-3">{osLabel}</Badge>}{live && <span className="size-1.5 shrink-0 rounded-full bg-emerald-400/60" />}</span></SelectItem> })}</SelectContent>
-            </Select>
-            <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-7 w-32 truncate rounded-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder="model default" /></SelectTrigger>
-              <SelectContent position="popper" align="start" className="h-[300px] max-h-[300px] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
-                <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
-                  <Input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-                </div>
-                <SelectItem value="__default">model default</SelectItem>
-                {filteredModelOptions.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-4">No model found</p>}
-                {filteredModelOptions.map((v) => <SelectItem key={v} value={v} className="max-w-72 truncate text-sm" title={v}>{v}</SelectItem>)}
+              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Agent profile">
+                <SelectValue placeholder="Profile" />
+              </SelectTrigger>
+              <SelectContent className="max-w-80">
+                {profiles.map((item) => (
+                  <SelectItem key={item.name} value={item.name} disabled={!item.valid}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Avatar className="size-4 shrink-0">
+                        {item.avatar_url && <AvatarImage src={item.avatar_url} alt="" />}
+                        <AvatarFallback className="bg-well text-[7px] text-ink-2">
+                          {item.name.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 truncate">
+                        {item.name}
+                        {item.model ? ` \u2014 ${item.model}` : ""}
+                        {item.active ? " (active)" : ""}
+                        {!item.valid ? " (broken config)" : ""}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple className="hidden" onChange={(event) => void handleFiles(event.target.files ?? [])} />
-            {uploading && <span className="text-[11px] text-[var(--color-ink-3)]">Uploading…</span>}
-            {pendingAtts.length > 0 && <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={!model && !profiles.find((p) => p.name === profile)?.model || analyzeBusy !== null} onClick={() => { const first = pendingAtts[0]; if (first) void analyzePending(first.id) }}>{analyzeBusy ? "Analyzing…" : "Analyze"}</Button>}
-            {uploadErr && <span className="text-[11px] text-red-400">{uploadErr}</span>}
-            {analyzeResult && <p className="ml-2 max-w-md truncate text-[11px] text-emerald-400" title={analyzeResult}>✓ {analyzeResult}</p>}
-            {pendingAtts.length > 0 && <div className="mt-2 flex w-full flex-wrap items-center gap-1.5">{pendingAtts.map((a) => <span key={a.id} className="flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px]">{a.mime.startsWith("image/") ? "🖼" : "📄"} {a.filename}<button type="button" className="ml-0.5 text-ink-3 hover:text-red-400" onClick={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))}>×</button></span>)}</div>}
-            <div className="ml-auto shrink-0 rounded-full bg-[var(--color-surface)] p-0.5">
-              {isRunning && run ? <Button type="button" size="icon" aria-label="Stop agent" title="Stop agent" className="relative z-10 size-9 rounded-full border border-[var(--color-line)] bg-[var(--color-danger)] text-white shadow-md hover:bg-[var(--color-danger)]/85" onClick={() => void stopChatRun(run.id).then(() => getChatRun(run.id).then(setSelectedRun))}><Square className="size-3.5 fill-current" /></Button> : <Button type="button" size="icon" aria-label="Send message" className="relative z-10 size-9 rounded-full border border-[var(--color-line)] bg-primary text-primary-foreground shadow-md hover:bg-primary/90" disabled={!prompt.trim() || !sessionID || send.isPending || uploading} onClick={() => send.mutate()}>{send.isPending ? <X className="size-4" /> : <ArrowUp className="size-4" />}</Button>}
-            </div>
-          </div>
-          {send.isError && <div className="pt-2 text-xs text-red-400">{(send.error as Error).message}</div>}
-          </div>
-        </BorderBeam>
-        <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between px-1 text-[11px] text-[var(--color-ink-3)]"><span>Enter send · Shift+Enter newline</span><span>{prompt.length} chars</span></div>
-      </div>
-    </main>
-    <SystemModal
-      open={!!sessionAction}
-      onClose={() => { if (!actionBusy) setSessionAction(null) }}
-      title={sessionAction?.kind === "rename" ? "Rename chat" : sessionAction?.kind === "archive" ? "Archive chat" : sessionAction?.kind === "restore" ? "Restore chat" : "Delete chat"}
-      description={sessionAction?.kind === "rename" ? "Choose a title for this room. Renaming does not change its position in the chat list." : sessionAction?.kind === "archive" ? "This room will leave the active chat list. You can find it again from Archived chats." : sessionAction?.kind === "restore" ? "This room will return to the active chat list." : `Delete ${sessionAction?.session.title ?? "this chat"} and its message history permanently?`}
-      footer={<>
-        <Button type="button" variant="ghost" size="sm" disabled={actionBusy} onClick={() => setSessionAction(null)}>Cancel</Button>
-        <Button type="button" size="sm" variant={sessionAction?.kind === "delete" ? "destructive" : "default"} disabled={actionBusy || (sessionAction?.kind === "rename" && !renameDraft.trim())} onClick={() => void confirmSessionAction()}>{actionBusy ? "Saving..." : sessionAction?.kind === "rename" ? "Save title" : sessionAction?.kind === "archive" ? "Archive" : sessionAction?.kind === "restore" ? "Restore" : "Delete"}</Button>
-      </>}
-    >
-      {sessionAction?.kind === "rename" && <>
-        <Input autoFocus value={renameDraft} onChange={(event) => { setRenameDraft(event.target.value); setActionError("") }} onKeyDown={(event) => { if (event.key === "Enter" && renameDraft.trim()) void confirmSessionAction() }} maxLength={120} className="bg-[var(--color-inset)]" />
-        {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{actionError}</p>}
-      </>}
-    </SystemModal>
+
+            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
+              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Workspace">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-w-80">
+                <SelectItem value="__local">local</SelectItem>
+                {workspaces.map((v) => {
+                  const live = isLive(v);
+                  const os = (v.os || "").toLowerCase();
+                  const osLabel = os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : "";
+                  return (
+                    <SelectItem key={v.id} value={v.path} title={v.path}>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {live && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />}
+                        <span className="min-w-0 flex-1 truncate">{v.name}</span>
+                        {osLabel && <span className="shrink-0 text-2xs text-ink-3">{osLabel}</span>}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+
+            <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
+              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Model">
+                <SelectValue placeholder="Default model" />
+              </SelectTrigger>
+              <SelectContent position="popper" align="start" className="h-80 w-72">
+                <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+                  <Input
+                    value={modelSearch}
+                    onChange={(event) => setModelSearch(event.target.value)}
+                    placeholder="Search models"
+                    aria-label="Search models"
+                  />
+                </div>
+                <SelectItem value="__default">Default model</SelectItem>
+                {filteredModelOptions.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
+                )}
+                {filteredModelOptions.map((v) => (
+                  <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+              multiple
+              className="hidden"
+              onChange={(event) => void handleFiles(event.target.files ?? [])}
+            />
+            {uploading && <span className="text-2xs text-ink-3">Uploading…</span>}
+            {pendingAtts.length > 0 && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!model && !profiles.find((p) => p.name === profile)?.model || analyzeBusy !== null}
+                onClick={() => { const first = pendingAtts[0]; if (first) void analyzePending(first.id) }}
+              >
+                {analyzeBusy ? "Analyzing…" : "Analyze"}
+              </Button>
+            )}
+            {uploadErr && <span className="text-2xs text-danger-text">{uploadErr}</span>}
+            {analyzeResult && (
+              <span className="inline-flex items-center gap-1 text-2xs text-success-text" title={analyzeResult}>
+                <Check className="size-3" aria-hidden /> {analyzeResult}
+              </span>
+            )}
+          </>
+        }
+        attachments={
+          pendingAtts.length > 0 ? (
+            pendingAtts.map((a) => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-1 rounded-control border border-line bg-well px-2 py-0.5 text-2xs"
+              >
+                <span aria-hidden>{a.mime.startsWith("image/") ? "🖼" : "📄"}</span>
+                {a.filename}
+                <button
+                  type="button"
+                  aria-label={`Remove ${a.filename}`}
+                  className="ml-0.5 text-ink-3 outline-none hover:text-danger-text focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                  onClick={() => setPendingAtts((prev) => prev.filter((x) => x.id !== a.id))}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))
+          ) : undefined
+        }
+      />
+      {send.isError && (
+        <p role="alert" className="mx-auto w-full max-w-3xl px-4 pb-3 text-xs text-danger-text">
+          {(send.error as Error).message}
+        </p>
+      )}
+    </div>
+      <ConfirmDialog
+        open={!!sessionAction}
+        onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
+        title={sessionAction?.kind === "rename" ? "Rename chat" : sessionAction?.kind === "archive" ? "Archive chat" : sessionAction?.kind === "restore" ? "Restore chat" : "Delete chat"}
+        description={sessionAction?.kind === "rename" ? "Choose a title for this room. Renaming does not change its position in the chat list." : sessionAction?.kind === "archive" ? "This room will leave the active chat list. You can find it again from Archived chats." : sessionAction?.kind === "restore" ? "This room will return to the active chat list." : `Delete ${sessionAction?.session.title ?? "this chat"} and its message history permanently?`}
+        confirmLabel={sessionAction?.kind === "rename" ? "Save title" : sessionAction?.kind === "archive" ? "Archive" : sessionAction?.kind === "restore" ? "Restore" : "Delete"}
+        busy={actionBusy}
+        onConfirm={() => void confirmSessionAction()}
+      />
+      {sessionAction?.kind === "rename" && (
+        <DetailSheet
+          open
+          onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
+          title="Rename chat"
+          description="Choose a title for this room."
+        >
+          <Input
+            autoFocus
+            value={renameDraft}
+            onChange={(event) => { setRenameDraft(event.target.value); setActionError("") }}
+            onKeyDown={(event) => { if (event.key === "Enter" && renameDraft.trim()) void confirmSessionAction() }}
+            maxLength={120}
+            aria-label="Chat title"
+          />
+          {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
+        </DetailSheet>
+      )}
   </div>
 }

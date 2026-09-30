@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { ThinkingOrb, type OrbState } from "thinking-orbs"
 
 export function ThinkingShimmer({ children = "Thinking…", className }: { children?: React.ReactNode; className?: string }) {
   return <span className={cn("thinking-shimmer", className)}>{children}</span>
@@ -53,7 +52,7 @@ function formatElapsed(totalSeconds: number) {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
 }
 
-export function AgentProgress({ label = "Churning", elapsedSeconds, initialSeconds = 0, running = true, orbState = "working", className }: { label?: string; elapsedSeconds?: number; initialSeconds?: number; running?: boolean; orbState?: OrbState; className?: string }) {
+export function AgentProgress({ label = "Working", elapsedSeconds, initialSeconds = 0, running = true, className }: { label?: string; elapsedSeconds?: number; initialSeconds?: number; running?: boolean; className?: string }) {
   const [internalSeconds, setInternalSeconds] = useState(initialSeconds)
   useEffect(() => {
     if (elapsedSeconds !== undefined || !running) return
@@ -62,9 +61,24 @@ export function AgentProgress({ label = "Churning", elapsedSeconds, initialSecon
     return () => window.clearInterval(timer)
   }, [elapsedSeconds, initialSeconds, running])
   const elapsed = elapsedSeconds ?? internalSeconds
-  return <span role="status" aria-label={`${label}, in progress`} className={cn("inline-flex items-center gap-3 font-mono text-sm text-muted-foreground", className)}>
-    <ThinkingOrb state={orbState} size={64} theme="auto" aria-hidden style={{ width: 45, height: 45, flexShrink: 0 }} />
-    <span className="font-sans font-medium"><ScrambleText text={label} /></span>
-    <span aria-hidden className="tabular-nums text-muted-foreground/70">{formatElapsed(elapsed)}</span>
-  </span>
+  // A pulsing lamp instead of an animated orb. The app already uses this
+  // treatment for every other running thing, and an orb was decoration
+  // competing with the status it was meant to communicate.
+  return (
+    <span
+      role="status"
+      aria-label={`${label}, in progress`}
+      className={cn("inline-flex items-center gap-2 text-sm text-ink-2", className)}
+    >
+      <span aria-hidden className="relative inline-block size-2 shrink-0 rounded-full bg-accent">
+        <span className="absolute inset-0 animate-lamp rounded-full bg-accent" />
+      </span>
+      <span className="font-medium">
+        <ScrambleText text={label} />
+      </span>
+      <span aria-hidden className="tabular-nums text-ink-3">
+        {formatElapsed(elapsed)}
+      </span>
+    </span>
+  )
 }
