@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
 import { api, codeGraphIndex, codeGraphJob, codeGraphReport, type CodeGraphEntry, type CodeGraphJob as CodeGraphJobData, type Workspace } from "@/api"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -139,22 +140,40 @@ export function CodeGraphPanel({ ws, open, onToggle }: { ws: Workspace; open: bo
   const tree = useMemo(() => buildCodeGraphTree(apps), [apps])
 
   return (
-    <div className="mt-3 rounded-md border border-[var(--color-line)]/70 bg-[var(--color-bg)]/40">
-      <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 px-3 py-2 text-left">
-        <Network className="size-3.5 text-[var(--color-accent)]" />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-2">CodeGraph</span>
+    <div className="mt-2 rounded-control border border-line bg-surface">
+      {/* The header row is not a button: Scan is a sibling control, and nesting
+          a control inside a button is invalid and unreadable by a screen
+          reader. The row is a heading with a disclosure button instead. */}
+      <div className="flex w-full items-center gap-2 px-3 py-2">
+        <Network className="size-3.5 text-ink-3" aria-hidden />
+        <span className="text-sm font-medium text-ink">CodeGraph</span>
         {apps.length > 0 && (
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">
+          <span className="rounded-full border border-line bg-well px-1.5 py-0.5 text-2xs text-ink-3 tabular">
             {indexedCount}/{apps.length} indexed
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
-          <span onClick={(e) => { e.stopPropagation(); report.refetch() }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (e.target as HTMLElement).click() } }} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${report.isFetching ? "text-ink-3" : "text-ink-3 hover:bg-[var(--color-surface)] hover:text-ink"}`} title="Scan workspace for apps (depth 3)">
-            <RefreshCw className={`size-3 ${report.isFetching ? "animate-spin" : ""}`} /> Scan
-          </span>
-          <ChevronDown className={`size-3.5 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => report.refetch()}
+            disabled={report.isFetching}
+            title="Scan workspace for apps (depth 3)"
+          >
+            <RefreshCw className={cn("size-3", report.isFetching && "animate-spin")} aria-hidden />
+            Scan
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-label={open ? "Hide code graph" : "Show code graph"}
+          >
+            <ChevronDown className={cn("transition-transform", open && "rotate-180")} aria-hidden />
+          </Button>
         </span>
-      </button>
+      </div>
       {open && (
         <div className="border-t border-[var(--color-line)]/60 px-3 py-2">
           <div className="mb-2 flex items-center justify-between">

@@ -3,25 +3,43 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
 import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Workspace, type WorkspaceFile } from "@/api"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSettings } from "@/hooks/useSettings"
-import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { ChevronRight, Download, FileCode2, Folder, FolderGit2, FolderOpen, Plus, RefreshCw, ScrollText, Trash2, Pencil, Loader2, Monitor, Apple, Laptop, HardDrive, Radio, X } from "lucide-react"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { EntryCard } from "@/components/app/entry-card"
+import {
+  Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { DetailSheet } from "@/components/app/detail-sheet"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterBar, FilterChip } from "@/components/app/filter-bar"
+import { PageHeader, SectionHeader } from "@/components/app/page-header"
+import { cn } from "@/lib/utils"
+import {
+  Apple, ChevronRight, Download, FileCode2, Folder, FolderGit2, FolderOpen, HardDrive,
+  Laptop, Loader2, Monitor, MoreHorizontal, Pencil, Plus, Radio, RefreshCw, ScrollText, Trash2,
+} from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
 import { CodeGraphPanel } from "./CodeGraphPanel"
 
 type WsStatus = "connected" | "unreachable" | "unknown" | "local"
 
-const STATUS_STYLE: Record<WsStatus, { dot: string; text: string; label: string }> = {
-  connected: { dot: "bg-emerald-400", text: "text-emerald-300", label: "connected" },
-  unreachable: { dot: "bg-red-400", text: "text-red-300", label: "unreachable" },
-  unknown: { dot: "bg-ink-4", text: "text-ink-3", label: "not pinged" },
-  local: { dot: "bg-sky-400", text: "text-sky-300", label: "local" },
+/**
+ * Status is a lamp plus a label. The lamp shape carries the meaning: filled for
+ * reachable, hollow for not-yet-pinged, so state survives colour blindness.
+ */
+const STATUS_STYLE: Record<WsStatus, { tone: string; label: string; filled: boolean }> = {
+  connected: { tone: "text-success", label: "Connected", filled: true },
+  // Local is a real state (this machine) but not a health signal, so it stays ink.
+  local: { tone: "text-ink", label: "Local", filled: true },
+  unreachable: { tone: "text-danger-text", label: "Unreachable", filled: true },
+  unknown: { tone: "text-ink-3", label: "Not pinged", filled: false },
 }
 
 // known SSH hosts for the transport select in the form
@@ -96,10 +114,11 @@ const EKG_W = 220 // fixed virtual width; scaled to container via viewBox
 function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | undefined; live: boolean; ok: boolean; height?: number }) {
   const pts = (points ?? []).slice(-30)
   const last = pts[pts.length - 1]
-  // green monitor line; red monitor (border/bg/flatline) once pings exist but fail
+  // A live workspace traces in ink; a failed one traces flat in danger. Green
+  // is reserved for the confirmed `done` status, not for "the chart drew".
   const offline = !ok && pts.length > 0
-  const line = offline ? "var(--color-danger)" : "var(--color-success)"
-  const dot = "var(--color-danger)"
+  const line = offline ? "var(--c-danger)" : "var(--c-ink-3)"
+  const dot = "var(--c-danger)"
   const BASE = height - 6, TOP = 6
   const [w, setW] = useState(EKG_W)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -155,11 +174,12 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
   return (
     <div
       ref={boxRef}
-      className={`ekg-monitor relative overflow-hidden rounded-md border bg-[var(--color-bg)] ${
+      className={cn(
+        "relative overflow-hidden rounded-control border bg-well",
         offline
-          ? "ekg-monitor-offline border-[var(--color-danger)]/25 bg-[color-mix(in_srgb,var(--color-danger)_6%,var(--color-bg))] shadow-[inset_0_0_12px_var(--color-danger-tint)]"
-          : "border-[var(--color-success)]/20" + (live ? " shadow-[inset_0_0_12px_var(--color-success-tint)]" : "")
-      }`}
+          ? "border-danger/30 bg-danger-tint"
+          : "border-line",
+      )}
       style={{ height }}
       title={last
         ? `${last.ok ? "ok" : "fail"} ${last.ms != null ? Math.round(last.ms) + "ms" : ""} · ${good.length ? `${Math.round(min)}–${Math.round(max)}ms` : ""}`
@@ -181,8 +201,13 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
         />
       )}
       {!live && (
-        <span className={`absolute inset-0 flex items-center justify-center text-[10px] ${pts.length ? "text-[var(--color-danger)]/80" : "text-ink-4"}`}>
-          {pts.length ? "offline" : "no pings yet"}
+        <span
+          className={cn(
+            "absolute inset-0 flex items-center justify-center text-2xs",
+            pts.length ? "text-danger-text" : "text-ink-3",
+          )}
+        >
+          {pts.length ? "Unreachable" : "No pings yet"}
         </span>
       )}
     </div>
@@ -193,11 +218,20 @@ function StatusChip({ ws }: { ws: Workspace }) {
   const s = STATUS_STYLE[(ws.status as WsStatus) ?? "unknown"] ?? STATUS_STYLE.unknown
   const live = ws.status === "connected" || ws.status === "local"
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[11px] ${s.text}`}
-      style={{ background: "rgba(0,0,0,0.2)" }}>
-      <span className={`size-2 rounded-full ${s.dot} ${live ? "animate-pulse" : ""}`} />
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", s.tone)}>
+      <span
+        aria-hidden
+        className={cn(
+          "relative inline-block size-2 shrink-0 rounded-full",
+          s.filled ? "bg-current" : "border border-current",
+        )}
+      >
+        {live && <span className="absolute inset-0 animate-lamp rounded-full bg-current" />}
+      </span>
       {s.label}
-      {ws.ping_ms != null && <span className="text-ink-4">{Math.round(ws.ping_ms)}ms</span>}
+      {ws.ping_ms != null && (
+        <span className="text-ink-3 tabular">{Math.round(ws.ping_ms)}ms</span>
+      )}
     </span>
   )
 }
@@ -258,89 +292,108 @@ function WorkspaceForm({
     } catch (e) { setErr((e as Error).message); setBusy(false) }
   }
 
-  const inpCls = "border-[var(--color-line)] bg-[var(--color-bg)]"
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-sm font-semibold">{editing ? `Edit workspace ${initial?.id}` : "New workspace"}</h2>
+    <DetailSheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={editing ? `Edit ${initial?.id}` : "New workspace"}
+      description="A host that owns source code, and the directory agents work in."
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => { e.preventDefault(); void submit() }}
+      >
         {!editing && (
-          <>
-            <Label className="mt-3 block text-xs text-ink-3">ID</Label>
-            <Input value={id} onChange={(e) => setId(e.target.value)} placeholder="mac-dev" className={`mt-1 ${inpCls}`} />
-          </>
+          <Field label="ID" htmlFor="ws-id">
+            <Input
+              id="ws-id" value={id} onChange={(e) => setId(e.target.value)}
+              placeholder="mac-dev" autoFocus
+            />
+          </Field>
         )}
-        <Label className="mt-3 block text-xs text-ink-3">Transport</Label>
-        <Select value={transport} onValueChange={pickTransport}>
-          <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-            <SelectItem value="local" className="text-sm">Local (VPS ini)</SelectItem>
-            <SelectItem value="ssh" className="text-sm">SSH (remote host)</SelectItem>
-          </SelectContent>
-        </Select>
+        <Field label="Transport" htmlFor="ws-transport">
+          <Select value={transport} onValueChange={pickTransport}>
+            <SelectTrigger id="ws-transport" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="local">Local (this machine)</SelectItem>
+              <SelectItem value="ssh">SSH (remote host)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
         {transport === "ssh" && (
-          <>
-            <Label className="mt-3 block text-xs text-ink-3">SSH host</Label>
+          <Field label="SSH host" htmlFor="ws-host">
             <Select value={host} onValueChange={pickHost}>
-              <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
-                <SelectValue placeholder="pilih host" />
+              <SelectTrigger id="ws-host" className="w-full">
+                <SelectValue placeholder="Choose a host" />
               </SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+              <SelectContent>
                 {Object.keys(SSH_PRESETS).map((h) => (
-                  <SelectItem key={h} value={h} className="text-sm">{h}</SelectItem>
+                  <SelectItem key={h} value={h}>{h}</SelectItem>
                 ))}
-                {host && !SSH_PRESETS[host] && <SelectItem value={host} className="text-sm">{host}</SelectItem>}
+                {host && !SSH_PRESETS[host] && <SelectItem value={host}>{host}</SelectItem>}
               </SelectContent>
             </Select>
-          </>
+          </Field>
         )}
-        <Label className="mt-3 block text-xs text-ink-3">Name</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mac Dev" className={`mt-1 ${inpCls}`} />
-        <Label className="mt-3 block text-xs text-ink-3">OS</Label>
-        <Select value={os || "__auto"} onValueChange={(v) => setOs(v === "__auto" ? "" : v)}>
-          <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-            {OS_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-sm">{o.label}</SelectItem>
-            ))}
-            <SelectItem value="__auto" className="text-sm text-ink-3">Auto-detect (dari host/path)</SelectItem>
-          </SelectContent>
-        </Select>
-        <Label className="mt-3 block text-xs text-ink-3">Path (di host)</Label>
-        <Input value={path} onChange={(e) => setPath(e.target.value)}
-          placeholder={transport === "ssh" ? SSH_PRESETS[host]?.path ?? "/Users/... atau C:\\..." : "/home/adityahimaone/apps"}
-          className={`mt-1 ${inpCls}`} />
-        <Label className="mt-3 block text-xs text-ink-3">Prequest / constraints</Label>
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={3}
-          placeholder="Tech stack, requirements, limitasi agent di workspace ini… (mis. 'Next.js 15 + Tailwind, no new deps, pnpm only')"
-          className={`mt-1 min-h-0 resize-y text-sm ${inpCls}`}
-        />
-        <Label className="mt-3 block text-xs text-ink-3">Kind</Label>
-        <Select value={kind} onValueChange={setKind}>
-          <SelectTrigger className={`mt-1 w-full text-sm data-[size=default]:h-9 ${inpCls}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-            <SelectItem value="dir" className="text-sm">dir</SelectItem>
-            <SelectItem value="git" className="text-sm">git</SelectItem>
-            <SelectItem value="scratch" className="text-sm">scratch</SelectItem>
-          </SelectContent>
-        </Select>
-        {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={busy} onClick={submit} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
-            {busy ? "…" : editing ? "Save" : "Create"}
+        <Field label="Name" htmlFor="ws-name">
+          <Input id="ws-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mac Dev" />
+        </Field>
+        <Field label="Path" htmlFor="ws-path">
+          <Input
+            id="ws-path" value={path} onChange={(e) => setPath(e.target.value)}
+            placeholder="/Users/you/dev/project" className="font-mono text-xs"
+          />
+        </Field>
+        <Field label="OS" htmlFor="ws-os">
+          <Select value={os} onValueChange={setOs}>
+            <SelectTrigger id="ws-os" className="w-full">
+              <SelectValue placeholder="Choose" />
+            </SelectTrigger>
+            <SelectContent>
+              {OS_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Kind" htmlFor="ws-kind">
+          <Select value={kind} onValueChange={setKind}>
+            <SelectTrigger id="ws-kind" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dir">Directory</SelectItem>
+              <SelectItem value="repo">Repository</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Note" htmlFor="ws-note">
+          <Textarea
+            id="ws-note" value={note} onChange={(e) => setNote(e.target.value)}
+            rows={3} placeholder="Optional"
+          />
+        </Field>
+        {err && <p className="text-sm text-danger-text" role="alert">{err}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="signal" loading={busy}>
+            {editing ? "Save changes" : "Add workspace"}
           </Button>
         </div>
-      </div>
+      </form>
+    </DetailSheet>
+  )
+}
+
+function Field({
+  label, htmlFor, children,
+}: { label: string; htmlFor: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
     </div>
   )
 }
@@ -351,18 +404,23 @@ function LogsDialog({ ws, onClose }: { ws: Workspace; onClose: () => void }) {
     queryFn: () => api<string[]>(`/api/workspaces/${ws.id}/logs`),
   })
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="flex max-h-[70vh] w-full max-w-2xl flex-col rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Logs — {ws.name}</h2>
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={onClose}>✕</Button>
-        </div>
-        <Separator className="my-2" />
-        <pre className="flex-1 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-ink-2">
-          {logs.isLoading ? "Loading…" : logs.data?.length ? logs.data.join("\n") : "No activity matched this workspace."}
-        </pre>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Logs</DialogTitle>
+          <DialogDescription className="font-mono text-2xs">{ws.name}</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <pre className="max-h-[60vh] overflow-auto rounded-control border border-line bg-well p-3 font-mono text-2xs leading-relaxed whitespace-pre-wrap break-all text-ink-2">
+            {logs.isLoading
+              ? "Loading…"
+              : logs.data?.length
+                ? logs.data.join("\n")
+                : "No activity for this workspace yet."}
+          </pre>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -389,38 +447,135 @@ function FileBrowser({ ws }: { ws: Workspace }) {
   function parentPath() { return path.split(/[\\/]/).slice(0, -1).join("/") || "." }
   const entries = files.data?.files ?? []
 
-  return <>
-    <div className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-2.5">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-inset)]"><Folder className="size-3.5 text-[var(--color-accent)]" /></div>
-      <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">Workspace files</p><p className="truncate text-[10px] text-ink-4">Browse, preview, edit, and download files</p></div>
-      <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 text-[11px]" onClick={() => setOpenDialog(true)}><FolderOpen className="size-3.5" /> Open files</Button>
-    </div>
-    {openDialog && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-5" onClick={() => setOpenDialog(false)}>
-      <section role="dialog" aria-modal="true" aria-labelledby={`workspace-files-title-${ws.id}`} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] shadow-2xl sm:max-h-[min(860px,calc(100dvh-2.5rem))]" onClick={(event) => event.stopPropagation()}>
-        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur-xl">
-          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[.14em] text-ink-4">Workspace files</p><h2 id={`workspace-files-title-${ws.id}`} className="truncate text-sm font-semibold text-ink">{ws.name}</h2></div>
-          <span className="hidden min-w-0 truncate font-mono text-[10px] text-ink-4 sm:block">{ws.path}</span>
-          <Button variant="outline" size="sm" aria-label="Close workspace files" className="ml-auto size-9 shrink-0 p-0" onClick={() => setOpenDialog(false)}><X className="size-4" /></Button>
-        </header>
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,250px)_minmax(0,1fr)] md:overflow-hidden">
-          <aside className="min-h-0 border-b border-[var(--color-line)] bg-[var(--color-bg)]/45 p-3 md:overflow-y-auto md:border-b-0 md:border-r" aria-label="File tree">
-            <div className="mb-2 flex items-center justify-between gap-2"><span className="truncate font-mono text-[10px] text-ink-4">{path}</span>{files.isFetching && <Loader2 className="size-3 shrink-0 animate-spin text-ink-4" />}</div>
-            <div className="space-y-0.5" role="tree" aria-label={`Files in ${ws.name}`}>
-              {path !== "." && <button type="button" role="treeitem" className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[11px] text-ink-4 hover:bg-[var(--color-inset)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]" onClick={() => setPath(parentPath())}><ChevronRight className="size-3 -rotate-180" /><span>Parent folder</span></button>}
-              {entries.map((file) => <button type="button" role="treeitem" key={file.path} aria-selected={selected?.path === file.path} className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[11px] transition-colors ${selected?.path === file.path ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]" : "text-ink-3 hover:bg-[var(--color-inset)] hover:text-ink"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]`} onClick={() => open(file)}>{file.is_dir ? <Folder className="size-3.5 shrink-0 text-[var(--color-info)]" /> : <FileCode2 className="size-3.5 shrink-0 text-ink-4" />}<span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>{file.is_dir && <ChevronRight className="size-3 shrink-0 text-ink-4" />}</button>)}
-              {files.isLoading && <p className="px-2 py-3 text-[11px] text-ink-4">Loading files…</p>}
-              {!files.isLoading && !entries.length && !files.isError && <p className="px-2 py-3 text-[11px] text-ink-4">This folder is empty.</p>}
-              {files.isError && <p className="break-words px-2 py-3 text-[10px] text-red-300">{(files.error as Error).message}</p>}
-            </div>
-          </aside>
-          <main className="flex min-h-0 flex-col bg-[var(--color-surface)] p-3 sm:p-4">
-            <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-[var(--color-line)] pb-3"><FileCode2 className="size-4 shrink-0 text-[var(--color-accent)]" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">{selected?.path ?? "No file selected"}</span>{selected && !selected.is_dir && <a className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-accent)] hover:bg-[var(--color-accent-tint)]" href={downloadWorkspaceFileURL(ws.id, selected.path)}><Download className="size-3.5" /> Download</a>}</div>
-            <div className="min-h-0 flex-1 pt-3">{preview.data?.is_binary ? <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-ink-4">Binary file · preview unavailable</div> : selected ? <div className="flex h-full min-h-64 flex-col gap-2"><Textarea value={preview.data?.body ?? draft} onChange={(e) => setDraft(e.target.value)} className="min-h-0 flex-1 resize-none font-mono text-[11px] leading-relaxed" placeholder="Loading preview…" /><div className="flex shrink-0 justify-end"><Button size="sm" className="min-h-9" onClick={() => save.mutate()} disabled={save.isPending || !preview.data}>{save.isPending ? "Saving…" : "Save changes"}</Button></div></div> : <div className="flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed border-[var(--color-line)] text-xs text-ink-4">Select a file from the tree to preview it.</div>}</div>
-          </main>
+  return (
+    <>
+      {/* Trigger row */}
+      <div className="mt-2 flex items-center gap-2 rounded-control border border-line bg-surface p-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-well">
+          <Folder className="size-3.5 text-ink-3" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink">Files</p>
+          <p className="truncate text-xs text-ink-3">Browse, preview, edit and download</p>
         </div>
-      </section>
-    </div>}
-  </>
+        <Button variant="secondary" size="sm" onClick={() => setOpenDialog(true)}>
+          <FolderOpen className="size-3.5" /> Open
+        </Button>
+      </div>
+
+      <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+        <DialogContent className="max-h-[min(860px,calc(100dvh-2.5rem))] max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{ws.name}</DialogTitle>
+            <DialogDescription className="font-mono text-2xs">{ws.path}</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="p-0">
+            <div className="grid max-h-[min(720px,calc(100dvh-12rem))] grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,250px)_minmax(0,1fr)] md:overflow-hidden">
+              <div className="min-h-0 border-b border-line bg-well p-3 md:overflow-y-auto md:border-r md:border-b-0" aria-label="File tree">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="truncate font-mono text-2xs text-ink-3">{path}</span>
+                  {files.isFetching && <Loader2 className="size-3 shrink-0 animate-spin text-ink-3" />}
+                </div>
+                <div className="space-y-0.5" role="tree" aria-label={`Files in ${ws.name}`}>
+                  {path !== "." && (
+                    <button
+                      type="button"
+                      role="treeitem"
+                      onClick={() => setPath(parentPath())}
+                      className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-xs text-ink-3 outline-none hover:bg-raised hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                    >
+                      <ChevronRight className="size-3 -rotate-180" aria-hidden />
+                      <span>Parent folder</span>
+                    </button>
+                  )}
+                  {entries.map((file) => (
+                    <button
+                      type="button"
+                      role="treeitem"
+                      key={file.path}
+                      aria-selected={selected?.path === file.path}
+                      onClick={() => open(file)}
+                      className={cn(
+                        "flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-xs outline-none",
+                        "transition-colors focus-visible:ring-[3px] focus-visible:ring-focus/40",
+                        selected?.path === file.path
+                          ? "bg-accent-tint text-accent"
+                          : "text-ink-3 hover:bg-raised hover:text-ink",
+                      )}
+                    >
+                      {file.is_dir ? (
+                        <Folder className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+                      ) : (
+                        <FileCode2 className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+                      )}
+                      <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
+                      {file.is_dir && <ChevronRight className="size-3 shrink-0 text-ink-4" aria-hidden />}
+                    </button>
+                  ))}
+                  {files.isLoading && <p className="px-2 py-3 text-xs text-ink-3">Loading files…</p>}
+                  {!files.isLoading && !entries.length && !files.isError && (
+                    <p className="px-2 py-3 text-xs text-ink-3">This folder is empty.</p>
+                  )}
+                  {files.isError && (
+                    <p className="break-words px-2 py-3 text-xs text-danger-text">
+                      {(files.error as Error).message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-col p-3">
+                <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-line pb-3">
+                  <FileCode2 className="size-4 shrink-0 text-ink-3" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink">
+                    {selected?.path ?? "No file selected"}
+                  </span>
+                  {selected && !selected.is_dir && (
+                    <a
+                      href={downloadWorkspaceFileURL(ws.id, selected.path)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-control px-2 text-xs text-accent hover:bg-accent-tint"
+                    >
+                      <Download className="size-3.5" aria-hidden /> Download
+                    </a>
+                  )}
+                </div>
+                <div className="min-h-0 flex-1 pt-3">
+                  {preview.data?.is_binary ? (
+                    <div className="flex h-full min-h-40 items-center justify-center rounded-control border border-dashed border-line text-xs text-ink-3">
+                      Binary file, preview unavailable
+                    </div>
+                  ) : selected ? (
+                    <div className="flex h-full min-h-64 flex-col gap-2">
+                      <Textarea
+                        value={preview.data?.body ?? draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        className="min-h-0 flex-1 resize-none font-mono text-2xs leading-relaxed"
+                        placeholder="Loading preview…"
+                      />
+                      <div className="flex shrink-0 justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => save.mutate()}
+                          loading={save.isPending}
+                          disabled={save.isPending || !preview.data}
+                        >
+                          Save changes
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-40 items-center justify-center rounded-control border border-dashed border-line text-xs text-ink-3">
+                      Select a file to preview it.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export default function WorkspacesPage() {
@@ -430,6 +585,8 @@ export default function WorkspacesPage() {
   const [pinging, setPinging] = useState<string | null>(null)
   const [codeGraphOpen, setCodeGraphOpen] = useState<Record<string, boolean>>({})
   const [platform, setPlatform] = useState<PlatformKey | "all">("all")
+  const [q, setQ] = useState("")
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null)
   const { pingMs } = useSettings()
   const [autoPing, setAutoPing] = useState(true)
   const pingingRef = useRef(false)
@@ -452,7 +609,27 @@ export default function WorkspacesPage() {
     for (const [key, list] of allGroups) counts.set(key, list.length)
     return counts
   }, [allGroups])
-  const visibleCount = platformGroups.reduce((n, [, list]) => n + list.length, 0)
+  // Search narrows within the platform filter, so the two compose rather than
+  // fighting. Grouping still runs on the full list so headers keep their counts.
+  const needle = q.trim().toLowerCase()
+  const shownGroups = useMemo(
+    () =>
+      platformGroups
+        .map(([key, list]): [PlatformKey, Workspace[]] => [
+          key,
+          needle === ""
+            ? list
+            : list.filter(
+                (w) =>
+                  w.name.toLowerCase().includes(needle) ||
+                  w.path.toLowerCase().includes(needle) ||
+                  (w.host ?? "").toLowerCase().includes(needle),
+              ),
+        ])
+        .filter(([, list]) => list.length > 0),
+    [platformGroups, needle],
+  )
+  const shownList = useMemo(() => shownGroups.flatMap(([, list]) => list), [shownGroups])
 
   // background auto-ping: probe all workspaces every 30s without user trigger,
   // then merge statuses into the query cache
@@ -522,171 +699,133 @@ export default function WorkspacesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-4">
-      <div className="min-w-0">
-        <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Execution</p>
-        <h1 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h1>
-        <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-          Sumber: <code className="text-ink-3">~/.hermes/workspaces.yaml</code> — status ping live tiap kali lu buka halaman.
-        </p>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Workspaces"
+        description="Where agents run. Loaded from ~/.hermes/workspaces.yaml."
+        actions={
+          <>
+            <Button
+              variant={autoPing ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setAutoPing((v) => !v)}
+              aria-pressed={autoPing}
+              title="Ping every workspace on a timer"
+            >
+              <Radio className={cn("size-3.5", autoPing && "animate-lamp")} />
+              Auto ping
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => void pingAll()} loading={pinging === "__all__"}>
+              <RefreshCw className="size-3.5" /> Ping all
+            </Button>
+            <Button variant="signal" size="sm" onClick={() => setForm({ open: true, edit: null })}>
+              <Plus className="size-3.5" /> New workspace
+            </Button>
+          </>
+        }
+      >
+        <FilterBar
+          query={q}
+          onQueryChange={setQ}
+          placeholder="Search workspaces"
+          shown={shownList.length}
+          total={workspaces.data?.length ?? 0}
+        >
+          <FilterChip
+            label="Platform"
+            value={platform}
+            onChange={(v) => setPlatform(v as PlatformKey | "all")}
+            options={[
+              { value: "all", label: `All (${workspaces.data?.length ?? 0})` },
+              ...PLATFORM_ORDER.map((k) => ({
+                value: k as string,
+                label: `${PLATFORM_META[k].label} (${platformCounts.get(k) ?? 0})`,
+              })),
+            ]}
+          />
+        </FilterBar>
+      </PageHeader>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-4">Filter</span>
-          <div className="h-4 w-px bg-[var(--color-line)]" aria-hidden />
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter workspaces per OS">
-            {(["all", ...PLATFORM_ORDER] as const).map((key) => {
-              const count = key === "all" ? (workspaces.data?.length ?? 0) : (platformCounts.get(key) ?? 0)
-              const meta = key === "all" ? null : PLATFORM_META[key]
-              const Icon = meta?.Icon
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {workspaces.isLoading ? (
+          <LoadingState label="Loading workspaces" />
+        ) : workspaces.isError ? (
+          <EmptyState
+            title="Couldn't load workspaces"
+            hint={(workspaces.error as Error).message}
+            action={<Button variant="secondary" onClick={() => void workspaces.refetch()}>Retry</Button>}
+          />
+        ) : !shownList.length ? (
+          <EmptyState
+            title={
+              (workspaces.data?.length ?? 0) > 0
+                ? `No workspaces match "${q.trim()}"`
+                : platform !== "all"
+                  ? `No ${PLATFORM_META[platform]?.label ?? platform} workspaces`
+                  : "No workspaces yet"
+            }
+            hint={
+              (workspaces.data?.length ?? 0) > 0 || platform !== "all"
+                ? undefined
+                : "Add a host that owns your source code so agents can run there."
+            }
+            action={
+              (workspaces.data?.length ?? 0) > 0 || platform !== "all" ? undefined : (
+                <Button variant="signal" onClick={() => setForm({ open: true, edit: null })}>
+                  New workspace
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
+            {shownGroups.map(([key, list]) => {
+              const meta = PLATFORM_META[key] ?? PLATFORM_META.other
               return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={platform === key}
-                  onClick={() => setPlatform(key)}
-                  className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
-                    platform === key
-                      ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                      : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
-                  }`}
-                >
-                  {Icon ? <Icon className="size-3" aria-hidden /> : null}
-                  {meta ? meta.label : "Semua"}
-                  <span className="font-mono text-[10px] opacity-70">{count}</span>
-                </button>
+                <section key={key} className="flex flex-col gap-3">
+                  <SectionHeader
+                    title={meta.label}
+                    description={`${list.length} ${list.length === 1 ? "host" : "hosts"}`}
+                  />
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {list.map((ws) => (
+                      <WorkspaceCard
+                        key={ws.id}
+                        ws={ws}
+                        pingPoints={pingHistories.data?.[ws.id]}
+                        pinging={pinging === ws.id}
+                        anyPinging={pinging != null}
+                        codeGraphOpen={!!codeGraphOpen[ws.id]}
+                        onToggleCodeGraph={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))}
+                        onPing={() => void pingOne(ws)}
+                        onEdit={() => setForm({ open: true, edit: ws })}
+                        onLogs={() => setLogsFor(ws)}
+                        onDelete={() => setPendingDelete(ws)}
+                      />
+                    ))}
+                  </div>
+                </section>
               )
             })}
           </div>
-          <span className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
-            {visibleCount === (workspaces.data?.length ?? 0) ? `${workspaces.data?.length ?? 0}` : `${visibleCount}/${workspaces.data?.length ?? 0}`}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden h-4 w-px bg-[var(--color-line)] sm:block" aria-hidden />
-          <Button
-            variant={autoPing ? "default" : "outline"} size="sm"
-            onClick={() => setAutoPing((v) => !v)}
-            className={autoPing ? "bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90" : ""}
-            title="Auto ping semua workspace tiap 30 detik"
-          >
-            <Radio className={`size-3.5 ${autoPing ? "animate-pulse" : ""}`} /> Auto 30s
-          </Button>
-          <Button variant="outline" size="sm" onClick={pingAll} disabled={pinging != null}>
-            <RefreshCw className={`size-3.5 ${pinging === "__all__" ? "animate-spin" : ""}`} /> Ping all
-          </Button>
-          <Button size="sm" onClick={() => setForm({ open: true, edit: null })} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
-            <Plus className="size-3.5" /> New workspace
-          </Button>
-        </div>
+        )}
       </div>
 
-      {workspaces.isLoading ? (
-        <LoadingState label="Memuat workspaces" />
-      ) : !platformGroups.length ? (
-        <p className="mt-4 text-sm text-ink-4">
-          {workspaces.data?.length
-            ? `Tidak ada workspace untuk platform "${platform === "all" ? "semua" : platform}".`
-            : "Belum ada workspace. Tambah dulu."}
-        </p>
-      ) : (
-        <div className="mt-4 flex flex-col gap-5">
-          {platformGroups.map(([key, list]) => {
-            const meta = PLATFORM_META[key] ?? PLATFORM_META.other
-            const GroupIcon = meta.Icon
-            return (
-            <section key={key}>
-              <div className="mb-2 flex items-center gap-2">
-                <GroupIcon className="size-3.5 text-[var(--color-accent)]" aria-hidden />
-                <h2 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">{meta.label}</h2>
-                <span className="font-mono text-[10px] text-ink-4">{list.length}</span>
-                <div className="h-px flex-1 bg-[var(--color-line)]" />
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {list.map((ws) => {
-            const plat = platformBadge(ws)
-            const isSsh = !!ws.host && ws.host !== "localhost" && ws.host !== "127.0.0.1"
-            const live = ws.status === "connected" || ws.status === "local"
-            return (
-            <Card key={ws.id} className="decorative-card border-[var(--color-line)] bg-[var(--color-surface)]">
-              <CardContent className="p-3.5">
-                <div className="flex items-start gap-2">
-                  <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-inset)]">
-                    <FolderGit2 className="size-4 text-[var(--color-accent)]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="truncate text-sm font-semibold">{ws.name}</h3>
-                      <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-4">{ws.id}</span>
-                      {isSsh && (
-                        <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-[10px] text-violet-300">
-                          ssh
-                        </Badge>
-                      )}
-                      <Badge variant="outline" className={`gap-1 text-[10px] ${plat.tint}`}>
-                        <plat.Icon className="size-3" /> {plat.label}
-                      </Badge>
-                    </div>
-                    <p className="mt-0.5 truncate font-mono text-[11px] text-ink-3" title={ws.path}>{ws.path}</p>
-                    <p className="mt-0.5 text-[11px] text-ink-4">
-                      host: <span className="font-mono">{ws.host || "localhost"}</span> · kind: {ws.kind}
-                    </p>
-                    {ws.note && (
-                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words rounded border border-[var(--color-line)]/60 bg-[var(--color-bg)] px-2 py-1 text-[10px] leading-relaxed text-ink-3" title={ws.note}>
-                        {ws.note}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <StatusChip ws={ws} />
-                  {ws.status_message && (
-                    <span className="max-w-48 truncate text-[10px] text-ink-4" title={ws.status_message}>
-                      {ws.status_message}
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-3">
-                  <EkgTrace points={pingHistories.data?.[ws.id]} live={live} ok={live} height={72} />
-                </div>
-
-                <CodeGraphPanel ws={ws} open={!!codeGraphOpen[ws.id]} onToggle={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))} />
-
-                <FileBrowser ws={ws} />
-
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <Button variant="outline" size="sm" onClick={() => pingOne(ws)} disabled={pinging != null}>
-                    {pinging === ws.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} Ping
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setLogsFor(ws)}>
-                    <ScrollText className="size-3.5" /> Logs
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setForm({ open: true, edit: ws })}>
-                    <Pencil className="size-3.5" /> Edit
-                  </Button>
-                  <Button
-                    variant="outline" size="sm"
-                    className="ml-auto border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                    onClick={() => { if (confirm(`Delete workspace "${ws.name}"?`)) del.mutate(ws.id) }}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-                {del.isError && <p className="mt-2 text-xs text-red-400">{(del.error as Error).message}</p>}
-              </CardContent>
-            </Card>
-            )
-          })}
-              </div>
-            </section>
-            )
-          })}
-        </div>
-      )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title="Delete workspace"
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete.name}"? Agents running on this host lose their working directory. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete workspace"
+        busy={del.isPending}
+        onConfirm={() => {
+          if (pendingDelete) del.mutate(pendingDelete.id)
+        }}
+      />
 
       {form.open && (
         <WorkspaceForm
@@ -697,5 +836,95 @@ export default function WorkspacesPage() {
       )}
       {logsFor && <LogsDialog ws={logsFor} onClose={() => setLogsFor(null)} />}
     </div>
+  )
+}
+
+/**
+ * One workspace. Platform, transport and OS are plain text meta rather than
+ * three separately tinted badges: they are context, not state, and colouring
+ * them put three competing hues on every card.
+ */
+function WorkspaceCard({
+  ws,
+  pingPoints,
+  pinging,
+  anyPinging,
+  codeGraphOpen,
+  onToggleCodeGraph,
+  onPing,
+  onEdit,
+  onLogs,
+  onDelete,
+}: {
+  ws: Workspace
+  pingPoints?: PingPoint[]
+  pinging: boolean
+  anyPinging: boolean
+  codeGraphOpen: boolean
+  onToggleCodeGraph: () => void
+  onPing: () => void
+  onEdit: () => void
+  onLogs: () => void
+  onDelete: () => void
+}) {
+  const plat = platformBadge(ws)
+  const isSsh = !!ws.host && ws.host !== "localhost" && ws.host !== "127.0.0.1"
+  const live = ws.status === "connected" || ws.status === "local"
+
+  return (
+    <EntryCard density="identity" title={ws.name} state={<StatusChip ws={ws} />}>
+      <div className="flex items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-well">
+          <FolderGit2 className="size-4 text-ink-3" aria-hidden />
+        </span>
+        <p className="min-w-0 flex-1 truncate text-xs text-ink-3">{plat.label} · {isSsh ? `ssh ${ws.host}` : "local"}</p>
+      </div>
+
+      {/* Path truncates from the left: the tail is the part you read. */}
+      <p
+        className="truncate text-right font-mono text-2xs text-ink-3"
+        title={ws.path}
+        style={{ direction: "rtl" }}
+      >
+        <span dir="ltr">{ws.path}</span>
+      </p>
+
+      {/* A failure message is worth showing in full. A healthy one is noise, so
+          it stays in the tooltip. */}
+      {ws.status_message && !live && (
+        <p className="text-xs text-danger-text" title={ws.status_message}>
+          {ws.status_message}
+        </p>
+      )}
+
+      <EkgTrace points={pingPoints} live={live} ok={live} height={64} />
+
+      <CodeGraphPanel ws={ws} open={codeGraphOpen} onToggle={onToggleCodeGraph} />
+      <FileBrowser ws={ws} />
+
+      <footer className="mt-1 flex flex-wrap items-center gap-1.5">
+        <Button variant="secondary" size="sm" onClick={onPing} loading={anyPinging} disabled={anyPinging && !pinging}>
+          <RefreshCw className="size-3.5" /> Ping
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onLogs}>
+          <ScrollText className="size-3.5" /> Logs
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onEdit}>
+          <Pencil className="size-3.5" /> Edit
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${ws.name}`} className="ml-auto">
+              <MoreHorizontal className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onDelete} className="text-danger-text focus:text-danger-text">
+              <Trash2 className="size-3.5" /> Delete workspace
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </footer>
+    </EntryCard>
   )
 }
