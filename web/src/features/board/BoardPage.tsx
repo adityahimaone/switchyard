@@ -11,6 +11,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { EmptyState } from "@/components/app/empty-state"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FilterChip } from "@/components/app/filter-bar"
 import { STATUS_LABEL } from "@/components/ui/status-lamp"
 import { cn } from "@/lib/utils"
@@ -36,12 +37,20 @@ interface SavedView {
  */
 export function BoardPage({
   slug,
+  boardName,
+  boards,
+  onSwitchBoard,
   onOpenDetail,
   onOpenTaskPage,
   onNewTask,
   boardMenu,
 }: {
   slug: string
+  /** Current board's display name, for the breadcrumb. */
+  boardName?: string
+  /** All boards, for the switcher. */
+  boards: { slug: string; name: string; icon?: string; archived?: boolean }[]
+  onSwitchBoard: (slug: string) => void
   onOpenDetail: (task: Task) => void
   onOpenTaskPage: (taskId: string) => void
   onNewTask: () => void
@@ -211,9 +220,52 @@ export function BoardPage({
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* The board is a single full-bleed surface, so the page title lives in the
-          header. This h1 keeps the document outline correct without adding a
-          second visible title. */}
+          breadcrumb bar. This h1 keeps the document outline correct without
+          adding a second visible title. */}
       <h1 className="sr-only">Board</h1>
+
+      {/* Page header: title, description and actions, matching the reference. */}
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-4 py-5 md:px-6">
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-semibold text-ink">
+            {boardName ? `${boardName} board` : "Board"}
+          </h2>
+          <p className="mt-1 text-sm text-ink-3">
+            Queue, dispatch and review for this board.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Select value={slug} onValueChange={onSwitchBoard}>
+            <SelectTrigger size="sm" className="h-8 w-auto gap-1.5" aria-label="Switch board">
+              <SelectValue placeholder="Board" />
+            </SelectTrigger>
+            <SelectContent>
+              {boards.filter((b) => !b.archived).map((b) => (
+                <SelectItem key={b.slug} value={b.slug}>
+                  {b.icon ? `${b.icon} ` : ""}{b.name}
+                </SelectItem>
+              ))}
+              {boards.some((b) => b.archived) && (
+                <>
+                  <SelectItem value="__archived" disabled className="text-2xs">
+                    Archived
+                  </SelectItem>
+                  {boards.filter((b) => b.archived).map((b) => (
+                    <SelectItem key={b.slug} value={b.slug}>
+                      {b.name} (archived)
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+            </SelectContent>
+          </Select>
+          {boardMenu}
+          <Button size="sm" variant="signal" onClick={onNewTask}>
+            <Plus className="size-3.5" /> New task
+          </Button>
+        </div>
+      </div>
+
       <div
         role="search"
         aria-label="Filter tasks"
@@ -293,10 +345,6 @@ export function BoardPage({
             aria-pressed={bulkMode}
           >
             <CheckSquare className="size-3.5" /> Bulk
-          </Button>
-          {boardMenu}
-          <Button size="sm" variant="signal" onClick={onNewTask}>
-            <Plus className="size-3.5" /> New task
           </Button>
         </div>
       </div>

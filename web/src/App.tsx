@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AppShell } from "@/components/app/app-shell"
 import { AppHeader } from "@/components/app/app-header"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
 import { BoardPage } from "./features/board/BoardPage"
 import { NAV } from "./components/app/app-sidebar"
@@ -123,14 +122,9 @@ export default function App() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks", slug] }),
   })
 
-  const active = (boards.data ?? []).filter((b) => !b.archived)
-  const archivedBoards = (boards.data ?? []).filter((b) => b.archived)
   const currentBoard = (boards.data ?? []).find((b) => b.slug === slug) ?? null
 
-  const breadcrumb =
-    detailPage
-      ? { title: detailPage.title }
-      : { title: page === "board" ? "Task Board" : labelForPage(page) }
+  const breadcrumb = page === "board" ? ["Board", currentBoard?.name ?? slug] : [labelForPage(page)]
 
   function handleSelectPage(p: Page) {
     if (p === "board") {
@@ -155,31 +149,6 @@ export default function App() {
       go(pagePath(p, slug))
     }
   }
-
-  const boardSwitcher = page === "board" ? (
-    <Select value={slug} onValueChange={(next) => { setSlug(next); go(pagePath("board", next)) }}>
-      <SelectTrigger
-        size="sm"
-        className="h-8 max-w-44 gap-1.5 border-[var(--color-line)] bg-[var(--color-bg)] text-xs"
-        aria-label="Switch board"
-      >
-        <SelectValue placeholder="board" />
-      </SelectTrigger>
-      <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-        {active.map((b) => (
-          <SelectItem key={b.slug} value={b.slug} className="text-xs">
-            {b.icon ? `${b.icon} ` : ""}{b.name}
-          </SelectItem>
-        ))}
-        {active.length > 0 && archivedBoards.length > 0 && <SelectItem value="__sep" disabled className="text-[10px]">- archived -</SelectItem>}
-        {archivedBoards.map((b) => (
-          <SelectItem key={b.slug} value={b.slug} className="text-xs text-ink-4">
-            {b.icon ? `${b.icon} ` : ""}{b.name} (archived)
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  ) : null
 
   const boardMenuItems = (
     <>
@@ -212,8 +181,7 @@ export default function App() {
       onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
       header={
         <AppHeader
-          title={breadcrumb.title}
-          context={boardSwitcher}
+          segments={breadcrumb}
           right={<NotificationCenter />}
           onOpenPalette={() => setPaletteOpen(true)}
         />
@@ -237,6 +205,9 @@ export default function App() {
           {page === "board" && !detailId && (
             <BoardPage
               slug={slug}
+              boardName={currentBoard?.name}
+              boards={boards.data ?? []}
+              onSwitchBoard={(next) => { setSlug(next); go(pagePath("board", next)) }}
               onOpenDetail={setDetail}
               onOpenTaskPage={(id) => { setDetail(null); setDetailId(id); go(pagePath("board", slug, id)) }}
               onNewTask={() => setCreating(true)}

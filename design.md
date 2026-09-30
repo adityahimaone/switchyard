@@ -182,42 +182,49 @@ The 250px sidebar collapses to 56px and remembers the choice. Content shifts,
 it never sits underneath.
 
 ```
-┌──────────────┬──────────────────────────────────────────────────────────┐
-│ ◆ Switchyard ⇥│ ⌘ Overview / Board                              ⌘   🔔  │
-├──────────────┤──────────────────────────────────────────────────────────┤
-│ [ Search…  K ]│ Board · Local ▾                                        │
-│              │ Search tasks…   Status ▾  Agent ▾   6 of 6   [ New task ]│
-│ WORK         │                                                          │
-│ ▦ Board      │  ● Ready 2   ● Running 0   ● Blocked 2   ● Review 1     │
-│ ▤ Chat       │  ━━━━━━━━   ━━━━━━━━━━   ━━━━━━━━━━   ━━━━━━━━━━        │
-│ ◈ Flow map   │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐         │
-│              │  │ card   │  │ card   │  │ card   │  │ card   │         │
-│ AGENTS       │                                                          │
-│ ...          │                                                          │
-│              │                                                          │
-├──────────────┤──────────────────────────────────────────────────────────┤
-│ ⚙ Settings   │                                                          │
-│ ⏻ Sign out   │                                                          │
-└──────────────┴──────────────────────────────────────────────────────────┘
+┌────────────────┬──────────────────────────────────────────────────────────┐
+│ ◆ Switchyard ⇤ │ ▦ Board / Local                             ⌘   🔔     │
+├────────────────┼──────────────────────────────────────────────────────────┤
+│ [ Search…    K]│ Local board                          [Local ▾][⋯][New]  │
+│                │ Queue, dispatch and review for this board.               │
+│ WORK           ├──────────────────────────────────────────────────────────┤
+│ ▦ Board        │ [Search tasks…][Status ▾][Agent ▾][Workspace ▾]  6 of 6  │
+│ ▤ Chat         │                                                          │
+│ ◈ Flow map     │  ● Ready 2   ● Running 0   ● Blocked 2   ● Review 1     │
+│                │  ━━━━━━━━   ━━━━━━━━━━   ━━━━━━━━━━   ━━━━━━━━━━        │
+│ AGENTS         │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐         │
+│ …              │  │ card   │  │ card   │  │ card   │  │ card   │         │
+│                │                                                          │
+├────────────────┼──────────────────────────────────────────────────────────┤
+│ ＋ New chat    │                                                          │
+│ ⚙ Settings     │                                                          │
+│ ⏻ Sign out     │                                                          │
+└────────────────┴──────────────────────────────────────────────────────────┘
 ```
 
-Sidebar, top to bottom:
+Sidebar, top to bottom. Geometry is measured from the reference, not estimated:
 
-1. **Header** — Switchyard logo (mark + wordmark) on the left, a collapse
-   toggle on the right.
-2. **Search** — 32px field with a `Kbd` hint, filters the nav items by name.
-3. **Groups** — uppercase 11px tracked labels (Work, Agents, Infrastructure,
-   Observe) in `ink-3`, items at 34px rows. Active item: `accent-tint` fill,
-   `accent` text, no left marker. Icons 16px, `ink-3` at rest, `accent` active.
-4. **Footer** — Settings and Sign out, separated by a 1px `line`.
+| Part | Spec |
+|---|---|
+| Width | 250px, collapses to 56px, state persisted |
+| Header | 52px, 1px bottom hairline. Logo lockup left, 24px collapse toggle right |
+| Search | 32px, `raised` fill, 1px `line`, `radius-card`, at x=12, 226px wide, with a `Kbd` hint |
+| Group label | 12px, uppercase, `ink-3`, `padding 0 10px` |
+| Group gap | 20px between groups |
+| Row | 32px, 1px bottom hairline (a list, not a gap-separated stack), `padding 0 10px`, 13px text |
+| Active row | `raised` fill, 1px `line`, `radius-card`, `shadow-xs`, accent text and icon. It lifts off the canvas rather than tinting it |
+| Footer | 1px top hairline, 32px rows: New chat, Settings, Sign out |
 
-The logo is `currentColor`, so it inherits the theme. It must remain legible in
-both themes at 24px; if the white-asset variant is used, the dark theme is the
-constraint.
+The logo is `currentColor`, so it inherits the theme. `Logo` is the full lockup
+(mark plus wordmark, viewBox `0 0 114 24`) and `LogoIcon` is the mark alone; they
+are alternatives, not siblings, because `hidden` is unconditional and cannot be
+overridden by a variant. The wordmark is legible at 18px on `canvas` in both
+themes.
 
-Top bar, 48px: breadcrumb on the left (`Overview / Board`), icon actions right
-(command palette, notifications). Page-scoped controls such as the board
-switcher sit in the page header, not the top bar.
+Top bar, 52px: a 16px `LayoutGrid` icon, then breadcrumb segments joined by
+`/` in `ink-3`, with the last segment in `ink`. Icon actions right (command
+palette, notifications). Page-scoped controls such as the board switcher sit in
+the page header, not the top bar.
 
 ### Board
 

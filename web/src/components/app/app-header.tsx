@@ -1,30 +1,38 @@
-import { Command } from "lucide-react"
+import { Command, LayoutGrid } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { ReactNode } from "react"
+import { cn } from "@/lib/utils"
 
 export function AppHeader({
-  title,
-  context,
+  /** Breadcrumb segments, e.g. ["Board", "Local"]. Joined with a slash. */
+  segments,
   right,
   onOpenPalette,
 }: {
-  /** Current page title, shown as plain text. Pages own their own h1. */
-  title: string
-  /** Page-scoped context rendered next to the title (e.g. the board switcher). */
-  context?: ReactNode
+  segments: string[]
   right?: ReactNode
   onOpenPalette?: () => void
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-4 md:px-6">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="min-w-0 truncate text-sm text-ink-2">{title}</span>
-        {context && <div className="flex min-w-0 shrink-0 items-center gap-2">{context}</div>}
-      </div>
+    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-canvas px-4 md:px-6">
+      <LayoutGrid className="size-4 shrink-0 text-ink-3" aria-hidden />
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-sm">
+        {segments.map((segment, i) => {
+          const last = i === segments.length - 1
+          return (
+            <span key={segment} className={cn("flex min-w-0 items-center gap-2", !last && "text-ink-3")}>
+              {i > 0 && <span aria-hidden className="text-ink-4">/</span>}
+              <span className={cn("truncate", last ? "font-medium text-ink" : "text-ink-3")}>
+                {segment}
+              </span>
+            </span>
+          )
+        })}
+      </nav>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         {onOpenPalette && (
           <Tooltip delayDuration={400}>
             <TooltipTrigger asChild>
