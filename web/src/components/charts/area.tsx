@@ -76,7 +76,7 @@ export interface AreaProps {
   dashFromIndex?: number;
   /** Dash pattern for the tail segment when `dashFromIndex` is set. Default: "6,4" */
   dashArray?: string;
-  /** Pulse stroke color while chart is loading. Default: var(--foreground) */
+  /** Pulse stroke color while chart is loading. Default: var(--c-ink-2) */
   loadingStroke?: string;
   /** Pulse stroke opacity while chart is loading. Default: 0.5 */
   loadingStrokeOpacity?: number;

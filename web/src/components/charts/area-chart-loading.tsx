@@ -14,11 +14,11 @@ import {
 import { Grid } from "./grid";
 
 const LOADING_DATA_KEY = DEFAULT_SKELETON_DATA_KEY;
-const DEFAULT_LOADING_STROKE = "var(--foreground)";
+const DEFAULT_LOADING_STROKE = "var(--c-ink-2)";
 const DEFAULT_LOADING_GRID_STROKE =
   "color-mix(in oklch, var(--chart-grid) 50%, transparent)";
 const DEFAULT_LOADING_GRID_SHIMMER_STROKE =
-  "color-mix(in oklch, var(--foreground) 68%, transparent)";
+  "color-mix(in oklch, var(--c-ink-2) 68%, transparent)";
 const DEFAULT_LOADING_STROKE_OPACITY = 0.5;
 
 export interface AreaChartLoadingProps {

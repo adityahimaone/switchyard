@@ -60,9 +60,12 @@ interface FluidTooltipRootContextValue {
 const GroupContext = createContext<FluidTooltipGroupContextValue | null>(null);
 const RootContext = createContext<FluidTooltipRootContextValue | null>(null);
 
+// `--foreground` and `--background` are shadcn names that this app never
+// declared, so both resolved to nothing. Point them at the tokens that actually
+// exist: an ink surface with a contrasting label is the intended pairing.
 const tokenStyle = {
-  "--fluid-tooltip-surface": "var(--foreground)",
-  "--fluid-tooltip-label": "var(--background)",
+  "--fluid-tooltip-surface": "var(--c-ink)",
+  "--fluid-tooltip-label": "var(--c-surface)",
   "--fluid-tooltip-shadow": "rgb(0 0 0 / 0.28)",
 } as CSSProperties;
 

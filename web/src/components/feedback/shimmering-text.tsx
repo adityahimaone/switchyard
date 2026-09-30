@@ -66,7 +66,9 @@ export function ShimmeringText({
     <motion.span
       className={cn(
         "inline-flex select-none items-center leading-none",
-        "[--color:var(--muted-foreground)] [--shimmering-color:var(--foreground)]",
+        // Both were shadcn names this app never declared, so the shimmer had no
+        // colours and fell back to inheriting whatever it sat next to.
+        "[--color:var(--c-ink-3)] [--shimmering-color:var(--c-ink)]",
         className
       )}
       {...props}
