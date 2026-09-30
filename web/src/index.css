@@ -210,6 +210,15 @@
   --c-st-done: #6ee7a0;
   --c-st-archived: #7b8090;
 
+  /* Frosted glass, dark. Higher tint opacity than light mode because a
+     translucent panel over a near-black canvas loses contrast faster than a
+     white one over a pale canvas — these are the values that keep body text
+     above 4.5:1 rather than the ones that look most dramatic. */
+  --glass-tint: rgb(26 31 42 / 0.72);
+  --glass-tint-strong: rgb(26 31 42 / 0.88);
+  --glass-edge: rgb(255 255 255 / 0.09);
+  --glass-edge-inner: rgb(255 255 255 / 0.06);
+
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
   --c-heat-2: #1d4ed8;
@@ -379,6 +388,24 @@
     0 0 0 1px rgb(25 28 33 / 0.08);
   --shadow-active: 0 4px 7px 0 rgb(0 0 0 / 0.04);
 
+  /* ---- frosted glass ----
+     One material, three strengths, so "how frosted is this" is a token choice
+     rather than a per-component decision.
+
+     The tint is opaque enough to keep text readable, and the blur sits on the
+     element's own `backdrop-filter` — never on content. Glass works because
+     there is something behind it to diffuse: the tinted canvas, the smoke wash,
+     the sidebar. Over a flat fill it would cost a compositing layer for nothing,
+     so opaque surfaces stay opaque. */
+  --glass-tint: rgb(255 255 255 / 0.72);
+  --glass-tint-strong: rgb(255 255 255 / 0.86);
+  --glass-blur: 20px;
+  --glass-blur-strong: 40px;
+  --glass-saturate: 1.6;
+  --glass-edge: rgb(255 255 255 / 0.7);
+  --glass-edge-inner: rgb(255 255 255 / 0.5);
+  /* The dark-mode values live on `.dark` below. */
+
   /* ---- motion ---- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
@@ -391,6 +418,51 @@
    1px and is why its UI looks lighter at the same contrast. */
 @utility hairline {
   border-width: 0.8px;
+}
+
+/* Frosted glass. Two strengths.
+ *
+ * `glass` is the default for cards and floating panels. `glass-strong` is for
+ * the topmost layers — dialogs, sheets, popovers — where content behind would
+ * otherwise be legible enough to read through the text.
+ *
+ * The inner highlight is what sells it: a 1px light line inset at the top edge,
+ * as though light is catching the rim. Without it the panel just looks grey. */
+@utility glass {
+  background-color: var(--glass-tint);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge-inner),
+    inset 0 0 0 0.8px var(--glass-edge);
+}
+
+@utility glass-strong {
+  background-color: var(--glass-tint-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge-inner),
+    inset 0 0 0 0.8px var(--glass-edge);
+}
+
+/* Glass that is also a card: the radius and float shadow come with it, so a
+ * panel cannot accidentally be glass and flat at the same time. */
+@utility glass-card {
+  background-color: var(--glass-tint);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-radius: var(--radius-card);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge-inner),
+    inset 0 0 0 0.8px var(--glass-edge),
+    var(--shadow-active);
+}
+
+/* A hairline border for glass, since a glass edge and an opaque `line` edge
+   read differently against a diffuse background. */
+@utility glass-hairline {
+  border: 0.8px solid var(--glass-edge);
 }
 
 /* Dot grid, for decorative areas only: empty states, sign-in, the flow map

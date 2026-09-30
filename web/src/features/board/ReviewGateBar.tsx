@@ -47,7 +47,7 @@ export function ReviewGateBar({
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <p className="text-sm text-ink-2 tabular">
           {files === 1 ? "1 file" : `${files} files`}
-          <span className="ml-2 text-success">+{added}</span>
+          <span className="ml-2 text-success-text">+{added}</span>
           <span className="ml-1 text-danger-text">−{removed}</span>
         </p>
 

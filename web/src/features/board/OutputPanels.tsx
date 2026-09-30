@@ -22,7 +22,7 @@ function useCopy(text: string) {
 const FG: Record<string, string> = {
   "30": "text-zinc-600",
   "31": "text-danger-text",
-  "32": "text-success",
+  "32": "text-success-text",
   "33": "text-warning",
   "34": "text-accent-text",
   "35": "text-fuchsia-400",
@@ -30,7 +30,7 @@ const FG: Record<string, string> = {
   "37": "text-zinc-200",
   "90": "text-zinc-500",
   "91": "text-danger-text",
-  "92": "text-success",
+  "92": "text-success-text",
   "93": "text-warning",
   "94": "text-accent-text",
   "95": "text-fuchsia-300",
@@ -119,7 +119,7 @@ function workerHint(line: string) {
   const l = line.toLowerCase()
   if (/(^|\W)(error|fail|failed|exception|panic|fatal)(\W|$)/.test(l) || line.includes("✗") || line.includes("×")) return "text-danger-text"
   if (/(warn|warning)/.test(l)) return "text-warning"
-  if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-success"
+  if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-success-text"
   if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-[var(--color-info)]"
   if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-ink-3"
   return ""
@@ -177,13 +177,13 @@ function resultLineClass(line: string) {
   const t = line.trim()
   if (!t) return "text-ink-3"
   if (/^#{1,6}\s/.test(t)) return "font-semibold text-ink"
-  if (/^(✔|✓|✅|🎉|✨)/.test(t) || (/success|completed|done/i.test(t) && /[✓✔]/.test(line))) return "text-success"
+  if (/^(✔|✓|✅|🎉|✨)/.test(t) || (/success|completed|done/i.test(t) && /[✓✔]/.test(line))) return "text-success-text"
   if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-danger-text"
   if (/^warn/i.test(t)) return "text-warning"
   if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-[var(--color-info)]"
   if (/^[\+\-]{3}|^diff --/.test(t)) {
     return t.startsWith("+")
-      ? "text-success"
+      ? "text-success-text"
       : t.startsWith("-")
         ? "text-danger-text"
         : "text-ink-3"
@@ -403,7 +403,7 @@ function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta
           case "text": {
             const isTick = event.text?.startsWith("✓")
             return (
-              <div key={idx} className={isTick ? "pl-4 font-mono text-meta text-success" : "pl-4"}>
+              <div key={idx} className={isTick ? "pl-4 font-mono text-meta text-success-text" : "pl-4"}>
                 <LogLine line={event.text ?? ""} />
               </div>
             )
@@ -604,7 +604,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             title="Copy worker log"
             className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
-            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3.5 text-success-text" /> : <Copy className="size-3.5" />}
           </button>
           <button
             type="button"
@@ -761,7 +761,7 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
             aria-label="Copy raw result"
             className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
-            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3.5 text-success-text" /> : <Copy className="size-3.5" />}
           </button>
         </div>
       </div>
@@ -854,7 +854,7 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
             aria-label="Copy result"
             className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
-            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3.5 text-success-text" /> : <Copy className="size-3.5" />}
           </button>
         </div>
       </div>

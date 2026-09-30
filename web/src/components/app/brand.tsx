@@ -2,31 +2,22 @@ import type { SVGProps } from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Switchyard brand mark: the mascot octopus, reduced so it still reads as an
- * octopus at 24px (the sidebar size). Drawn with a filled head and punched-out
- * eyes, plus four stroked tentacles with curled tips.
+ * Switchyard brand mark: a rounded "S" built as one continuous stroke, reading
+ * as both the initial and a track switch between two curves.
  *
- * On a 24x24 grid so it aligns with the 16px nav icons. It is not legible below
- * 20px, so it is never rendered smaller than that.
+ * Drawn as a stroked path rather than a filled outline so the terminals stay
+ * perfectly round and the weight stays even at any size. On a 64-unit grid with
+ * a 14.5 stroke, so it fills the box the way the reference mark does.
+ *
+ * Legible down to 16px, so it is used in the sidebar, on favicon and in empty
+ * states. `currentColor`, so one component serves every surface.
  */
 export const LogoMark = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden {...props}>
+  <svg viewBox="0 0 64 64" fill="none" aria-hidden {...props}>
     <path
-      d="M12 3.2c-4 0-7.2 2.8-7.2 6.3 0 .9.7 1.6 1.6 1.6h11.2c.9 0 1.6-.7 1.6-1.6 0-3.5-3.2-6.3-7.2-6.3Z"
-      fill="currentColor"
-    />
-    {/* Eyes are punched out with a mask rather than a hard-coded colour, so the
-        mark stays correct on the canvas, on a card, and on the sign-in surface. */}
-    <mask id="sy-eyes">
-      <rect width="24" height="24" fill="black" />
-      <circle cx="9.2" cy="8.6" r="1.6" fill="white" />
-      <circle cx="14.8" cy="8.6" r="1.6" fill="white" />
-    </mask>
-    <rect width="24" height="11.1" fill="currentColor" mask="url(#sy-eyes)" />
-    <path
-      d="M6.4 11.2c-.5 1.4-.4 2.6-.9 3.6-.5 1-.1 1.9.9 2.1.8.2 1.5-.3 1.6-1M17.6 11.2c.5 1.4.4 2.6.9 3.6.5 1 .1 1.9-.9 2.1-.8.2-1.5-.3-1.6-1M9.4 11.2c-.2 1.7-.2 3.2-.5 4.2-.3 1 .3 1.8 1.3 1.8.7 0 1.3-.5 1.4-1.1M14.6 11.2c.2 1.7.2 3.2.5 4.2.3 1-.3 1.8-1.3 1.8-.7 0-1.3-.5-1.4-1.1"
+      d="M48 18c-3.4-3.4-8.6-5-14.4-5-9.2 0-16.2 5-16.2 11.6 0 5.6 4.4 8.2 13 11 7.6 2.5 11.8 5 11.8 10.2 0 4.8-4.8 8-11.8 8-6 0-11-2-14.2-5.6"
       stroke="currentColor"
-      strokeWidth="1.9"
+      strokeWidth="14.5"
       strokeLinecap="round"
     />
   </svg>

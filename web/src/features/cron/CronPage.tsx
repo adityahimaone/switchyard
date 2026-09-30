@@ -428,7 +428,7 @@ function CronHistory({ job, onOpenChange }: { job: CronJob | null; onOpenChange:
                     <span
                       className={cn(
                         "font-medium",
-                        run.status === "error" ? "text-danger-text" : "text-success",
+                        run.status === "error" ? "text-danger-text" : "text-success-text",
                       )}
                     >
                       {run.status}

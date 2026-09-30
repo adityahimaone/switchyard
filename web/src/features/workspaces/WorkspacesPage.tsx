@@ -35,7 +35,7 @@ type WsStatus = "connected" | "unreachable" | "unknown" | "local"
  * reachable, hollow for not-yet-pinged, so state survives colour blindness.
  */
 const STATUS_STYLE: Record<WsStatus, { tone: string; label: string; filled: boolean }> = {
-  connected: { tone: "text-success", label: "Connected", filled: true },
+  connected: { tone: "text-success-text", label: "Connected", filled: true },
   // Local is a real state (this machine) but not a health signal, so it stays ink.
   local: { tone: "text-ink", label: "Local", filled: true },
   unreachable: { tone: "text-danger-text", label: "Unreachable", filled: true },

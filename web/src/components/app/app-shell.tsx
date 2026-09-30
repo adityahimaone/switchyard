@@ -48,7 +48,11 @@ export function AppShell({
   const sidebarHidden = collapsed
 
   return (
-    <div className="flex min-h-dvh w-full bg-canvas">
+    // The ground. Glass panels across the app sit on this, so the wash and dot
+    // grid are what give the blur something to diffuse — an undifferentiated
+    // fill behind a backdrop-filter just reads as flat grey. The sidebar is the
+    // main thing standing directly on it.
+    <div className="smoke-wash dot-grid flex min-h-dvh w-full bg-canvas">
       {/* Desktop sidebar. Collapses to zero width, as the reference does: the
           content does not shift, it takes the space back. */}
       <div
@@ -68,8 +72,13 @@ export function AppShell({
         />
       </div>
 
-      {/* Content sits on its own white surface with an inset hairline, which is
-          what separates it from the canvas in the reference. */}
+      {/* Content sits on its own surface, which is the full opaque `surface` rather
+          than glass. That is deliberate: a full-bleed translucent panel over a
+          near-uniform ground has nothing to diffuse, so it would read as a hazy
+          grey wash across the whole page instead of as frosted glass. Glass only
+          works where there is real variation behind it — cards, popovers,
+          sheets, the sidebar — so the page itself stays opaque and the glass
+          elements sit on top of it and diffuse the cards behind them. */}
       <main className="flex min-w-0 flex-1 flex-col bg-surface shadow-[inset_0_0_0_0.8px_var(--c-line)] lg:min-h-dvh">
         {renderHeader({ hidden: sidebarHidden, expand })}
         {children}

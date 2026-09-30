@@ -94,7 +94,13 @@ export function AppSidebar({
   }, [])
 
   return (
-    <aside className="flex h-full w-[250px] shrink-0 flex-col" aria-label="Primary">
+    // Glass, standing directly on the tinted and dotted canvas, so there is real
+    // variation behind it to diffuse. The hairline is on the right edge only —
+    // that is the edge the reference draws.
+    <aside
+      className="glass flex h-full w-[250px] shrink-0 flex-col border-r-[0.8px] border-line"
+      aria-label="Primary"
+    >
       {/* Brand. The reference sets the mark at 24px with a hover tilt; the
           wordmark sits beside it in the UI font so it matches the body text. */}
       <div className="flex w-[250px] items-center justify-between overflow-clip px-3 py-3.5">

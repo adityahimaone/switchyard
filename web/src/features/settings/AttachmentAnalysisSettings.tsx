@@ -133,7 +133,7 @@ export default function AttachmentAnalysisSettings() {
                   <span className="min-w-0 truncate">{provider} / {model}</span>
                   {endpoint && <span className="shrink-0 text-2xs text-ink-3">/{endpoint}</span>}
                   {capability?.vision && (
-                    <span className="shrink-0 text-2xs text-success">vision</span>
+                    <span className="shrink-0 text-2xs text-success-text">vision</span>
                   )}
                   {capability?.pdf && <span className="shrink-0 text-2xs text-info">pdf</span>}
                 </span>
@@ -146,7 +146,7 @@ export default function AttachmentAnalysisSettings() {
       {message && (
         <p
           role="status"
-          className={message.tone === "ok" ? "py-3 text-sm text-success" : "py-3 text-sm text-danger-text"}
+          className={message.tone === "ok" ? "py-3 text-sm text-success-text" : "py-3 text-sm text-danger-text"}
         >
           {message.text}
         </p>

@@ -106,8 +106,8 @@ function ProfileMemoryEditor({
         <div className="flex min-h-8 items-center justify-between gap-3">
           <div aria-live="polite" className="min-w-0 text-[11px]">
             {save.isError && <span className="flex items-center gap-1.5 text-[var(--color-danger)]"><AlertCircle aria-hidden="true" className="size-3.5 shrink-0" /> Gagal menyimpan</span>}
-            {!save.isError && saved && <span className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" /> Tersimpan</span>}
-            {!save.isError && !saved && isDirty && <span className="text-amber-300">Perubahan belum disimpan</span>}
+            {!save.isError && saved && <span className="flex items-center gap-1.5 text-success-text"><CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" /> Tersimpan</span>}
+            {!save.isError && !saved && isDirty && <span className="text-warning-text">Perubahan belum disimpan</span>}
           </div>
           <Button
             size="sm"
@@ -190,10 +190,10 @@ export default function MemoryPage() {
   if (memory.isError) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-        <div className="max-w-md rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200" role="alert">
+        <div className="max-w-md rounded-xl border border-danger/30 bg-danger-tint p-4 text-sm text-danger-text" role="alert">
           <div className="flex items-center gap-2 font-medium"><AlertCircle aria-hidden="true" className="size-4" /> Gagal memuat memory</div>
-          <p className="mt-1 text-xs leading-5 text-red-200/80">{(memory.error as Error).message}</p>
-          <Button variant="outline" size="sm" onClick={() => memory.refetch()} className="mt-3 h-8 gap-1.5 border-red-400/30 text-xs text-red-100 hover:bg-red-400/10">
+          <p className="mt-1 text-xs leading-5 text-danger-text">{(memory.error as Error).message}</p>
+          <Button variant="outline" size="sm" onClick={() => memory.refetch()} className="mt-3 h-8 gap-1.5 border-danger/40 text-xs text-danger-text hover:bg-danger/15">
             <RefreshCw aria-hidden="true" className="size-3.5" /> Coba lagi
           </Button>
         </div>
@@ -248,7 +248,7 @@ export default function MemoryPage() {
               <p className="mt-1 text-xs leading-5 text-[var(--color-ink-3)]">Edit konteks yang spesifik untuk profile agent terpilih.</p>
             </div>
             <div className="flex items-center gap-3">
-              {hasUnsaved && <span className="text-[11px] text-amber-300" aria-live="polite">Perubahan belum disimpan</span>}
+              {hasUnsaved && <span className="text-[11px] text-warning-text" aria-live="polite">Perubahan belum disimpan</span>}
               <Select value={activeProfile} onValueChange={(nextProfile) => {
                 if (hasUnsaved && !window.confirm("Perubahan belum disimpan. Ganti profile dan buang perubahan?")) return
                 setDirty({ memory: false, user: false })

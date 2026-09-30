@@ -26,7 +26,7 @@ const STATUS_TARGETS: Record<Status, Status[]> = {
 
 /** Health is text plus the lamp, never color alone. */
 const HEALTH_TONE: Record<string, string> = {
-  healthy: "text-success",
+  healthy: "text-success-text",
   silent: "text-warning",
   stuck: "text-danger-text",
   lost: "text-danger-text",

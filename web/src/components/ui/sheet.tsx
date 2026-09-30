@@ -55,7 +55,7 @@ function SheetContent({
         data-slot="sheet-content"
         className={cn(
           // 240ms on --ease-out-expo, in and out. Nothing here exceeds 300ms.
-          "fixed z-50 flex flex-col bg-surface shadow-float outline-none",
+          "fixed z-50 flex flex-col glass-strong shadow-float outline-none",
           "transition-transform duration-240 ease-[var(--ease-out-expo)]",
           "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
           side === "right" &&

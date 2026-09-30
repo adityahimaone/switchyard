@@ -30,7 +30,7 @@ export function Toaster() {
     return () => window.removeEventListener("kb-toast", onToast)
   }, [])
   return <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-80 flex-col gap-2">
-    {items.map((t) => <div key={t.id} role="status" className={`pointer-events-auto flex items-start gap-2 rounded-lg border bg-[var(--color-surface-raised)] p-3 text-xs shadow-lg ${t.tone === "error" ? "border-red-500/40 text-red-200" : t.tone === "success" ? "border-emerald-500/40 text-emerald-200" : "border-[var(--color-line)] text-ink"}`}>
+    {items.map((t) => <div key={t.id} role="status" className={`pointer-events-auto flex items-start gap-2 rounded-lg border bg-[var(--color-surface-raised)] p-3 text-xs shadow-lg ${t.tone === "error" ? "border-red-500/40 text-danger-text" : t.tone === "success" ? "border-emerald-500/40 text-success-text" : "border-[var(--color-line)] text-ink"}`}>
       <span className="min-w-0 flex-1">{t.message}</span><button aria-label="Dismiss" onClick={() => setItems((x) => x.filter((i) => i.id !== t.id))}><X className="size-3.5" /></button>
     </div>)}
   </div>

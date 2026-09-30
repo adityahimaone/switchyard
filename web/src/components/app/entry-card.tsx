@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils"
  */
 const entryCard = cva(
   [
-    "relative flex min-w-0 flex-col rounded-card border border-line bg-surface text-left",
+    // glass-card carries radius + inset rim + float shadow together.
+    "glass-card relative flex min-w-0 flex-col text-left",
     "transition-[border-color,box-shadow] duration-150",
-    "hover:border-line-strong",
+    "hover:shadow-lift",
   ],
   {
     variants: {
@@ -20,7 +21,7 @@ const entryCard = cva(
         registry: "gap-1.5 p-3",
       },
       selected: {
-        true: "border-accent shadow-active",
+        true: "ring-[1.5px] ring-accent",
         false: "",
       },
     },

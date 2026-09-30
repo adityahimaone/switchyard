@@ -98,7 +98,7 @@ function DiffDisclosure({
             {/* The gutter glyph repeats this, so colour is never the only signal.
                 -text tokens: this row sits on `well`, where the solid success
                 value measures 2.5:1. */}
-            <span className="text-success-text">+{added}</span>
+            <span className="text-success-text-text">+{added}</span>
             <span className="text-danger-text">−{removed}</span>
           </span>
         </button>
@@ -108,7 +108,7 @@ function DiffDisclosure({
           className="rounded-control p-1 text-ink-3 outline-none transition-colors hover:bg-raised hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
           aria-label={`Copy the diff for ${file.name}`}
         >
-          {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+          {copied ? <Check className="size-3.5 text-success-text" /> : <Copy className="size-3.5" />}
         </button>
       </div>
 
@@ -130,7 +130,7 @@ function DiffDisclosure({
               <span
                 className={
                   line.type === "added"
-                    ? "select-none text-center text-success"
+                    ? "select-none text-center text-success-text"
                     : line.type === "removed"
                       ? "select-none text-center text-danger-text"
                       : "select-none text-center"
@@ -246,7 +246,7 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         <div className="flex shrink-0 items-center gap-2 text-2xs text-ink-3 tabular">
           {diff.isLoading && <Loader2 className="size-3 animate-spin" aria-label="Loading" />}
           <span>{files.length} files</span>
-          <span className="text-success-text">+{additions}</span>
+          <span className="text-success-text-text">+{additions}</span>
           <span className="text-danger-text">−{removals}</span>
         </div>
       </div>

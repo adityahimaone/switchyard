@@ -54,7 +54,7 @@ export default function NotificationCenter() {
           )}
         </div>
         <div className="max-h-72 overflow-y-auto border-t border-[var(--color-line)]">
-          {all.length === 0 && <p className="p-3 text-xs text-ink-4">No notifications</p>}
+          {all.length === 0 && <p className="p-3 text-xs text-ink-3">No notifications</p>}
           {all.slice(0, 20).map((item) => (
             <button
               key={item.id}
@@ -68,11 +68,11 @@ export default function NotificationCenter() {
               />
               <span className="min-w-0 flex-1">
                 <span className="block text-xs text-ink">{item.kind.replaceAll("_", " ")}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-ink-4">
+                <span className="mt-0.5 block truncate text-[10px] text-ink-3">
                   {String(item.data.error ?? item.data.title ?? item.data.task_id ?? "Event received")}
                 </span>
               </span>
-              {!item.unread && <Check className="mt-0.5 size-3 shrink-0 text-emerald-400" aria-hidden="true" />}
+              {!item.unread && <Check className="mt-0.5 size-3 shrink-0 text-success-text" aria-hidden="true" />}
             </button>
           ))}
         </div>

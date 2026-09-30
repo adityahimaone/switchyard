@@ -201,7 +201,7 @@ function SkillCard({
         <span
           className={
             label === "npx"
-              ? "inline-flex shrink-0 items-center gap-1 rounded-control border border-success/30 bg-success-tint px-1.5 py-0.5 text-2xs leading-none text-success"
+              ? "inline-flex shrink-0 items-center gap-1 rounded-control border border-success/30 bg-success-tint px-1.5 py-0.5 text-2xs leading-none text-success-text"
               : "inline-flex shrink-0 items-center gap-1 rounded-control border border-line bg-well px-1.5 py-0.5 text-2xs leading-none text-ink-3"
           }
         >

@@ -308,7 +308,7 @@ function StatusKey({ set }: { set: boolean }) {
     <span
       className={
         set
-          ? "inline-flex items-center gap-1 text-xs font-medium text-success"
+          ? "inline-flex items-center gap-1 text-xs font-medium text-success-text"
           : "inline-flex items-center gap-1 text-xs font-medium text-danger-text"
       }
     >

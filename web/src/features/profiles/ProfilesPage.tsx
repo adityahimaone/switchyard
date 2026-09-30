@@ -36,7 +36,7 @@ const NAME_RE = /^[a-z0-9_-]{1,32}$/
 function FieldError({ children }: { children: React.ReactNode }) {
   if (!children) return null
   return (
-    <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-red-400" role="alert">
+    <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-danger-text" role="alert">
       <AlertCircle className="mt-px size-3 shrink-0" aria-hidden="true" />
       <span>{children}</span>
     </p>
@@ -212,12 +212,12 @@ function ProfileForm({
                         </Button>
                       )}
                     </div>
-                    <p className="mt-1.5 text-[10px] leading-snug text-ink-4">PNG / JPEG / GIF (animated) / WebP, max 2 MB</p>
+                    <p className="mt-1.5 text-[10px] leading-snug text-ink-3">PNG / JPEG / GIF (animated) / WebP, max 2 MB</p>
                   </div>
                 </div>
                 <div className="mt-3 flex items-end gap-1.5">
                   <div className="min-w-0 flex-1">
-                    <Label htmlFor="avatar-url" className="text-[11px] text-ink-4">Or paste an image URL</Label>
+                    <Label htmlFor="avatar-url" className="text-[11px] text-ink-3">Or paste an image URL</Label>
                     <Input
                       id="avatar-url"
                       value={avatarUrl}
@@ -267,7 +267,7 @@ function ProfileForm({
                   aria-describedby={nameErr ? "profile-name-error" : "profile-name-help"}
                   className="mt-1.5 h-9 border-[var(--color-line)] bg-[var(--color-bg)] font-mono"
                 />
-                <p id="profile-name-help" className="mt-1.5 text-[11px] text-ink-4">
+                <p id="profile-name-help" className="mt-1.5 text-[11px] text-ink-3">
                   Lowercase letters, digits, <code className="font-mono">-</code>, and <code className="font-mono">_</code>. Max 32 characters. Used as the folder name.
                 </p>
                 {nameErr && <span id="profile-name-error"><FieldError>{nameErr}</FieldError></span>}
@@ -297,12 +297,12 @@ function ProfileForm({
                       <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
                     </div>
                     <SelectItem value="__default">model default</SelectItem>
-                    {filteredModels.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-4">No model found</p>}
+                    {filteredModels.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>}
                     {filteredModels.map((value) => <SelectItem key={value} value={value} className="max-w-72 truncate text-sm" title={value}>{value}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {activeProvider && (
-                  <p className="mt-1.5 truncate text-[10px] text-ink-4" title={activeProvider.base_url}>
+                  <p className="mt-1.5 truncate text-[10px] text-ink-3" title={activeProvider.base_url}>
                     {modelOptions.length} model{modelOptions.length === 1 ? "" : "s"} from {activeProvider.name}
                   </p>
                 )}
@@ -313,7 +313,7 @@ function ProfileForm({
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-ink-2">Skills</Label>
                 {selectedSkills.length > 0 && (
-                  <span className="text-[11px] tabular-nums text-ink-4">{selectedSkills.length} selected</span>
+                  <span className="text-[11px] tabular-nums text-ink-3">{selectedSkills.length} selected</span>
                 )}
               </div>
               <div className="mt-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-2">
@@ -341,7 +341,7 @@ function ProfileForm({
                   </div>
                 )}
                 {selectedSkills.length === 0 && (
-                  <p className="py-1 text-[11px] text-ink-4">No skills selected. The agent runs with its own defaults.</p>
+                  <p className="py-1 text-[11px] text-ink-3">No skills selected. The agent runs with its own defaults.</p>
                 )}
                 <Input
                   value={skillQ}
@@ -377,9 +377,9 @@ function ProfileForm({
             <div>
               <div className="flex items-center justify-between">
                 <Label htmlFor="profile-prompt" className="text-xs text-ink-2">
-                  System prompt <span className="font-mono text-[11px] text-ink-4">SOUL.md</span>
+                  System prompt <span className="font-mono text-[11px] text-ink-3">SOUL.md</span>
                 </Label>
-                <span className="text-[11px] tabular-nums text-ink-4">
+                <span className="text-[11px] tabular-nums text-ink-3">
                   {prompt.length > 0 ? `${prompt.length} chars` : "empty"}
                 </span>
               </div>
@@ -391,7 +391,7 @@ function ProfileForm({
                 placeholder="You are an expert full-stack developer…"
                 className="mt-1.5 max-h-64 min-h-40 shrink-0 resize-y overflow-y-auto border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs leading-relaxed field-sizing-fixed"
               />
-              <p className="mt-1.5 text-[11px] text-ink-4">
+              <p className="mt-1.5 text-[11px] text-ink-3">
                 Prepended to every run for this agent. Leave empty to inherit the executor default.
               </p>
             </div>

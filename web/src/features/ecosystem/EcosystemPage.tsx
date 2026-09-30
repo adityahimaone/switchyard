@@ -41,7 +41,7 @@ const emptyExtension = { id: "", name: "", version: "", description: "", capabil
 
 /** Probe state is a lamp plus a label, never colour alone. */
 const healthTone: Record<string, string> = {
-  ok: "text-success",
+  ok: "text-success-text",
   failed: "text-danger-text",
   disabled: "text-ink-3",
   unknown: "text-ink-3",

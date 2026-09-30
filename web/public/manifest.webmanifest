@@ -1,1 +1,14 @@
-{"name":"Switchyard","short_name":"Switchyard","description":"Switchyard task and agent operations console","icons":[{"src":"/favicon_io/android-chrome-192x192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"/favicon_io/android-chrome-512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}],"theme_color":"#0a0a0a","background_color":"#0a0a0a","display":"standalone","scope":"/","start_url":"/","orientation":"any"}
+{
+  "name": "Switchyard",
+  "short_name": "Switchyard",
+  "description": "Switchyard task and agent operations console",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "theme_color": "#2f57c4",
+  "background_color": "#f2f4fd",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "orientation": "any"
+}

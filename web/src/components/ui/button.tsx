@@ -21,18 +21,21 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /** White control with a hairline. The page-level default. */
+        /** Frosted surface control. The page-level default. */
         default:
-          "rounded-lg border-[0.8px] border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-raised hover:shadow-lift data-[state=open]:bg-raised",
-        /** The one forward action per screen. */
+          "glass rounded-control text-ink-2 hover:shadow-lift data-[state=open]:shadow-lift",
+        /** The one forward action per screen. Solid, not glass: a translucent
+            accent fill would muddy the label and lose the "this is the action"
+            signal that a solid fill carries. */
         signal:
-          "rounded-lg border border-accent bg-accent text-accent-ink hover:brightness-95",
+          "rounded-control border border-accent bg-accent text-accent-ink hover:brightness-95",
         secondary:
-          "rounded-lg border-[0.8px] border-line-strong bg-raised text-ink hover:border-line-strong",
+          "glass rounded-control text-ink",
         outline:
-          "rounded-lg border-[0.8px] border-line-strong bg-transparent text-ink hover:bg-raised",
-        ghost: "rounded-md text-ink-2 hover:bg-raised hover:text-ink",
-        destructive: "rounded-lg border-[0.8px] border-danger/30 bg-danger-tint text-danger-text hover:bg-danger/20",
+          "rounded-control border-[0.8px] border-line-strong bg-transparent text-ink hover:bg-raised",
+        ghost: "rounded-control text-ink-2 hover:bg-raised hover:text-ink",
+        destructive:
+          "rounded-control border-[0.8px] border-danger/30 bg-danger-tint text-danger-text hover:bg-danger/20",
         link: "h-auto px-0 text-accent underline-offset-4 hover:underline",
       },
       size: {

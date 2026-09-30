@@ -16,7 +16,7 @@ import { COLUMNS, type Profile, type Status, type Task, type Workspace } from ".
 
 /* Status uses the nine lamp colours, not hand-mixed Tailwind hues. */
 export const STATUS_CHIP: Record<string, string> = {
-  done: "border-success/30 bg-success-tint text-success-text",
+  done: "border-success/30 bg-success-tint text-success-text-text",
   running: "border-accent/30 bg-accent-tint text-accent-text",
   blocked: "border-danger/30 bg-danger-tint text-danger-text",
   review: "border-review/30 bg-review-tint text-review-text",
@@ -198,7 +198,7 @@ export function TaskActions({
 }) {
   const running = task.status === "running"
   const healthTone =
-    health?.health === "healthy" ? "text-success"
+    health?.health === "healthy" ? "text-success-text"
     : health?.health === "silent" ? "text-warning"
     : "text-danger-text"
 

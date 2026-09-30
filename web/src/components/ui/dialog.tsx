@@ -52,7 +52,7 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col",
-          "rounded-panel border-[0.8px] border-line bg-surface shadow-float outline-none",
+          "glass-strong rounded-panel shadow-float outline-none",
           "max-h-[calc(100dvh-2rem)]",
           // Modals keep transform-origin centre; only popovers are origin-aware.
           // Closed state sits at 98% rather than 0, so nothing appears from nothing.
