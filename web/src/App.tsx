@@ -3,17 +3,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AppShell } from "@/components/app/app-shell"
 import { AppHeader } from "@/components/app/app-header"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { api, boardHealth, bulkTasks, COLUMNS, openEventStream, reorderTasks, toastGlobal, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
-import TaskCard from "./features/board/TaskCard"
-import { BoardColumn, useBoardEntrance } from "./features/board/BoardColumn"
-import { EmptyState } from "@/components/app/empty-state"
-import { FilterChip } from "@/components/app/filter-bar"
-import { STATUS_LABEL } from "@/components/ui/status-lamp"
-import { cn } from "@/lib/utils"
+import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
+import { BoardPage } from "./features/board/BoardPage"
+import { NAV } from "./components/app/app-rail"
+import type { Page } from "./lib/sidebar-preferences"
 import CommandPalette from "@/components/app/command-palette"
 import { Toaster } from "@/components/app/toaster"
+import NotificationCenter from "@/features/notifications/NotificationCenter"
+import { NewBoardDialog, EditBoardDialog } from "./components/board/board-dialogs"
+import { MoreHorizontal, Pencil, Plus } from "lucide-react"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { pagePath, parseRoute } from "./lib/routes"
+import LoadingState from "@/components/feedback/loading-state"
+
 const TaskDialog = lazy(() => import("./features/board/TaskDialog"))
 const TaskDetail = lazy(() => import("./features/board/TaskDetail"))
 const TaskDetailPage = lazy(() => import("./features/board/TaskDetailPage"))
@@ -30,24 +35,14 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
-import { Archive, CheckSquare, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu"
-import { useSettings } from "./hooks/useSettings"
-import LoadingState from "@/components/feedback/loading-state"
-import { pagePath, parseRoute } from "./lib/routes"
-import { SIDEBAR_ITEMS, type Page } from "./lib/sidebar-preferences"
-import NotificationCenter from "./features/notifications/NotificationCenter"
 
-const BOARD_COLUMNS: Status[] = [...COLUMNS, "archived"]
-
-const PROFILE_OPTIONS = [{ value: "__all", label: "All agents" }]
-const WORKSPACE_OPTIONS = [{ value: "__all", label: "All workspaces" }]
+/** Labels come from the rail, so nav and page titles can never drift apart. */
+const PAGE_LABELS: Record<string, string> = Object.fromEntries(
+  NAV.flatMap((g) => g.items).map((i) => [i.id, i.label]),
+)
 
 function labelForPage(page: Page): string {
-  const item = SIDEBAR_ITEMS.find((i) => i.id === page)
-  if (item) return item.label
-  if (page === "settings") return "Settings"
-  return page
+  return PAGE_LABELS[page] ?? "Settings"
 }
 
 export default function App() {
@@ -62,17 +57,7 @@ export default function App() {
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [q, setQ] = useState("")
-  const [fStatus, setFStatus] = useState("__all")
-  const [fAgent, setFAgent] = useState("__all")
-  const [fWorkspace, setFWorkspace] = useState("__all")
-  const [fPriority, setFPriority] = useState("__all")
-  const [viewName, setViewName] = useState("")
-  const viewsKey = `kb-views:${slug}`
-  const savedViews = useMemo(() => { try { return JSON.parse(window.localStorage.getItem(viewsKey) || "[]") as { name: string; filters: { q: string; fStatus: string; fAgent: string; fWorkspace: string; fPriority: string } }[] } catch { return [] } }, [viewsKey])
-  const { refreshMs } = useSettings()
   const qc = useQueryClient()
-  const enterBoard = useBoardEntrance()
 
   useEffect(() => openEventStream((ev) => {
     if (ev.kind === "workspace_ping" || ev.kind === "workspace_updated" || ev.kind === "workspace_deleted") {
@@ -90,8 +75,7 @@ export default function App() {
   }), [qc, slug])
 
   const boards = useQuery({ queryKey: ["boards"], queryFn: () => api<Board[]>("/api/boards") })
-  const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board", refetchInterval: refreshMs > 0 ? refreshMs : false })
-  const healthMap = useQuery({ queryKey: ["board-health", slug], queryFn: () => boardHealth(slug), enabled: page === "board", refetchInterval: 10_000 })
+  const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board" })
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
 
@@ -135,116 +119,13 @@ export default function App() {
   })
 
   const stop = useMutation({
-    mutationFn: (id: string) =>
-      api(`/api/boards/${slug}/tasks/${id}/stop`, { method: "POST" }),
+    mutationFn: (id: string) => api(`/api/boards/${slug}/tasks/${id}/stop`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks", slug] }),
   })
 
   const active = (boards.data ?? []).filter((b) => !b.archived)
   const archivedBoards = (boards.data ?? []).filter((b) => b.archived)
   const currentBoard = (boards.data ?? []).find((b) => b.slug === slug) ?? null
-
-  const filtered = useMemo(() => {
-    let list = tasks.data ?? []
-    const needle = q.trim().toLowerCase()
-    if (needle) {
-      list = list.filter((t) =>
-        t.title.toLowerCase().includes(needle) ||
-        (t.body ?? "").toLowerCase().includes(needle) ||
-        t.id.toLowerCase().includes(needle) ||
-        (t.result ?? "").toLowerCase().includes(needle),
-      )
-    }
-    if (fStatus !== "__all") list = list.filter((t) => t.status === fStatus)
-    if (fAgent !== "__all") list = list.filter((t) => (t.assignee || "") === fAgent)
-    if (fWorkspace !== "__all") list = list.filter((t) => t.workspace_path === fWorkspace)
-    if (fPriority !== "__all") list = list.filter((t) => String(t.priority) === fPriority)
-    return list
-  }, [tasks.data, q, fStatus, fAgent, fWorkspace, fPriority])
-
-  const filtersActive = q.trim() !== "" || fStatus !== "__all" || fAgent !== "__all" || fWorkspace !== "__all" || fPriority !== "__all"
-
-  function clearFilters() {
-    setQ(""); setFStatus("__all"); setFAgent("__all"); setFWorkspace("__all"); setFPriority("__all")
-  }
-  function saveView() {
-    const name = viewName.trim(); if (!name) return
-    const next = [...savedViews.filter((v) => v.name !== name), { name, filters: { q, fStatus, fAgent, fWorkspace, fPriority } }]
-    window.localStorage.setItem(viewsKey, JSON.stringify(next)); setViewName(""); toastGlobal(`Saved view: ${name}`, "success")
-  }
-  function applyView(name: string) {
-    const v = savedViews.find((x) => x.name === name); if (!v) return
-    setQ(v.filters.q); setFStatus(v.filters.fStatus); setFAgent(v.filters.fAgent); setFWorkspace(v.filters.fWorkspace); setFPriority(v.filters.fPriority)
-  }
-  const [draggingId, setDraggingId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{ status: Status; index: number } | null>(null)
-  const [taskOrder, setTaskOrder] = useState<Record<string, string[]>>({})
-  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
-  const [bulkMode, setBulkMode] = useState(false)
-
-  function toggleTask(id: string, next: boolean) {
-    setSelectedTasks((current) => {
-      const updated = new Set(current)
-      if (next) updated.add(id); else updated.delete(id)
-      return updated
-    })
-  }
-
-  async function bulkMove(status: Status) {
-    await bulkTasks(slug, { ids: [...selectedTasks], action: "move", status })
-    setSelectedTasks(new Set())
-    await qc.invalidateQueries({ queryKey: ["tasks", slug] })
-  }
-
-  async function bulkArchive() {
-    await bulkTasks(slug, { ids: [...selectedTasks], action: "archive" })
-    setSelectedTasks(new Set())
-    await qc.invalidateQueries({ queryKey: ["tasks", slug] })
-  }
-
-  const byCol = (s: Status) => {
-    const cards = filtered.filter((t) => t.status === s)
-    const order = taskOrder[s] ?? []
-    return [...cards].sort((a, b) => {
-      const ai = order.indexOf(a.id); const bi = order.indexOf(b.id)
-      if (ai < 0 && bi < 0) return 0
-      if (ai < 0) return 1
-      if (bi < 0) return -1
-      return ai - bi
-    })
-  }
-
-  function reorderTask(id: string, status: Status, index: number) {
-    const t = (tasks.data ?? []).find((x) => x.id === id)
-    const sourceStatus = t?.status as Status | undefined
-    setTaskOrder((current) => {
-      const next: Record<string, string[]> = { ...current }
-      // build id lists for every column from current orders + filtered fallback, then strip dragged id
-      for (const key of BOARD_COLUMNS) {
-        const fallback = filtered.filter((x) => x.status === key).map((x) => x.id)
-        const base = (current[key] ?? fallback).filter((taskId) => taskId !== id)
-        // keep order stable: if base came from current, fallback ids not yet in base stay at end
-        if (current[key]) {
-          for (const fid of fallback) if (!base.includes(fid) && fid !== id) base.push(fid)
-        }
-        next[key] = base
-      }
-      const list = next[status] ?? []
-      let insertAt = Math.max(0, Math.min(index, list.length))
-      if (sourceStatus === status) {
-        const fallback = filtered.filter((x) => x.status === status).map((x) => x.id)
-        const currentOrder = current[status] ?? fallback
-        const sourceIdx = currentOrder.indexOf(id)
-        if (sourceIdx >= 0 && sourceIdx < insertAt) insertAt -= 1
-      }
-      list.splice(insertAt, 0, id)
-      next[status] = list
-      if (status !== sourceStatus || next[status]) {
-        void reorderTasks(slug, next[status] ?? [id]).catch(() => undefined)
-      }
-      return next
-    })
-  }
 
   const breadcrumb =
     detailPage
@@ -274,187 +155,6 @@ export default function App() {
       go(pagePath(p, slug))
     }
   }
-
-  const boardBody =
-    tasks.isLoading ? (
-      <LoadingState variant="board" label="Loading board" />
-    ) : tasks.isError ? (
-      <EmptyState
-        title="Couldn't load tasks"
-        hint={(tasks.error as Error).message}
-        action={<Button variant="secondary" onClick={() => void tasks.refetch()}>Retry</Button>}
-      />
-    ) : (
-      <main
-        className={cn(
-          "flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3",
-          enterBoard && "board-enter",
-        )}
-      >
-        {BOARD_COLUMNS.map((col, colIndex) => {
-          const cards = byCol(col)
-          return (
-            <BoardColumn
-              key={col}
-              status={col}
-              index={colIndex}
-              count={cards.length}
-              isOver={dropTarget?.status === col}
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = "move"
-                if (e.target === e.currentTarget || !cards.length) setDropTarget({ status: col, index: cards.length })
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                const raw = draggingId || e.dataTransfer.getData("text/plain")
-                if (!raw) return
-                const t = (tasks.data ?? []).find((x) => x.id === raw)
-                if (!t) return
-                const target = dropTarget && dropTarget.status === col ? dropTarget : { status: col, index: cards.length }
-                if (t.status === "running" && col !== "blocked" && col !== "done" && col !== "review") return
-                reorderTask(t.id, col, target.index)
-                setDraggingId(null); setDropTarget(null)
-                if (t.status !== col) move.mutate({ id: t.id, status: col })
-              }}
-            >
-              {cards.map((t, index) => (
-                <li
-                  key={t.id}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    setDropTarget({ status: col, index: index + (e.clientY < rect.top + rect.height / 2 ? 0 : 1) })
-                  }}
-                >
-                  {dropTarget?.status === col && dropTarget.index === index && draggingId !== t.id && (
-                    <div className="mb-2 flex min-h-[104px] items-center justify-center rounded-card border border-dashed border-line-strong text-xs text-ink-3">
-                      Drop here
-                    </div>
-                  )}
-                  <TaskCard
-                    task={t}
-                    onOpen={() => setDetail(t)}
-                    onOpenPage={() => { setDetail(null); setDetailId(t.id); go(pagePath("board", slug, t.id)) }}
-                    onMove={(s) => move.mutate({ id: t.id, status: s })}
-                    onStop={() => { stop.mutate(t.id) }}
-                    onReassign={(a) => reassign.mutate({ id: t.id, assignee: a })}
-                    onDragStart={setDraggingId}
-                    onDragEnd={() => { setDraggingId(null); setDropTarget(null) }}
-                    profiles={profiles.data ?? []}
-                    health={healthMap.data?.[t.id]}
-                    workspaces={workspaces.data ?? []}
-                    selected={selectedTasks.has(t.id)}
-                    onToggleSelect={bulkMode ? toggleTask : undefined}
-                  />
-                </li>
-              ))}
-              {dropTarget?.status === col && dropTarget.index === cards.length && draggingId && (
-                <li className="flex min-h-[104px] items-center justify-center rounded-card border border-dashed border-line-strong text-xs text-ink-3">
-                  Drop at the end
-                </li>
-              )}
-            </BoardColumn>
-          )
-        })}
-      </main>
-    )
-
-  const filterRail = page === "board" && !detailId && (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 md:px-6">
-      <div className="relative w-full max-w-56">
-        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search tasks"
-          aria-label="Search tasks"
-          className="pl-8"
-        />
-      </div>
-
-      <FilterChip
-        label="Status"
-        value={fStatus}
-        onChange={setFStatus}
-        options={[
-          { value: "__all", label: "All" },
-          ...BOARD_COLUMNS.map((s) => ({ value: s, label: STATUS_LABEL[s] })),
-        ]}
-      />
-      <FilterChip
-        label="Agent"
-        value={fAgent}
-        onChange={setFAgent}
-        options={[
-          ...PROFILE_OPTIONS,
-          ...(profiles.data ?? []).map((p) => ({ value: p.name, label: p.name })),
-          { value: "", label: "Unassigned" },
-        ]}
-      />
-      <FilterChip
-        label="Workspace"
-        value={fWorkspace}
-        onChange={setFWorkspace}
-        options={[
-          ...WORKSPACE_OPTIONS,
-          ...(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.name })),
-          { value: "", label: "Scratch (no path)" },
-        ]}
-      />
-      <FilterChip
-        label="Priority"
-        value={fPriority}
-        onChange={setFPriority}
-        options={[
-          { value: "__all", label: "All" },
-          { value: "0", label: "P0 normal" },
-          { value: "1", label: "P1" },
-          { value: "2", label: "P2 high" },
-          { value: "3", label: "P3 urgent" },
-        ]}
-      />
-
-      <span className="tabular text-xs text-ink-3" aria-live="polite">
-        {filtered.length === (tasks.data?.length ?? 0)
-          ? `${tasks.data?.length ?? 0}`
-          : `${filtered.length} of ${tasks.data?.length ?? 0}`}
-      </span>
-
-      {filtersActive && (
-        <Button variant="ghost" size="sm" onClick={clearFilters} className="text-ink-3">
-          <X className="size-3" /> Clear
-        </Button>
-      )}
-
-      <div className="ml-auto flex items-center gap-2">
-        <Input
-          value={viewName}
-          onChange={(e) => setViewName(e.target.value)}
-          placeholder="View name"
-          aria-label="Saved view name"
-          className="h-8 w-32"
-        />
-        <Button variant="outline" size="sm" disabled={!viewName.trim()} onClick={saveView}>
-          Save view
-        </Button>
-        {savedViews.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">Views</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {savedViews.map((v) => (
-                <DropdownMenuItem key={v.name} onSelect={() => applyView(v.name)}>
-                  {v.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
-  )
 
   const boardSwitcher = page === "board" ? (
     <Select value={slug} onValueChange={(next) => { setSlug(next); go(pagePath("board", next)) }}>
@@ -503,51 +203,19 @@ export default function App() {
     </DropdownMenu>
   )
 
-  const taskActions = page === "board" && !detailId ? (
-    <div className="flex h-8 min-w-0 shrink-0 items-center gap-2">
-      <div className="hidden items-center lg:flex">
-        <Button
-          size="sm"
-          variant={bulkMode ? "default" : "outline"}
-          onClick={() => { setBulkMode((v) => !v); if (bulkMode) setSelectedTasks(new Set()) }}
-          aria-pressed={bulkMode}
-          className={bulkMode ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]" : "text-ink-2"}
-        >
-          <CheckSquare className="size-3.5" /> Bulk
-        </Button>
-      </div>
-      <div className="lg:hidden">{boardMenu}</div>
-      <Button
-        size="sm"
-        onClick={() => setCreating(true)}
-        className="bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent)]/90"
-      >
-        <Plus className="size-3.5" /> New Task
-      </Button>
-    </div>
-  ) : detailId ? (
-    <span className="hidden min-w-0 truncate rounded-md bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3 md:inline">
-      {detailId}
-    </span>
-  ) : null
-
   return (
     <AppShell
       page={page}
       onSelectPage={handleSelectPage}
+      onNewChat={() => { setChatSidebarOpen(true); setChatRouteID(undefined); setPage("chat"); go("/chat") }}
+      onSettings={() => handleSelectPage("settings")}
+      onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
       header={
         <AppHeader
-          breadcrumb={breadcrumb}
+          title={breadcrumb.title}
           context={boardSwitcher}
-          right={
-            <div className="flex h-8 min-w-0 shrink-0 items-center gap-2">
-              <NotificationCenter />
-              {taskActions}
-            </div>
-          }
+          right={<NotificationCenter />}
           onOpenPalette={() => setPaletteOpen(true)}
-          onSettings={() => handleSelectPage("settings")}
-          onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
         />
       }
     >
@@ -564,46 +232,46 @@ export default function App() {
         onOpenBoard={(nextSlug) => { setDetail(null); setDetailId(null); setSlug(nextSlug); setPage("board"); go(pagePath("board", nextSlug)) }}
       />
       <Toaster />
-      {filterRail}
-      <Suspense fallback={<LoadingState variant="detail" label="Memuat halaman" />}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {page === "board" && !detailId && bulkMode && (
-          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-xs">
-            <span className="font-medium text-ink">{selectedTasks.size} selected</span>
-            <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkMove("ready")}>Move ready</Button>
-            <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkMove("blocked")}>Block</Button>
-            <Button size="sm" variant="outline" disabled={!selectedTasks.size} onClick={() => void bulkArchive()} className="gap-1 text-ink-3 hover:text-red-400"><Archive className="size-3" /> Archive</Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelectedTasks(new Set())}>Clear</Button>
-          </div>
-        )}
-        {page === "workspaces" && <div className="flex-1 overflow-y-auto"><WorkspacesPage /></div>}
-        {page === "profiles" && <div className="flex-1 overflow-y-auto"><ProfilesPage /></div>}
-        {page === "providers" && <div className="flex-1 overflow-y-auto"><ProvidersPage /></div>}
-        {page === "logs" && <div className="flex min-h-0 flex-1 flex-col"><LogsPage /></div>}
-        {page === "skills" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SkillsPage /></div>}
-        {page === "memory" && <div className="flex-1 overflow-y-auto"><MemoryPage /></div>}
-        {page === "overview" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><OverviewPage /></div>}
-        {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
-        {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
-        {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
-        {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
-        {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
-        {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
-        {page === "board" && detailId && detailPage && (
-          <TaskDetailPage
-            slug={slug}
-            task={detailPage}
-            profiles={profiles.data ?? []}
-            workspaces={workspaces.data ?? []}
-            onBack={() => { setDetailId(null); go(pagePath("board", slug)) }}
-            onMove={(s) => move.mutateAsync({ id: detailPage.id, status: s }).then(() => undefined)}
-            onStop={() => stop.mutateAsync(detailPage.id).then(() => undefined)}
-            onReassign={(a) => reassign.mutateAsync({ id: detailPage.id, assignee: a }).then(() => undefined)}
-          />
-        )}
-        {page === "board" && detailId && !detailPage && (tasks.isLoading ? <LoadingState variant="detail" label="Memuat detail task" /> : <div className="flex flex-1 items-center justify-center p-6 text-sm text-red-400">Task `{detailId}` tidak ditemukan di board ini.</div>)}
-        {page === "board" && !detailId && boardBody}
-      </div>
+      <Suspense fallback={<LoadingState variant="detail" label="Loading page" />}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {page === "board" && !detailId && (
+            <BoardPage
+              slug={slug}
+              onOpenDetail={setDetail}
+              onOpenTaskPage={(id) => { setDetail(null); setDetailId(id); go(pagePath("board", slug, id)) }}
+              onNewTask={() => setCreating(true)}
+              boardMenu={boardMenu}
+            />
+          )}
+          {page === "workspaces" && <div className="flex-1 overflow-y-auto"><WorkspacesPage /></div>}
+          {page === "profiles" && <div className="flex-1 overflow-y-auto"><ProfilesPage /></div>}
+          {page === "providers" && <div className="flex-1 overflow-y-auto"><ProvidersPage /></div>}
+          {page === "logs" && <div className="flex min-h-0 flex-1 flex-col"><LogsPage /></div>}
+          {page === "skills" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SkillsPage /></div>}
+          {page === "memory" && <div className="flex-1 overflow-y-auto"><MemoryPage /></div>}
+          {page === "overview" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><OverviewPage /></div>}
+          {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
+          {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
+          {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
+          {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
+          {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
+          {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
+          {page === "board" && detailId && detailPage && (
+            <TaskDetailPage
+              slug={slug}
+              task={detailPage}
+              profiles={profiles.data ?? []}
+              workspaces={workspaces.data ?? []}
+              onBack={() => { setDetailId(null); go(pagePath("board", slug)) }}
+              onMove={(s) => move.mutateAsync({ id: detailPage.id, status: s }).then(() => undefined)}
+              onStop={() => stop.mutateAsync(detailPage.id).then(() => undefined)}
+              onReassign={(a) => reassign.mutateAsync({ id: detailPage.id, assignee: a }).then(() => undefined)}
+            />
+          )}
+          {page === "board" && detailId && !detailPage && (
+            <LoadingState variant="detail" label="Loading task" />
+          )}
+        </div>
       </Suspense>
 
       <Suspense fallback={<LoadingState variant="detail" label="Memuat dialog" />}>
@@ -658,88 +326,5 @@ export default function App() {
       )}
       </Suspense>
     </AppShell>
-  )
-}
-
-function NewBoardDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Board | null) => void }) {
-  const [slug, setSlug] = useState("")
-  const [name, setName] = useState("")
-  const [icon, setIcon] = useState("🗂")
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function submit() {
-    if (!slug.trim()) { setErr("Slug required"); return }
-    setBusy(true); setErr(null)
-    try {
-      const b = await api<Board>("/api/boards", {
-        method: "POST",
-        body: JSON.stringify({ slug: slug.trim().toLowerCase(), name: name.trim(), icon }),
-      })
-      onCreated(b)
-    } catch (e) { setErr((e as Error).message); setBusy(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="glass-panel-raised w-full max-w-sm rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-sm font-semibold">New Board</h2>
-        <label className="mt-3 block text-xs text-ink-3">Slug</label>
-        <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="f8-gadjian"
-          className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-ink-3">Name</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="F8 Gadjian"
-          className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-ink-3">Icon (emoji)</label>
-        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={busy} onClick={submit} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
-            {busy ? "…" : "Create"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function EditBoardDialog({ board, onClose, onSaved }: { board: Board; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(board.name)
-  const [icon, setIcon] = useState(board.icon)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function submit() {
-    if (!name.trim()) { setErr("Name required"); return }
-    setBusy(true); setErr(null)
-    try {
-      await api(`/api/boards/${board.slug}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: name.trim(), icon }),
-      })
-      onSaved()
-    } catch (e) { setErr((e as Error).message); setBusy(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="glass-panel-raised w-full max-w-sm rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-sm font-semibold">Edit Board · {board.slug}</h2>
-        <label className="mt-3 block text-xs text-ink-3">Slug (read-only)</label>
-        <Input value={board.slug} disabled className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] opacity-60" />
-        <label className="mt-3 block text-xs text-ink-3">Name</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        <label className="mt-3 block text-xs text-ink-3">Icon (emoji)</label>
-        <Input value={icon} onChange={(e) => setIcon(e.target.value)} className="mt-1 w-20 border-[var(--color-line)] bg-[var(--color-bg)]" />
-        {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={busy} onClick={submit} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
-            {busy ? "…" : "Save"}
-          </Button>
-        </div>
-      </div>
-    </div>
   )
 }

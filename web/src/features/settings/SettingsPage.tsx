@@ -2,8 +2,7 @@ import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs"
-import { Bell, XCircle, Eye, EyeOff, ArrowDown, ArrowUp, GripVertical, RotateCcw, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse, Trash2 } from "lucide-react"
-import { useSidebarPreferences } from "@/lib/sidebar-preferences"
+import { Bell, XCircle, Eye, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse, Trash2 } from "lucide-react"
 import { useTheme, useSoundSettings, type ThemePreference } from "@/hooks/useSettings"
 import { Button } from "@/components/ui/button"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -64,7 +63,6 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("")
   const [passwordMsg, setPasswordMsg] = useState("")
   const [passwordBusy, setPasswordBusy] = useState(false)
-  const { items, isVisible, move, toggle, reset } = useSidebarPreferences()
   const { theme, setTheme } = useTheme()
   const qc = useQueryClient()
   const { data: jevStatus, isFetching: jevRefreshing, refetch: refreshJEV } = useQuery({
@@ -307,37 +305,7 @@ export default function SettingsPage() {
 
               {show("Sidebar", "Navigation", "Order", "Hide", "Show") && (
                 <div className="space-y-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-ink">Sidebar Navigation</p>
-                      <p className="text-xs text-ink-4">Atur urutan fitur dan sembunyikan halaman yang tidak dipakai.</p>
-                    </div>
-                    <button type="button" onClick={reset} title="Reset sidebar" aria-label="Reset sidebar navigation"
-                      className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--color-line)] px-2 py-1 text-[11px] text-ink-3 hover:border-[var(--color-accent)]/60 hover:text-[var(--color-accent)]">
-                      <RotateCcw className="size-3" /> Reset
-                    </button>
-                  </div>
-                  <div className="space-y-1">
-                    {items.map((item, index) => {
-                      const Icon = item.icon
-                      const visible = isVisible(item.id)
-                      return (
-                        <div key={item.id} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${visible ? "border-[var(--color-line)] bg-[var(--color-bg)]" : "border-[var(--color-line)]/60 bg-[var(--color-bg)]/40 opacity-65"}`}>
-                          <GripVertical className="size-3.5 shrink-0 text-ink-4" aria-hidden="true" />
-                          <Icon className="size-3.5 shrink-0 text-ink-3" aria-hidden="true" />
-                          <span className="min-w-0 flex-1 truncate text-xs text-ink">{item.label}</span>
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <button type="button" onClick={() => move(item.id, -1)} disabled={index === 0} title={`Move ${item.label} up`} aria-label={`Move ${item.label} up`}
-                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowUp className="size-3.5" /></button>
-                            <button type="button" onClick={() => move(item.id, 1)} disabled={index === items.length - 1} title={`Move ${item.label} down`} aria-label={`Move ${item.label} down`}
-                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-25"><ArrowDown className="size-3.5" /></button>
-                            <button type="button" onClick={() => toggle(item.id, !visible)} disabled={item.id === "board"} title={item.id === "board" ? "Task Board selalu tersedia" : visible ? `Hide ${item.label}` : `Show ${item.label}`} aria-label={item.id === "board" ? "Task Board always visible" : visible ? `Hide ${item.label}` : `Show ${item.label}`}
-                              className="rounded p-1 text-ink-4 hover:bg-[var(--color-line)] hover:text-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-40">{visible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}</button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  
                 </div>
               )}
 
