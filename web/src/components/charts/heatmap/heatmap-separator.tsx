@@ -60,7 +60,7 @@ export interface HeatmapSeparatorProps {
   strokeStyle?: HeatmapSeparatorStrokeStyle;
   /** Dash pattern when `strokeStyle="dashed"`. Default: `"4,4"` */
   strokeDasharray?: string;
-  /** Line stroke color when `gradient` is omitted. Default: `var(--border)` */
+  /** Line stroke color when `gradient` is omitted. Default: `var(--c-well)` */
   stroke?: string;
   /**
    * Vertical stroke gradient aligned to each line's span.
@@ -85,7 +85,7 @@ export const HeatmapSeparator = memo(function HeatmapSeparator({
   labelClassName,
   strokeStyle = "solid",
   strokeDasharray,
-  stroke = "var(--border)",
+  stroke = "var(--c-well)",
   gradient,
   strokeWidth = 1,
   strokeOpacity = 1,

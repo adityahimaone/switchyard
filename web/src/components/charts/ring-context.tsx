@@ -15,7 +15,11 @@ export const ringCssVars = {
   foreground: "var(--chart-foreground)",
   foregroundMuted: "var(--chart-foreground-muted)",
   label: "var(--chart-label)",
-  ringBackground: "var(--border)",
+  // Was `var(--border)`, which is not defined anywhere in the token system, so
+  // the ring tracks resolved to nothing and fell back to black — the inactive
+  // arcs of every ring chart read as data. `--c-well` is the sunken surface the
+  // rest of the app uses for the same role.
+  ringBackground: "var(--c-well)",
   // Default ring colors from chart palette
   ring1: "var(--chart-1)",
   ring2: "var(--chart-2)",

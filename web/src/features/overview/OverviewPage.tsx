@@ -48,15 +48,15 @@ type Tone = "accent" | "success" | "warning" | "danger" | "info"
 
 // ── shared colors / labels ─────────────────────────────────────────────────
 
-const STATUS_COLORS = ["var(--color-accent)", "var(--color-info)", "var(--color-success)", "var(--color-danger)"]
+const STATUS_COLORS = ["var(--c-accent)", "var(--c-accent-text)", "var(--c-success-text)", "var(--c-danger)"]
 const STATUS_LABELS = ["Todo / ready", "Running", "Completed", "Failed"]
 
 const tones: Record<Tone, { icon: string; tint: string }> = {
-  accent: { icon: "var(--color-accent)", tint: "var(--color-accent-tint)" },
-  success: { icon: "var(--color-success)", tint: "var(--color-success-tint)" },
-  warning: { icon: "var(--color-warning)", tint: "var(--color-warning-tint)" },
-  danger: { icon: "var(--color-danger)", tint: "var(--color-danger-tint)" },
-  info: { icon: "var(--color-info)", tint: "var(--color-accent-tint)" },
+  accent: { icon: "var(--c-accent)", tint: "var(--c-accent-tint)" },
+  success: { icon: "var(--c-success-text)", tint: "var(--c-success-tint)" },
+  warning: { icon: "var(--c-warning-text)", tint: "var(--c-warning-tint)" },
+  danger: { icon: "var(--c-danger)", tint: "var(--c-danger-tint)" },
+  info: { icon: "var(--c-accent-text)", tint: "var(--c-accent-tint)" },
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -105,16 +105,16 @@ function activityToHeatmap(data: ActivityDay[]): HeatmapColumn[] {
 function StatCard({ icon: Icon, label, value, note, tone = "accent" }: { icon: typeof Activity; label: string; value: string | number; note: string; tone?: Tone }) {
   const color = tones[tone]
   return (
-    <section className="aurora-stat decorative-card rounded-xl border border-[var(--color-line)] p-4">
+    <section className="aurora-stat decorative-card rounded-xl border border-line p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[.14em] text-[var(--color-ink-3)]">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[.14em] text-ink-3">
           <span className="flex size-7 items-center justify-center rounded-lg" style={{ background: color.tint }}><Icon className="size-3.5" style={{ color: color.icon }} /></span>
           {label}
         </div>
         <span className="size-1.5 rounded-full" style={{ background: color.icon, boxShadow: `0 0 10px ${color.icon}` }} />
       </div>
-      <p className="mt-4 font-mono text-3xl font-semibold tracking-tight text-[var(--color-ink)]">{value}</p>
-      <p className="mt-1 text-[10px] text-[var(--color-ink-4)]">{note}</p>
+      <p className="mt-4 font-mono text-3xl font-semibold tracking-tight text-ink">{value}</p>
+      <p className="mt-1 text-[10px] text-ink-3">{note}</p>
     </section>
   )
 }
@@ -125,8 +125,8 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
   const pct = Math.max(0, Math.min(100, value))
   const color = tones[tone].icon
   return (
-    <div className="flex flex-col items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-4">
-      <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]"><Icon className="size-3" style={{ color }} />{label}</span>
+    <div className="flex flex-col items-center rounded-lg border border-line bg-well/45 p-4">
+      <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-3"><Icon className="size-3" style={{ color }} />{label}</span>
       <div className="mt-3 w-full">
         <Gauge
           value={pct}
@@ -140,7 +140,7 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
           centerValue={Math.round(pct)}
         />
       </div>
-      <p className="mt-2 text-center text-[10px] leading-3 text-[var(--color-ink-4)]">{detail}</p>
+      <p className="mt-2 text-center text-[10px] leading-3 text-ink-3">{detail}</p>
     </div>
   )
 }
@@ -162,7 +162,7 @@ function TaskHealthChart({ data }: { data: Overview }) {
       <div className="space-y-3">
         {rows.map((row) => {
           const pct = data.total_tasks > 0 ? Math.round((row.value / data.total_tasks) * 100) : 0
-          return <div key={row.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-[var(--color-ink-3)]"><i className="size-2 rounded-full" style={{ background: row.fill }} />{row.category}</span><span className="font-mono tabular-nums text-[var(--color-ink-2)]">{row.value} <small className="text-[var(--color-ink-4)]">({pct}%)</small></span></div>
+          return <div key={row.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-ink-3"><i className="size-2 rounded-full" style={{ background: row.fill }} />{row.category}</span><span className="font-mono tabular-nums text-ink-2">{row.value} <small className="text-ink-3">({pct}%)</small></span></div>
         })}
       </div>
     </div>
@@ -199,18 +199,18 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
   const list = nodes?.nodes ?? []
   const anyOnline = list.some((n) => n.status === "up" || n.status === "online")
   return (
-    <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+    <section className="decorative-card rounded-xl border border-line p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Node fleet</p>
+          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Node fleet</p>
           <h2 className="mt-1 text-sm font-semibold">Worker fleet status</h2>
         </div>
-        <Server className="size-4 text-[var(--color-accent)]" />
+        <Server className="size-4 text-accent-text" />
       </div>
       {loading ? (
-        <p className="mt-6 text-xs text-[var(--color-ink-4)]">Checking nodes…</p>
+        <p className="mt-6 text-xs text-ink-3">Checking nodes…</p>
       ) : list.length === 0 ? (
-        <p className="mt-6 text-xs text-[var(--color-ink-4)]">{nodes?.error || "No registered nodes"}</p>
+        <p className="mt-6 text-xs text-ink-3">{nodes?.error || "No registered nodes"}</p>
       ) : (
         <div className="mt-4 space-y-2">
           {list.map((n) => {
@@ -220,30 +220,30 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
             const hasDsh = !!dh
             const dshOk = hasDsh && dh.ok
             return (
-              <div key={n.node_id} className="flex items-center gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 px-3 py-2">
-                <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"}`} />
+              <div key={n.node_id} className="flex items-center gap-3 rounded-lg border border-line bg-well/45 px-3 py-2">
+                <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-success" : "bg-danger"}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-[var(--color-ink-2)]" title={n.hostname}>{n.hostname}</p>
-                  <p className="font-mono text-[10px] text-[var(--color-ink-4)]">last seen {last}</p>
+                  <p className="truncate text-xs font-medium text-ink-2" title={n.hostname}>{n.hostname}</p>
+                  <p className="font-mono text-[10px] text-ink-3">last seen {last}</p>
                   {hasDsh && (
                     <div className="mt-1 flex items-center gap-2 text-[10px]">
-                      <span className={`size-2 rounded-full ${dshOk ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"}`} />
-                      <span className="font-mono text-[var(--color-ink-3)]">DSH</span>
-                      {dh.version && <span className="text-[var(--color-ink-4)]">{dh.version}</span>}
-                      {dh.model && <span className="text-[var(--color-ink-4)]">{dh.model}</span>}
-                      {dh.provider && <span className="text-[var(--color-ink-4)]">{dh.provider}</span>}
-                      {dh.error && !dshOk && <span className="text-[var(--color-danger)]">{dh.error}</span>}
+                      <span className={`size-2 rounded-full ${dshOk ? "bg-success" : "bg-danger"}`} />
+                      <span className="font-mono text-ink-3">DSH</span>
+                      {dh.version && <span className="text-ink-3">{dh.version}</span>}
+                      {dh.model && <span className="text-ink-3">{dh.model}</span>}
+                      {dh.provider && <span className="text-ink-3">{dh.provider}</span>}
+                      {dh.error && !dshOk && <span className="text-danger-text">{dh.error}</span>}
                     </div>
                   )}
                 </div>
-                <span className={`shrink-0 font-mono text-[10px] uppercase ${isUp ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>{n.status}</span>
+                <span className={`shrink-0 font-mono text-[10px] uppercase ${isUp ? "text-success-text" : "text-danger-text"}`}>{n.status}</span>
               </div>
             )
           })}
         </div>
       )}
       {list.length > 0 && (
-        <p className="mt-3 text-[10px] text-[var(--color-ink-4)]">{anyOnline ? list.filter((n) => n.status === "up" || n.status === "online").length : 0} of {list.length} online</p>
+        <p className="mt-3 text-[10px] text-ink-3">{anyOnline ? list.filter((n) => n.status === "up" || n.status === "online").length : 0} of {list.length} online</p>
       )}
     </section>
   )
@@ -253,31 +253,31 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
 
 function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: boolean }) {
   return (
-    <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+    <section className="decorative-card rounded-xl border border-line p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Review gate</p>
+          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Review gate</p>
           <h2 className="mt-1 text-sm font-semibold">Approval pipeline</h2>
         </div>
-        <GitPullRequest className="size-4 text-[var(--color-accent)]" />
+        <GitPullRequest className="size-4 text-accent-text" />
       </div>
       {loading || !data ? (
-        <p className="mt-6 text-xs text-[var(--color-ink-4)]">Loading review metrics…</p>
+        <p className="mt-6 text-xs text-ink-3">Loading review metrics…</p>
       ) : (
         <>
           <FunnelChart
             className="mt-4 h-44 w-full"
             data={[
-              { label: "In review", value: data.now_in_review, displayValue: String(data.now_in_review), color: "var(--color-accent)" },
-              { label: "Reopened", value: data.reopened, displayValue: String(data.reopened), color: "var(--color-warning)" },
-              { label: "Approved", value: data.approved, displayValue: String(data.approved), color: "var(--color-success)" },
+              { label: "In review", value: data.now_in_review, displayValue: String(data.now_in_review), color: "var(--c-accent)" },
+              { label: "Reopened", value: data.reopened, displayValue: String(data.reopened), color: "var(--c-warning-text)" },
+              { label: "Approved", value: data.approved, displayValue: String(data.approved), color: "var(--c-success-text)" },
             ] satisfies FunnelStage[]}
-            color="var(--color-accent)"
+            color="var(--c-accent)"
             layers={2}
             gap={3}
             showPercentage={false}
           />
-          <div className="mt-2 flex justify-end"><span className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 px-3 py-2 text-center"><span className="block text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">Avg latency</span><span className="mt-1 block font-mono text-lg text-[var(--color-ink-2)]">{data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "-"}</span></span></div>
+          <div className="mt-2 flex justify-end"><span className="rounded-lg border border-line bg-well/45 px-3 py-2 text-center"><span className="block text-[9px] uppercase tracking-wider text-ink-3">Avg latency</span><span className="mt-1 block font-mono text-lg text-ink-2">{data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "-"}</span></span></div>
         </>
       )}
     </section>
@@ -295,19 +295,19 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
   })), [data])
 
   return (
-    <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
+    <section className="decorative-card rounded-xl border border-line p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Dispatcher</p>
+          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Dispatcher</p>
           <h2 className="mt-1 text-sm font-semibold">Queue trend — 30 days</h2>
         </div>
-        <Database className="size-4 text-[var(--color-accent)]" />
+        <Database className="size-4 text-accent-text" />
       </div>
       <div className="mt-4 min-h-[200px]">
         {loading ? (
-          <p className="text-xs text-[var(--color-ink-4)]">Loading queue trend…</p>
+          <p className="text-xs text-ink-3">Loading queue trend…</p>
         ) : chartData.length === 0 ? (
-          <p className="text-xs text-[var(--color-ink-4)]">No queue data yet — dispatch some tasks</p>
+          <p className="text-xs text-ink-3">No queue data yet — dispatch some tasks</p>
         ) : (
           <AreaChart
             data={chartData}
@@ -317,9 +317,9 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
             yDomainTween
           >
             <Grid horizontal />
-            <Area dataKey="completed" fill="var(--color-success)" fillOpacity={0} stroke="var(--color-success)" showLine showMarkers />
-            <Area dataKey="failed" fill="var(--color-danger)" fillOpacity={0} stroke="var(--color-danger)" showLine showMarkers />
-            <Area dataKey="queue_size" fill="var(--color-accent)" fillOpacity={0} stroke="var(--color-accent)" showLine showHighlight showMarkers />
+            <Area dataKey="completed" fill="var(--c-success-text)" fillOpacity={0} stroke="var(--c-success-text)" showLine showMarkers />
+            <Area dataKey="failed" fill="var(--c-danger)" fillOpacity={0} stroke="var(--c-danger)" showLine showMarkers />
+            <Area dataKey="queue_size" fill="var(--c-accent)" fillOpacity={0} stroke="var(--c-accent)" showLine showHighlight showMarkers />
             <XAxis numTicks={6} tickMode="data" />
             <ChartTooltip />
           </AreaChart>
@@ -351,16 +351,16 @@ export default function OverviewPage() {
   const failureRate = data.total_tasks > 0 ? Math.round((data.failed_tasks / data.total_tasks) * 100) : 0
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg)] p-4 text-[var(--color-ink)] md:p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-canvas p-4 text-ink md:p-6">
       <div className="mx-auto w-full max-w-6xl">
         {/* ── header ── */}
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Runtime</p>
+            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent-text">Hermes Runtime</p>
             <h1 className="mt-1 text-xl font-semibold tracking-tight">Overview</h1>
-            <p className="mt-1 text-xs text-[var(--color-ink-3)]">Complete runtime statistics, task health, and resource utilization.</p>
+            <p className="mt-1 text-xs text-ink-3">Complete runtime statistics, task health, and resource utilization.</p>
           </div>
-          <span className="flex items-center gap-1.5 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success-tint)] px-2.5 py-1 font-mono text-[10px] text-[var(--color-success)]"><i className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s</span>
+          <span className="flex items-center gap-1.5 rounded-full border border-success/25 bg-success-tint px-2.5 py-1 font-mono text-[10px] text-success-text"><i className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s</span>
         </header>
 
         {/* ── KPI row: Total / Running / Completed / Failed / Queue ── */}
@@ -373,19 +373,19 @@ export default function OverviewPage() {
         </div>
 
         {/* ── Activity heatmap (bklit) ── */}
-        <section className="mt-3 decorative-card rounded-xl border border-[var(--color-line)] p-4">
+        <section className="mt-3 decorative-card rounded-xl border border-line p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Activity</p>
+              <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Activity</p>
               <h2 className="mt-1 text-sm font-semibold">Chat + task heatmap — 6 months</h2>
             </div>
-            <Database className="size-4 text-[var(--color-accent)]" />
+            <Database className="size-4 text-accent-text" />
           </div>
           <div className="mt-4 min-h-[140px]">
             {activity.isLoading ? (
-              <p className="text-xs text-[var(--color-ink-4)]">Loading activity…</p>
+              <p className="text-xs text-ink-3">Loading activity…</p>
             ) : heatmapData.length === 0 ? (
-              <p className="text-xs text-[var(--color-ink-4)]">No activity data yet - start chatting or dispatching tasks</p>
+              <p className="text-xs text-ink-3">No activity data yet - start chatting or dispatching tasks</p>
             ) : (
               <HeatmapInteractionProvider>
                 <HeatmapInteractionBoundary>
@@ -396,7 +396,7 @@ export default function OverviewPage() {
                       layout="fluid"
                       weekStartDay={1}
                       animate
-                      levelColors={["var(--color-inset)", "color-mix(in srgb, var(--color-accent) 20%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 40%, var(--color-inset))", "color-mix(in srgb, var(--color-accent) 65%, var(--color-inset))", "var(--color-accent)"]}
+                      levelColors={["var(--c-well)", "color-mix(in srgb, var(--c-accent) 20%, var(--c-well))", "color-mix(in srgb, var(--c-accent) 40%, var(--c-well))", "color-mix(in srgb, var(--c-accent) 65%, var(--c-well))", "var(--c-accent)"]}
                     >
                       <HeatmapCells inactiveOpacity={1} inactiveScale={1} />
                       <HeatmapXAxis />
@@ -413,18 +413,18 @@ export default function OverviewPage() {
 
         {/* ── System health + Task health side by side ── */}
         <div className="mt-3 grid gap-3 lg:grid-cols-[1.15fr_.85fr]">
-          <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><GaugeIcon className="size-4 text-[var(--color-accent)]" /></div>
+          <section className="decorative-card rounded-xl border border-line p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><GaugeIcon className="size-4 text-accent-text" /></div>
             <div className="mt-5 grid min-h-64 grid-cols-2 items-stretch gap-3"><GaugeDial icon={Cpu} label="CPU load" value={data.metrics.cpu_percent} detail={`${data.metrics.goroutines} active Go runtime goroutines`} /><GaugeDial icon={MemoryStick} label="Memory" value={memoryPct} detail={`${data.metrics.memory_used_mb} MB used of ${data.metrics.memory_total_mb} MB`} tone={memoryPct > 80 ? "danger" : memoryPct > 60 ? "warning" : "accent"} /></div>
-            <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><p className="text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">Goroutines</p><p className="mt-1 font-mono text-lg text-[var(--color-ink)]">{data.metrics.goroutines}</p></div><div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><p className="text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">Finished</p><p className="mt-1 font-mono text-lg text-[var(--color-ink)]">{finished}</p></div></div>
+            <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-lg border border-line bg-well/45 p-3"><p className="text-[10px] uppercase tracking-wider text-ink-3">Goroutines</p><p className="mt-1 font-mono text-lg text-ink">{data.metrics.goroutines}</p></div><div className="rounded-lg border border-line bg-well/45 p-3"><p className="text-[10px] uppercase tracking-wider text-ink-3">Finished</p><p className="mt-1 font-mono text-lg text-ink">{finished}</p></div></div>
           </section>
 
-          <section className="decorative-card rounded-xl border border-[var(--color-line)] p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--color-accent)]">Task health</p><h2 className="mt-1 text-sm font-semibold">Status distribution</h2></div><Workflow className="size-4 text-[var(--color-accent)]" /></div>
+          <section className="decorative-card rounded-xl border border-line p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Task health</p><h2 className="mt-1 text-sm font-semibold">Status distribution</h2></div><Workflow className="size-4 text-accent-text" /></div>
             <TaskHealthChart data={data} />
-            <div className="mt-6 rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-3"><div className="flex items-center justify-between text-xs"><span className="text-[var(--color-ink-3)]">Completion rate</span><b className="font-mono text-[var(--color-success)]">{completionRate}%</b></div><div className="mt-2 h-1.5 rounded-full bg-[var(--color-bg)]"><div className="h-full rounded-full bg-[var(--color-success)]" style={{ width: `${completionRate}%` }} /></div></div>
+            <div className="mt-6 rounded-lg border border-line bg-well/45 p-3"><div className="flex items-center justify-between text-xs"><span className="text-ink-3">Completion rate</span><b className="font-mono text-success-text">{completionRate}%</b></div><div className="mt-2 h-1.5 rounded-full bg-canvas"><div className="h-full rounded-full bg-success" style={{ width: `${completionRate}%` }} /></div></div>
             <div className="mt-3 grid grid-cols-5 gap-2 text-center">
-              {(["healthy", "silent", "stuck", "lost", "unknown"] as const).map((health) => <div key={health} className="rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)]/45 p-2"><p className="text-[9px] uppercase tracking-wider text-[var(--color-ink-4)]">{health}</p><p className="mt-1 font-mono text-sm text-[var(--color-ink)]">{data.task_health?.[health] ?? 0}</p></div>)}
+              {(["healthy", "silent", "stuck", "lost", "unknown"] as const).map((health) => <div key={health} className="rounded-lg border border-line bg-well/45 p-2"><p className="text-[9px] uppercase tracking-wider text-ink-3">{health}</p><p className="mt-1 font-mono text-sm text-ink">{data.task_health?.[health] ?? 0}</p></div>)}
             </div>
           </section>
         </div>
@@ -452,7 +452,7 @@ export default function OverviewPage() {
         </div>
 
         {/* ── footer ── */}
-        <footer className="mt-4 pb-4 flex items-center gap-2 text-[10px] text-[var(--color-ink-4)]"><Radio className="size-3.5 text-[var(--color-accent)]" />Live data from Hermes API · refresh interval 5 seconds</footer>
+        <footer className="mt-4 pb-4 flex items-center gap-2 text-[10px] text-ink-3"><Radio className="size-3.5 text-accent-text" />Live data from Hermes API · refresh interval 5 seconds</footer>
       </div>
     </div>
   )

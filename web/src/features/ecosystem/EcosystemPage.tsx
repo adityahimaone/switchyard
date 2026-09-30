@@ -230,6 +230,10 @@ export default function EcosystemPage() {
           </section>
 
           <section className="flex flex-col gap-3">
+            {/* The section action is the one `signal` on this screen. When the
+                list is empty the EmptyState below also offers the same action,
+                so that copy is `secondary` — two solid accent buttons on one
+                screen would each stop reading as *the* forward action. */}
             <SectionHeader
               title="MCP registry"
               description="Declarative entries stored by the board. The hermes agent does not read these."
@@ -249,7 +253,7 @@ export default function EcosystemPage() {
               <EmptyState
                 title="No registry entries"
                 hint="Board-side declarations, separate from the agent's own config."
-                action={<Button variant="signal" onClick={() => setMcpDraft({ ...emptyMCP })}>Add MCP server</Button>}
+                action={<Button variant="secondary" onClick={() => setMcpDraft({ ...emptyMCP })}>Add MCP server</Button>}
               />
             ) : (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -298,7 +302,7 @@ export default function EcosystemPage() {
               <EmptyState
                 title="No extensions"
                 hint="Extensions declare what they may do; nothing executes."
-                action={<Button variant="signal" onClick={() => setExtDraft({ ...emptyExtension })}>Add extension</Button>}
+                action={<Button variant="secondary" onClick={() => setExtDraft({ ...emptyExtension })}>Add extension</Button>}
               />
             ) : (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">

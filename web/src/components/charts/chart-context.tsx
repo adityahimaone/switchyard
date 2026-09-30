@@ -38,15 +38,19 @@ export const chartCssVars = {
   lineSecondary: "var(--chart-line-secondary)",
   crosshair: "var(--chart-crosshair)",
   grid: "var(--chart-grid)",
-  indicatorColor: "var(--chart-indicator-color)",
-  indicatorSecondaryColor: "var(--chart-indicator-secondary-color)",
+  // Six of these were never defined in the token system, so they resolved to
+  // nothing and the elements using them inherited whatever the cascade gave
+  // them — which for an SVG fill means black. Each maps onto a token that
+  // already carries that role rather than adding six near-duplicates.
+  indicatorColor: "var(--c-accent)",
+  indicatorSecondaryColor: "var(--c-success-text)",
   markerBackground: "var(--chart-marker-background)",
   markerBorder: "var(--chart-marker-border)",
   markerForeground: "var(--chart-marker-foreground)",
-  badgeBackground: "var(--chart-marker-badge-background)",
-  badgeForeground: "var(--chart-marker-badge-foreground)",
-  segmentBackground: "var(--chart-segment-background)",
-  segmentLine: "var(--chart-segment-line)",
+  badgeBackground: "var(--c-well)",
+  badgeForeground: "var(--c-ink)",
+  segmentBackground: "var(--c-canvas)",
+  segmentLine: "var(--c-line-strong)",
   brushBorder: "var(--chart-brush-border)",
   tooltipBackground: "var(--chart-tooltip-background)",
 };

@@ -393,7 +393,7 @@ function GaugeArcInner(props: GaugeInnerProps) {
       useGradient,
       inactiveGrad0: fillState.inactiveGrad0,
       inactiveGrad1: fillState.inactiveGrad1,
-      arcTrackFill: "var(--border)",
+      arcTrackFill: "var(--c-well)",
       linearTrackFill: "var(--chart-background)",
       linearMode: false,
     });
@@ -581,7 +581,7 @@ function GaugeLinearInner(props: GaugeInnerProps) {
       useGradient,
       inactiveGrad0: fillState.inactiveGrad0,
       inactiveGrad1: fillState.inactiveGrad1,
-      arcTrackFill: "var(--border)",
+      arcTrackFill: "var(--c-well)",
       linearTrackFill: "var(--chart-background)",
       linearMode: true,
     });
