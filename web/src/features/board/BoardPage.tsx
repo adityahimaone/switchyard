@@ -209,8 +209,16 @@ export function BoardPage({
   const total = tasks.data?.length ?? 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 md:px-6">
+    <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* The board is a single full-bleed surface, so the page title lives in the
+          header. This h1 keeps the document outline correct without adding a
+          second visible title. */}
+      <h1 className="sr-only">Board</h1>
+      <div
+        role="search"
+        aria-label="Filter tasks"
+        className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 md:px-6"
+      >
         <div className="relative w-full max-w-56">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
           <Input
@@ -318,7 +326,7 @@ export function BoardPage({
           action={<Button variant="secondary" onClick={() => void tasks.refetch()}>Retry</Button>}
         />
       ) : (
-        <main className={cn("flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3", enterBoard && "board-enter")}>
+        <div className={cn("flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3", enterBoard && "board-enter")}>
           {BOARD_COLUMNS.map((col, colIndex) => {
             const cards = byCol(col)
             return (
@@ -385,8 +393,8 @@ export function BoardPage({
               </BoardColumn>
             )
           })}
-        </main>
+        </div>
       )}
-    </div>
+    </main>
   )
 }

@@ -207,7 +207,7 @@ export default function TaskCard({
 
       {jev && (
         <p
-          className="mt-2 truncate text-2xs text-ink-4"
+          className="mt-2 truncate text-2xs text-ink-3"
           title={`JEV: ${jev.case} · ${jev.scope} · ${jev.source} · confidence ${(jev.confidence * 100).toFixed(0)}%`}
         >
           {jev.case} · {jev.scope}
