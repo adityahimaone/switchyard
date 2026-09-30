@@ -5,7 +5,6 @@ import { AppHeader } from "@/components/app/app-header"
 import { Button } from "@/components/ui/button"
 import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
 import { BoardPage } from "./features/board/BoardPage"
-import { NAV } from "./components/app/app-sidebar"
 import type { Page } from "./lib/sidebar-preferences"
 import CommandPalette from "@/components/app/command-palette"
 import { Toaster } from "@/components/app/toaster"
@@ -34,15 +33,6 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
-
-/** Labels come from the rail, so nav and page titles can never drift apart. */
-const PAGE_LABELS: Record<string, string> = Object.fromEntries(
-  NAV.flatMap((g) => g.items).map((i) => [i.id, i.label]),
-)
-
-function labelForPage(page: Page): string {
-  return PAGE_LABELS[page] ?? "Settings"
-}
 
 export default function App() {
   const initialRoute = useMemo(() => parseRoute(window.location.pathname), [])
@@ -124,7 +114,12 @@ export default function App() {
 
   const currentBoard = (boards.data ?? []).find((b) => b.slug === slug) ?? null
 
-  const breadcrumb = page === "board" ? ["Board", currentBoard?.name ?? slug] : [labelForPage(page)]
+  // The breadcrumb expresses location, not title. It is only populated for a
+  // page genuinely nested below its nav entry; every other page carries its own
+  // h1 in its page header, so naming it twice would be noise.
+  const breadcrumb = detailPage
+    ? ["Board", detailPage.title]
+    : undefined
 
   function handleSelectPage(p: Page) {
     if (p === "board") {

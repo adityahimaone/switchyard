@@ -249,6 +249,13 @@ Content is a `<main>` on `surface` with `shadow-[inset_0_0_0_0.8px_var(--c-line)
 Top bar, 52px: sidebar toggle (only when hidden), breadcrumb segments joined by
 `/`, icon actions right.
 
+**Breadcrumbs express location, not title.** They appear only when a page is
+genuinely nested one level below its nav entry. Every top-level page already
+carries an `h1` in its own page header, so naming it twice is noise. Task detail
+is the only page that passes segments (`Board / <task title>`). The bar itself
+stays mounted when the sidebar is collapsed, since the reopen toggle needs a
+home.
+
 ### Board
 
 - Filters are a **toolbar row** of dropdown chips with a live "6 of 6" count,
