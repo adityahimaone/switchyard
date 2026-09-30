@@ -491,3 +491,5 @@ in `--mode json`, so the worker refused to bind a guessed id. Check
 ## Design docs
 
 - [Single dispatcher and review gate](docs/specs/2026-09-07-single-dispatcher-review-gate-design.md)
+- [Local Windows development](docs/local-windows-dev.md) — run the control plane,
+  UI, and a local node-agent worker on one Windows host

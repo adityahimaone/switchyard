@@ -31,6 +31,29 @@ const diffLimit = 100 << 10 // 100KB truncation cap for raw diff output
 // accidentally resolving untracked paths against the wrong directory.
 const reviewScopeSetup = `repo_root=$(git rev-parse --show-toplevel) || exit 2; workspace=$(pwd -P); if [ "$workspace" = "$repo_root" ]; then scope="."; elif [ "${workspace#"$repo_root"/}" != "$workspace" ]; then scope="${workspace#"$repo_root"/}"; else echo "workspace is outside git root" >&2; exit 2; fi; cd "$repo_root" || exit 2; untracked() { git ls-files --others --exclude-standard -- "$scope" | while IFS= read -r f; do if [ -d "$f" ]; then find "$f" -type f -not -path '*/.git/*' -print; else printf '%s\n' "$f"; fi; done; }; `
 
+// reviewScopeSetupWindows is the workspace/repo guard for a Windows worker.
+// node-agent runs a Windows shell task as `cmd /c <one argv string>`, which
+// forces two constraints the POSIX version above does not have:
+//
+//   - No double quotes. Go quotes that argv element, so every `"` arrives as
+//     `\"` and cmd's own parsing breaks.
+//   - No %VAR% set-then-read. cmd expands %VAR% when it PARSES the line, so a
+//     variable assigned earlier on the same single line still reads as empty.
+//     Delayed expansion is not available (the worker does not pass /v:on).
+//
+// So the guard is a single exit-code check that allocates no state. The diff
+// commands scope with "." instead of a computed path: node-agent already sets
+// the worker's cwd to the task workspace, and git resolves "." from there.
+const reviewScopeSetupWindows = `@echo off & git rev-parse --is-inside-work-tree 1>nul || exit /b 2`
+
+// reviewCleanWindows reports 0 clean, 1 has-changes, other = error. It reuses
+// the guard plus `findstr` to test for any untracked line, because
+// `git diff --quiet` ignores untracked files and review must treat them as
+// changes. `|` binds tighter than `&&`/`||`, so each group stays independent.
+const reviewCleanWindows = `@echo off & git rev-parse --is-inside-work-tree 1>nul || exit /b 2` +
+	` & git ls-files --others --exclude-standard -- . | findstr . >nul && exit /b 1` +
+	` & git diff --quiet HEAD -- . || exit /b 1 & exit /b 0`
+
 type reviewTask struct {
 	Slug          string
 	ID            string
@@ -92,9 +115,23 @@ func runGit(t *reviewTask, args string) (string, int) {
 	return sshRun(target, t.WorkspacePath, args)
 }
 
+// reviewIsWindowsWorker reports whether the WORKER owning this task is a
+// Windows host. node-agent runs a shell task through `bash -lc` on macOS/Linux
+// and `cmd /c` on Windows, so the workspace's OS picks the dialect — not the OS
+// of the process running the control plane, which may be a Linux VPS dispatching
+// to a Windows worker.
+func reviewIsWindowsWorker(t *reviewTask) bool {
+	return kanban.WorkspaceOS(t.WorkspacePath, t.SSHTarget) == "windows"
+}
+
 func reviewWorkspaceClean(t *reviewTask) (bool, string, int) {
 	// git diff --quiet ignores untracked files; review must treat new files as changes.
-	out, code := runGitFunc(t, reviewScopeSetup+`git diff --quiet HEAD -- "$scope"; diff_code=$?; untracked=$(untracked | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`)
+	script := reviewScopeSetup + `git diff --quiet HEAD -- "$scope"; diff_code=$?; untracked=$(untracked | head -20); if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi; exit $diff_code`
+	if reviewIsWindowsWorker(t) {
+		script = reviewCleanWindows
+	}
+	out, code := runGitFunc(t, script)
+	// 0 = clean, 1 = has changes, anything else is a transport or git failure.
 	if code == 0 {
 		return true, out, 0
 	}
@@ -189,7 +226,17 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 	// Keep the clean-workspace path cheap. In particular, do not run a full
 	// diff after Git has already told us there is nothing to review. Limit the
 	// remote diff too, before it is sent back over SSH/node-agent.
-	snapshot, code := runGitFunc(t, reviewScopeSetup+`printf '__STAT__\n'; git diff --stat HEAD -- "$scope"; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index --stat /dev/null "$f" || true; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- "$scope"; untracked; printf '__CLEAN__\n'; if git diff --quiet HEAD -- "$scope" && [ -z "$(untracked)" ]; then printf '1\n'; printf '__DIFF__\n'; exit 0; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- "$scope" | head -8000; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index /dev/null "$f" || true; done | head -8000`)
+	posixScript := reviewScopeSetup + `printf '__STAT__\n'; git diff --stat HEAD -- "$scope"; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index --stat /dev/null "$f" || true; done | tail -40; printf '__NAMES__\n'; git diff --name-only HEAD -- "$scope"; untracked; printf '__CLEAN__\n'; if git diff --quiet HEAD -- "$scope" && [ -z "$(untracked)" ]; then printf '1\n'; printf '__DIFF__\n'; exit 0; else printf '0\n'; fi; printf '__DIFF__\n'; git diff HEAD -- "$scope" | head -8000; untracked | while IFS= read -r f; do [ -f "$f" ] || continue; git diff --no-index /dev/null "$f" || true; done | head -8000`
+	windowsScript := reviewScopeSetupWindows +
+		` & echo __STAT__ & git diff --stat HEAD -- .` +
+		` & echo __NAMES__ & git diff --name-only HEAD -- . & git ls-files --others --exclude-standard -- .` +
+		` & echo __CLEAN__ & (git diff --quiet HEAD -- . && git ls-files --others --exclude-standard -- . | findstr . >nul && (echo 1) || (echo 0))` +
+		` & echo __DIFF__ & git diff HEAD -- .`
+	script := posixScript
+	if reviewIsWindowsWorker(t) {
+		script = windowsScript
+	}
+	snapshot, code := runGitFunc(t, script)
 	// A transport failure (unreachable node, unknown workspace, bad cwd)
 	// returns only an error string with no __STAT__ marker. Parsing that as a
 	// snapshot yields an empty file list with clean=false, which the UI

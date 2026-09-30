@@ -183,6 +183,11 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN commandcode_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN omp_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN current_run_id TEXT`,
+		// Routing columns the dispatcher and flow view read. Boards created by an
+		// older Hermes lack them, and without these every task insert fails on
+		// "no such column", which blocks board writes entirely.
+		`ALTER TABLE tasks ADD COLUMN workspace_transport TEXT`,
+		`ALTER TABLE tasks ADD COLUMN workspace_ssh_target TEXT`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err

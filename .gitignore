@@ -9,3 +9,6 @@ web/*.tsbuildinfo
 
 # Local oversized agent checkpoint
 internal/kanban/Switchyard Harness Session Continuity.md
+
+# Local dev state (HERMES_HOME for local Windows setup)
+.hermes-local/

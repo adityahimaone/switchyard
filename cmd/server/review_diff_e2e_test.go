@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -104,5 +105,56 @@ func TestHandleTaskDiffReturnsSnapshot(t *testing.T) {
 	}
 	if body.Clean {
 		t.Fatal("clean should be false when there are changed files")
+	}
+}
+
+// The review gate picks its shell dialect from the WORKER's OS, not the
+// control plane's. A Mac or Linux worker must keep receiving the POSIX script
+// byte-for-byte; a Windows worker must get the cmd dialect. This runs on every
+// platform so a change to the selection logic cannot silently downgrade a Mac
+// or VPS review to `cmd /c`.
+func TestReviewWorkerDialectFollowsWorkspaceOS(t *testing.T) {
+	tests := []struct {
+		name         string
+		workspace    string
+		host         string
+		wantWin      bool
+		wantGitProbe string
+	}{
+		{"mac worker", "/Users/dev/app", "mac-tailscale", false, "git rev-parse --show-toplevel"},
+		{"linux worker", "/home/dev/app", "linux-box", false, "git rev-parse --show-toplevel"},
+		{"windows worker", `C:\Development\app`, "windows-tailscale", true, "git rev-parse --is-inside-work-tree"},
+		// A Windows-looking path must win even when the host name does not
+		// mention Windows; inferOS keys off the drive letter.
+		{"windows path neutral host", `C:\app`, "build-box", true, "git rev-parse --is-inside-work-tree"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			task := &reviewTask{WorkspacePath: tc.workspace, SSHTarget: tc.host}
+			if got := reviewIsWindowsWorker(task); got != tc.wantWin {
+				t.Fatalf("reviewIsWindowsWorker = %v, want %v (path %q host %q)", got, tc.wantWin, tc.workspace, tc.host)
+			}
+			script := reviewScopeSetup + `git diff --quiet HEAD -- "$scope"`
+			if tc.wantWin {
+				script = reviewCleanWindows
+			}
+			if !strings.Contains(script, tc.wantGitProbe) {
+				t.Errorf("script missing %q; got %q", tc.wantGitProbe, script)
+			}
+		})
+	}
+}
+
+// The POSIX script is the production path for Mac and Linux workers, so it must
+// keep its exact shape: a bash function, "$scope" quoting, and POSIX printf.
+func TestReviewPOSIXScriptUnchanged(t *testing.T) {
+	for _, want := range []string{
+		`repo_root=$(git rev-parse --show-toplevel) || exit 2`,
+		`untracked() {`,
+		`printf '%s\n' "$f"`,
+	} {
+		if !strings.Contains(reviewScopeSetup, want) {
+			t.Errorf("reviewScopeSetup lost POSIX fragment %q", want)
+		}
 	}
 }

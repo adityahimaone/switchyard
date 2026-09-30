@@ -324,6 +324,33 @@ func trimErr(err error) string {
 	return s
 }
 
+// WorkspaceOS reports the OS that owns a workspace path, preferring the
+// registered workspace entry over the path-shape guess. Callers that must
+// speak that host's shell (the review gate builds git scripts for the worker,
+// not for this process) need this to pick a dialect.
+func WorkspaceOS(path, host string) string {
+	if ws, err := ListWorkspaces(); err == nil {
+		for _, w := range ws {
+			if w.OS != "" && sameOrParentPath(w.Path, path) {
+				return w.OS
+			}
+		}
+	}
+	return inferOS(host, path)
+}
+
+// sameOrParentPath reports whether candidate is prefix or an ancestor of path.
+func sameOrParentPath(candidate, path string) bool {
+	c, p := strings.ToLower(strings.TrimRight(candidate, `\/`)), strings.ToLower(path)
+	if c == "" || p == "" {
+		return false
+	}
+	if p == c {
+		return true
+	}
+	return strings.HasPrefix(p, c+`\`) || strings.HasPrefix(p, c+"/")
+}
+
 // inferOS guesses the target OS from host/path shape (mac, windows, linux).
 func inferOS(host, path string) string {
 	h, p := strings.ToLower(host), strings.ToLower(path)

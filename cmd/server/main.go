@@ -1504,7 +1504,7 @@ func spa(dir string) http.Handler {
 		// the HTML shell. A 200 with an HTML body is cached as immutable by the
 		// service worker under the .js URL, so the chunk fails to parse forever
 		// and no later deploy can recover it.
-		if isAssetPath(cleaned) {
+		if isAssetPath(urlPath(r)) {
 			w.Header().Set("Cache-Control", "no-store")
 			http.NotFound(w, r)
 			return
@@ -1512,6 +1512,13 @@ func spa(dir string) http.Handler {
 		setStaticCacheHeaders(w, r)
 		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 	})
+}
+
+// urlPath returns r.URL.Path with forward slashes on every platform.
+// filepath.Clean rewrites to backslashes on Windows, which would make
+// isAssetPath miss "/assets/" and silently disable the deleted-chunk 404.
+func urlPath(r *http.Request) string {
+	return strings.ReplaceAll(r.URL.Path, "\\", "/")
 }
 
 // isAssetPath reports whether a path is content-hashed build output, which must
@@ -1528,8 +1535,8 @@ func isAssetPath(path string) bool {
 // Hashed build output is immutable and cached hard; everything else is
 // revalidated on each visit.
 func setStaticCacheHeaders(w http.ResponseWriter, r *http.Request) {
-	path := filepath.Clean(r.URL.Path)
-	if path == "/index.html" || !strings.HasPrefix(path, "/assets/") {
+	p := urlPath(r)
+	if p == "/index.html" || !strings.HasPrefix(p, "/assets/") {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		return
 	}

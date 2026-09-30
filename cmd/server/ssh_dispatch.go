@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	syscall "syscall"
 	"time"
 
 	"kanban-board/internal/kanban"
@@ -427,7 +426,7 @@ Be concise. Do the work. Don't ask questions.`,
 
 	// Run hermes chat on VPS (oneshot: answer and exit, no TTY hang)
 	cmd := exec.CommandContext(ctx, "hermes", "chat", "-q", fullPrompt, "--oneshot", "--cli")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	detachProcessGroup(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
