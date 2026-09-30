@@ -655,26 +655,19 @@
 }
 
 /* ==========================================================================
-   Legacy layer — removed in phase 5. Kept so unmigrated components render.
+   Legacy layer. Three rules that unmigrated components still reference.
+
+   The lantern-era `aurora-*` rules are gone, along with `.glass-toolbar`,
+   `.glass-sidebar`, `.glass-control`, `.glass-tooltip` and `.status-pill`,
+   which had no remaining consumers. `decorative-card` and `aurora-stat` were
+   being used as class names in Overview and Knowledge but were never defined
+   here at all, so they were doing nothing and have been removed there too.
    ========================================================================== */
 .glass-panel { background: var(--c-surface); border: 1px solid var(--c-line); }
 .glass-panel-raised { background: var(--c-raised); border-color: var(--c-line-strong); }
-.glass-toolbar { background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
-.glass-sidebar { background: var(--c-surface); border-color: var(--c-line); }
 .glass-inset-card { border: 1px solid var(--c-line); background: var(--c-well); }
-.glass-control { border: 1px solid var(--c-line); background: var(--c-raised); transition: border-color 120ms var(--ease-out-quint), background-color 120ms var(--ease-out-quint); }
-.glass-control:hover { border-color: var(--c-line-strong); background: var(--c-raised); }
-.glass-control:focus-visible { border-color: var(--c-line-strong); outline: 2px solid var(--c-focus); outline-offset: 2px; }
-.glass-control:disabled { opacity: 0.45; }
 .glass-icon-button { border: 1px solid var(--c-line); background: var(--c-well); transition: border-color 120ms var(--ease-out-quint), background-color 120ms var(--ease-out-quint); }
 .glass-icon-button:hover, .glass-icon-button:focus-visible { border-color: var(--c-line-strong); background: var(--c-accent-tint); color: var(--c-accent); }
-.glass-tooltip { border: 1px solid var(--c-line); background: var(--c-raised); color: var(--c-ink); }
-.aurora-button { background: var(--c-ink); color: var(--c-canvas); }
-.aurora-nav-active { background: var(--c-accent-tint); }
-.blue-glow, .surface-texture { position: relative; }
-.status-pill { display: inline-flex; align-items: center; gap: .375rem; border: 1px solid var(--c-line); border-radius: 999px; padding: .125rem .5rem; font-size: 11px; color: var(--c-ink-3); background: var(--c-well); }
-.simple-loader { display: block; width: 28px; height: 28px; border: 2px solid var(--c-line-strong); border-top-color: var(--c-accent); border-radius: 50%; animation: simple-loader-spin 800ms linear infinite; }
-@keyframes simple-loader-spin { to { transform: rotate(360deg); } }
 .ht { --dur: 2.8s; }
 .ht-base { opacity: .26; }
 .ht-rim { stroke: currentColor; stroke-width: 1; opacity: .14; }

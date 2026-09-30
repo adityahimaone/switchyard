@@ -4,6 +4,8 @@ import { Activity, CheckCircle2, Cpu, Database, Gauge as GaugeIcon, GitPullReque
 import { api, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
+import { PageHeader } from "@/components/app/page-header"
+import { CollectionBody } from "@/components/app/collection"
 import {
   HeatmapChart,
   HeatmapCells,
@@ -105,10 +107,10 @@ function activityToHeatmap(data: ActivityDay[]): HeatmapColumn[] {
 function StatCard({ icon: Icon, label, value, note, tone = "accent" }: { icon: typeof Activity; label: string; value: string | number; note: string; tone?: Tone }) {
   const color = tones[tone]
   return (
-    <section className="aurora-stat decorative-card rounded-xl border border-line p-4">
+    <section className="glass-card p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[.14em] text-ink-3">
-          <span className="flex size-7 items-center justify-center rounded-lg" style={{ background: color.tint }}><Icon className="size-3.5" style={{ color: color.icon }} /></span>
+        <div className="flex items-center gap-2 text-xs font-medium text-ink-2">
+          <span className="flex size-7 items-center justify-center rounded-control" style={{ background: color.tint }}><Icon className="size-3.5" style={{ color: color.icon }} /></span>
           {label}
         </div>
         <span className="size-1.5 rounded-full" style={{ background: color.icon, boxShadow: `0 0 10px ${color.icon}` }} />
@@ -125,8 +127,8 @@ function GaugeDial({ value, tone = "accent", label, detail, icon: Icon }: { valu
   const pct = Math.max(0, Math.min(100, value))
   const color = tones[tone].icon
   return (
-    <div className="flex flex-col items-center rounded-lg border border-line bg-well/45 p-4">
-      <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-3"><Icon className="size-3" style={{ color }} />{label}</span>
+    <div className="flex flex-col items-center rounded-control border border-line bg-well/45 p-4">
+      <span className="flex items-center gap-1.5 text-[10px] text-ink-3"><Icon className="size-3" style={{ color }} />{label}</span>
       <div className="mt-3 w-full">
         <Gauge
           value={pct}
@@ -199,10 +201,10 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
   const list = nodes?.nodes ?? []
   const anyOnline = list.some((n) => n.status === "up" || n.status === "online")
   return (
-    <section className="decorative-card rounded-xl border border-line p-4">
+    <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Node fleet</p>
+          <p className="text-[11px] font-medium text-accent-text">Node fleet</p>
           <h2 className="mt-1 text-sm font-semibold">Worker fleet status</h2>
         </div>
         <Server className="size-4 text-accent-text" />
@@ -220,7 +222,7 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
             const hasDsh = !!dh
             const dshOk = hasDsh && dh.ok
             return (
-              <div key={n.node_id} className="flex items-center gap-3 rounded-lg border border-line bg-well/45 px-3 py-2">
+              <div key={n.node_id} className="flex items-center gap-3 rounded-control border border-line bg-well/45 px-3 py-2">
                 <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-success" : "bg-danger"}`} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-ink-2" title={n.hostname}>{n.hostname}</p>
@@ -236,7 +238,7 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
                     </div>
                   )}
                 </div>
-                <span className={`shrink-0 font-mono text-[10px] uppercase ${isUp ? "text-success-text" : "text-danger-text"}`}>{n.status}</span>
+                <span className={`shrink-0 font-mono text-[10px] ${isUp ? "text-success-text" : "text-danger-text"}`}>{n.status}</span>
               </div>
             )
           })}
@@ -253,10 +255,10 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
 
 function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: boolean }) {
   return (
-    <section className="decorative-card rounded-xl border border-line p-4">
+    <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Review gate</p>
+          <p className="text-[11px] font-medium text-accent-text">Review gate</p>
           <h2 className="mt-1 text-sm font-semibold">Approval pipeline</h2>
         </div>
         <GitPullRequest className="size-4 text-accent-text" />
@@ -277,7 +279,7 @@ function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: bool
             gap={3}
             showPercentage={false}
           />
-          <div className="mt-2 flex justify-end"><span className="rounded-lg border border-line bg-well/45 px-3 py-2 text-center"><span className="block text-[9px] uppercase tracking-wider text-ink-3">Avg latency</span><span className="mt-1 block font-mono text-lg text-ink-2">{data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "-"}</span></span></div>
+          <div className="mt-2 flex justify-end"><span className="rounded-control border border-line bg-well/45 px-3 py-2 text-center"><span className="block text-[9px] text-ink-3">Avg latency</span><span className="mt-1 block font-mono text-lg text-ink-2">{data.avg_latency_s > 0 ? formatDuration(data.avg_latency_s) : "-"}</span></span></div>
         </>
       )}
     </section>
@@ -295,10 +297,10 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
   })), [data])
 
   return (
-    <section className="decorative-card rounded-xl border border-line p-4">
+    <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Dispatcher</p>
+          <p className="text-[11px] font-medium text-accent-text">Dispatcher</p>
           <h2 className="mt-1 text-sm font-semibold">Queue trend — 30 days</h2>
         </div>
         <Database className="size-4 text-accent-text" />
@@ -351,20 +353,19 @@ export default function OverviewPage() {
   const failureRate = data.total_tasks > 0 ? Math.round((data.failed_tasks / data.total_tasks) * 100) : 0
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-canvas p-4 text-ink md:p-6">
-      <div className="mx-auto w-full max-w-6xl">
-        {/* ── header ── */}
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent-text">Hermes Runtime</p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight">Overview</h1>
-            <p className="mt-1 text-xs text-ink-3">Complete runtime statistics, task health, and resource utilization.</p>
-          </div>
-          <span className="flex items-center gap-1.5 rounded-full border border-success/25 bg-success-tint px-2.5 py-1 font-mono text-[10px] text-success-text"><i className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s</span>
-        </header>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <PageHeader
+        title="Overview"
+        description="Complete runtime statistics, task health, and resource utilization."
+        actions={
+          <span className="flex items-center gap-1.5 rounded-control border border-success/25 bg-success-tint px-2.5 py-1 font-mono text-[10px] text-success-text">
+            <i className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s
+          </span>
+        }
+      />
 
-        {/* ── KPI row: Total / Running / Completed / Failed / Queue ── */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <CollectionBody className="flex flex-col gap-4 pt-5 pb-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard icon={Layers3} label="Total tasks" value={data.total_tasks} note="Across all Kanban boards" />
           <StatCard icon={Activity} label="Running" value={data.running_tasks} note="Tasks currently executing" tone="info" />
           <StatCard icon={CheckCircle2} label="Completed" value={data.completed_tasks} note={`${completionRate}% of all tasks`} tone="success" />
@@ -373,10 +374,10 @@ export default function OverviewPage() {
         </div>
 
         {/* ── Activity heatmap (bklit) ── */}
-        <section className="mt-3 decorative-card rounded-xl border border-line p-4">
+        <section className="mt-3 glass-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Activity</p>
+              <p className="text-[11px] font-medium text-accent-text">Activity</p>
               <h2 className="mt-1 text-sm font-semibold">Chat + task heatmap — 6 months</h2>
             </div>
             <Database className="size-4 text-accent-text" />
@@ -413,18 +414,18 @@ export default function OverviewPage() {
 
         {/* ── System health + Task health side by side ── */}
         <div className="mt-3 grid gap-3 lg:grid-cols-[1.15fr_.85fr]">
-          <section className="decorative-card rounded-xl border border-line p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><GaugeIcon className="size-4 text-accent-text" /></div>
+          <section className="glass-card p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-medium text-accent-text">System health</p><h2 className="mt-1 text-sm font-semibold">Resource utilization</h2></div><GaugeIcon className="size-4 text-accent-text" /></div>
             <div className="mt-5 grid min-h-64 grid-cols-2 items-stretch gap-3"><GaugeDial icon={Cpu} label="CPU load" value={data.metrics.cpu_percent} detail={`${data.metrics.goroutines} active Go runtime goroutines`} /><GaugeDial icon={MemoryStick} label="Memory" value={memoryPct} detail={`${data.metrics.memory_used_mb} MB used of ${data.metrics.memory_total_mb} MB`} tone={memoryPct > 80 ? "danger" : memoryPct > 60 ? "warning" : "accent"} /></div>
-            <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-lg border border-line bg-well/45 p-3"><p className="text-[10px] uppercase tracking-wider text-ink-3">Goroutines</p><p className="mt-1 font-mono text-lg text-ink">{data.metrics.goroutines}</p></div><div className="rounded-lg border border-line bg-well/45 p-3"><p className="text-[10px] uppercase tracking-wider text-ink-3">Finished</p><p className="mt-1 font-mono text-lg text-ink">{finished}</p></div></div>
+            <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-control border border-line bg-well/45 p-3"><p className="text-[10px] text-ink-3">Goroutines</p><p className="mt-1 font-mono text-lg text-ink">{data.metrics.goroutines}</p></div><div className="rounded-control border border-line bg-well/45 p-3"><p className="text-[10px] text-ink-3">Finished</p><p className="mt-1 font-mono text-lg text-ink">{finished}</p></div></div>
           </section>
 
-          <section className="decorative-card rounded-xl border border-line p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-[.14em] text-accent-text">Task health</p><h2 className="mt-1 text-sm font-semibold">Status distribution</h2></div><Workflow className="size-4 text-accent-text" /></div>
+          <section className="glass-card p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-medium text-accent-text">Task health</p><h2 className="mt-1 text-sm font-semibold">Status distribution</h2></div><Workflow className="size-4 text-accent-text" /></div>
             <TaskHealthChart data={data} />
-            <div className="mt-6 rounded-lg border border-line bg-well/45 p-3"><div className="flex items-center justify-between text-xs"><span className="text-ink-3">Completion rate</span><b className="font-mono text-success-text">{completionRate}%</b></div><div className="mt-2 h-1.5 rounded-full bg-canvas"><div className="h-full rounded-full bg-success" style={{ width: `${completionRate}%` }} /></div></div>
+            <div className="mt-6 rounded-control border border-line bg-well/45 p-3"><div className="flex items-center justify-between text-xs"><span className="text-ink-3">Completion rate</span><b className="font-mono text-success-text">{completionRate}%</b></div><div className="mt-2 h-1.5 rounded-full bg-canvas"><div className="h-full rounded-full bg-success" style={{ width: `${completionRate}%` }} /></div></div>
             <div className="mt-3 grid grid-cols-5 gap-2 text-center">
-              {(["healthy", "silent", "stuck", "lost", "unknown"] as const).map((health) => <div key={health} className="rounded-lg border border-line bg-well/45 p-2"><p className="text-[9px] uppercase tracking-wider text-ink-3">{health}</p><p className="mt-1 font-mono text-sm text-ink">{data.task_health?.[health] ?? 0}</p></div>)}
+              {(["healthy", "silent", "stuck", "lost", "unknown"] as const).map((health) => <div key={health} className="rounded-control border border-line bg-well/45 p-2"><p className="text-[9px] text-ink-3">{health}</p><p className="mt-1 font-mono text-sm text-ink">{data.task_health?.[health] ?? 0}</p></div>)}
             </div>
           </section>
         </div>
@@ -442,18 +443,16 @@ export default function OverviewPage() {
         </div>
 
         {/* ── Review gate metrics ── */}
-        <div className="mt-3">
-          <ReviewGateCard data={review.data} loading={review.isLoading} />
-        </div>
+        <ReviewGateCard data={review.data} loading={review.isLoading} />
 
         {/* ── Queue trend ── */}
-        <div className="mt-3">
-          <QueueTrendChart data={queueTrend.data} loading={queueTrend.isLoading} />
-        </div>
+        <QueueTrendChart data={queueTrend.data} loading={queueTrend.isLoading} />
 
-        {/* ── footer ── */}
-        <footer className="mt-4 pb-4 flex items-center gap-2 text-[10px] text-ink-3"><Radio className="size-3.5 text-accent-text" />Live data from Hermes API · refresh interval 5 seconds</footer>
-      </div>
+        <footer className="flex items-center gap-2 text-[10px] text-ink-3">
+          <Radio className="size-3.5 text-accent-text" />
+          Live data from the Hermes API · refresh interval 5 seconds
+        </footer>
+      </CollectionBody>
     </div>
   )
 }
