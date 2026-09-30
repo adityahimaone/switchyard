@@ -1,21 +1,74 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { History, Play, Plus, RefreshCw, Search, Trash2, Wrench, X } from "lucide-react"
+import { History, MoreHorizontal, Play, Plus, RefreshCw, Trash2, Wrench } from "lucide-react"
 import { api, type CronExecution, type CronJob, type SkillMeta } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { DetailSheet } from "@/components/app/detail-sheet"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterBar } from "@/components/app/filter-bar"
+import { PageHeader } from "@/components/app/page-header"
+import { cn } from "@/lib/utils"
 import LoadingState from "@/components/feedback/loading-state"
-import { HtLoader } from "@/components/feedback/ht-loader"
 
-type Form = { name: string; schedule: string; prompt: string; deliver: string; script: string; no_agent: boolean; workdir: string; skills: string; paused: boolean; paused_reason: string }
-const emptyForm: Form = { name: "", schedule: "", prompt: "", deliver: "local", script: "", no_agent: false, workdir: "", skills: "", paused: false, paused_reason: "" }
+type Form = {
+  name: string
+  schedule: string
+  prompt: string
+  deliver: string
+  script: string
+  no_agent: boolean
+  workdir: string
+  skills: string
+  paused: boolean
+  paused_reason: string
+}
+
+const emptyForm: Form = {
+  name: "", schedule: "", prompt: "", deliver: "local", script: "",
+  no_agent: false, workdir: "", skills: "", paused: false, paused_reason: "",
+}
 
 function formFrom(job?: CronJob): Form {
-  return job ? { name: job.name, schedule: job.schedule?.expr || job.schedule_display, prompt: job.prompt, deliver: job.deliver || "local", script: job.script || "", no_agent: job.no_agent, workdir: job.workdir || "", skills: (job.skills || []).join(", "), paused: !job.enabled, paused_reason: job.paused_reason || "" } : { ...emptyForm }
+  return job
+    ? {
+        name: job.name,
+        schedule: job.schedule?.expr || job.schedule_display,
+        prompt: job.prompt,
+        deliver: job.deliver || "local",
+        script: job.script || "",
+        no_agent: job.no_agent,
+        workdir: job.workdir || "",
+        skills: (job.skills || []).join(", "),
+        paused: !job.enabled,
+        paused_reason: job.paused_reason || "",
+      }
+    : { ...emptyForm }
 }
-function fmt(value?: string | null) { return value ? new Date(value).toLocaleString() : "—" }
+
+function fmt(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : "Never"
+}
+
+function schedulePreview(value: string) {
+  const normalized = value.trim()
+  if (!normalized) return "A cron expression, or a phrase like \"every 2 hours\"."
+  if (normalized.startsWith("every ")) return `Repeats ${normalized.slice(6)}.`
+  if (normalized.includes(" at ")) return `Runs ${normalized}.`
+  return `Cron expression: ${normalized}`
+}
+
+const SCHEDULE_PRESETS = ["every 1h", "every 6h", "every day at 09:00", "weekdays at 09:00"]
 
 export default function CronPage() {
   const qc = useQueryClient()
@@ -23,84 +76,501 @@ export default function CronPage() {
   const [selected, setSelected] = useState<CronJob | null>(null)
   const [historyJob, setHistoryJob] = useState<CronJob | null>(null)
   const [form, setForm] = useState<Form | null>(null)
-  const jobs = useQuery({ queryKey: ["cron-jobs"], queryFn: () => api<CronJob[]>("/api/cron/jobs?all=1"), refetchInterval: 10000 })
-  const status = useQuery({ queryKey: ["cron-status"], queryFn: () => api<{ output: string }>("/api/cron/status"), refetchInterval: 30000 })
-  const doctor = useQuery({ queryKey: ["cron-doctor"], queryFn: () => api<{ output: string }>("/api/cron/doctor"), enabled: false })
-  const skills = useQuery({ queryKey: ["cron-skills"], queryFn: () => api<SkillMeta[]>("/api/skills"), staleTime: 30000 })
-  const schedulePresets = ["every 1h", "every 6h", "every day at 09:00", "weekdays at 09:00"]
+  const [pendingDelete, setPendingDelete] = useState<CronJob | null>(null)
 
-  function schedulePreview(value: string) {
-    const normalized = value.trim()
-    if (!normalized) return "Enter cron expression or natural schedule"
-    if (normalized.startsWith("every ")) return `Repeats ${normalized.slice(6)}`
-    if (normalized.includes(" at ")) return `Runs ${normalized}`
-    return `Cron expression: ${normalized}`
-  }
+  const jobs = useQuery({
+    queryKey: ["cron-jobs"],
+    queryFn: () => api<CronJob[]>("/api/cron/jobs?all=1"),
+    refetchInterval: 10_000,
+  })
+  const status = useQuery({
+    queryKey: ["cron-status"],
+    queryFn: () => api<{ output: string }>("/api/cron/status"),
+    refetchInterval: 30_000,
+  })
+  const doctor = useQuery({
+    queryKey: ["cron-doctor"],
+    queryFn: () => api<{ output: string }>("/api/cron/doctor"),
+    enabled: false,
+  })
+  const skills = useQuery({ queryKey: ["cron-skills"], queryFn: () => api<SkillMeta[]>("/api/skills"), staleTime: 30_000 })
 
-  const action = useMutation({ mutationFn: ({ id, op }: { id: string; op: "pause" | "resume" | "run" | "delete" }) => api(op === "delete" ? `/api/cron/jobs/${id}` : `/api/cron/jobs/${id}/${op}`, { method: op === "delete" ? "DELETE" : "POST" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["cron-jobs"] }) })
+  const action = useMutation({
+    mutationFn: ({ id, op }: { id: string; op: "pause" | "resume" | "run" | "delete" }) =>
+      api(op === "delete" ? `/api/cron/jobs/${id}` : `/api/cron/jobs/${id}/${op}`, {
+        method: op === "delete" ? "DELETE" : "POST",
+      }),
+    onSuccess: () => {
+      setPendingDelete(null)
+      void qc.invalidateQueries({ queryKey: ["cron-jobs"] })
+    },
+  })
+
   const save = useMutation({
     mutationFn: (payload: Form) => {
-      const body = JSON.stringify({ ...payload, skills: payload.skills.split(",").map((x) => x.trim()).filter(Boolean) })
+      const body = JSON.stringify({
+        ...payload,
+        skills: payload.skills.split(",").map((x) => x.trim()).filter(Boolean),
+      })
       if (selected) return api(`/api/cron/jobs/${selected.id}`, { method: "PATCH", body })
       return api("/api/cron/jobs", { method: "POST", body })
     },
-    onSuccess: () => { setForm(null); setSelected(null); void qc.invalidateQueries({ queryKey: ["cron-jobs"] }) },
+    onSuccess: () => {
+      setForm(null)
+      setSelected(null)
+      void qc.invalidateQueries({ queryKey: ["cron-jobs"] })
+    },
   })
-  const filtered = useMemo(() => (jobs.data ?? []).filter((j) => `${j.name} ${j.id} ${j.prompt} ${j.schedule_display}`.toLowerCase().includes(query.toLowerCase())), [jobs.data, query])
-  const active = (jobs.data ?? []).filter((j) => j.enabled).length
-  const paused = (jobs.data ?? []).length - active
-  const failed = (jobs.data ?? []).filter((j) => j.last_status === "error" || j.last_delivery_error).length
 
-  if (jobs.isLoading) return <LoadingState variant="detail" label="Memuat cron jobs" />
-  if (jobs.isError) return <div className="p-6 text-sm text-red-400">Gagal load cron jobs: {(jobs.error as Error).message}</div>
-  return <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-y-auto p-4">
-    <header className="flex flex-wrap items-end gap-3">
-      <div><p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Runtime</p><h1 className="mt-1 text-xl font-semibold tracking-tight">Cron Jobs</h1><p className="mt-1 text-xs text-[var(--color-ink-3)]">Schedule, pause, run, edit, delete.</p></div>
-      <div className="ml-auto flex gap-2"><Button size="sm" variant="outline" onClick={() => void qc.invalidateQueries({ queryKey: ["cron-jobs"] })}><RefreshCw className="size-3.5" /> Refresh</Button><Button size="sm" variant="outline" onClick={() => void doctor.refetch()}><Wrench className="size-3.5" /> Doctor</Button><Button size="sm" onClick={() => { setSelected(null); setForm(emptyForm) }}><Plus className="size-3.5" /> New job</Button></div>
-    </header>
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[["Total", jobs.data?.length ?? 0], ["Active", active], ["Paused", paused], ["Issues", failed]].map(([label, value]) => <div key={label} className="decorative-card rounded-lg p-3"><p className="text-[10px] uppercase tracking-wider text-ink-4">{label}</p><p className="mt-1 font-mono text-2xl text-ink">{value}</p></div>)}</div>
-    <div className="flex items-center gap-2"><Search className="size-4 text-ink-4" /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, schedule, prompt, id…" className="h-8 max-w-md bg-[var(--color-bg)] text-xs" /><span className="ml-auto text-[10px] text-ink-4">{status.data?.output.split("\n")[0] ?? "status loading…"}</span></div>
-    {doctor.data && <pre className="max-h-48 overflow-auto rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 font-mono text-[11px] whitespace-pre-wrap text-amber-100/80">{doctor.data.output}</pre>}
-    <div className="grid gap-2">{filtered.map((job) => <article key={job.id} className="rounded-lg border border-line/70 bg-surface/60 p-3"><div className="flex items-start gap-3"><div className={`mt-1 size-2 shrink-0 rounded-full ${job.enabled ? "bg-emerald-400" : "bg-ink-4"}`} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><button className="truncate text-left text-sm font-semibold hover:text-[var(--color-accent)]" onClick={() => setSelected(job)}>{job.name || "Unnamed job"}</button><span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-ink-4">{job.id}</span>{job.no_agent && <span className="text-[10px] text-violet-300">no-agent</span>}{job.last_status === "error" && <span className="text-[10px] text-red-300">error</span>}</div><p className="mt-1 text-xs text-ink-3">{job.schedule_display} · {job.deliver || "no delivery"}</p><p className="mt-1 line-clamp-2 text-xs text-ink-4">{job.prompt || job.script || "No prompt"}</p><p className="mt-2 text-[10px] text-ink-4">next {fmt(job.next_run_at)} · last {fmt(job.last_run_at)}</p></div><div className="flex shrink-0 items-center gap-2"><Switch size="sm" checked={job.enabled} disabled={action.isPending} onCheckedChange={(on) => action.mutate({ id: job.id, op: on ? "resume" : "pause" })} aria-label={job.enabled ? "Pause job" : "Resume job"} /><Button size="icon-sm" variant="ghost" title="History" onClick={() => setHistoryJob(job)}><History className="size-3.5 text-sky-300" /></Button><Button size="icon-sm" variant="ghost" title="Run now" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, op: "run" })}><Play className="size-3.5 text-emerald-300" /></Button><Button size="icon-sm" variant="ghost" title="Delete" disabled={action.isPending} onClick={() => window.confirm(`Delete ${job.name || job.id}?`) && action.mutate({ id: job.id, op: "delete" })}><Trash2 className="size-3.5 text-red-300" /></Button></div></div></article>)}</div>
-    {selected && <CronDetail job={selected} onClose={() => setSelected(null)} onEdit={() => setForm(formFrom(selected))} />}
-    {historyJob && <CronHistory job={historyJob} onClose={() => setHistoryJob(null)} />}
-    {form && <CronForm value={form} editing={!!selected} skills={skills.data ?? []} presets={schedulePresets} schedulePreview={schedulePreview} onChange={setForm} onClose={() => setForm(null)} onSave={() => save.mutate(form)} busy={save.isPending} error={save.error as Error | null} />}
-  </div>
-}
+  const all = jobs.data ?? []
+  const needle = query.trim().toLowerCase()
+  const filtered = useMemo(
+    () =>
+      needle === ""
+        ? all
+        : all.filter((j) =>
+            `${j.name} ${j.id} ${j.prompt} ${j.schedule_display}`.toLowerCase().includes(needle),
+          ),
+    [all, needle],
+  )
 
-function CronHistory({ job, onClose }: { job: CronJob; onClose: () => void }) {
-  const runs = useQuery({ queryKey: ["cron-runs-modal", job.id], queryFn: () => api<CronExecution[]>(`/api/cron/jobs/${job.id}/runs?limit=100`) })
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}><section className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] text-[var(--color-accent)]">CRON HISTORY</p><h2 className="mt-1 text-lg font-semibold">{job.name || job.id}</h2><p className="mt-1 text-xs text-ink-4">Last 100 executions</p></div><Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close history"><X className="size-4" /></Button></div>{runs.isLoading ? <div className="flex justify-center py-12"><HtLoader size={72} label="Loading history" /></div> : runs.isError ? <p className="mt-6 text-sm text-red-400">Gagal load history: {(runs.error as Error).message}</p> : <div className="mt-4 grid gap-2">{(runs.data ?? []).length === 0 ? <p className="rounded border border-line/60 p-4 text-sm text-ink-4">Belum ada execution log.</p> : runs.data?.map((run) => <div key={run.id} className="rounded border border-line/60 bg-[var(--color-bg)] p-3 text-xs"><div className="flex flex-wrap justify-between gap-2"><span className={run.status === "error" ? "text-red-300" : "text-emerald-300"}>{run.status}</span><span className="font-mono text-ink-4">{fmt(run.finished_at || run.started_at || run.claimed_at)}</span></div>{run.error && <p className="mt-2 whitespace-pre-wrap text-red-300/80">{run.error}</p>}{run.delivery_outcome && <p className="mt-2 text-ink-4">Delivery: {run.delivery_outcome}</p>}</div>)}</div>}</section></div>
-}
+  const active = all.filter((j) => j.enabled).length
+  const failed = all.filter((j) => j.last_status === "error" || j.last_delivery_error).length
 
-function CronDetail({ job, onClose, onEdit }: { job: CronJob; onClose: () => void; onEdit: () => void }) {
-  const runs = useQuery({ queryKey: ["cron-runs", job.id], queryFn: () => api<CronExecution[]>(`/api/cron/jobs/${job.id}/runs?limit=20`) })
-  return <div className="fixed inset-0 z-40 flex justify-end bg-black/50" onClick={onClose}><aside className="h-full w-full max-w-lg overflow-y-auto border-l border-line bg-surface p-4" onClick={(e) => e.stopPropagation()}><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] text-[var(--color-accent)]">CRON DETAIL</p><h2 className="mt-1 text-lg font-semibold">{job.name || job.id}</h2></div><Button size="icon-sm" variant="ghost" onClick={onClose}><X className="size-4" /></Button></div><div className="mt-4 flex gap-2"><Button size="sm" onClick={onEdit}>Edit</Button><span className="rounded bg-[var(--color-bg)] px-2 py-1 text-xs text-ink-3">{job.enabled ? "active" : "paused"}</span></div><dl className="mt-4 grid gap-3 text-xs">{[["Schedule", job.schedule_display], ["Delivery", job.deliver], ["Next run", fmt(job.next_run_at)], ["Last run", fmt(job.last_run_at)], ["Status", job.last_status || "—"], ["Script", job.script || "—"], ["Workdir", job.workdir || "—"]].map(([k, v]) => <div key={k}><dt className="text-ink-4">{k}</dt><dd className="mt-0.5 break-words text-ink">{v}</dd></div>)}</dl><h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-ink-4">Prompt</h3><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--color-bg)] p-3 font-mono text-[11px] text-ink-2">{job.prompt || "—"}</pre><h3 className="mt-5 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-ink-4"><History className="size-3" /> Recent runs</h3><div className="mt-2 grid gap-1">{runs.data?.map((run) => <div key={run.id} className="rounded border border-line/60 px-2 py-1.5 font-mono text-[10px] text-ink-3">{run.status} · {fmt(run.finished_at || run.claimed_at)}</div>)}</div></aside></div>
-}
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Cron jobs"
+        description="Scheduled prompts and scripts. Pause, run on demand, or edit."
+        actions={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => void qc.invalidateQueries({ queryKey: ["cron-jobs"] })}>
+              <RefreshCw className="size-3.5" /> Refresh
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => void doctor.refetch()}>
+              <Wrench className="size-3.5" /> Doctor
+            </Button>
+            <Button variant="signal" size="sm" onClick={() => { setSelected(null); setForm({ ...emptyForm }) }}>
+              <Plus className="size-3.5" /> New job
+            </Button>
+          </>
+        }
+      >
+        <FilterBar
+          query={query}
+          onQueryChange={setQuery}
+          placeholder="Search jobs"
+          shown={filtered.length}
+          total={all.length}
+        />
+      </PageHeader>
 
-function CronForm({ value, editing, skills, presets, schedulePreview, onChange, onClose, onSave, busy, error }: { value: Form; editing: boolean; skills: SkillMeta[]; presets: string[]; schedulePreview: (value: string) => string; onChange: (v: Form) => void; onClose: () => void; onSave: () => void; busy: boolean; error: Error | null }) {
-  const set = (key: keyof Form, val: string | boolean) => onChange({ ...value, [key]: val })
-  const textFields: [keyof Form, string][] = [["name", "Name"], ["deliver", "Delivery"], ["script", "Script"], ["workdir", "Workdir"]]
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-    <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-4" onClick={(e) => e.stopPropagation()}>
-      <h2 className="text-sm font-semibold">{editing ? "Edit cron job" : "New cron job"}</h2>
-      <div className="mt-4 grid gap-3">
-        {textFields.map(([key, label]) => <label key={key} className="text-xs text-ink-3">{label}<Input value={String(value[key])} onChange={(e) => set(key, e.target.value)} className="mt-1 bg-[var(--color-bg)] text-xs" /></label>)}
-        <label className="text-xs text-ink-3">Schedule
-          <Input value={value.schedule} onChange={(e) => set("schedule", e.target.value)} placeholder="every 2h / weekdays at 9am / cron" className="mt-1 bg-[var(--color-bg)] text-xs" />
-          <span className="mt-1 block text-[10px] text-ink-4">{schedulePreview(value.schedule)}</span>
-          <div className="mt-1 flex flex-wrap gap-1">{presets.map((preset) => <button type="button" key={preset} onClick={() => set("schedule", preset)} className="rounded border border-line px-1.5 py-0.5 text-[10px] text-ink-3 hover:text-ink">{preset}</button>)}</div>
-        </label>
-        <label className="text-xs text-ink-3">Skills
-          <Input value={value.skills} onChange={(e) => set("skills", e.target.value)} placeholder="comma-separated skill names" className="mt-1 bg-[var(--color-bg)] text-xs" />
-          {skills.length > 0 && <span className="mt-1 block text-[10px] text-ink-4">Available: {skills.slice(0, 12).map((skill) => skill.name).join(", ")}</span>}
-        </label>
-        <label className="text-xs text-ink-3">Prompt<Textarea value={value.prompt} onChange={(e) => set("prompt", e.target.value)} className="mt-1 min-h-32 bg-[var(--color-bg)] text-xs" /></label>
-        <label className="flex items-center gap-2 text-xs text-ink-2"><input type="checkbox" checked={value.no_agent} onChange={(e) => set("no_agent", e.target.checked)} /> no-agent script mode</label>
-        <label className="flex items-center gap-2 text-xs text-ink-2"><input type="checkbox" checked={value.paused} onChange={(e) => set("paused", e.target.checked)} /> create paused</label>
-        {error && <p className="text-xs text-red-400">{error.message}</p>}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {doctor.data && (
+          <pre className="mx-auto mt-4 max-h-48 w-full max-w-[1200px] overflow-auto whitespace-pre-wrap rounded-control border border-warning/30 bg-warning-tint p-3 font-mono text-2xs text-ink-2 md:px-6">
+            {doctor.data.output}
+          </pre>
+        )}
+
+        {jobs.isLoading ? (
+          <LoadingState variant="detail" label="Loading cron jobs" />
+        ) : jobs.isError ? (
+          <EmptyState
+            title="Couldn't load cron jobs"
+            hint={(jobs.error as Error).message}
+            action={<Button variant="secondary" onClick={() => void jobs.refetch()}>Retry</Button>}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={all.length ? `No jobs match "${query.trim()}"` : "No cron jobs yet"}
+            hint={all.length ? undefined : "A job runs a prompt or a script on a schedule."}
+            action={
+              all.length ? undefined : (
+                <Button variant="signal" onClick={() => { setSelected(null); setForm({ ...emptyForm }) }}>
+                  New job
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="mx-auto w-full max-w-[1200px] px-4 py-4 md:px-6">
+            <table className="w-full border-collapse text-sm">
+              <caption className="sr-only">Scheduled jobs</caption>
+              <thead>
+                <tr className="border-b border-line text-left text-xs text-ink-3">
+                  <th scope="col" className="px-2 py-2 font-medium">Job</th>
+                  <th scope="col" className="px-2 py-2 font-medium">Schedule</th>
+                  <th scope="col" className="px-2 py-2 font-medium">Last run</th>
+                  <th scope="col" className="px-2 py-2 font-medium">Next run</th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium">Enabled</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((job) => {
+                  const problem = job.last_status === "error" || !!job.last_delivery_error
+                  return (
+                    <tr key={job.id} className="border-b border-line last:border-0 hover:bg-well">
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelected(job)}
+                          className="truncate text-left text-sm font-medium text-ink outline-none hover:text-accent focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          title={job.name || job.id}
+                        >
+                          {job.name || "Unnamed job"}
+                        </button>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-3">
+                          <span className="font-mono">{job.id}</span>
+                          {job.no_agent && <span>no agent</span>}
+                          {problem && (
+                            <span className="inline-flex items-center gap-1 text-danger-text">
+                              {job.last_delivery_error ?? job.last_status}
+                            </span>
+                          )}
+                        </p>
+                      </td>
+                      <td className="px-2 py-2.5 font-mono text-2xs text-ink-2" title={job.schedule_display}>
+                        {job.schedule_display}
+                      </td>
+                      <td className="px-2 py-2.5 text-xs text-ink-3 tabular">{fmt(job.last_run_at)}</td>
+                      <td className="px-2 py-2.5 text-xs text-ink-3 tabular">{fmt(job.next_run_at)}</td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <Switch
+                            size="sm"
+                            checked={job.enabled}
+                            disabled={action.isPending}
+                            onCheckedChange={(on) => action.mutate({ id: job.id, op: on ? "resume" : "pause" })}
+                            aria-label={job.enabled ? `Pause ${job.name || job.id}` : `Resume ${job.name || job.id}`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Run ${job.name || job.id} now`}
+                            disabled={action.isPending}
+                            onClick={() => action.mutate({ id: job.id, op: "run" })}
+                          >
+                            <Play className="size-3.5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`More actions for ${job.name || job.id}`}
+                              >
+                                <MoreHorizontal className="size-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => setHistoryJob(job)}>
+                                <History className="size-3.5" /> Run history
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => setPendingDelete(job)}
+                                className="text-danger-text focus:text-danger-text"
+                              >
+                                <Trash2 className="size-3.5" /> Delete job
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+
+            <p className="mt-4 text-xs text-ink-3 tabular">
+              {active} active · {all.length - active} paused · {failed} with issues
+              {status.data?.output ? ` · ${status.data.output.split("\n")[0]}` : ""}
+            </p>
+          </div>
+        )}
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" disabled={busy || !value.schedule.trim()} onClick={onSave}>{busy ? "Saving…" : "Save"}</Button></div>
+
+      <DetailSheet
+        open={selected !== null}
+        onOpenChange={(o) => !o && setSelected(null)}
+        title={selected?.name || selected?.id || ""}
+        description={selected?.enabled ? "Active" : "Paused"}
+        footer={
+          <Button variant="signal" size="sm" onClick={() => selected && setForm(formFrom(selected))}>
+            Edit job
+          </Button>
+        }
+      >
+        {selected && <JobDetail job={selected} />}
+      </DetailSheet>
+
+      <CronHistory
+        job={historyJob}
+        onOpenChange={(o) => !o && setHistoryJob(null)}
+      />
+
+      <DetailSheet
+        open={form !== null}
+        onOpenChange={(o) => !o && setForm(null)}
+        title={selected ? "Edit cron job" : "New cron job"}
+        description="A prompt or script that runs on a schedule."
+      >
+        {form && (
+          <CronForm
+            value={form}
+            editing={!!selected}
+            skills={skills.data ?? []}
+            onChange={setForm}
+            onClose={() => setForm(null)}
+            onSave={() => save.mutate(form)}
+            busy={save.isPending}
+            error={save.error as Error | null}
+          />
+        )}
+      </DetailSheet>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title="Delete cron job"
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete.name || pendingDelete.id}"? It stops running immediately. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete job"
+        busy={action.isPending}
+        onConfirm={() => pendingDelete && action.mutate({ id: pendingDelete.id, op: "delete" })}
+      />
     </div>
-  </div>
+  )
+}
+
+function JobDetail({ job }: { job: CronJob }) {
+  const runs = useQuery({
+    queryKey: ["cron-runs", job.id],
+    queryFn: () => api<CronExecution[]>(`/api/cron/jobs/${job.id}/runs?limit=20`),
+  })
+  const rows: [string, string][] = [
+    ["Schedule", job.schedule_display],
+    ["Delivery", job.deliver || "None"],
+    ["Next run", fmt(job.next_run_at)],
+    ["Last run", fmt(job.last_run_at)],
+    ["Status", job.last_status || "No runs yet"],
+    ["Script", job.script || "None"],
+    ["Working directory", job.workdir || "None"],
+  ]
+  return (
+    <div className="flex flex-col gap-5">
+      <dl className="grid gap-3 text-xs">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt className="text-ink-3">{k}</dt>
+            <dd className="mt-0.5 break-words text-ink">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <div>
+        <h3 className="text-sm font-medium text-ink">Prompt</h3>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-control border border-line bg-well p-3 font-mono text-2xs text-ink-2">
+          {job.prompt || "No prompt. This job runs a script."}
+        </pre>
+      </div>
+      <div>
+        <h3 className="flex items-center gap-1.5 text-sm font-medium text-ink">
+          <History className="size-3.5" /> Recent runs
+        </h3>
+        <div className="mt-2 flex flex-col gap-1">
+          {(runs.data ?? []).length === 0 ? (
+            <p className="text-xs text-ink-3">No runs recorded yet.</p>
+          ) : (
+            runs.data?.map((run) => (
+              <p key={run.id} className="font-mono text-2xs text-ink-3 tabular">
+                {run.status} · {fmt(run.finished_at || run.claimed_at)}
+              </p>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CronHistory({ job, onOpenChange }: { job: CronJob | null; onOpenChange: (open: boolean) => void }) {
+  const runs = useQuery({
+    queryKey: ["cron-runs-modal", job?.id],
+    queryFn: () => api<CronExecution[]>(`/api/cron/jobs/${job!.id}/runs?limit=100`),
+    enabled: !!job,
+  })
+  return (
+    <Dialog open={!!job} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{job?.name || job?.id}</DialogTitle>
+          <DialogDescription>Last 100 executions</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          {runs.isLoading ? (
+            <LoadingState variant="detail" label="Loading history" />
+          ) : runs.isError ? (
+            <EmptyState
+              title="Couldn't load history"
+              hint={(runs.error as Error).message}
+              action={<Button variant="secondary" onClick={() => void runs.refetch()}>Retry</Button>}
+            />
+          ) : (runs.data ?? []).length === 0 ? (
+            <EmptyState title="No executions yet" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {runs.data?.map((run) => (
+                <div key={run.id} className="rounded-control border border-line bg-well p-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className={cn(
+                        "font-medium",
+                        run.status === "error" ? "text-danger-text" : "text-success",
+                      )}
+                    >
+                      {run.status}
+                    </span>
+                    <span className="font-mono text-2xs text-ink-3 tabular">
+                      {fmt(run.finished_at || run.started_at || run.claimed_at)}
+                    </span>
+                  </div>
+                  {run.error && <p className="mt-2 whitespace-pre-wrap text-danger-text">{run.error}</p>}
+                  {run.delivery_outcome && (
+                    <p className="mt-2 text-ink-3">Delivery: {run.delivery_outcome}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CronForm({
+  value, editing, skills, onChange, onClose, onSave, busy, error,
+}: {
+  value: Form
+  editing: boolean
+  skills: SkillMeta[]
+  onChange: (v: Form) => void
+  onClose: () => void
+  onSave: () => void
+  busy: boolean
+  error: Error | null
+}) {
+  const set = (key: keyof Form, val: string | boolean) => onChange({ ...value, [key]: val })
+  const textFields: [keyof Form, string][] = [
+    ["name", "Name"],
+    ["deliver", "Delivery"],
+    ["script", "Script"],
+    ["workdir", "Working directory"],
+  ]
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => { e.preventDefault(); onSave() }}
+    >
+      {textFields.map(([key, label]) => (
+        <Field key={key} label={label} htmlFor={`cf-${key}`}>
+          <Input
+            id={`cf-${key}`}
+            value={String(value[key])}
+            onChange={(e) => set(key, e.target.value)}
+            className={key === "script" || key === "workdir" ? "font-mono text-xs" : undefined}
+          />
+        </Field>
+      ))}
+
+      <Field label="Schedule" htmlFor="cf-schedule">
+        <Input
+          id="cf-schedule"
+          value={value.schedule}
+          onChange={(e) => set("schedule", e.target.value)}
+          placeholder="every 2 hours, or a cron expression"
+          className="font-mono text-xs"
+        />
+        <span className="mt-1.5 block text-xs text-ink-3">{schedulePreview(value.schedule)}</span>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {SCHEDULE_PRESETS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => set("schedule", preset)}
+              className="rounded-control border border-line px-1.5 py-0.5 text-2xs text-ink-3 outline-none hover:border-line-strong hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Skills" htmlFor="cf-skills">
+        <Input
+          id="cf-skills"
+          value={value.skills}
+          onChange={(e) => set("skills", e.target.value)}
+          placeholder="Comma-separated skill names"
+        />
+        {skills.length > 0 && (
+          <span className="mt-1.5 block text-xs text-ink-3">
+            {skills.length} available
+          </span>
+        )}
+      </Field>
+
+      <Field label="Prompt" htmlFor="cf-prompt">
+        <Textarea
+          id="cf-prompt"
+          value={value.prompt}
+          onChange={(e) => set("prompt", e.target.value)}
+          className="min-h-32"
+        />
+      </Field>
+
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-sm text-ink">Script mode (no agent)</span>
+        <Switch
+          size="sm"
+          checked={value.no_agent}
+          onCheckedChange={(v) => set("no_agent", v)}
+          aria-label="Script mode"
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-sm text-ink">Create paused</span>
+        <Switch
+          size="sm"
+          checked={value.paused}
+          onCheckedChange={(v) => set("paused", v)}
+          aria-label="Create paused"
+        />
+      </label>
+
+      {error && <p className="text-sm text-danger-text" role="alert">{error.message}</p>}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="signal" loading={busy} disabled={!value.schedule.trim()}>
+          {editing ? "Save changes" : "Create job"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function Field({
+  label, htmlFor, children,
+}: { label: string; htmlFor: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
+  )
 }

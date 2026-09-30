@@ -1,10 +1,21 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Cable, Puzzle, Trash2 } from "lucide-react"
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { EntryCard, Metric } from "@/components/app/entry-card"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { DetailSheet } from "@/components/app/detail-sheet"
+import { EmptyState } from "@/components/app/empty-state"
+import { PageHeader, SectionHeader } from "@/components/app/page-header"
+import { cn } from "@/lib/utils"
 import LoadingState from "@/components/feedback/loading-state"
-import { Separator } from "@/components/ui/separator"
 import {
   deleteExtension,
   deleteMCPServer,
@@ -23,59 +34,78 @@ import {
   type MCPServerHealth,
 } from "@/api"
 
-const emptyMCP: Omit<MCPServer, "created_at"> = { id: "", name: "", transport: "http", endpoint: "", command: "", enabled: true, capabilities: [] }
+const emptyMCP: Omit<MCPServer, "created_at"> = {
+  id: "", name: "", transport: "http", endpoint: "", command: "", enabled: true, capabilities: [],
+}
 const emptyExtension = { id: "", name: "", version: "", description: "", capabilities: ["read_tasks"] }
 
+/** Probe state is a lamp plus a label, never colour alone. */
 const healthTone: Record<string, string> = {
-  ok: "border-emerald-500/40 text-emerald-200",
-  failed: "border-red-500/40 text-red-200",
-  disabled: "border-[var(--color-line)] text-[var(--color-ink-3)]",
-  unknown: "border-[var(--color-line)] text-[var(--color-ink-3)]",
-}
-
-function TransportBadge({ transport }: { transport: string }) {
-  return <span className="rounded border border-[var(--color-line)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-ink-3)]">{transport}</span>
+  ok: "text-success",
+  failed: "text-danger-text",
+  disabled: "text-ink-3",
+  unknown: "text-ink-3",
 }
 
 export default function EcosystemPage() {
   const qc = useQueryClient()
-  const [mcp, setMcp] = useState(emptyMCP)
-  const [ext, setExt] = useState(emptyExtension)
+  const [mcpDraft, setMcpDraft] = useState<Omit<MCPServer, "created_at"> | null>(null)
+  const [extDraft, setExtDraft] = useState<typeof emptyExtension | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: "mcp" | "extension"; id: string; name: string } | null
+  >(null)
   const [health, setHealth] = useState<Record<string, MCPServerHealth>>({})
 
   const servers = useQuery({ queryKey: ["ecosystem-mcp"], queryFn: () => listMCPServers() })
   const extensions = useQuery({ queryKey: ["ecosystem-extensions"], queryFn: () => listExtensions() })
   const gateway = useQuery({ queryKey: ["ecosystem-gateway"], queryFn: gatewayStatus })
-  const liveServers = useQuery({ queryKey: ["hermes-mcp-servers"], queryFn: () => listHermesMCPServers(), refetchInterval: 30_000 })
+  const liveServers = useQuery({
+    queryKey: ["hermes-mcp-servers"],
+    queryFn: () => listHermesMCPServers(),
+    refetchInterval: 30_000,
+  })
   const toolsets = useQuery({ queryKey: ["hermes-mcp-toolsets"], queryFn: () => listMCPToolsets() })
 
   const onFail = (e: Error) => toastGlobal(e.message, "error")
 
   const saveM = useMutation({
-    mutationFn: () => saveMCPServer(mcp),
-    onSuccess: () => { setMcp(emptyMCP); void qc.invalidateQueries({ queryKey: ["ecosystem-mcp"] }) },
+    mutationFn: (data: Omit<MCPServer, "created_at">) => saveMCPServer(data),
+    onSuccess: () => {
+      setMcpDraft(null)
+      void qc.invalidateQueries({ queryKey: ["ecosystem-mcp"] })
+      toastGlobal("MCP server added", "success")
+    },
     onError: onFail,
   })
   const saveE = useMutation({
-    mutationFn: () => saveExtension(ext),
-    onSuccess: () => { setExt(emptyExtension); void qc.invalidateQueries({ queryKey: ["ecosystem-extensions"] }) },
+    mutationFn: (data: typeof emptyExtension) => saveExtension(data),
+    onSuccess: () => {
+      setExtDraft(null)
+      void qc.invalidateQueries({ queryKey: ["ecosystem-extensions"] })
+      toastGlobal("Extension added", "success")
+    },
     onError: onFail,
   })
-  const removeM = useMutation({
-    mutationFn: (id: string) => deleteMCPServer(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ecosystem-mcp"] }),
-    onError: onFail,
-  })
-  const removeE = useMutation({
-    mutationFn: (id: string) => deleteExtension(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ecosystem-extensions"] }),
+  const remove = useMutation({
+    // The two delete endpoints return different shapes, so the result is
+    // normalised rather than letting the union leak into the mutation type.
+    mutationFn: async (target: { kind: "mcp" | "extension"; id: string }): Promise<void> => {
+      if (target.kind === "mcp") await deleteMCPServer(target.id)
+      else await deleteExtension(target.id)
+    },
+    onSuccess: () => {
+      setPendingDelete(null)
+      void qc.invalidateQueries({ queryKey: ["ecosystem-mcp"] })
+      void qc.invalidateQueries({ queryKey: ["ecosystem-extensions"] })
+      toastGlobal("Deleted", "success")
+    },
     onError: onFail,
   })
   const probe = useMutation({
     mutationFn: (name: string) => testMCPServer(name),
     onSuccess: (result) => {
       setHealth((prev) => ({ ...prev, [result.name]: result }))
-      if (result.state === "ok") toastGlobal(`${result.name}: ${result.tools} tool(s) available`, "success")
+      if (result.state === "ok") toastGlobal(`${result.name}: ${result.tools} tools available`, "success")
       else toastGlobal(`${result.name}: ${result.error ?? result.state}`, "error")
     },
     onError: onFail,
@@ -84,172 +114,398 @@ export default function EcosystemPage() {
   const liveItems: HermesMCPServer[] = liveServers.data ?? []
   const mcpItems: MCPServer[] = servers.data ?? []
   const extItems: ExtensionManifest[] = extensions.data ?? []
+  const gatewayState = gateway.data?.state ?? "unknown"
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Registry</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Ecosystem</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">MCP servers configured by the hermes agent, plus the declarative extension registry.</p>
-          <Separator className="my-3" />
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Ecosystem"
+        description="MCP servers the hermes agent can reach, plus the declarative extension registry."
+      />
 
-        <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-          <div className="flex items-center gap-2">
-            <Cable className="size-4 text-[var(--color-accent)]" />
-            <h2 className="text-sm font-semibold">Gateway</h2>
-            <span className="ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px]">{gateway.data?.state ?? "loading"}</span>
-          </div>
-          {gateway.data?.error && <p className="mt-2 text-xs text-red-400">{gateway.data.error}</p>}
-          <p className="mt-2 text-xs text-[var(--color-ink-3)]">Session creation remains disabled until transport and auth contract exists.</p>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
+          <section className="flex flex-col gap-3">
+            <SectionHeader
+              title="Gateway"
+              description="Session creation stays disabled until a transport and auth contract exists."
+            />
+            <EntryCard
+              density="infrastructure"
+              title="Gateway"
+              state={<Lamp state={gatewayState} label={gatewayState} />}
+            >
+              {gateway.data?.error && (
+                <p className="text-xs text-danger-text">{gateway.data.error}</p>
+              )}
+            </EntryCard>
+          </section>
 
-        <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-          <h2 className="text-sm font-semibold">Agent MCP servers</h2>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Read from the hermes agent&apos;s own <code className="font-mono">config.yaml</code>. Edit them with{" "}
-            <code className="font-mono">hermes mcp add</code> — the agent is the source of truth.
-          </p>
-          {liveServers.isError && <p className="mt-3 text-sm text-red-400">Gagal load MCP servers: {(liveServers.error as Error).message}</p>}
-          {liveServers.isLoading && <LoadingState variant="detail" label="Memuat MCP servers" />}
-          {liveServers.isSuccess && liveItems.length === 0 && <p className="mt-3 text-xs text-[var(--color-ink-3)]">No MCP servers configured.</p>}
-          <div className="mt-3 space-y-2">
-            {liveItems.map((item) => {
-              const status = health[item.name]
-              return (
-                <div key={item.name} className="rounded-lg border border-[var(--color-line)] p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">
-                        {item.name} <TransportBadge transport={item.transport} />{" "}
-                        {item.enabled ? null : <span className="text-[var(--color-ink-3)]">(disabled)</span>}
-                      </p>
-                      <p className="truncate font-mono text-[10px] text-[var(--color-ink-3)]">
-                        {item.transport === "stdio"
-                          ? [item.command, ...(item.args ?? [])].filter(Boolean).join(" ")
-                          : item.url}
-                      </p>
-                    </div>
-                    {status && (
-                      <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${healthTone[status.state] ?? healthTone.unknown}`}>
-                        {status.state}{status.state === "ok" ? ` · ${status.tools} tools` : ""}
-                      </span>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={probe.isPending || !item.enabled}
-                      onClick={() => probe.mutate(item.name)}
-                    >
-                      Test
-                    </Button>
-                  </div>
-                  {status?.tool_names && status.tool_names.length > 0 && (
-                    <p className="mt-2 font-mono text-[10px] text-[var(--color-ink-2)]">{status.tool_names.join(", ")}</p>
-                  )}
-                  {status?.error && <p className="mt-2 text-xs text-red-400">{status.error}</p>}
-                  {item.secret_set && (
-                    <p className="mt-2 text-[10px] text-[var(--color-ink-3)]">
-                      credentials configured{item.env_keys?.length ? `: ${item.env_keys.join(", ")}` : ""}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          {toolsets.isSuccess && Object.keys(toolsets.data ?? {}).length > 0 && (
-            <div className="mt-4 space-y-1">
-              <p className="text-[10px] uppercase tracking-[.18em] text-[var(--color-ink-3)]">Toolset bindings</p>
-              {Object.entries(toolsets.data ?? {}).map(([platform, list]) => (
-                <p key={platform} className="font-mono text-[10px] text-[var(--color-ink-3)]">
-                  {platform}: {list.join(", ")}
-                </p>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-          <h2 className="text-sm font-semibold">MCP registry</h2>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Declarative entries stored by the board. The hermes agent does not read these.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Input placeholder="id" value={mcp.id} onChange={e => setMcp({ ...mcp, id: e.target.value })} />
-            <Input placeholder="name" value={mcp.name} onChange={e => setMcp({ ...mcp, name: e.target.value })} />
-            <div className="flex gap-1 sm:col-span-2">
-              <Button
-                size="sm"
-                variant={mcp.transport === "stdio" ? "default" : "outline"}
-                onClick={() => setMcp({ ...mcp, transport: "stdio" })}
-              >
-                stdio
-              </Button>
-              <Button
-                size="sm"
-                variant={mcp.transport === "http" ? "default" : "outline"}
-                onClick={() => setMcp({ ...mcp, transport: "http" })}
-              >
-                http
-              </Button>
-            </div>
-            {mcp.transport === "stdio" ? (
-              <Input className="sm:col-span-2" placeholder="command (e.g. codegraph serve --mcp)" value={mcp.command} onChange={e => setMcp({ ...mcp, command: e.target.value })} />
+          <section className="flex flex-col gap-3">
+            <SectionHeader
+              title="Agent MCP servers"
+              description="Read from the hermes agent's own config.yaml, which stays the source of truth. Edit them with `hermes mcp add`."
+            />
+            {liveServers.isLoading ? (
+              <LoadingState variant="detail" label="Loading MCP servers" />
+            ) : liveServers.isError ? (
+              <EmptyState
+                title="Couldn't load MCP servers"
+                hint={(liveServers.error as Error).message}
+                action={<Button variant="secondary" onClick={() => void liveServers.refetch()}>Retry</Button>}
+              />
+            ) : liveItems.length === 0 ? (
+              <EmptyState
+                title="No MCP servers configured"
+                hint="Add one on the agent host with `hermes mcp add`."
+              />
             ) : (
-              <Input className="sm:col-span-2" placeholder="HTTPS endpoint or loopback HTTP" value={mcp.endpoint} onChange={e => setMcp({ ...mcp, endpoint: e.target.value })} />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {liveItems.map((item) => {
+                  const status = health[item.name]
+                  const endpoint =
+                    item.transport === "stdio"
+                      ? [item.command, ...(item.args ?? [])].filter(Boolean).join(" ")
+                      : item.url
+                  return (
+                    <EntryCard
+                      key={item.name}
+                      density="infrastructure"
+                      title={item.name}
+                      state={
+                        !item.enabled ? (
+                          <span className="text-xs text-ink-3">Disabled</span>
+                        ) : status ? (
+                          <Lamp
+                            state={status.state}
+                            label={status.state === "ok" ? `${status.tools} tools` : status.state}
+                          />
+                        ) : undefined
+                      }
+                      subtitle={endpoint || "No endpoint"}
+                      mono
+                      metrics={
+                        <span className="text-xs text-ink-3">
+                          {item.transport}
+                          {item.secret_set && " · credentials configured"}
+                        </span>
+                      }
+                      primary={
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={probe.isPending && probe.variables === item.name}
+                          disabled={!item.enabled}
+                          onClick={() => probe.mutate(item.name)}
+                        >
+                          Test
+                        </Button>
+                      }
+                    >
+                      {status?.tool_names && status.tool_names.length > 0 && (
+                        <p
+                          className="truncate font-mono text-2xs text-ink-2"
+                          title={status.tool_names.join(", ")}
+                        >
+                          {status.tool_names.join(", ")}
+                        </p>
+                      )}
+                      {status?.error && <p className="text-xs text-danger-text">{status.error}</p>}
+                    </EntryCard>
+                  )
+                })}
+              </div>
             )}
-            <Button disabled={saveM.isPending} onClick={() => saveM.mutate()}>Add MCP server</Button>
-          </div>
-          {servers.isError && <p className="mt-3 text-sm text-red-400">Gagal load registry: {(servers.error as Error).message}</p>}
-          <div className="mt-4 space-y-2">
-            {mcpItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 rounded-lg border border-[var(--color-line)] p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">
-                    {item.name} <span className="font-mono text-[10px] text-[var(--color-ink-3)]">({item.id})</span>
-                  </p>
-                  <p className="truncate font-mono text-[10px] text-[var(--color-ink-3)]">
-                    {item.transport === "http" ? item.endpoint : item.command}
-                  </p>
-                </div>
-                <Button size="icon" variant="ghost" aria-label={`Delete ${item.id}`} onClick={() => removeM.mutate(item.id)}>
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
 
-        <section className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-          <div className="flex items-center gap-2">
-            <Puzzle className="size-4 text-[var(--color-accent)]" />
-            <h2 className="text-sm font-semibold">Extensions</h2>
-          </div>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Declarative manifests. No plugin execution.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Input placeholder="id" value={ext.id} onChange={e => setExt({ ...ext, id: e.target.value })} />
-            <Input placeholder="name" value={ext.name} onChange={e => setExt({ ...ext, name: e.target.value })} />
-            <Input placeholder="version" value={ext.version} onChange={e => setExt({ ...ext, version: e.target.value })} />
-            <Input placeholder="description" value={ext.description} onChange={e => setExt({ ...ext, description: e.target.value })} />
-            <Button className="sm:col-span-2" disabled={saveE.isPending} onClick={() => saveE.mutate()}>Add extension</Button>
-          </div>
-          {extensions.isError && <p className="mt-3 text-sm text-red-400">Gagal load extensions: {(extensions.error as Error).message}</p>}
-          <div className="mt-4 space-y-2">
-            {extItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 rounded-lg border border-[var(--color-line)] p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">
-                    {item.name} <span className="font-mono text-[10px] text-[var(--color-ink-3)]">v{item.version}</span>
+            {toolsets.isSuccess && Object.keys(toolsets.data ?? {}).length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-ink-3">Toolset bindings</p>
+                {Object.entries(toolsets.data ?? {}).map(([platform, list]) => (
+                  <p key={platform} className="font-mono text-2xs text-ink-3">
+                    {platform}: {list.join(", ")}
                   </p>
-                  <p className="truncate text-[10px] text-[var(--color-ink-3)]">{item.capabilities.join(", ")}</p>
-                </div>
-                <Button size="icon" variant="ghost" aria-label={`Delete ${item.id}`} onClick={() => removeE.mutate(item.id)}>
-                  <Trash2 className="size-4" />
-                </Button>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <SectionHeader
+              title="MCP registry"
+              description="Declarative entries stored by the board. The hermes agent does not read these."
+              actions={
+                <Button variant="signal" size="sm" onClick={() => setMcpDraft({ ...emptyMCP })}>
+                  <Plus className="size-3.5" /> Add MCP server
+                </Button>
+              }
+            />
+            {servers.isError ? (
+              <EmptyState
+                title="Couldn't load the registry"
+                hint={(servers.error as Error).message}
+                action={<Button variant="secondary" onClick={() => void servers.refetch()}>Retry</Button>}
+              />
+            ) : mcpItems.length === 0 ? (
+              <EmptyState
+                title="No registry entries"
+                hint="Board-side declarations, separate from the agent's own config."
+                action={<Button variant="signal" onClick={() => setMcpDraft({ ...emptyMCP })}>Add MCP server</Button>}
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {mcpItems.map((item) => (
+                  <EntryCard
+                    key={item.id}
+                    density="infrastructure"
+                    title={item.name}
+                    subtitle={item.transport === "http" ? item.endpoint : item.command}
+                    mono
+                    metrics={
+                      <>
+                        <span className="text-xs text-ink-3">{item.transport}</span>
+                        {!item.enabled && <span className="text-xs text-ink-3">disabled</span>}
+                      </>
+                    }
+                    overflow={
+                      <DeleteMenu
+                        name={item.name}
+                        onDelete={() => setPendingDelete({ kind: "mcp", id: item.id, name: item.name })}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <SectionHeader
+              title="Extensions"
+              description="Declarative manifests. No plugin execution."
+              actions={
+                <Button variant="signal" size="sm" onClick={() => setExtDraft({ ...emptyExtension })}>
+                  <Plus className="size-3.5" /> Add extension
+                </Button>
+              }
+            />
+            {extensions.isError ? (
+              <EmptyState
+                title="Couldn't load extensions"
+                hint={(extensions.error as Error).message}
+                action={<Button variant="secondary" onClick={() => void extensions.refetch()}>Retry</Button>}
+              />
+            ) : extItems.length === 0 ? (
+              <EmptyState
+                title="No extensions"
+                hint="Extensions declare what they may do; nothing executes."
+                action={<Button variant="signal" onClick={() => setExtDraft({ ...emptyExtension })}>Add extension</Button>}
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {extItems.map((item) => (
+                  <EntryCard
+                    key={item.id}
+                    density="registry"
+                    title={item.name}
+                    subtitle={item.description || undefined}
+                    metrics={
+                      <>
+                        <span className="font-mono text-2xs text-ink-3">v{item.version}</span>
+                        <Metric value={item.capabilities.length} label="capabilities" />
+                      </>
+                    }
+                    overflow={
+                      <DeleteMenu
+                        name={item.name}
+                        onDelete={() => setPendingDelete({ kind: "extension", id: item.id, name: item.name })}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
+
+      <DetailSheet
+        open={mcpDraft !== null}
+        onOpenChange={(o) => !o && setMcpDraft(null)}
+        title="Add MCP server"
+        description="A board-side declaration. The hermes agent reads its own config instead."
+      >
+        {mcpDraft && (
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(e) => { e.preventDefault(); saveM.mutate(mcpDraft) }}
+          >
+            <Field label="ID" htmlFor="mcp-id">
+              <Input
+                id="mcp-id" value={mcpDraft.id} autoFocus required
+                onChange={(e) => setMcpDraft({ ...mcpDraft, id: e.target.value })}
+              />
+            </Field>
+            <Field label="Name" htmlFor="mcp-name">
+              <Input
+                id="mcp-name" value={mcpDraft.name} required
+                onChange={(e) => setMcpDraft({ ...mcpDraft, name: e.target.value })}
+              />
+            </Field>
+            <Field label="Transport" htmlFor="mcp-transport">
+              <Select
+                value={mcpDraft.transport}
+                onValueChange={(v) => setMcpDraft({ ...mcpDraft, transport: v as "http" | "stdio" })}
+              >
+                <SelectTrigger id="mcp-transport" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="http">http</SelectItem>
+                  <SelectItem value="stdio">stdio</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            {mcpDraft.transport === "stdio" ? (
+              <Field label="Command" htmlFor="mcp-command">
+                <Input
+                  id="mcp-command" value={mcpDraft.command} className="font-mono text-xs"
+                  placeholder="codegraph serve --mcp"
+                  onChange={(e) => setMcpDraft({ ...mcpDraft, command: e.target.value })}
+                />
+              </Field>
+            ) : (
+              <Field label="Endpoint" htmlFor="mcp-endpoint">
+                <Input
+                  id="mcp-endpoint" value={mcpDraft.endpoint} className="font-mono text-xs"
+                  placeholder="https://example.com/mcp"
+                  onChange={(e) => setMcpDraft({ ...mcpDraft, endpoint: e.target.value })}
+                />
+              </Field>
+            )}
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-ink">Enabled</span>
+              <Switch
+                checked={mcpDraft.enabled}
+                onCheckedChange={(v) => setMcpDraft({ ...mcpDraft, enabled: v })}
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setMcpDraft(null)}>Cancel</Button>
+              <Button type="submit" variant="signal" loading={saveM.isPending}>Add server</Button>
+            </div>
+          </form>
+        )}
+      </DetailSheet>
+
+      <DetailSheet
+        open={extDraft !== null}
+        onOpenChange={(o) => !o && setExtDraft(null)}
+        title="Add extension"
+        description="A declarative manifest describing what the extension may do."
+      >
+        {extDraft && (
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(e) => { e.preventDefault(); saveE.mutate(extDraft) }}
+          >
+            <Field label="ID" htmlFor="ext-id">
+              <Input
+                id="ext-id" value={extDraft.id} autoFocus required
+                onChange={(e) => setExtDraft({ ...extDraft, id: e.target.value })}
+              />
+            </Field>
+            <Field label="Name" htmlFor="ext-name">
+              <Input
+                id="ext-name" value={extDraft.name} required
+                onChange={(e) => setExtDraft({ ...extDraft, name: e.target.value })}
+              />
+            </Field>
+            <Field label="Version" htmlFor="ext-version">
+              <Input
+                id="ext-version" value={extDraft.version} className="font-mono text-xs"
+                onChange={(e) => setExtDraft({ ...extDraft, version: e.target.value })}
+              />
+            </Field>
+            <Field label="Description" htmlFor="ext-desc">
+              <Input
+                id="ext-desc" value={extDraft.description}
+                onChange={(e) => setExtDraft({ ...extDraft, description: e.target.value })}
+              />
+            </Field>
+            <Field label="Capabilities" htmlFor="ext-caps">
+              <Input
+                id="ext-caps" value={extDraft.capabilities.join(", ")} className="font-mono text-xs"
+                onChange={(e) =>
+                  setExtDraft({
+                    ...extDraft,
+                    capabilities: e.target.value.split(",").map((c) => c.trim()).filter(Boolean),
+                  })
+                }
+              />
+            </Field>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setExtDraft(null)}>Cancel</Button>
+              <Button type="submit" variant="signal" loading={saveE.isPending}>Add extension</Button>
+            </div>
+          </form>
+        )}
+      </DetailSheet>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={pendingDelete?.kind === "extension" ? "Delete extension" : "Delete MCP server"}
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete.name}"? Anything referring to it by id will stop resolving.`
+            : ""
+        }
+        confirmLabel="Delete"
+        busy={remove.isPending}
+        onConfirm={() => pendingDelete && remove.mutate({ kind: pendingDelete.kind, id: pendingDelete.id })}
+      />
+    </div>
+  )
+}
+
+/** Filled lamp for a confirmed state, hollow otherwise. */
+function Lamp({ state, label }: { state: string; label: string }) {
+  const tone = healthTone[state] ?? healthTone.unknown
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", tone)}>
+      <span
+        aria-hidden
+        className={cn("size-2 shrink-0 rounded-full", state === "ok" ? "bg-current" : "border border-current")}
+      />
+      {label}
+    </span>
+  )
+}
+
+function DeleteMenu({ name, onDelete }: { name: string; onDelete: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${name}`}>
+          <MoreHorizontal className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onDelete} className="text-danger-text focus:text-danger-text">
+          <Trash2 className="size-3.5" /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function Field({
+  label, htmlFor, children,
+}: { label: string; htmlFor: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
     </div>
   )
 }
