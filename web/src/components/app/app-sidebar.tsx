@@ -5,7 +5,7 @@ import {
 } from "lucide-react"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { LogoIcon, Logo } from "@/components/app/logo"
+import { LogoMark, LogoWordmark } from "@/components/app/brand"
 import { cn } from "@/lib/utils"
 
 export interface NavLeaf {
@@ -95,13 +95,14 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-full w-[250px] shrink-0 flex-col" aria-label="Primary">
-      {/* Brand */}
+      {/* Brand. The reference sets the mark at 24px with a hover tilt; the
+          wordmark sits beside it in the UI font so it matches the body text. */}
       <div className="flex w-[250px] items-center justify-between overflow-clip px-3 py-3.5">
-        <div className="flex w-[200px] items-center gap-3 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40">
-          <span className="relative size-6 shrink-0 transition-transform duration-300 ease-[var(--ease-out-expo)] hover:rotate-[-8deg] hover:scale-105">
-            <LogoIcon className="size-6 text-ink" />
-          </span>
-          <Logo className="flex-1 text-lg leading-none font-semibold text-ink" aria-label="Switchyard" />
+        <div className="group/brand flex w-[200px] items-center gap-2.5 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40">
+          <LogoMark
+            className="size-6 shrink-0 text-accent transition-transform duration-300 ease-[var(--ease-out-expo)] group-hover/brand:rotate-[-8deg] group-hover/brand:scale-105"
+          />
+          <LogoWordmark className="flex-1" />
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

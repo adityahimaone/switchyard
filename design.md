@@ -232,10 +232,16 @@ Sidebar, ported from the reference's source:
 | Sub-items | 28px, `text-xs`, `ink-3`, behind a tree connector; expand with a `grid-template-rows` transition |
 | Footer | New chat, Settings, Sign out at 32px rows |
 
-The logo is `currentColor`, so it inherits the theme. `Logo` is the full lockup
-(mark plus wordmark, viewBox `0 0 114 24`) and `LogoIcon` is the mark alone; they
-are alternatives, not siblings, because `hidden` is unconditional and cannot be
-overridden by a variant.
+The logo is `currentColor` and lives in `components/app/brand.tsx`:
+
+| Part | Spec |
+|---|---|
+| `LogoMark` | 24×24 grid. Filled head, eyes punched out with an SVG mask (not a hard-coded colour, so it works on canvas, card and sign-in), four stroked tentacles with curled tips. Renders at 24px in the sidebar and is **not legible below 20px**, so it is never smaller |
+| `LogoWordmark` | "Switchyard" set as text at 17px/600 in the UI font, not as an SVG path. A hand-written path renders as nonsense letterforms, and the reference sets its own name as text too |
+| `LogoMascot` | The full-colour `mascot-switchyard.png`. The one place the original artwork belongs: sign-in and empty states, where there is room for its detail |
+
+Both marks take the reference's brand treatment: 24px, `rotate-[-8deg] scale-105` on
+hover over 300ms with `--ease-out-expo`.
 
 Content is a `<main>` on `surface` with `shadow-[inset_0_0_0_0.8px_var(--c-line)]`.
 **It is the only `main` in the document** — pages must not render their own.
