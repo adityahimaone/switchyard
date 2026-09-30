@@ -13,6 +13,7 @@ import {
 import { EmptyState } from "@/components/app/empty-state"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FilterChip } from "@/components/app/filter-bar"
+import { PageHeader } from "@/components/app/page-header"
 import { STATUS_LABEL } from "@/components/ui/status-lamp"
 import { cn } from "@/lib/utils"
 import TaskCard from "./TaskCard"
@@ -273,58 +274,50 @@ export function BoardPage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* The board is a single full-bleed surface, so the page title lives in the
-          breadcrumb bar. This h1 keeps the document outline correct without
-          adding a second visible title. The shell already owns the <main>. */}
-      <h1 className="sr-only">Board</h1>
-
-      {/* Page header: title, description and actions, matching the reference. */}
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-4 py-5 md:px-6">
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-semibold text-ink">
-            {boardName ? `${boardName} board` : "Board"}
-          </h2>
-          <p className="mt-1 text-sm text-ink-3">
-            Queue, dispatch and review for this board.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Select value={slug} onValueChange={onSwitchBoard}>
-            <SelectTrigger size="sm" className="h-8 w-auto gap-1.5" aria-label="Switch board">
-              <SelectValue placeholder="Board" />
-            </SelectTrigger>
-            <SelectContent>
-              {boards.filter((b) => !b.archived).map((b) => (
-                <SelectItem key={b.slug} value={b.slug}>
-                  {b.icon ? `${b.icon} ` : ""}{b.name}
-                </SelectItem>
-              ))}
-              {boards.some((b) => b.archived) && (
-                <>
-                  <SelectItem value="__archived" disabled className="text-2xs">
-                    Archived
+      {/* The shared PageHeader, so the board's title is a real h1 rather than an
+          h2 behind a screen-reader-only h1 that said just "Board" and lost the
+          board name. The filter row is its toolbar slot. */}
+      <PageHeader
+        title={boardName ? `${boardName} board` : "Board"}
+        description="Queue, dispatch and review for this board."
+        actions={
+          <>
+            <Select value={slug} onValueChange={onSwitchBoard}>
+              <SelectTrigger size="sm" className="w-auto gap-1.5" aria-label="Switch board">
+                <SelectValue placeholder="Board" />
+              </SelectTrigger>
+              <SelectContent>
+                {boards.filter((b) => !b.archived).map((b) => (
+                  <SelectItem key={b.slug} value={b.slug}>
+                    {b.icon ? `${b.icon} ` : ""}{b.name}
                   </SelectItem>
-                  {boards.filter((b) => b.archived).map((b) => (
-                    <SelectItem key={b.slug} value={b.slug}>
-                      {b.name} (archived)
+                ))}
+                {boards.some((b) => b.archived) && (
+                  <>
+                    <SelectItem value="__archived" disabled className="text-2xs">
+                      Archived
                     </SelectItem>
-                  ))}
-                </>
-              )}
-            </SelectContent>
-          </Select>
-          {boardMenu}
-          <Button size="sm" variant="signal" onClick={onNewTask}>
-            <Plus className="size-3.5" /> New task
-          </Button>
-        </div>
-      </div>
-
-      <div
-        role="search"
-        aria-label="Filter tasks"
-        className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 md:px-6"
+                    {boards.filter((b) => b.archived).map((b) => (
+                      <SelectItem key={b.slug} value={b.slug}>
+                        {b.name} (archived)
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+            {boardMenu}
+            <Button size="sm" variant="signal" onClick={onNewTask}>
+              <Plus className="size-3.5" /> New task
+            </Button>
+          </>
+        }
       >
+        <div
+          role="search"
+          aria-label="Filter tasks"
+          className="flex flex-wrap items-center gap-2"
+        >
         <div className="relative w-full max-w-56">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
           <Input
@@ -401,7 +394,8 @@ export function BoardPage({
             <CheckSquare className="size-3.5" /> Bulk
           </Button>
         </div>
-      </div>
+        </div>
+      </PageHeader>
 
       {bulkMode && (
         <div className="flex shrink-0 items-center gap-2 border-b border-line bg-surface px-4 py-2 text-xs md:px-6">

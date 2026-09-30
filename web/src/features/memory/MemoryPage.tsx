@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { PageHeader, SectionHeader } from "@/components/app/page-header"
+import { CollectionBody, CollectionGrid } from "@/components/app/collection"
+import { EmptyState } from "@/components/app/empty-state"
 import { AlertCircle, Brain, CheckCircle2, FileText, Heart, RefreshCw, Save, Search, User } from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
 
@@ -21,8 +24,8 @@ interface MemorySnapshot {
 }
 
 function fmtMtime(value: number | null): string {
-  if (value == null) return "Belum tersimpan"
-  return new Date(value * 1000).toLocaleString("id-ID")
+  if (value == null) return "Never written"
+  return new Date(value * 1000).toLocaleString()
 }
 
 type ProfileMemory = { content: string; mtime: number | null }
@@ -76,20 +79,23 @@ function ProfileMemoryEditor({
   })
 
   const label = scope === "memory" ? "MEMORY.md" : "USER.md"
-  const description = scope === "memory" ? "Fakta dan konteks yang dipakai lintas percakapan." : "Preferensi dan informasi tentang user."
+  const description =
+    scope === "memory"
+      ? "Facts and context carried across conversations."
+      : "Preferences and details about the user."
 
   return (
-    <Card className="flex min-h-[22rem] flex-col gap-0 border-[var(--color-line)] bg-[var(--color-surface)]/70">
-      <CardHeader className="gap-1 border-b border-[var(--color-line)] px-4 py-3">
+    <Card className="flex min-h-[22rem] flex-col gap-0">
+      <CardHeader className="gap-1 border-b border-line px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-[var(--color-ink)]">
-              <FileText aria-hidden="true" className="size-4 shrink-0 text-[var(--color-accent)]" />
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-ink">
+              <FileText aria-hidden="true" className="size-4 shrink-0 text-accent" />
               <span>{label}</span>
             </CardTitle>
-            <p className="mt-1 text-[11px] leading-4 text-[var(--color-ink-3)]">{description}</p>
+            <p className="mt-1 text-[11px] leading-4 text-ink-3">{description}</p>
           </div>
-          <span className="shrink-0 text-right text-[10px] text-[var(--color-ink-4)]">
+          <span className="shrink-0 text-right text-[10px] text-ink-3">
             {item.data ? fmtMtime(item.data.mtime) : "Loading…"}
           </span>
         </div>
@@ -100,23 +106,32 @@ function ProfileMemoryEditor({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           disabled={item.isLoading || save.isPending}
-          className="min-h-48 flex-1 resize-y border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs leading-5 text-[var(--color-ink)] placeholder:text-[var(--color-ink-4)] focus-visible:ring-[var(--color-accent)]/40"
-          placeholder={item.isLoading ? "Memuat…" : "Belum ada isi. Tambahkan konteks yang ingin diingat Hermes."}
+          className="min-h-48 flex-1 resize-y border-line bg-well font-mono text-xs leading-5 text-ink focus-visible:ring-focus/40"
+          placeholder={item.isLoading ? "Loading…" : "Empty. Add the context Hermes should remember."}
         />
         <div className="flex min-h-8 items-center justify-between gap-3">
           <div aria-live="polite" className="min-w-0 text-[11px]">
-            {save.isError && <span className="flex items-center gap-1.5 text-[var(--color-danger)]"><AlertCircle aria-hidden="true" className="size-3.5 shrink-0" /> Gagal menyimpan</span>}
-            {!save.isError && saved && <span className="flex items-center gap-1.5 text-success-text"><CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" /> Tersimpan</span>}
-            {!save.isError && !saved && isDirty && <span className="text-warning-text">Perubahan belum disimpan</span>}
+            {save.isError && (
+              <span className="flex items-center gap-1.5 text-danger-text">
+                <AlertCircle aria-hidden="true" className="size-3.5 shrink-0" /> Could not save
+              </span>
+            )}
+            {!save.isError && saved && (
+              <span className="flex items-center gap-1.5 text-success-text">
+                <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" /> Saved
+              </span>
+            )}
+            {!save.isError && !saved && isDirty && (
+              <span className="text-warning-text">Unsaved changes</span>
+            )}
           </div>
-          <Button
-            size="sm"
-            onClick={() => save.mutate()}
-            disabled={save.isPending || item.isLoading || !isDirty}
-            className="h-8 shrink-0 gap-1.5 bg-[var(--color-accent)] px-3 text-xs text-black hover:bg-[var(--color-accent)]/90 active:scale-[.98]"
-          >
-            {save.isPending ? <RefreshCw aria-hidden="true" className="size-3.5 animate-spin" /> : <Save aria-hidden="true" className="size-3.5" />}
-            {save.isPending ? "Menyimpan…" : "Simpan"}
+          <Button variant="signal" size="sm" onClick={() => save.mutate()} disabled={save.isPending || item.isLoading || !isDirty}>
+            {save.isPending ? (
+              <RefreshCw aria-hidden="true" className="size-3.5 animate-spin" />
+            ) : (
+              <Save aria-hidden="true" className="size-3.5" />
+            )}
+            {save.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
       </CardContent>
@@ -140,22 +155,24 @@ function MemoryCard({
   content: string
 }) {
   return (
-    <Card className="flex min-h-[18rem] flex-col gap-0 border-[var(--color-line)] bg-[var(--color-surface)]/55">
-      <CardHeader className="gap-1 border-b border-[var(--color-line)] px-4 py-3">
-        <CardTitle className="flex items-center gap-2 text-sm font-medium text-[var(--color-ink)]">
-          <Icon aria-hidden="true" className="size-4 text-[var(--color-ink-3)]" />
+    <Card className="flex min-h-[18rem] flex-col gap-0">
+      <CardHeader className="gap-1 border-b border-line px-4 py-3">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium text-ink">
+          <Icon aria-hidden="true" className="size-4 text-ink-3" />
           {title}
         </CardTitle>
-        <p className="text-[11px] leading-4 text-[var(--color-ink-3)]">{description}</p>
-        <p className="truncate font-mono text-[10px] text-[var(--color-ink-4)]" title={path}>{path}</p>
+        <p className="text-[11px] leading-4 text-ink-3">{description}</p>
+        <p className="truncate font-mono text-[10px] text-ink-3" title={path}>
+          {path}
+        </p>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-auto p-0">
-        <div className="flex items-center justify-between border-b border-[var(--color-line)] px-4 py-2 text-[10px] text-[var(--color-ink-4)]">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2 text-[10px] text-ink-3">
           <span>{fmtMtime(mtime)}</span>
-          <span>{content.length.toLocaleString("en-US")} karakter</span>
+          <span className="tabular">{content.length.toLocaleString()} characters</span>
         </div>
-        <pre className="whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-[var(--color-ink-2)]">
-          {content || <span className="text-[var(--color-ink-4)]">Belum ada isi.</span>}
+        <pre className="whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-ink-2">
+          {content || <span className="text-ink-3">Empty.</span>}
         </pre>
       </CardContent>
     </Card>
@@ -177,24 +194,29 @@ export default function MemoryPage() {
 
   useEffect(() => {
     if (!Object.values(dirty).some(Boolean)) return
-    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
   }, [dirty])
 
   const setMemoryDirty = useCallback((scope: MemoryScope, value: boolean) => {
-    setDirty((current) => current[scope] === value ? current : { ...current, [scope]: value })
+    setDirty((current) => (current[scope] === value ? current : { ...current, [scope]: value }))
   }, [])
 
-  if (memory.isLoading) return <LoadingState label="Memuat memory" description="Menyiapkan konteks Hermes." />
+  if (memory.isLoading) return <LoadingState label="Loading memory" description="Preparing the Hermes context." />
   if (memory.isError) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-        <div className="max-w-md rounded-xl border border-danger/30 bg-danger-tint p-4 text-sm text-danger-text" role="alert">
-          <div className="flex items-center gap-2 font-medium"><AlertCircle aria-hidden="true" className="size-4" /> Gagal memuat memory</div>
+        <div className="max-w-md rounded-panel border border-danger/30 bg-danger-tint p-4 text-sm text-danger-text" role="alert">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle aria-hidden="true" className="size-4" /> Could not load memory
+          </div>
           <p className="mt-1 text-xs leading-5 text-danger-text">{(memory.error as Error).message}</p>
-          <Button variant="outline" size="sm" onClick={() => memory.refetch()} className="mt-3 h-8 gap-1.5 border-danger/40 text-xs text-danger-text hover:bg-danger/15">
-            <RefreshCw aria-hidden="true" className="size-3.5" /> Coba lagi
+          <Button variant="outline" size="sm" onClick={() => memory.refetch()} className="mt-3 border-danger/40 text-danger-text hover:bg-danger/15">
+            <RefreshCw aria-hidden="true" className="size-3.5" /> Try again
           </Button>
         </div>
       </div>
@@ -209,64 +231,128 @@ export default function MemoryPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 py-4 sm:px-5 lg:px-8">
-        <header className="flex flex-col gap-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/60 p-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-[.16em] text-[var(--color-ink-4)]">Hermes context</p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--color-ink)]">Memory</h1>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--color-ink-3)]">Kelola konteks global dan profile memory yang dipakai agent saat memahami percakapan dan task.</p>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[18rem]">
-            <label htmlFor="memory-search" className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-ink-4)]">Cari isi memory</label>
-            <div className="relative">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--color-ink-4)]" />
-              <input id="memory-search" type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Filter konteks…" className="h-9 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] pl-9 pr-3 text-xs text-[var(--color-ink)] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[var(--color-ink-4)] focus:border-[var(--color-accent)]/60 focus:ring-2 focus:ring-[var(--color-accent)]/15" />
-            </div>
-          </div>
-        </header>
+      <PageHeader
+        title="Memory"
+        description="Global context and per-profile memory that agents read when they pick up a conversation or a task."
+      >
+        <div className="flex items-center gap-2">
+          <Search aria-hidden="true" className="size-4 shrink-0 text-ink-3" />
+          <input
+            id="memory-search"
+            type="search"
+            aria-label="Filter memory content"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Filter content…"
+            className="h-8 w-full max-w-[28rem] rounded-control border border-line bg-well px-3 text-xs text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-3 focus:border-accent/60 focus:ring-[3px] focus:ring-focus/40"
+          />
+        </div>
+      </PageHeader>
 
-        <section className="space-y-3" aria-labelledby="global-context-heading">
+      <CollectionBody className="flex flex-col gap-6 pt-5 pb-6">
+        <section className="flex flex-col gap-3" aria-labelledby="global-context-heading">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <h2 id="global-context-heading" className="flex items-center gap-2 text-sm font-semibold text-[var(--color-ink)]"><Brain aria-hidden="true" className="size-4 text-[var(--color-accent)]" /> Global context</h2>
-              <p className="mt-1 text-xs text-[var(--color-ink-3)]">Snapshot read-only dari konteks Hermes bersama.</p>
+              <h2 id="global-context-heading" className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Brain aria-hidden="true" className="size-4 text-accent" /> Global context
+              </h2>
+              <p className="mt-1 text-xs text-ink-3">A read-only snapshot of the shared Hermes context.</p>
             </div>
-            <span className="text-[10px] text-[var(--color-ink-4)]">{query ? `${visibleCount}/3 cocok` : "read-only"}</span>
+            <span className="text-[10px] text-ink-3">{query ? `${visibleCount}/3 match` : "read-only"}</span>
           </div>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            {match(snapshot.memory) && <MemoryCard icon={Brain} title="MEMORY.md" description="Fakta dan konteks lintas sesi." path={snapshot.memory_path} mtime={snapshot.memory_mtime} content={snapshot.memory} />}
-            {match(snapshot.user) && <MemoryCard icon={User} title="USER.md" description="Preferensi dan detail tentang user." path={snapshot.user_path} mtime={snapshot.user_mtime} content={snapshot.user} />}
-            {match(snapshot.soul) && <MemoryCard icon={Heart} title="SOUL.md" description="Persona dan prinsip perilaku Hermes." path={snapshot.soul_path} mtime={snapshot.soul_mtime} content={snapshot.soul} />}
-          </div>
-          {query && visibleCount === 0 && <div className="rounded-lg border border-dashed border-[var(--color-line)] px-4 py-8 text-center text-xs text-[var(--color-ink-3)]">Tidak ada memory yang cocok dengan “{searchTerm}”.</div>}
+
+          {query && visibleCount === 0 ? (
+            <EmptyState
+              title="Nothing matched that filter"
+              hint={`No memory file contains “${searchTerm}”.`}
+            />
+          ) : (
+            <CollectionGrid className="xl:grid-cols-3">
+              {match(snapshot.memory) && (
+                <MemoryCard
+                  icon={Brain}
+                  title="MEMORY.md"
+                  description="Facts and context across sessions."
+                  path={snapshot.memory_path}
+                  mtime={snapshot.memory_mtime}
+                  content={snapshot.memory}
+                />
+              )}
+              {match(snapshot.user) && (
+                <MemoryCard
+                  icon={User}
+                  title="USER.md"
+                  description="Preferences and details about the user."
+                  path={snapshot.user_path}
+                  mtime={snapshot.user_mtime}
+                  content={snapshot.user}
+                />
+              )}
+              {match(snapshot.soul) && (
+                <MemoryCard
+                  icon={Heart}
+                  title="SOUL.md"
+                  description="Persona and behavioural principles."
+                  path={snapshot.soul_path}
+                  mtime={snapshot.soul_mtime}
+                  content={snapshot.soul}
+                />
+              )}
+            </CollectionGrid>
+          )}
         </section>
 
-        <section className="space-y-3" aria-labelledby="profile-memory-heading">
-          <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/45 p-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 id="profile-memory-heading" className="flex items-center gap-2 text-sm font-semibold text-[var(--color-ink)]"><FileText aria-hidden="true" className="size-4 text-[var(--color-accent)]" /> Profile memory</h2>
-              <p className="mt-1 text-xs leading-5 text-[var(--color-ink-3)]">Edit konteks yang spesifik untuk profile agent terpilih.</p>
-            </div>
-            <div className="flex items-center gap-3">
-              {hasUnsaved && <span className="text-[11px] text-warning-text" aria-live="polite">Perubahan belum disimpan</span>}
-              <Select value={activeProfile} onValueChange={(nextProfile) => {
-                if (hasUnsaved && !window.confirm("Perubahan belum disimpan. Ganti profile dan buang perubahan?")) return
-                setDirty({ memory: false, user: false })
-                setActiveProfile(nextProfile)
-              }}>
-                <SelectTrigger aria-label="Pilih profile memory" className="h-9 w-44 border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue placeholder="Pilih profile" /></SelectTrigger>
-                <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-                  {(profiles.data ?? []).map((profile) => <SelectItem key={profile.name} value={profile.name} className="text-xs">{profile.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <section className="flex flex-col gap-3" aria-labelledby="profile-memory-heading">
+          <SectionHeader
+            title={
+              <span id="profile-memory-heading" className="flex items-center gap-2">
+                <FileText aria-hidden="true" className="size-4 text-accent" /> Profile memory
+              </span>
+            }
+            description="Context that applies only to the selected agent profile."
+            actions={
+              <div className="flex items-center gap-3">
+                {hasUnsaved && (
+                  <span className="text-[11px] text-warning-text" aria-live="polite">
+                    Unsaved changes
+                  </span>
+                )}
+                <Select
+                  value={activeProfile}
+                  onValueChange={(nextProfile) => {
+                    if (hasUnsaved && !window.confirm("Unsaved changes. Switch profile and discard them?")) return
+                    setDirty({ memory: false, user: false })
+                    setActiveProfile(nextProfile)
+                  }}
+                >
+                  <SelectTrigger aria-label="Select a profile" className="w-44 text-xs">
+                    <SelectValue placeholder="Select profile" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(profiles.data ?? []).map((profile) => (
+                      <SelectItem key={profile.name} value={profile.name} className="text-xs">
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            }
+          />
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            <ProfileMemoryEditor profile={activeProfile} scope="memory" onDirtyChange={(value) => setMemoryDirty("memory", value)} />
-            <ProfileMemoryEditor profile={activeProfile} scope="user" onDirtyChange={(value) => setMemoryDirty("user", value)} />
+            <ProfileMemoryEditor
+              profile={activeProfile}
+              scope="memory"
+              onDirtyChange={(value) => setMemoryDirty("memory", value)}
+            />
+            <ProfileMemoryEditor
+              profile={activeProfile}
+              scope="user"
+              onDirtyChange={(value) => setMemoryDirty("user", value)}
+            />
           </div>
         </section>
-      </div>
+      </CollectionBody>
     </div>
   )
 }
