@@ -98,7 +98,12 @@ export function BoardColumn({
         )}
         {...dropHandlers}
       >
-        {React.Children.count(children) > 0 ? (
+        {/*
+          Children.toArray drops null/undefined, so a caller that passes
+          `cards.map(...)` plus a trailing `undefined` still reads as empty.
+          React.Children.count does not, and would suppress the empty copy.
+        */}
+        {React.Children.toArray(children).length > 0 ? (
           children
         ) : (
           <li className="px-2 py-6 text-sm">

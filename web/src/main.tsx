@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { bind } from "cuelume"
 import AppErrorBoundary from "@/components/app/app-error-boundary"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthGate from "./AuthGate"
 import "./index.css"
 import { applyDensity, applyMotion, applyTheme, readDensity, readMotion, readTheme } from "./hooks/useSettings"
@@ -34,7 +35,10 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AppErrorBoundary>
       <QueryClientProvider client={qc}>
-        <AuthGate />
+        {/* Tooltips are used across pages, so the provider lives at the root. */}
+        <TooltipProvider delayDuration={400}>
+          <AuthGate />
+        </TooltipProvider>
       </QueryClientProvider>
     </AppErrorBoundary>
   </StrictMode>,
