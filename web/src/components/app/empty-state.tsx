@@ -17,7 +17,15 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col items-start gap-1 px-2 py-8", className)}>
+    <div
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-panel px-6 py-10",
+        // Decorative texture is allowed here because an empty state holds no
+        // data to read against it.
+        "smoke-wash dot-grid",
+        className,
+      )}
+    >
       <p className="text-sm font-medium text-ink-2">{title}</p>
       {hint && <p className="max-w-[44ch] text-xs text-ink-3">{hint}</p>}
       {action && <div className="mt-3">{action}</div>}

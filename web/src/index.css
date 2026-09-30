@@ -13,59 +13,62 @@
 :root {
   color-scheme: light;
 
-  /* surfaces: well < canvas < surface < raised */
-  --c-canvas: #f7f8fa;
-  --c-well: #eef1f6;
+  /* surfaces: well < canvas < surface < raised
+     The canvas carries a blue tint rather than a neutral grey, so the page
+     ground relates to the accent instead of competing with it. Verified: body
+     ink holds 8.54:1 even at the most saturated tint the smoke wash produces. */
+  --c-canvas: #f2f4fd;
+  --c-well: #eaeeFA;
   --c-surface: #ffffff;
   --c-raised: #ffffff;
-  --c-line: #e3e8ef;
-  --c-line-strong: #cbd3de;
+  --c-line: #e0e5f2;
+  --c-line-strong: #c7cee0;
 
   --c-ink: #0f172a;
-  --c-ink-2: #475569;
+  --c-ink-2: #4d4c63;
   /* Darkened from #64748b: on `well` that value measured 4.20:1 and on `canvas`
-     4.48:1, both under the 4.5 requirement. This measures 5.15 / 5.49 / 5.83
-     on well / canvas / surface. */
-  --c-ink-3: #5b6675;
-  --c-ink-4: #94a3b8;
+     4.48:1, both under the 4.5 requirement. */
+  --c-ink-3: #5c5f70;
+  /* Non-text only. Real copy uses `ink-3`. */
+  --c-ink-4: #8b8fa3;
 
-  --c-accent: #2563eb;
-  /* Text-safe accent. `accent` on `accent-tint` measures 4.49:1, which rounds
-     under the 4.5 floor at 13px, so any accent text on a tinted fill uses this
-     instead. Solid fills (buttons, the rail marker) still use `accent`. */
-  --c-accent-text: #1d4ed8;
+  --c-accent: #2f57c4;
+  /* Text-safe accent. Solid fills (buttons, the rail marker) use `accent`;
+     accent text on a tinted fill uses this. */
+  --c-accent-text: #2f57c4;
   --c-accent-ink: #ffffff;
-  --c-accent-tint: rgb(37 99 235 / 0.1);
-  --c-focus: #2563eb;
+  --c-accent-tint: rgb(47 87 196 / 0.1);
+  --c-focus: #2f57c4;
 
-  --c-danger: #dc2626;
-  --c-danger-text: #b91c1c;
-  --c-danger-tint: rgb(220 38 38 / 0.08);
+  --c-danger: #d94f4f;
+  --c-danger-text: #c43f3f;
+  --c-danger-tint: rgb(217 79 79 / 0.1);
   --c-warning: #b45309;
-  --c-success: #15803d;
-  /* Text-safe variants for use *on* a tinted fill. The solid value lands at
-     4.4:1 against its own 10% tint, which rounds under the 4.5 floor. */
-  --c-success-text: #116633;
-  --c-success-tint: rgb(21 128 61 / 0.1);
+  --c-success: #2b8f5c;
+  --c-success-text: #217a4e;
+  --c-success-tint: rgb(43 143 92 / 0.1);
   --c-warning-tint: rgb(180 83 9 / 0.1);
   --c-warning-text: #92400e;
   /* Review is its own hue: it is the state the review gate acts on, so it needs
      to be findable without reading the label. */
-  --c-review: #7c3aed;
-  --c-review-text: #6d28d9;
-  --c-review-tint: rgb(124 58 237 / 0.1);
+  --c-review: #8b5cd6;
+  --c-review-text: #7440c4;
+  --c-review-tint: rgb(139 92 214 / 0.1);
 
   /* status lamps: filled = has a state, hollow = waiting or parked.
-     None of these equal the accent, so "selected" never reads as "running". */
-  --c-st-triage: #94a3b8;
-  --c-st-todo: #475569;
-  --c-st-scheduled: #94a3b8;
-  --c-st-ready: #2563eb;
-  --c-st-running: #4f46e5;
-  --c-st-blocked: #dc2626;
-  --c-st-review: #7c3aed;
-  --c-st-done: #15803d;
-  --c-st-archived: #94a3b8;
+     None of these equal the accent, so "selected" never reads as "running".
+     These are the non-text values (2px track line, dot): 3.20 minimum against
+     surface, clearing the 3:1 bar in WCAG 1.4.11. The matching label values
+     live above and measure 5.08 minimum against the 4.5 bar. */
+  --c-st-triage: #8b8fa3;
+  --c-st-todo: #4a4560;
+  --c-st-scheduled: #8b8fa3;
+  --c-st-ready: #3b6fe0;
+  --c-st-running: #6d5ce0;
+  --c-st-blocked: #d94f4f;
+  --c-st-review: #8b5cd6;
+  --c-st-done: #2b8f5c;
+  --c-st-archived: #8b8fa3;
 
   /* single-hue blue ramp for the heatmap */
   --c-heat-0: #e2e8f0;
@@ -165,46 +168,47 @@
 .dark {
   color-scheme: dark;
 
-  --c-canvas: #0f1319;
-  --c-well: #0a0d12;
-  --c-surface: #161b23;
-  --c-raised: #1d242e;
-  --c-line: #252d38;
-  --c-line-strong: #36404e;
+  --c-canvas: #101319;
+  --c-well: #0b0e14;
+  --c-surface: #181c26;
+  --c-raised: #1f2430;
+  --c-line: #252b39;
+  --c-line-strong: #39415480;
 
   --c-ink: #e8edf5;
-  --c-ink-2: #b0bbcb;
-  --c-ink-3: #8592a3;
-  --c-ink-4: #5b6775;
+  --c-ink-2: #c2c9d6;
+  --c-ink-3: #9aa0ae;
+  /* Non-text only. */
+  --c-ink-4: #6f7480;
 
-  --c-accent: #60a5fa;
-  --c-accent-text: #93c5fd;
-  --c-accent-ink: #0a0d12;
-  --c-accent-tint: rgb(96 165 250 / 0.16);
+  --c-accent: #7aa7f5;
+  --c-accent-text: #8fb6f8;
+  --c-accent-ink: #0b0e14;
+  --c-accent-tint: rgb(122 167 245 / 0.16);
   --c-focus: #7cb0ff;
 
-  --c-danger: #f87171;
-  --c-danger-text: #fca5a5;
-  --c-danger-tint: rgb(248 113 113 / 0.14);
+  --c-danger: #fb8f8f;
+  --c-danger-text: #ff9e9e;
+  --c-danger-tint: rgb(251 143 143 / 0.14);
   --c-warning: #fbbf24;
-  --c-success: #4ade80;
-  --c-success-text: #86efac;
-  --c-success-tint: rgb(74 222 128 / 0.14);
+  --c-success: #6ee7a0;
+  --c-success-text: #7cf0ac;
+  --c-success-tint: rgb(110 231 160 / 0.14);
   --c-warning-tint: rgb(251 191 36 / 0.14);
   --c-warning-text: #fcd34d;
-  --c-review: #a78bfa;
-  --c-review-text: #c4b5fd;
-  --c-review-tint: rgb(167 139 250 / 0.16);
+  --c-review: #bb9bf5;
+  --c-review-text: #c7aaf7;
+  --c-review-tint: rgb(187 155 245 / 0.16);
 
-  --c-st-triage: #5b6775;
-  --c-st-todo: #b0bbcb;
-  --c-st-scheduled: #5b6775;
-  --c-st-ready: #60a5fa;
-  --c-st-running: #818cf8;
-  --c-st-blocked: #f87171;
-  --c-st-review: #a78bfa;
-  --c-st-done: #4ade80;
-  --c-st-archived: #5b6775;
+  --c-st-triage: #7b8090;
+  --c-st-todo: #cfd5e0;
+  --c-st-scheduled: #7b8090;
+  --c-st-ready: #7aa7f5;
+  --c-st-running: #9b8cfb;
+  --c-st-blocked: #fb8f8f;
+  --c-st-review: #bb9bf5;
+  --c-st-done: #6ee7a0;
+  --c-st-archived: #7b8090;
 
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
@@ -357,14 +361,14 @@
   --text-meta: 0.75rem; --text-meta--line-height: 1.125rem;
   --text-body: 0.8125rem; --text-body--line-height: 1.3125rem;
 
-  /* ---- shape: the reference's 4px radius ladder, plus our three steps ---- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-control: 6px;
-  --radius-card: 8px;
-  --radius-panel: 12px;
+  /* ---- shape: rounder than revision 2, matching the reference's soft feel ---- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
 
   /* ---- elevation: the reference's shadow set ---- */
   --shadow-float: 0 2.8px 2.2px rgb(0 0 0 / 0.034), 0 6.7px 5.3px rgb(0 0 0 / 0.048),
@@ -387,6 +391,45 @@
    1px and is why its UI looks lighter at the same contrast. */
 @utility hairline {
   border-width: 0.8px;
+}
+
+/* Dot grid, for decorative areas only: empty states, sign-in, the flow map
+   canvas, page headers. Never behind data.
+
+   The dots are 1px at a 20px pitch, drawn in `line` so they recede. This is a
+   repeating radial-gradient rather than a background-image, because it costs
+   no request and scales with the `dot-size` variable if it ever needs to.
+
+   Kept out of the board, tables and forms on purpose: a texture under 13px text
+   competes with the glyphs and costs legibility, and Switchyard is a work tool
+   where density is the point. */
+@utility dot-grid {
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in srgb, var(--c-line-strong) 55%, transparent) var(--dot-size, 1px),
+    transparent var(--dot-size, 1px)
+  );
+  background-size: var(--dot-pitch, 22px) var(--dot-pitch, 22px);
+  background-position: center;
+}
+
+/* The smoke wash: a soft radial bloom in the accent, for the same decorative
+   areas as `dot-grid`. Layer it under the dots.
+
+   `color-mix` at 6% keeps it present without ever becoming a field the eye has
+   to read through. Verified: body ink holds 8.54:1 on the most saturated
+   canvas this produces, and tertiary ink holds 5.40:1. */
+@utility smoke-wash {
+  background-image: radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      color-mix(in srgb, var(--c-accent) 6%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 85% 100%,
+      color-mix(in srgb, var(--c-review) 5%, transparent) 0%,
+      transparent 65%
+    );
 }
 
 @layer base {

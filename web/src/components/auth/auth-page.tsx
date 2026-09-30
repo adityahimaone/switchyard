@@ -25,7 +25,7 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: () => v
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-canvas p-6">
+    <div className="smoke-wash dot-grid relative flex min-h-dvh items-center justify-center overflow-hidden bg-canvas p-6">
       <form
         className="flex w-full max-w-[360px] flex-col gap-6"
         onSubmit={submit}

@@ -1,13 +1,55 @@
-# Switchyard UI Redesign 2026, Revision 2: "Signal Blue"
+# Switchyard UI Redesign 2026, Revision 3: "Signal Blue, Softened"
 
-Supersedes `redesign-q4-2026/design.md` ("Signal & Track", lantern yellow) and
-the legacy dark/cyan spec in `redesign.md`. Extends `design-surfaces.md` for
-per-page layout where it does not conflict.
+Supersedes Revision 2 ("Signal Blue") in two areas only: the **shape ladder** and
+the **surface treatment**. Everything else — blue as the interaction accent, one
+hue per status, Inter, the sidebar shell, the breadcrumb rule, the board layout
+— carries forward unchanged.
+
+Extends `design-surfaces.md` for per-page layout where it does not conflict.
 
 Scope: `web/` (React 19, Vite, Tailwind v4, shadcn/Radix, `motion`). No API,
 routing, query or data-model changes.
 
-## 1. What changed from Revision 1, and why
+## 0. What Revision 3 changes
+
+Two things, both about feel rather than structure.
+
+**Shape is rounder.** Radius steps go up across the board (see §5). Revision 2
+used a 4px-based ladder copied from the reference, which reads crisp and slightly
+utilitarian. 12/16px reads contemporary without becoming pill-shaped.
+
+**The canvas has texture.** A blue-tinted ground, a dot grid, and a soft smoke
+wash — but **only on surfaces that hold no data**: empty states, sign-in, the
+flow map canvas, page headers.
+
+That constraint is the whole idea. The references this came from (a frosted card
+on a photographic background; a full-bleed photo behind a rounded panel of pastel
+tiles) are consumer apps: soft, spacious, image-led, few items per screen.
+Switchyard is a work tool — nine columns, dense cards, tables of cron jobs. Copy
+the texture and the rounding everywhere and you lose density and legibility.
+Copy them where there is nothing to read, and you get the modern feel for free.
+
+| Before (Revision 2) | Now | Why |
+|---|---|---|
+| radius-card 8px, panel 12px, control 6px | **12 / 16 / 8** | Contemporary without becoming pill-shaped |
+| neutral grey canvas `#f7f8fa` | **blue-tinted `#f2f4fd`** | Ground relates to the accent instead of competing with it |
+| saturated status hues | **softened pastel ramp** | Warmer, more 2026; still measured to pass |
+| flat everywhere | **dot grid + smoke on empty/hero only** | Texture without costing contrast |
+| `ink-2` `#475569` | `#4d4c63` | Sits with the new ink ramp |
+
+### What did *not* change, and why
+
+- **Blue is still the only interaction colour.** Selection, focus, primary action
+  all stay accent. Status hues stay semantic. The mascot already establishes
+  blue, so this is coherent rather than decorative.
+- **Inter is still the only family.** A display face was considered and dropped:
+  it is one more variable against a lot of data, and Inter is what makes 13px
+  board text readable.
+- **Data surfaces stay flat and opaque.** See above. The board, tables and forms
+  look essentially as they did in Revision 2. That is a deliberate cost: the
+  visible change lands on empty states and sign-in, not on the working screens.
+
+## 1. What changed in Revision 2, and why
 
 Revision 1 ("Signal & Track") used lantern yellow as the single accent: the
 signal button, selection outlines, running lamp and focus ring. Its own §1
@@ -78,25 +120,25 @@ surface on a dim monitor, and each theme gets its own tuned blue ramp.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `canvas` | `#f7f8fa` | `#0f1319` | app background |
-| `well` | `#eef1f6` | `#0a0d12` | sunken column bodies, inputs |
-| `surface` | `#ffffff` | `#161b23` | cards, panels |
-| `raised` | `#ffffff` | `#1d242e` | popovers, menus, secondary buttons |
-| `line` | `#e3e8ef` | `#252d38` | default 1px borders |
-| `line-strong` | `#cbd3de` | `#36404e` | hover borders, input borders |
+| `canvas` | `#f2f4fd` | `#101319` | app background, blue-tinted rather than neutral |
+| `well` | `#eaeefa` | `#0b0e14` | sunken column bodies, inputs |
+| `surface` | `#ffffff` | `#181c26` | cards, panels |
+| `raised` | `#ffffff` | `#1f2430` | popovers, menus, secondary buttons |
+| `line` | `#e0e5f2` | `#252b39` | default 1px borders |
+| `line-strong` | `#c7cee0` | `#394154` | hover borders, input borders |
 | `ink` | `#0f172a` | `#e8edf5` | primary text, primary button fill |
-| `ink-2` | `#475569` | `#b0bbcb` | secondary text |
-| `ink-3` | `#64748b` | `#8592a3` | tertiary text (still 4.5:1) |
-| `ink-4` | `#94a3b8` | `#5b6775` | non-text only (icons at rest, dividers) |
+| `ink-2` | `#4d4c63` | `#c2c9d6` | secondary text |
+| `ink-3` | `#5c5f70` | `#9aa0ae` | tertiary text (still 4.5:1) |
+| `ink-4` | `#8b8fa3` | `#6f7480` | non-text only (icons at rest, dividers) |
 
 ### Accent
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `accent` | `#2563eb` | `#60a5fa` | signal button fill, selection outline, active icons, links |
-| `accent-ink` | `#ffffff` | `#0a0d12` | text on accent fills |
-| `accent-tint` | `rgb(37 99 235 / 0.10)` | `rgb(96 165 250 / 0.16)` | selection fill, active nav |
-| `focus` | `#2563eb` | `#7cb0ff` | 2px focus outline, offset 2, every interactive element |
+| `accent` | `#2f57c4` | `#7aa7f5` | signal button fill, selection outline, active icons, links |
+| `accent-ink` | `#ffffff` | `#0b0e14` | text on accent fills |
+| `accent-tint` | `rgb(47 87 196 / 0.10)` | `rgb(122 167 245 / 0.16)` | selection fill, active nav |
+| `focus` | `#2f57c4` | `#7cb0ff` | 2px focus outline, offset 2, every interactive element |
 
 **The accent never means status.** It means: this is interactive, this is
 selected, this is the forward action. Every status has its own hue, so
@@ -106,9 +148,10 @@ selected, this is the forward action. Every status has its own hue, so
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `danger` / `danger-text` | `#dc2626` / `#b91c1c` | `#f87171` / `#fca5a5` | destructive, failures |
+| `danger` / `danger-text` | `#d94f4f` / `#c43f3f` | `#fb8f8f` / `#ff9e9e` | destructive, failures |
 | `warning` | `#b45309` | `#fbbf24` | silent or stuck health only |
-| `success` | `#15803d` | `#4ade80` | confirmations |
+| `success` / `success-text` | `#2b8f5c` / `#217a4e` | `#6ee7a0` / `#7cf0ac` | confirmations |
+| `review` / `review-text` | `#8b5cd6` / `#7440c4` | `#bb9bf5` / `#c7aaf7` | awaiting the review gate |
 
 ### Status lamps
 
@@ -118,20 +161,46 @@ always paired with a label.
 
 | Status | Lamp | Light | Dark |
 |---|---|---|---|
-| triage | hollow | `#94a3b8` | `#5b6775` |
-| todo | hollow | `#475569` | `#b0bbcb` |
-| scheduled | hollow, dashed | `#94a3b8` | `#5b6775` |
-| ready | filled | `#2563eb` | `#60a5fa` |
-| running | filled, pulsing | `#4f46e5` | `#818cf8` |
-| blocked | filled | `#dc2626` | `#f87171` |
-| review | filled | `#7c3aed` | `#a78bfa` |
-| done | filled | `#15803d` | `#4ade80` |
-| archived | hollow, dim | `#94a3b8` | `#5b6775` |
+| triage | hollow | `#8b8fa3` | `#7b8090` |
+| todo | hollow | `#4a4560` | `#cfd5e0` |
+| scheduled | hollow, dashed | `#8b8fa3` | `#7b8090` |
+| ready | filled | `#3b6fe0` | `#7aa7f5` |
+| running | filled, pulsing | `#6d5ce0` | `#9b8cfb` |
+| blocked | filled | `#d94f4f` | `#fb8f8f` |
+| review | filled | `#8b5cd6` | `#bb9bf5` |
+| done | filled | `#2b8f5c` | `#6ee7a0` |
+| archived | hollow, dim | `#8b8fa3` | `#7b8090` |
 
 Two notes on this table. `ready` shares the accent's hue family, which is
 deliberate: ready means "queued, actionable", the same family as the signal
 button, and it is the one state where the resemblance is meaningful. `running`
 is indigo, not blue, so the two adjacent columns never read as the same thing.
+
+### Measured contrast (Revision 3)
+
+The lamp values above are **non-text** — a 2px track line and an 8px dot. WCAG
+1.4.11 sets the bar at **3:1** for those, and every one clears it.
+
+The **label** values, which do carry meaning in text and so need **4.5:1**, are a
+separate ramp. Measured against their own surface:
+
+| Status | Light label | Ratio | Dark label | Ratio |
+|---|---|---|---|---|
+| triage / scheduled | `#5c5f70` | 6.31 | `#9aa0ae` | 6.50 |
+| todo | `#3f3a52` | 10.83 | `#dbe1ea` | 12.95 |
+| ready | `#2f57c4` | 6.40 | `#8fb6f8` | 8.28 |
+| running | `#5b4bc9` | 6.37 | `#ab9dfc` | 7.27 |
+| blocked | `#c43f3f` | **5.08** | `#ff9e9e` | 8.63 |
+| review | `#7440c4` | 6.42 | `#c7aaf7` | 8.53 |
+| done | `#217a4e` | 5.31 | `#7cf0ac` | 12.10 |
+
+Blocked is the tightest at 5.08 — still passing, but it is the value to re-check
+first if the palette ever moves again. Lamps measure 3.20 minimum against
+surface, against the 3.0 bar.
+
+These ratios required sRGB linearisation to compute. A luminance function that
+skips it collapses every value toward 1 and reports the whole ramp as failing,
+which is how the first pass of this check went badly wrong.
 
 ### Chart and heatmap scale
 
@@ -169,13 +238,34 @@ sidebar's group labels, which are structural, not content.
 
 | Token | Value | Applies to |
 |---|---|---|
-| `radius-control` | 6px | buttons, inputs, chips, menu items |
-| `radius-card` | 8px | task cards, list rows, popovers |
-| `radius-panel` | 10px | column wells, dialogs, sheets |
+| `radius-control` | 8px | buttons, inputs, chips, menu items |
+| `radius-card` | 12px | task cards, list rows, popovers |
+| `radius-panel` | 16px | column wells, dialogs, sheets |
 | `radius-full` | 9999px | lamps, avatars, count pills |
 
 Reference the 0.5rem base radius and its `rounded` / `rounded-md` / `rounded-lg`
 ladder, but keep three distinct steps rather than one global value.
+
+### Surface texture — decorative areas only
+
+Two utilities, both composable:
+
+- `dot-grid` — 1px dots at a 22px pitch, in `line-strong` at 55%. A repeating
+  `radial-gradient`, so no extra request and the pitch is a variable.
+- `smoke-wash` — two soft radial blooms, accent at 6% and review at 5%. Keeps
+  the page ground alive without becoming a field the eye reads through.
+
+**Where they are allowed:** empty states, sign-in, the flow map canvas, page
+headers. Anywhere with no data on it.
+
+**Where they are not:** the board, tables, forms, the chat transcript, any
+surface carrying 13px body copy. A texture behind small text competes with the
+glyphs and costs legibility. This is the one rule that keeps Revision 3 from
+becoming the consumer-app look the references actually are.
+
+Verified: on the most saturated canvas the wash produces, body ink holds
+**8.54:1** and tertiary ink **5.40:1**. The texture is affordable because it
+never sits under text that matters.
 
 - **Elevation:** content sits flat on tonal steps (`well` < `canvas` < `surface`
   < `raised`) plus a 1px `line`. Shadows only for things that float:
