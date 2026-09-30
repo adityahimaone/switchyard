@@ -499,7 +499,7 @@ function FileBrowser({ ws }: { ws: Workspace }) {
                         "flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-xs outline-none",
                         "transition-colors focus-visible:ring-[3px] focus-visible:ring-focus/40",
                         selected?.path === file.path
-                          ? "bg-accent-tint text-accent"
+                          ? "bg-accent-tint text-accent-text"
                           : "text-ink-3 hover:bg-raised hover:text-ink",
                       )}
                     >

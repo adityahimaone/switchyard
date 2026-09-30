@@ -26,7 +26,7 @@ export function executorIsEnabled(executor: string, settings: ExecutorSettings) 
   return !settings.disabled.includes(executor)
 }
 
-export default function ExecutorSettingsPanel({ show }: { show: (...labels: string[]) => boolean }) {
+export default function ExecutorSettingsPanel() {
   const qc = useQueryClient()
   const { data } = useQuery({ queryKey: ["executor-settings"], queryFn: getExecutorSettings })
   const settings = data ?? FALLBACK
@@ -60,34 +60,29 @@ export default function ExecutorSettingsPanel({ show }: { show: (...labels: stri
 
   const reset = () => commit({ ...FALLBACK, order: [...settings.order] })
 
-  if (!show("Executor", "Execution", "Agent", "Sort", "Order", "Enable", "Disable", "Mode")) return null
-
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-ink">Executor order</p>
-            <p className="text-xs text-ink-4">
-              Order shown in the task dialog. Disabled executors are hidden from the picker; tasks that already
-              use one keep working.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={reset} disabled={save.isPending}>
-            <RotateCcw className="size-3.5" /> Reset
+    <div className="flex flex-col gap-8">
+      <div className="flex max-w-[640px] flex-col">
+        <h2 className="text-lg font-semibold text-ink">Executors</h2>
+        <p className="mt-1 max-w-[56ch] text-sm text-ink-3">
+          Order shown in the task dialog. Disabled executors are hidden from the
+          picker; tasks that already use one keep working.
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Button variant="secondary" size="sm" onClick={reset} disabled={save.isPending}>
+            <RotateCcw className="size-3.5" /> Reset to default
           </Button>
         </div>
-
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 divide-y divide-line border-y border-line">
           {settings.order.map((executor, index) => {
             const meta = LABELS[executor] ?? { title: executor, hint: "" }
             const isAuto = executor === "auto"
             const enabled = executorIsEnabled(executor, settings)
             return (
-              <div key={executor} className="flex items-center gap-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-3">
+              <div key={executor} className="flex items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-ink">{meta.title}</p>
-                  <p className="text-xs text-ink-4">{meta.hint}</p>
+                  <p className="text-xs text-ink-3">{meta.hint}</p>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon-sm" aria-label={`Move ${meta.title} up`} disabled={index === 0 || save.isPending} onClick={() => move(executor, -1)}>
@@ -107,33 +102,37 @@ export default function ExecutorSettingsPanel({ show }: { show: (...labels: stri
             )
           })}
         </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-ink">Default execution mode</p>
-          <p className="text-xs text-ink-4">
-            Pre-selected when creating a task. Direct runs the executor once; agentic lets it plan and iterate.
+        {save.isError && (
+          <p className="mt-3 text-sm text-danger-text">
+            Could not save executor settings. Check the server logs.
           </p>
-        </div>
-        <Select
-          value={settings.default_execution_mode}
-          onValueChange={(v) => commit({ ...settings, default_execution_mode: v as ExecutorSettings["default_execution_mode"] })}
-          disabled={save.isPending}
-        >
-          <SelectTrigger className="w-40 shrink-0" aria-label="Default execution mode">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="direct">Direct</SelectItem>
-            <SelectItem value="agentic">Agentic</SelectItem>
-          </SelectContent>
-        </Select>
+        )}
       </div>
 
-      {save.isError && (
-        <p className="text-xs text-red-400">Could not save executor settings. Check the server logs.</p>
-      )}
+      <div className="flex max-w-[640px] flex-col">
+        <h2 className="text-lg font-semibold text-ink">Default execution mode</h2>
+        <p className="mt-1 max-w-[56ch] text-sm text-ink-3">
+          Pre-selected when creating a task. Direct runs the executor once;
+          agentic lets it plan and iterate.
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Select
+            value={settings.default_execution_mode}
+            onValueChange={(v) =>
+              commit({ ...settings, default_execution_mode: v as ExecutorSettings["default_execution_mode"] })
+            }
+            disabled={save.isPending}
+          >
+            <SelectTrigger className="w-40" aria-label="Default execution mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="direct">Direct</SelectItem>
+              <SelectItem value="agentic">Agentic</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
     </div>
   )
 }

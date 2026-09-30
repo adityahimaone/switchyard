@@ -30,6 +30,10 @@
   --c-ink-4: #94a3b8;
 
   --c-accent: #2563eb;
+  /* Text-safe accent. `accent` on `accent-tint` measures 4.49:1, which rounds
+     under the 4.5 floor at 13px, so any accent text on a tinted fill uses this
+     instead. Solid fills (buttons, the rail marker) still use `accent`. */
+  --c-accent-text: #1d4ed8;
   --c-accent-ink: #ffffff;
   --c-accent-tint: rgb(37 99 235 / 0.1);
   --c-focus: #2563eb;
@@ -165,6 +169,7 @@
   --c-ink-4: #5b6775;
 
   --c-accent: #60a5fa;
+  --c-accent-text: #93c5fd;
   --c-accent-ink: #0a0d12;
   --c-accent-tint: rgb(96 165 250 / 0.16);
   --c-focus: #7cb0ff;
@@ -234,6 +239,7 @@
   --color-ink-3: var(--c-ink-3);
   --color-ink-4: var(--c-ink-4);
   --color-accent: var(--c-accent);
+  --color-accent-text: var(--c-accent-text);
   --color-accent-ink: var(--c-accent-ink);
   --color-accent-tint: var(--c-accent-tint);
   --color-focus: var(--c-focus);

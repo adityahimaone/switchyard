@@ -322,7 +322,7 @@ function cnChip(isDefault: boolean) {
   return [
     "max-w-full truncate rounded-control border px-1.5 py-0.5 font-mono text-2xs",
     isDefault
-      ? "border-accent/30 bg-accent-tint text-accent"
+      ? "border-accent/30 bg-accent-tint text-accent-text"
       : "border-line bg-well text-ink-3",
   ].join(" ")
 }

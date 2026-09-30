@@ -1,527 +1,149 @@
-import { useEffect, useState } from "react"
+import { useMemo, useState } from "react"
+import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs"
-import { Bell, XCircle, Eye, Search, Volume2, VolumeX, RefreshCw, LayoutGrid, Activity, Download, Archive, ArchiveRestore, MousePointerClick, Mouse, Trash2 } from "lucide-react"
-import { useTheme, useSoundSettings, type ThemePreference } from "@/hooks/useSettings"
-import { Button } from "@/components/ui/button"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, archiveBoard, getJEVStatus, type Board } from "@/api"
-import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
-import AttachmentAnalysisSettings from "./AttachmentAnalysisSettings"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
+import { PageHeader } from "@/components/app/page-header"
+import { cn } from "@/lib/utils"
 import ExecutorSettingsPanel from "./ExecutorSettings"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import AccountTab from "./tabs/AccountTab"
+import AdvancedTab from "./tabs/AdvancedTab"
+import AppearanceTab from "./tabs/AppearanceTab"
+import BoardsTab from "./tabs/BoardsTab"
+import GeneralTab from "./tabs/GeneralTab"
+import NotificationsTab from "./tabs/NotificationsTab"
+import VisionTab from "./tabs/VisionTab"
 
 const TABS = [
-  { id: "general", label: "General" },
-  { id: "appearance", label: "Appearance" },
-  { id: "notifications", label: "Notifications" },
-  { id: "executors", label: "Executors" },
-  { id: "boards", label: "Boards" },
-  { id: "ai", label: "AI / Vision" },
-  { id: "account", label: "Account" },
-  { id: "advanced", label: "Advanced" },
+  { id: "general", label: "General", keywords: "polling refresh sound volume" },
+  { id: "appearance", label: "Appearance", keywords: "theme dark light density compact motion" },
+  { id: "notifications", label: "Notifications", keywords: "alert browser review failure" },
+  { id: "vision", label: "Vision and attachments", keywords: "ai jev image pdf model routing" },
+  { id: "executors", label: "Executors", keywords: "agent run order mode" },
+  { id: "boards", label: "Boards and dispatch", keywords: "archive board queue" },
+  { id: "account", label: "Account", keywords: "password security login" },
+  { id: "advanced", label: "Advanced", keywords: "export data history danger" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
 
-const REFRESH_KEY = "kb-refresh-interval"
-const COMPACT_KEY = "kb-compact-cards"
-const PING_KEY = "kb-ping-interval"
-const NOTIFY_BROWSER_KEY = "kb-notify-browser"
-const NOTIFY_FAILURE_KEY = "kb-notify-failure"
-const NOTIFY_REVIEW_KEY = "kb-notify-review"
-
-function useLocalStorage<T>(key: string, fallback: T) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key)
-      return raw !== null ? (JSON.parse(raw) as T) : fallback
-    } catch {
-      return fallback
-    }
-  })
-  const update = (v: T) => {
-    setValue(v)
-    try { localStorage.setItem(key, JSON.stringify(v)) } catch {}
-  }
-  return [value, update] as const
-}
-
+/**
+ * Split layout: a plain-text nav on the left, content on the right. Search
+ * filters which sections are offered rather than hiding rows inside them, so a
+ * search can never leave a page looking half-empty.
+ */
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("general")
   const [q, setQ] = useState("")
-  const sound = useSoundSettings()
-
-  const [refreshMs, setRefresh] = useLocalStorage(REFRESH_KEY, 15000)
-  const [compact, setCompact] = useLocalStorage(COMPACT_KEY, false)
-  const [pingMs, setPing] = useLocalStorage(PING_KEY, 30000)
-  const [notifyBrowser, setNotifyBrowser] = useLocalStorage(NOTIFY_BROWSER_KEY, false)
-  const [notifyFailure, setNotifyFailure] = useLocalStorage(NOTIFY_FAILURE_KEY, true)
-  const [notifyReview, setNotifyReview] = useLocalStorage(NOTIFY_REVIEW_KEY, true)
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [passwordMsg, setPasswordMsg] = useState("")
-  const [passwordBusy, setPasswordBusy] = useState(false)
-  const { theme, setTheme } = useTheme()
-  const qc = useQueryClient()
-  const { data: jevStatus, isFetching: jevRefreshing, refetch: refreshJEV } = useQuery({
-    queryKey: ["jev-status"],
-    queryFn: getJEVStatus,
-    enabled: tab === "ai",
-    refetchInterval: tab === "ai" ? 30000 : false,
-  })
-  const [jevSaving, setJevSaving] = useState(false)
-  const [historyBusy, setHistoryBusy] = useState(false)
-  const [historyMsg, setHistoryMsg] = useState("")
-  async function clearExecutionHistory() {
-    if (!window.confirm("Hapus semua worker log, execution events, dan result history? Task, comment, attachment tetap aman.")) return
-    setHistoryBusy(true); setHistoryMsg("")
-    try {
-      await api("/api/settings/execution-history", { method: "DELETE" })
-      await qc.invalidateQueries({ queryKey: ["tasks"] })
-      setHistoryMsg("Execution history cleared.")
-    } catch (e) {
-      setHistoryMsg((e as Error).message)
-    } finally {
-      setHistoryBusy(false)
-    }
-  }
-  async function toggleJEV(enabled: boolean) {
-    setJevSaving(true)
-    try {
-      await api("/api/settings/jev", { method: "PUT", body: JSON.stringify({ enabled }) })
-      await qc.invalidateQueries({ queryKey: ["jev-status"] })
-    } finally {
-      setJevSaving(false)
-    }
-  }
-
-  // Sync cuelume engine on any sound pref change
-  useEffect(() => {
-    syncSoundEngine()
-  }, [sound.enabled, sound.volume])
-
-  // Re-scan attrs when per-type toggles change
-  useEffect(() => {
-    applySoundPreferences()
-  }, [sound.hover, sound.click])
 
   const needle = q.trim().toLowerCase()
-  const show = (...labels: string[]) => !needle || labels.some((l) => l.toLowerCase().includes(needle))
+  const visibleTabs = useMemo(
+    () =>
+      needle === ""
+        ? TABS
+        : TABS.filter(
+            (t) => t.label.toLowerCase().includes(needle) || t.keywords.includes(needle),
+          ),
+    [needle],
+  )
 
-  const refreshOpts = [
-    { label: "5s", value: 5000 },
-    { label: "10s", value: 10000 },
-    { label: "15s", value: 15000 },
-    { label: "30s", value: 30000 },
-    { label: "60s", value: 60000 },
-  ]
-
-  async function changePassword() {
-    setPasswordBusy(true); setPasswordMsg("")
-    try {
-      await api("/api/auth/password", { method: "POST", body: JSON.stringify({ current: currentPassword, password: newPassword }) })
-      setPasswordMsg("Password updated. Login again with new password.")
-      setCurrentPassword(""); setNewPassword("")
-      setTimeout(() => { fetch("/api/auth/logout", { method: "POST", credentials: "include" }).then(() => { window.location.reload() }) }, 1500)
-    } catch (e) {
-      setPasswordMsg((e as Error).message)
-    } finally {
-      setPasswordBusy(false)
-    }
-  }
-
-  const pingOpts = [
-    { label: "10s", value: 10000 },
-    { label: "30s", value: 30000 },
-    { label: "60s", value: 60000 },
-    { label: "Off", value: 0 },
-  ]
+  // If the search hides the open section, fall back to the first visible one.
+  const active: TabId | undefined = visibleTabs.some((t) => t.id === tab)
+    ? tab
+    : visibleTabs[0]?.id
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="flex shrink-0 items-end gap-3 border-b border-[var(--color-line)] px-6 py-4">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Studio</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-ink">Settings</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Tune interaction, appearance, navigation, and workspace runtime preferences.</p>
+      <PageHeader
+        title="Settings"
+        description="Interaction, appearance and runtime preferences for this device."
+      >
+        <div className="relative w-full max-w-72">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3"
+          />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search settings"
+            aria-label="Search settings"
+            className="pl-8"
+          />
         </div>
-        <div className="relative ml-auto w-64">
-          <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari setting…"
-            className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
-        </div>
-      </header>
+      </PageHeader>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <nav className="flex w-48 shrink-0 flex-col gap-1 border-r border-[var(--color-line)] bg-[var(--color-surface)]/40 p-3">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              data-cuelume-hover="tick" data-cuelume-press data-cuelume-release
-              className={`rounded-md px-3 py-2 text-left text-xs font-medium transition-colors ${
-                tab === t.id ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)]" : "text-ink-3 hover:bg-[var(--color-line)]/60 hover:text-ink"
-              }`}>
-              {t.label}
-            </button>
-          ))}
+        {/* Nav above 1024px; a Select takes over below. */}
+        <nav
+          aria-label="Settings"
+          className="hidden w-50 shrink-0 flex-col gap-0.5 border-r border-line p-3 lg:flex"
+        >
+          {visibleTabs.map((t) => {
+            const current = t.id === active
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-current={current ? "page" : undefined}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "relative h-8 rounded-control px-2.5 text-left text-sm outline-none",
+                  "transition-colors duration-100",
+                  "hover:bg-raised focus-visible:ring-[3px] focus-visible:ring-focus/40",
+                  // accent-text, not accent: on a tinted fill the solid accent
+                  // lands at 4.49:1, which rounds under the 4.5 floor.
+                  current
+                    ? "bg-accent-tint font-medium text-accent-text"
+                    : "text-ink-2 hover:text-ink",
+                )}
+              >
+                {current && (
+                  <span
+                    aria-hidden
+                    className="absolute top-2 bottom-2 -left-3 w-0.5 rounded-full bg-accent"
+                  />
+                )}
+                <span className="truncate">{t.label}</span>
+              </button>
+            )
+          })}
         </nav>
 
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)} className="w-full max-w-2xl">
-            <TabsList className="hidden">{/* nav sidebar replaces visual tabs */}</TabsList>
-
-            <TabsContent value="general" className="mt-0 space-y-6">
-              {/* Sound effects — master + granular + volume */}
-              {show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome") && (
-                <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {sound.enabled ? <Volume2 className="size-4 text-[var(--color-accent)]" /> : <VolumeX className="size-4 text-ink-4" />}
-                      <div>
-                        <p className="text-sm font-medium text-ink">Sound Effects</p>
-                        <p className="text-xs text-ink-4">Mute all interface sounds globally</p>
-                      </div>
-                    </div>
-                    <Switch checked={sound.enabled} onCheckedChange={sound.setEnabled} />
-                  </div>
-                  {sound.enabled && (
-                    <div className="space-y-3">
-                      {/* Volume */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-ink-3">
-                          <span>Volume</span>
-                          <span>{Math.round(sound.volume * 100)}%</span>
-                        </div>
-                        <input type="range" min={0} max={1} step={0.05} value={sound.volume}
-                          onChange={(e) => sound.setVolume(Number(e.target.value))}
-                          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--color-line)] accent-[var(--color-accent)]" />
-                      </div>
-                      {/* Granular toggles */}
-                      <div className="space-y-2 rounded-lg border border-[var(--color-line)]/40 bg-[var(--color-bg)]/40 p-3">
-                        <p className="text-[10px] uppercase tracking-wider text-ink-4">Sound Categories</p>
-                        <div className="flex items-center justify-between py-1">
-                          <div className="flex items-center gap-2">
-                            <Mouse className="size-3.5 text-ink-4" />
-                            <span className="text-xs text-ink-2">Hover tick</span>
-                          </div>
-                          <Switch checked={sound.hover} onCheckedChange={sound.setHover} />
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <div className="flex items-center gap-2">
-                            <MousePointerClick className="size-3.5 text-ink-4" />
-                            <span className="text-xs text-ink-2">Click / press</span>
-                          </div>
-                          <Switch checked={sound.click} onCheckedChange={sound.setClick} />
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <div className="flex items-center gap-2">
-                            <Bell className="size-3.5 text-ink-4" />
-                            <span className="text-xs text-ink-2">Outcome feedback</span>
-                          </div>
-                          <Switch checked={sound.outcome} onCheckedChange={sound.setOutcome} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {show("Auto Refresh", "Polling", "Board") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <RefreshCw className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Board Auto-Refresh</p>
-                      <p className="text-xs text-ink-4">Task polling interval</p>
-                    </div>
-                  </div>
-                  <Select value={String(refreshMs)} onValueChange={(value) => setRefresh(Number(value))}>
-                    <SelectTrigger size="sm" aria-label="Board auto-refresh interval" className="h-8 w-20 bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>{refreshOpts.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {!show("Sound Effects", "Audio", "Mute", "Click", "Hover", "Outcome", "Auto Refresh", "Polling", "Board") && (
-                <p className="text-xs text-ink-4">No match.</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="executors" className="mt-0 space-y-6">
-              <ExecutorSettingsPanel show={show} />
-              {!show("Executor", "Execution", "Agent", "Sort", "Order", "Enable", "Disable", "Mode") && (
-                <p className="text-xs text-ink-4">No match.</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="account" className="mt-0 space-y-6">
-              {show("Password", "Security", "Login", "Auth") && (
-                <div className="space-y-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <p className="text-sm font-medium text-ink">Password</p>
-                  <p className="text-xs text-ink-4">Session stays active for 14 days.</p>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                    <Input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-                    <Input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-                    <Button size="sm" disabled={passwordBusy || !currentPassword || !newPassword} onClick={changePassword} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">Update</Button>
-                  </div>
-                  {passwordMsg && <p className="text-xs text-ink-4">{passwordMsg}</p>}
-                </div>
-              )}
-              {!show("Password", "Security", "Login", "Auth") && (
-                <p className="text-xs text-ink-4">No match.</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="appearance" className="mt-0 space-y-6">
-              {show("Theme", "Appearance", "Light", "Dark") && (
-                <div className="flex items-center justify-between rounded-lg border border-line/60 bg-surface/40 p-4">
-                  <div className="flex items-center gap-3">
-                    <LayoutGrid className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink-2">Theme</p>
-                      <p className="text-xs text-ink-4">System mengikuti OS · dark default</p>
-                    </div>
-                  </div>
-                  <Select value={theme} onValueChange={(value) => setTheme(value as ThemePreference)}>
-                    <SelectTrigger size="sm" aria-label="Theme" className="h-8 w-24 bg-inset text-xs text-ink-2"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="system">System</SelectItem><SelectItem value="dark">Dark</SelectItem><SelectItem value="light">Light</SelectItem></SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {show("Compact", "Card", "Density") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <LayoutGrid className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Compact Task Cards</p>
-                      <p className="text-xs text-ink-4">Reduce padding & font size for denser board</p>
-                    </div>
-                  </div>
-                  <Switch checked={compact} onCheckedChange={setCompact} />
-                </div>
-              )}
-
-              {show("Sidebar", "Navigation", "Order", "Hide", "Show") && (
-                <div className="space-y-3 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  
-                </div>
-              )}
-
-              {!show("Theme", "Appearance", "Light", "Dark", "Compact", "Card", "Density", "Sidebar", "Navigation", "Order", "Hide", "Show") && (
-                <p className="text-xs text-ink-4">No match.</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="notifications" className="mt-0 space-y-6">
-              {show("Browser", "Notification", "Permission") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <Bell className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Browser Notifications</p>
-                      <p className="text-xs text-ink-4">Desktop notification saat task gagal atau masuk review</p>
-                    </div>
-                  </div>
-                  <Switch checked={notifyBrowser} onCheckedChange={(v) => {
-                    setNotifyBrowser(v)
-                    if (v && typeof Notification !== "undefined" && Notification.permission === "default") {
-                      void Notification.requestPermission()
-                    }
-                  }} />
-                </div>
-              )}
-              {show("Failed", "Task", "Gagal") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <XCircle className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Notify on Failure</p>
-                      <p className="text-xs text-ink-4">Task gagal, stuck, atau lost</p>
-                    </div>
-                  </div>
-                  <Switch checked={notifyFailure} onCheckedChange={setNotifyFailure} />
-                </div>
-              )}
-              {show("Review", "Ready") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <Eye className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Notify on Review</p>
-                      <p className="text-xs text-ink-4">Task masuk kolom review, siap di-approve</p>
-                    </div>
-                  </div>
-                  <Switch checked={notifyReview} onCheckedChange={setNotifyReview} />
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="boards" className="mt-0 space-y-6">
-              <BoardArchiveManager />
-            </TabsContent>
-
-            <TabsContent value="advanced" className="mt-0 space-y-6">
-              {show("Ping", "Workspace", "Heartbeat") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <Activity className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Workspace Ping Interval</p>
-                      <p className="text-xs text-ink-4">Auto-ping frequency for workspace health</p>
-                    </div>
-                  </div>
-                  <Select value={String(pingMs)} onValueChange={(value) => setPing(Number(value))}>
-                    <SelectTrigger size="sm" aria-label="Workspace ping interval" className="h-8 w-20 bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>{pingOpts.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {show("Export", "Backup", "Data") && (
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <Download className="size-4 text-ink-3" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Export Settings</p>
-                      <p className="text-xs text-ink-4">Download all preferences as JSON</p>
-                    </div>
-                  </div>
-                  <button onClick={() => {
-                    const blob = new Blob([JSON.stringify({ soundOn: sound.enabled, volume: sound.volume, refreshMs, compact, pingMs }, null, 2)], { type: "application/json" })
-                    const a = document.createElement("a")
-                    a.href = URL.createObjectURL(blob)
-                    a.download = "kanban-settings.json"
-                    a.click()
-                    URL.revokeObjectURL(a.href)
-                  }}
-                    data-cuelume-press data-cuelume-release
-                    className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-1.5 text-xs text-ink-2 hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]">
-                    Export
-                  </button>
-                </div>
-              )}
-
-              {show("Execution history", "Worker log", "Clear history", "Runtime") && (
-                <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <Trash2 className="mt-0.5 size-4 text-red-300" />
-                    <div>
-                      <p className="text-sm font-medium text-ink">Clear execution history</p>
-                      <p className="mt-1 max-w-lg text-xs leading-5 text-ink-4">Hapus raw worker logs, execution events, task result, dan failure trace. Tasks, comments, attachments tetap ada. Running task tidak disentuh.</p>
-                      {historyMsg && <p className="mt-2 text-xs text-ink-3">{historyMsg}</p>}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => void clearExecutionHistory()} disabled={historyBusy} className="shrink-0 border-red-500/30 text-xs text-red-200 hover:bg-red-500/10">
-                    {historyBusy ? "Clearing…" : "Clear history"}
-                  </Button>
-                </div>
-              )}
-
-              {!show("Ping", "Workspace", "Heartbeat", "Export", "Backup", "Data", "Execution history", "Worker log", "Clear history", "Runtime") && (
-                <p className="text-xs text-ink-4">No match.</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="ai" className="mt-0 space-y-6">
-              {show("JEV", "TypeSafe", "task identification", "routing", "LLM", "AI") && (
-                <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <Activity className="mt-0.5 size-4 text-[var(--color-accent)]" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium text-ink">JEV task routing</p>
-                        <p className="mt-1 text-xs leading-5 text-ink-4">
-                          Used before Kanban execution to identify the task case and workspace scope, so the worker receives a focused LLM context.
-                        </p>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" onClick={() => void refreshJEV()} disabled={jevRefreshing} aria-label="Refresh JEV status" className="h-8 shrink-0 text-xs text-ink-3">
-                      <RefreshCw className={`size-3.5 ${jevRefreshing ? "animate-spin" : ""}`} />
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2.5">
-                    <div>
-                      <p className="text-xs font-medium text-ink">Enable JEV task routing</p>
-                      <p className="mt-0.5 text-[11px] text-ink-4">Classify Kanban tasks with JEV before dispatch.</p>
-                    </div>
-                    <Switch checked={jevStatus?.enabled ?? true} onCheckedChange={(value) => void toggleJEV(value)} disabled={!jevStatus || jevSaving} aria-label="Enable JEV task routing" />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Connection</p>
-                      <p className={`mt-1 text-xs font-medium ${jevStatus?.online ? "text-emerald-400" : jevStatus?.configured ? "text-amber-400" : "text-ink-3"}`}>
-                        {jevStatus?.online ? "Online" : jevStatus?.configured ? "Configured · offline" : "Fallback mode"}
-                      </p>
-                    </div>
-                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Model</p>
-                      <p className="mt-1 truncate text-xs font-medium text-ink-2">{jevStatus?.model ?? "Checking…"}</p>
-                    </div>
-                    <div className="rounded-md border border-[var(--color-line)]/50 bg-[var(--color-bg)]/40 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-ink-4">Classifications</p>
-                      <p className="mt-1 text-xs font-medium text-ink-2">{jevStatus ? `${jevStatus.successful_calls} JEV · ${jevStatus.fallback_calls} fallback · chat ${jevStatus.chat_calls} · kanban ${jevStatus.kanban_calls}` : "Checking…"}</p>
-                    </div>
-                  </div>
-                  {jevStatus && jevStatus.calls > 0 && (
-                    <p className="text-[11px] text-ink-4">
-                      Last classification: {jevStatus.last_latency_ms} ms · {jevStatus.last_input_tokens || "—"} input tokens. Usage metrics are persisted in chat.db.
-                    </p>
-                  )}
-                </div>
-              )}
-              <AttachmentAnalysisSettings show={show} />
-            </TabsContent>
-          </Tabs>
-        </main>
-      </div>
-    </div>
-  )
-}
-
-function BoardArchiveManager() {
-  const qc = useQueryClient()
-  const { data: boards = [] } = useQuery<Board[]>({ queryKey: ["boards"], queryFn: () => api<Board[]>("/api/boards") })
-  const archived = boards.filter((b) => b.archived)
-  const active = boards.filter((b) => !b.archived)
-
-  function toggle(slug: string, next: boolean) {
-    void archiveBoard(slug, next).then(() => qc.invalidateQueries({ queryKey: ["boards"] }))
-  }
-
-  return (
-    <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-      <div className="flex items-center gap-3">
-        <Archive className="size-4 text-ink-3" />
-        <div>
-          <p className="text-sm font-medium text-ink">Board Archive</p>
-          <p className="text-xs text-ink-4">Archive or restore boards. Archived boards hidden dari board selector.</p>
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        {active.map((b) => (
-          <div key={b.slug} className="flex items-center justify-between rounded border border-[var(--color-line)]/40 bg-[var(--color-bg)] px-3 py-2">
-            <span className="text-xs text-ink">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
-            <Button size="sm" variant="outline" onClick={() => toggle(b.slug, true)} className="gap-1 border-[var(--color-line)] text-ink-3 hover:text-red-400">
-              <Archive className="size-3" /> Archive
-            </Button>
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-4 md:p-6">
+          <div className="lg:hidden">
+            <Select value={active} onValueChange={(v) => setTab(v as TabId)}>
+              <SelectTrigger className="w-full" aria-label="Settings section">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleTabs.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        ))}
-        {archived.length > 0 && (
-          <>
-            <p className="pt-2 text-[10px] uppercase tracking-wider text-ink-4">Archived</p>
-            {archived.map((b) => (
-              <div key={b.slug} className="flex items-center justify-between rounded border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                <span className="text-xs text-ink-3">{b.icon ? `${b.icon} ` : ""}{b.name}</span>
-                <Button size="sm" variant="outline" onClick={() => toggle(b.slug, false)} className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">
-                  <ArchiveRestore className="size-3" /> Restore
-                </Button>
-              </div>
-            ))}
-          </>
-        )}
-        {boards.length === 0 && <p className="text-xs text-ink-4">No boards.</p>}
+
+          <div className="mt-6 lg:mt-0">
+            {visibleTabs.length === 0 ? (
+              <p className="text-sm text-ink-3">
+                No settings match &ldquo;{q.trim()}&rdquo;.
+              </p>
+            ) : (
+              <>
+                {active === "general" && <GeneralTab />}
+                {active === "appearance" && <AppearanceTab />}
+                {active === "notifications" && <NotificationsTab />}
+                {active === "vision" && <VisionTab />}
+                {active === "executors" && <ExecutorSettingsPanel />}
+                {active === "boards" && <BoardsTab />}
+                {active === "account" && <AccountTab />}
+                {active === "advanced" && <AdvancedTab />}
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

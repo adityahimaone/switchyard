@@ -2,75 +2,155 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getAttachmentAnalysisConfig, listProviders, saveAttachmentAnalysisConfig, type AttachmentAnalysisConfig, type ProviderModel } from "@/api"
+import {
+  getAttachmentAnalysisConfig, listProviders, saveAttachmentAnalysisConfig,
+  type AttachmentAnalysisConfig, type ProviderModel,
+} from "@/api"
+import { SettingRow, SettingsSection } from "./settings-parts"
 
-export default function AttachmentAnalysisSettings({ show }: { show: (...labels: string[]) => boolean }) {
+export default function AttachmentAnalysisSettings() {
   const [config, setConfig] = useState<AttachmentAnalysisConfig | null>(null)
   const [providers, setProviders] = useState<ProviderModel[]>([])
-  const [message, setMessage] = useState("")
+  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
   const [search, setSearch] = useState("")
-  const models = useMemo(() => providers.flatMap((p) => p.models.map((model) => ({
-    model,
-    provider: p.name,
-    endpoint: (() => {
-      try {
-        const path = new URL(p.base_url).pathname.split("/").filter(Boolean)
-        return path.at(-1) || ""
-      } catch {
-        return ""
-      }
-    })(),
-    capability: p.capabilities?.[model],
-  }))), [providers])
+
+  const models = useMemo(
+    () =>
+      providers.flatMap((p) =>
+        p.models.map((model) => {
+          let endpoint = ""
+          try {
+            endpoint = new URL(p.base_url).pathname.split("/").filter(Boolean).at(-1) || ""
+          } catch {
+            endpoint = ""
+          }
+          return { model, provider: p.name, endpoint, capability: p.capabilities?.[model] }
+        }),
+      ),
+    [providers],
+  )
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return models
-    return models.filter((m) => m.model.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))
+    return models.filter(
+      (m) => m.model.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q),
+    )
   }, [models, search])
-  useEffect(() => { void Promise.all([getAttachmentAnalysisConfig(), listProviders()]).then(([c, p]) => { setConfig(c); setProviders(p) }).catch((e) => setMessage((e as Error).message)) }, [])
-  if (!show("AI", "Vision", "Image", "PDF", "Attachment", "Model")) return null
-  if (!config) return <p className="text-xs text-ink-4">Loading vision settings…</p>
+
+  useEffect(() => {
+    void Promise.all([getAttachmentAnalysisConfig(), listProviders()])
+      .then(([c, p]) => { setConfig(c); setProviders(p) })
+      .catch((e) => setMessage({ tone: "error", text: (e as Error).message }))
+  }, [])
+
+  if (!config) {
+    return (
+      <SettingsSection title="Attachments" description="Loading attachment settings…">
+        <p className="py-4 text-sm text-ink-3">Loading…</p>
+      </SettingsSection>
+    )
+  }
+
   const update = (patch: Partial<AttachmentAnalysisConfig>) => setConfig({ ...config, ...patch })
-  const selectedLabel = config.dedicated_model ? `${config.dedicated_provider} / ${config.dedicated_model}` : "Select model…"
-  return <div className="space-y-4 rounded-lg border border-[var(--color-line)]/60 bg-[var(--color-surface)]/30 p-4">
-    <div><p className="text-sm font-medium text-ink">Attachment Analysis</p><p className="text-xs text-ink-4">Global model routing for image and PDF analysis.</p></div>
-    <div className="flex items-center justify-between text-xs text-ink-2"><span>Routing mode</span>
-      <Select value={config.mode} onValueChange={(v) => update({ mode: v as AttachmentAnalysisConfig["mode"] })}>
-        <SelectTrigger size="sm" className="h-7 w-40 border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue /></SelectTrigger>
-        <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-          <SelectItem value="auto" className="text-sm">Auto + fallback</SelectItem>
-          <SelectItem value="dedicated" className="text-sm">Dedicated model</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-    <div className="space-y-2">
-      <p className="text-xs text-ink-2">Dedicated model</p>
-      <Select value={`${config.dedicated_provider}::${config.dedicated_model}`} onValueChange={(v) => {
-        const idx = v.indexOf("::")
-        update({ dedicated_provider: v.slice(0, idx), dedicated_model: v.slice(idx + 2) })
-      }}>
-        <SelectTrigger size="sm" className="h-7 w-full border-[var(--color-line)] bg-transparent px-2.5 text-[11px]"><SelectValue placeholder={selectedLabel} /></SelectTrigger>
-        <SelectContent className="w-[min(32rem,calc(100vw-1rem))] max-h-[min(28rem,calc(100dvh-1rem))] border-[var(--color-line)] bg-[var(--color-surface)]">
-          <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(e) => e.stopPropagation()}>
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search model…" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-          </div>
-          <SelectItem value="::" className="text-sm">Select model…</SelectItem>
-          {filtered.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-4">No match</p>}
-          {filtered.map(({ model, provider, endpoint, capability }) => (
-            <SelectItem key={`${provider}::${model}`} value={`${provider}::${model}`} className="text-sm" title={`${provider}/${model}`}>
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate">{provider} / {model}</span>
-                {endpoint && <span className="shrink-0 text-[9px] text-ink-4">/{endpoint}</span>}
-                {capability?.vision && <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-0 text-[9px] leading-none text-emerald-400">vision</span>}
-                {capability?.pdf && <span className="shrink-0 rounded border border-blue-500/30 bg-blue-500/10 px-1 py-0 text-[9px] leading-none text-blue-400">pdf</span>}
-                {!capability?.vision && !capability?.pdf && <span className="shrink-0 text-[9px] text-ink-4">unknown</span>}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-    <div className="flex items-center justify-between"><span className="text-xs text-ink-4">Unknown current model falls back to dedicated model.</span><Button size="sm" onClick={() => void saveAttachmentAnalysisConfig(config).then(() => setMessage("Saved")).catch((e) => setMessage((e as Error).message))}>Save</Button></div>
-    {message && <p className="text-xs text-ink-4">{message}</p>}
-  </div>
+  const selectedLabel = config.dedicated_model
+    ? `${config.dedicated_provider} / ${config.dedicated_model}`
+    : "Select a model"
+
+  async function save() {
+    try {
+      await saveAttachmentAnalysisConfig(config!)
+      setMessage({ tone: "ok", text: "Attachment settings saved." })
+    } catch (e) {
+      setMessage({ tone: "error", text: (e as Error).message })
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Attachments"
+      description="Model routing for image and PDF analysis."
+      footer={
+        <Button size="sm" variant="signal" onClick={() => void save()}>
+          Save changes
+        </Button>
+      }
+    >
+      <SettingRow
+        label="Routing mode"
+        help="Auto picks the first model that advertises vision. Dedicated always uses the model below."
+        htmlFor="att-mode"
+      >
+        <Select
+          value={config.mode}
+          onValueChange={(v) => update({ mode: v as AttachmentAnalysisConfig["mode"] })}
+        >
+          <SelectTrigger id="att-mode" size="sm" className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto with fallback</SelectItem>
+            <SelectItem value="dedicated">Dedicated model</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
+      <SettingRow
+        label="Dedicated model"
+        help="Used when the request is an image or a PDF, and in fallback mode."
+        htmlFor="att-model"
+      >
+        <Select
+          value={`${config.dedicated_provider}::${config.dedicated_model}`}
+          onValueChange={(v) => {
+            const idx = v.indexOf("::")
+            update({ dedicated_provider: v.slice(0, idx), dedicated_model: v.slice(idx + 2) })
+          }}
+        >
+          <SelectTrigger id="att-model" size="sm" className="w-64">
+            <SelectValue placeholder={selectedLabel} />
+          </SelectTrigger>
+          <SelectContent className="w-[min(32rem,calc(100vw-1rem))]">
+            <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(e) => e.stopPropagation()}>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search models"
+                aria-label="Search models"
+              />
+            </div>
+            <SelectItem value="::">Select a model</SelectItem>
+            {filtered.length === 0 && (
+              <p className="px-2 py-1.5 text-xs text-ink-3">No models match</p>
+            )}
+            {filtered.map(({ model, provider, endpoint, capability }) => (
+              <SelectItem
+                key={`${provider}::${model}`}
+                value={`${provider}::${model}`}
+                title={`${provider}/${model}`}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate">{provider} / {model}</span>
+                  {endpoint && <span className="shrink-0 text-2xs text-ink-3">/{endpoint}</span>}
+                  {capability?.vision && (
+                    <span className="shrink-0 text-2xs text-success">vision</span>
+                  )}
+                  {capability?.pdf && <span className="shrink-0 text-2xs text-info">pdf</span>}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
+      {message && (
+        <p
+          role="status"
+          className={message.tone === "ok" ? "py-3 text-sm text-success" : "py-3 text-sm text-danger-text"}
+        >
+          {message.text}
+        </p>
+      )}
+    </SettingsSection>
+  )
 }
