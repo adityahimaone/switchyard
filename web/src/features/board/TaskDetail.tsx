@@ -95,7 +95,7 @@ export default function TaskDetail({
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-detail-title"
-        className="task-detail-drawer glass-panel flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-y-0 border-l-0 pb-[env(safe-area-inset-bottom)] sm:rounded-xl sm:border sm:pb-0"
+        className="task-detail-drawer glass flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-y-0 border-l-0 pb-[env(safe-area-inset-bottom)] sm:rounded-xl sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="shrink-0 border-b border-[var(--c-line)] bg-[var(--c-surface)]/95 px-4 py-3 backdrop-blur-xl">

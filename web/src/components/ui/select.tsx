@@ -60,7 +60,21 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "glass-panel-raised relative z-50 max-h-[300px] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-md text-popover-foreground shadow-xl data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          // Origin-aware: scales from the trigger. The exit mirrors the entry per
+          // side, so the menu leaves toward the control that opened it instead
+          // of fading in place.
+          //
+          // 200ms on --ease-out-expo. A select opens dozens of times a day, so
+          // this is deliberately near-imperceptible — enough to say where it came
+          // from, not enough to be waited on.
+          "glass-strong relative z-50 max-h-[300px] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-control text-popover-foreground",
+          "transition-[transform,opacity] duration-200 ease-[var(--ease-out-expo)]",
+          "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
+          "data-[side=bottom]:data-[state=closed]:translate-y-[-4px] data-[side=bottom]:data-[state=open]:translate-y-0",
+          "data-[side=top]:data-[state=closed]:translate-y-[4px] data-[side=top]:data-[state=open]:translate-y-0",
+          "data-[side=left]:data-[state=closed]:translate-x-[-4px] data-[side=left]:data-[state=open]:translate-x-0",
+          "data-[side=right]:data-[state=closed]:translate-x-[4px] data-[side=right]:data-[state=open]:translate-x-0",
+          "data-[state=closed]:scale-[0.97] data-[state=open]:scale-100",
           position === "popper" &&
             "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
           className

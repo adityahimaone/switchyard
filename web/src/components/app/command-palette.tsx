@@ -166,12 +166,12 @@ export default function CommandPalette({
         className="fixed inset-0 z-[90] flex items-start justify-center bg-black/55 p-4 pt-[12vh] backdrop-blur-[2px]"
         onClick={() => setOpen(false)}
       >
-        <motion.div
-          initial={{ opacity: 0, y: 8, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 6, scale: 0.98 }}
-          transition={{ type: "spring", stiffness: 420, damping: 30 }}
-          className="glass-panel-raised w-full max-w-[640px] overflow-hidden rounded-2xl border border-[var(--color-line)] shadow-[0_24px_64px_rgba(0,0,0,.38),inset_0_1px_0_rgba(255,255,255,.06)]"
+        {/* No entrance on the panel itself. This is keyboard-initiated and used
+            100+ times a day, where motion reads as latency — the panel should
+            simply be there. The scrim above still fades, because a backdrop
+            appearing with no transition is a genuine jolt. Raycast does the same. */}
+        <div
+          className="glass-strong w-full max-w-[640px] overflow-hidden rounded-panel shadow-float"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -288,7 +288,7 @@ export default function CommandPalette({
               <span className="ml-1">to open</span>
             </span>
           </div>
-        </motion.div>
+        </div>
       </motion.div>
     </AnimatePresence>
   )

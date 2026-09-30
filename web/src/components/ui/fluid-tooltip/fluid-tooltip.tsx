@@ -189,7 +189,10 @@ export function FluidTooltipGroup({
               >
                 <Tooltip.Popup
                   className={cn(
-                    "glass-tooltip relative origin-[var(--transform-origin)] rounded-lg text-[12px] font-medium leading-none",
+                    // `glass-tooltip` was deleted from index.css several commits ago, so this
+                    // tooltip has been rendering unbordered and opaque. glass-strong
+                    // keeps it origin-aware, which it already was.
+                    "glass-strong relative origin-[var(--transform-origin)] rounded-control px-2 py-1 text-[12px] font-medium leading-none",
                     "h-[var(--popup-height,auto)] w-[var(--popup-width,auto)] max-w-[var(--available-width)] transition-[width,height,transform,opacity] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-[0.96] data-starting-style:translate-y-1 data-starting-style:opacity-0 data-instant:transition-none motion-reduce:transition-none",
                     className,
                     payload.contentClassNameRef.current,

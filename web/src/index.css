@@ -574,6 +574,37 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Toasts.
+ *
+ * The only surface in the app that genuinely teleports, so it is the only one
+ * that needed a bridge. Entry is `@starting-style`, which animates without JS
+ * and without mount bookkeeping. Exit is a transition rather than a keyframe,
+ * so a toast dismissed while it is still arriving retargets smoothly instead of
+ * restarting.
+ *
+ * Same edge in and out — it arrives from above and leaves upward, so the two
+ * read as one motion rather than two unrelated ones.
+ *
+ * 200ms on both. A toast is occasional, so it can have a real beat, but not a
+ * showy one: the user is reading it while it moves. */
+.toast-item {
+  transition:
+    transform 200ms var(--ease-out-expo),
+    opacity 200ms var(--ease-out-expo);
+}
+
+@starting-style {
+  .toast-item {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.toast-item[data-leaving] {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 /* Dot grid, for decorative areas only: empty states, sign-in, the flow map
    canvas, page headers. Never behind data.
 

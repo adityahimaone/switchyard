@@ -193,10 +193,10 @@ export default function TaskDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="glass-panel-raised w-full max-w-lg rounded-xl p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="glass-strong w-full max-w-lg rounded-panel p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold">New Task</h2>
         <Label className="mt-3 block text-xs text-ink-3">Title</Label>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Judul task"
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title"
           className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)]" />
         <div className="mt-3 flex items-center justify-between">
           <Label className="text-xs text-ink-3">Body</Label>
@@ -206,7 +206,7 @@ export default function TaskDialog({
               disabled={aiBusy || !body.trim()}
               onClick={() => improveBody("fast")}
               className="h-6 gap-1 border-[var(--c-accent)]/40 px-2 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
-              title="Improve instan pakai template (tanpa AI call)"
+              title="Fill a template instantly, no AI call"
             >
               <Sparkles className="size-3" />
               Fast
@@ -216,7 +216,7 @@ export default function TaskDialog({
               disabled={aiBusy || !body.trim()}
               onClick={() => improveBody("deep")}
               className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
-              title="Improve pakai AI model (lebih lambat, hasil lebih kontekstual)"
+              title="Rewrite with an AI model. Slower, but more contextual."
             >
               {aiMode === "deep" ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
               {aiMode === "deep" ? "Improving…" : "Deep"}

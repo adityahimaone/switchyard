@@ -11,27 +11,66 @@ const TONE_CUE: Record<Toast["tone"], string> = {
   info: "chime",
 }
 
+/** Tone styles. These used to be `border-red-500/40` and `border-emerald-500/40`,
+ * which are dark-theme values sitting on a light-default app — roughly 2:1 and
+ * effectively invisible. They are the semantic tokens now. */
+const TONE_CLASS: Record<Toast["tone"], string> = {
+  error: "text-danger-text",
+  success: "text-success-text",
+  info: "text-ink",
+}
+
 export function Toaster() {
-  const [items, setItems] = useState<Toast[]>([])
+  const [items, setItems] = useState<(Toast & { leaving?: boolean })[]>([])
+
   useEffect(() => {
     const onToast = (e: Event) => {
       const detail = (e as CustomEvent<{ message: string; tone?: Toast["tone"] }>).detail
       const item = { id: Date.now(), message: detail.message, tone: detail.tone ?? "info" }
       setItems((x) => [...x, item])
-      // Play outcome sound if enabled
       const masterOn = readBool(SOUND_KEY, true)
       const outcomeOn = readBool(SOUND_OUTCOME_KEY, true)
       if (masterOn && outcomeOn) {
         play(TONE_CUE[item.tone] as "success" | "error" | "chime")
       }
-      window.setTimeout(() => setItems((x) => x.filter((t) => t.id !== item.id)), 4500)
+      // Mark leaving first, then unmount once the exit has played. Without the
+      // two-step the toast would vanish the instant the timer fired.
+      window.setTimeout(() => {
+        setItems((x) => x.map((t) => (t.id === item.id ? { ...t, leaving: true } : t)))
+        window.setTimeout(
+          () => setItems((x) => x.filter((t) => t.id !== item.id)),
+          240,
+        )
+      }, 4500)
     }
     window.addEventListener("kb-toast", onToast)
     return () => window.removeEventListener("kb-toast", onToast)
   }, [])
-  return <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-80 flex-col gap-2">
-    {items.map((t) => <div key={t.id} role="status" className={`pointer-events-auto flex items-start gap-2 rounded-lg border bg-[var(--color-surface-raised)] p-3 text-xs shadow-lg ${t.tone === "error" ? "border-red-500/40 text-danger-text" : t.tone === "success" ? "border-emerald-500/40 text-success-text" : "border-[var(--color-line)] text-ink"}`}>
-      <span className="min-w-0 flex-1">{t.message}</span><button aria-label="Dismiss" onClick={() => setItems((x) => x.filter((i) => i.id !== t.id))}><X className="size-3.5" /></button>
-    </div>)}
-  </div>
+
+  const dismiss = (id: number) => {
+    setItems((x) => x.map((t) => (t.id === id ? { ...t, leaving: true } : t)))
+    window.setTimeout(() => setItems((x) => x.filter((t) => t.id !== id)), 240)
+  }
+
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-80 flex-col gap-2">
+      {items.map((t) => (
+        <div
+          key={t.id}
+          role="status"
+          data-leaving={t.leaving || undefined}
+          className={`glass-flat-strong toast-item pointer-events-auto flex items-start gap-2 rounded-card p-3 text-xs ${TONE_CLASS[t.tone]}`}
+        >
+          <span className="min-w-0 flex-1">{t.message}</span>
+          <button
+            aria-label="Dismiss"
+            onClick={() => dismiss(t.id)}
+            className="shrink-0 rounded-control p-0.5 text-ink-3 outline-none transition-colors hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 }
