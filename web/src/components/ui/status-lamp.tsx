@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react"
+import type { CSSProperties, ReactNode } from "react"
 import type { Status } from "@/api"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +58,49 @@ export function StatusLamp({
         )}
       </span>
       {showLabel ? <span>{text}</span> : <span className="sr-only">{text}</span>}
+    </span>
+  )
+}
+
+/**
+ * Health lamp, for things that are up or down rather than moving through the
+ * track: workspaces, providers, executors.
+ *
+ * Separate from `StatusLamp` on purpose. A workspace being "connected" is not a
+ * task state, and colouring it from the task ramp would imply it is somewhere
+ * on the board. It gets its own two-value vocabulary — `live` pulses,
+ * `idle` is hollow — and a caller-supplied tone so the page decides what
+ * healthy means.
+ */
+export function HealthLamp({
+  tone,
+  label,
+  live = false,
+  size = "md",
+  className,
+}: {
+  tone: string
+  label: ReactNode
+  /** Pulses the lamp, for something that is actively reporting. */
+  live?: boolean
+  size?: "sm" | "md"
+  className?: string
+}) {
+  return (
+    <span
+      className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", tone, className)}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "relative inline-block shrink-0 rounded-full",
+          size === "sm" ? "size-1.5" : "size-2",
+          live ? "bg-current" : "border border-current",
+        )}
+      >
+        {live && <span className="absolute inset-0 animate-lamp rounded-full bg-current" />}
+      </span>
+      {label}
     </span>
   )
 }

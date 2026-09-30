@@ -720,7 +720,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </DropdownMenu>
 
             <Select value={profile || "default"} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Agent profile">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -746,7 +746,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Workspace">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Workspace">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -769,7 +769,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className="h-7 max-w-40 truncate" aria-label="Model">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Model">
                 <SelectValue placeholder="Default model" />
               </SelectTrigger>
               <SelectContent position="popper" align="start" className="h-80 w-72">

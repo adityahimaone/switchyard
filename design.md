@@ -1,55 +1,62 @@
-# Switchyard UI Redesign 2026, Revision 3: "Signal Blue, Softened"
+# Switchyard UI Redesign 2026, Revision 4: "Signal Blue, Softened, Glass"
 
-Supersedes Revision 2 ("Signal Blue") in two areas only: the **shape ladder** and
-the **surface treatment**. Everything else — blue as the interaction accent, one
-hue per status, Inter, the sidebar shell, the breadcrumb rule, the board layout
-— carries forward unchanged.
+Supersedes Revision 3 in one area: **surface material**. Shape, palette, type,
+the accent and the board layout all carry forward unchanged.
 
 Extends `design-surfaces.md` for per-page layout where it does not conflict.
 
 Scope: `web/` (React 19, Vite, Tailwind v4, shadcn/Radix, `motion`). No API,
 routing, query or data-model changes.
 
-## 0. What Revision 3 changes
+## 0. What Revision 4 changes
 
-Two things, both about feel rather than structure.
+Frosted glass, as a material with tokens rather than scattered blur values. Two
+strengths: `glass` for panels and cards, `glass-strong` for the topmost floating
+layers where content behind would otherwise be readable through the text.
 
-**Shape is rounder.** Radius steps go up across the board (see §5). Revision 2
-used a 4px-based ladder copied from the reference, which reads crisp and slightly
-utilitarian. 12/16px reads contemporary without becoming pill-shaped.
-
-**The canvas has texture.** A blue-tinted ground, a dot grid, and a soft smoke
-wash — but **only on surfaces that hold no data**: empty states, sign-in, the
-flow map canvas, page headers.
-
-That constraint is the whole idea. The references this came from (a frosted card
-on a photographic background; a full-bleed photo behind a rounded panel of pastel
-tiles) are consumer apps: soft, spacious, image-led, few items per screen.
-Switchyard is a work tool — nine columns, dense cards, tables of cron jobs. Copy
-the texture and the rounding everywhere and you lose density and legibility.
-Copy them where there is nothing to read, and you get the modern feel for free.
-
-| Before (Revision 2) | Now | Why |
+| Before (Revision 3) | Now | Why |
 |---|---|---|
-| radius-card 8px, panel 12px, control 6px | **12 / 16 / 8** | Contemporary without becoming pill-shaped |
-| neutral grey canvas `#f7f8fa` | **blue-tinted `#f2f4fd`** | Ground relates to the accent instead of competing with it |
-| saturated status hues | **softened pastel ramp** | Warmer, more 2026; still measured to pass |
-| flat everywhere | **dot grid + smoke on empty/hero only** | Texture without costing contrast |
-| `ink-2` `#475569` | `#4d4c63` | Sits with the new ink ramp |
+| opaque `bg-surface` cards | `glass-card` | The contemporary look the references use |
+| opaque dialogs, sheets, popovers | `glass-strong` | These float over content, so there is something to diffuse |
+| opaque sidebar | `glass` | Stands directly on the textured canvas |
+| no material system | 6 tokens, 4 utilities | "How frosted is this" is a token choice, not a per-component decision |
 
-### What did *not* change, and why
+### The rule that makes it work
 
-- **Blue is still the only interaction colour.** Selection, focus, primary action
-  all stay accent. Status hues stay semantic. The mascot already establishes
-  blue, so this is coherent rather than decorative.
-- **Inter is still the only family.** A display face was considered and dropped:
-  it is one more variable against a lot of data, and Inter is what makes 13px
-  board text readable.
-- **Data surfaces stay flat and opaque.** See above. The board, tables and forms
-  look essentially as they did in Revision 2. That is a deliberate cost: the
-  visible change lands on empty states and sign-in, not on the working screens.
+**Glass only where there is variation behind it.** This is not a preference; it
+is what `backdrop-filter` is for. A translucent panel over a near-uniform ground
+has nothing to diffuse, so it renders as a flat grey wash — which is exactly
+what happened on the first pass, when the page `<main>` was made glass and the
+whole app turned hazy.
 
-## 1. What changed in Revision 2, and why
+So the layering is explicit:
+
+- the **canvas** carries the smoke wash and dot grid — the material to diffuse
+- the **sidebar** stands directly on it, so it is glass
+- **cards, popovers, sheets, dialogs** sit on top and diffuse what is behind them
+- the **page `<main>` stays opaque** (`bg-surface`), because a full-bleed
+  translucent panel buys nothing and hazes the whole page
+
+### Verified, not eyeballed
+
+Text on glass was measured by compositing the tint over its backdrop in sRGB
+space and running WCAG relative luminance — the same method as the palette work,
+including the sRGB linearisation that the first pass got wrong.
+
+| | ink | ink-2 | ink-3 | accent-text | success-text | danger-text |
+|---|---|---|---|---|---|---|
+| **Light** glass | 17.40 | 8.09 | 6.15 | 6.24 | 5.17 | **4.96** |
+| **Dark** glass | 13.80 | 9.75 | 6.19 | 7.89 | 11.52 | 8.22 |
+
+Bar is 4.5:1. The tightest case is `danger-text` on light glass at 4.96.
+
+### One deliberate non-glass surface
+
+The `signal` button stays solid. A translucent accent fill muddies its own label
+and loses the "this is the forward action" signal that a solid fill carries — and
+§7 allows exactly one of those per screen, so it has to be unmistakable.
+
+## 1. What changed in Revision 3, and why
 
 Revision 1 ("Signal & Track") used lantern yellow as the single accent: the
 signal button, selection outlines, running lamp and focus ring. Its own §1
@@ -260,12 +267,37 @@ headers. Anywhere with no data on it.
 
 **Where they are not:** the board, tables, forms, the chat transcript, any
 surface carrying 13px body copy. A texture behind small text competes with the
-glyphs and costs legibility. This is the one rule that keeps Revision 3 from
+glyphs and costs legibility. This is the one rule that keeps the texture from
 becoming the consumer-app look the references actually are.
 
 Verified: on the most saturated canvas the wash produces, body ink holds
 **8.54:1** and tertiary ink **5.40:1**. The texture is affordable because it
 never sits under text that matters.
+
+### Glass
+
+Six tokens, four utilities. Tokens on the light block, overridden on `.dark`:
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `glass-tint` | `rgb(255 255 255 / .72)` | `rgb(26 31 42 / .72)` | panel fill |
+| `glass-tint-strong` | `rgb(255 255 255 / .86)` | `rgb(26 31 42 / .88)` | topmost layer fill |
+| `glass-blur` | 20px | 20px | `backdrop-filter` radius |
+| `glass-blur-strong` | 40px | 40px | `backdrop-filter` radius, topmost layers |
+| `glass-saturate` | 1.6 | 1.6 | keeps the blur from going grey |
+| `glass-edge` | `rgb(255 255 255 / .7)` | `rgb(255 255 255 / .09)` | inset rim |
+
+Utilities: `glass`, `glass-strong`, `glass-card`, `glass-hairline`.
+
+`glass-card` bundles radius, inset rim and float shadow together on purpose, so
+a card cannot end up frosted but flat. The **rim highlight** is what makes glass
+read as glass — a 1px inset light line at the top edge, as though light catches
+the edge. Without it the panel is just grey.
+
+Dark mode uses a *higher* tint opacity than light. A translucent panel over a
+near-black canvas loses contrast faster than a white one over a pale canvas, so
+those are the values that keep body text above 4.5:1, not the ones that look
+most dramatic.
 
 - **Elevation:** content sits flat on tonal steps (`well` < `canvas` < `surface`
   < `raised`) plus a 1px `line`. Shadows only for things that float:

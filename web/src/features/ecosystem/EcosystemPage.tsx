@@ -14,7 +14,7 @@ import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
 import { EmptyState } from "@/components/app/empty-state"
 import { PageHeader, SectionHeader } from "@/components/app/page-header"
-import { cn } from "@/lib/utils"
+import { HealthLamp } from "@/components/ui/status-lamp"
 import LoadingState from "@/components/feedback/loading-state"
 import {
   deleteExtension,
@@ -470,15 +470,12 @@ export default function EcosystemPage() {
 
 /** Filled lamp for a confirmed state, hollow otherwise. */
 function Lamp({ state, label }: { state: string; label: string }) {
-  const tone = healthTone[state] ?? healthTone.unknown
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", tone)}>
-      <span
-        aria-hidden
-        className={cn("size-2 shrink-0 rounded-full", state === "ok" ? "bg-current" : "border border-current")}
-      />
-      {label}
-    </span>
+    <HealthLamp
+      tone={healthTone[state] ?? healthTone.unknown}
+      live={state === "ok"}
+      label={label}
+    />
   )
 }
 

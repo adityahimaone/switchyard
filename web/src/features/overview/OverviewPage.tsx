@@ -173,9 +173,23 @@ function TaskHealthChart({ data }: { data: Overview }) {
 
 function HealthCard({ icon: Icon, label, status, detail }: { icon: typeof Activity; label: string; status: string; detail: string }) {
   const ready = status === "ready" || status === "up"
-  return <section className="flex min-w-0 items-start gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
-    <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${ready ? "bg-[var(--color-success-tint)] text-[var(--color-success)]" : status === "down" ? "bg-[var(--color-danger-tint)] text-[var(--color-danger)]" : "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"}`}><Icon className="size-4" /></span>
-    <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="text-xs font-medium text-[var(--color-ink-2)]">{label}</p><span className={`size-1.5 rounded-full ${ready ? "bg-[var(--color-success)]" : status === "down" ? "bg-[var(--color-danger)]" : "bg-[var(--color-accent)] animate-pulse"}`} /><span className="font-mono text-[10px] uppercase text-[var(--color-ink-3)]">{status}</span></div><p className="mt-1 truncate text-[11px] text-[var(--color-ink-4)]" title={detail}>{detail}</p></div>
+  const tone = ready
+    ? "bg-success-tint text-success-text"
+    : status === "down"
+      ? "bg-danger-tint text-danger-text"
+      : "bg-accent-tint text-accent-text"
+  return <section className="glass-card flex min-w-0 items-start gap-3 p-3">
+    <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-control ${tone}`}><Icon className="size-4" /></span>
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-2">
+        <p className="text-xs font-medium text-ink-2">{label}</p>
+        {/* A bare dot rather than a HealthLamp: the status word sits right
+            beside it, so the lamp would repeat what the text already says. */}
+        <span className={`size-1.5 shrink-0 rounded-full ${ready ? "bg-success-text" : status === "down" ? "bg-danger" : "bg-accent"}`} />
+        <span className="font-mono text-[10px] text-ink-3">{status}</span>
+      </div>
+      <p className="mt-1 truncate text-[11px] text-ink-3" title={detail}>{detail}</p>
+    </div>
   </section>
 }
 

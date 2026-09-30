@@ -11,7 +11,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"label">) {
     <label
       data-slot="input-group"
       className={cn(
-        "group/input flex h-8 cursor-text items-center gap-2 overflow-clip rounded-lg border-[0.8px] border-line bg-surface py-2 pr-2 pl-2.5",
+        "group/input flex h-8 cursor-text items-center gap-2 overflow-clip rounded-control border-[0.8px] border-line bg-surface py-2 pr-2 pl-2.5",
         "transition-[border-color,box-shadow] duration-150",
         "hover:border-line-strong",
         "focus-within:border-line-strong focus-within:shadow-[0_0_0_3px_rgb(from_var(--c-focus)_r_g_b_/_0.18)]",

@@ -223,7 +223,7 @@ function ProfileForm({
                       value={avatarUrl}
                       onChange={(e) => setAvatarUrl(e.target.value)}
                       placeholder="https://…/avatar.png"
-                      className="mt-1 h-8 border-[var(--color-line)] bg-[var(--color-surface)] text-xs"
+                      className="mt-1 text-xs"
                     />
                   </div>
                   <Button
@@ -265,7 +265,7 @@ function ProfileForm({
                   autoFocus
                   aria-invalid={!!nameErr}
                   aria-describedby={nameErr ? "profile-name-error" : "profile-name-help"}
-                  className="mt-1.5 h-9 border-[var(--color-line)] bg-[var(--color-bg)] font-mono"
+                  className="mt-1.5 border-line bg-well font-mono"
                 />
                 <p id="profile-name-help" className="mt-1.5 text-[11px] text-ink-3">
                   Lowercase letters, digits, <code className="font-mono">-</code>, and <code className="font-mono">_</code>. Max 32 characters. Used as the folder name.
@@ -278,10 +278,10 @@ function ProfileForm({
               <div>
                 <Label className="text-xs text-ink-2">Provider</Label>
                 <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger className="mt-1.5 w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9">
+                  <SelectTrigger className="mt-1.5 w-full border-line bg-well">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="max-h-72 border-[var(--color-line)] bg-[var(--color-surface)]">
+                  <SelectContent className="max-h-72">
                     {providerNames.map((p) => <SelectItem key={p} value={p} className="text-sm">{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -289,12 +289,12 @@ function ProfileForm({
               <div>
                 <Label className="text-xs text-ink-2">Model</Label>
                 <Select value={model || "__default"} onValueChange={(value) => setModel(value === "__default" ? "" : value)}>
-                  <SelectTrigger size="sm" className="mt-1.5 w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9">
+                  <SelectTrigger size="sm" className="mt-1.5 w-full border-line bg-well">
                     <SelectValue>{model || "model default"}</SelectValue>
                   </SelectTrigger>
                   <SelectContent position="popper" align="start" className="h-[300px] max-h-[300px] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
                     <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
-                      <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="h-7 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+                      <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="border-line bg-well text-xs" />
                     </div>
                     <SelectItem value="__default">model default</SelectItem>
                     {filteredModels.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>}
@@ -355,7 +355,7 @@ function ProfileForm({
                   }}
                   placeholder="Add a skill, then press Enter"
                   aria-label="Add skill"
-                  className="mt-2 h-8 border-[var(--color-line)] bg-[var(--color-surface)] text-xs"
+                  className="mt-2 text-xs"
                 />
                 {skillMatches.length > 0 && (
                   <div className="mt-1 max-h-28 overflow-y-auto">

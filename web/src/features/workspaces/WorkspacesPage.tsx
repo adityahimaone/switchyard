@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSettings } from "@/hooks/useSettings"
 import { Textarea } from "@/components/ui/textarea"
+import { HealthLamp } from "@/components/ui/status-lamp"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -218,21 +219,16 @@ function StatusChip({ ws }: { ws: Workspace }) {
   const s = STATUS_STYLE[(ws.status as WsStatus) ?? "unknown"] ?? STATUS_STYLE.unknown
   const live = ws.status === "connected" || ws.status === "local"
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", s.tone)}>
-      <span
-        aria-hidden
-        className={cn(
-          "relative inline-block size-2 shrink-0 rounded-full",
-          s.filled ? "bg-current" : "border border-current",
-        )}
-      >
-        {live && <span className="absolute inset-0 animate-lamp rounded-full bg-current" />}
-      </span>
-      {s.label}
-      {ws.ping_ms != null && (
-        <span className="text-ink-3 tabular">{Math.round(ws.ping_ms)}ms</span>
-      )}
-    </span>
+    <HealthLamp
+      tone={s.tone}
+      live={live}
+      label={
+        <>
+          {s.label}
+          {ws.ping_ms != null && <span className="text-ink-3 tabular">{Math.round(ws.ping_ms)}ms</span>}
+        </>
+      }
+    />
   )
 }
 

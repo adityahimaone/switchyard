@@ -90,7 +90,7 @@ export function Segmented<T extends string>({
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "h-6 rounded-[4px] px-2.5 text-xs font-medium outline-none",
+            "h-6 rounded-control px-2.5 text-xs font-medium outline-none",
             "transition-colors duration-100",
             "focus-visible:ring-[3px] focus-visible:ring-focus/40",
             o.value === value
