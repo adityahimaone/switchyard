@@ -2,6 +2,7 @@ bin/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+.scratch/
 # Local secrets
 .env
 .env.*
