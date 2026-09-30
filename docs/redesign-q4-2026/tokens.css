@@ -1,0 +1,257 @@
+@import "tailwindcss";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/barlow-semi-condensed/600.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------- Raw tokens: dark "Night yard" is the default ---------- */
+:root {
+  color-scheme: dark;
+
+  --c-canvas: #14181d;
+  --c-well: #101317;
+  --c-surface: #1a1f26;
+  --c-raised: #212832;
+  --c-line: #2b333e;
+  --c-line-strong: #3b4654;
+
+  --c-ink: #e9edf2;
+  --c-ink-2: #b4bdc9;
+  --c-ink-3: #8791a0;
+  --c-ink-4: #5f6a79;
+
+  --c-lantern: #ffc83d;
+  --c-lantern-ink: #1b1400;
+  --c-lantern-tint: rgb(255 200 61 / 0.12);
+  --c-accent-text: #ffc83d;
+  --c-focus: #ffc83d;
+
+  --c-danger: #ff6b6b;
+  --c-danger-text: #ff9a9a;
+  --c-danger-tint: rgb(255 107 107 / 0.12);
+  --c-warning: #ff9a4d;
+  --c-success: #4ade9c;
+
+  /* status lamps */
+  --c-st-triage: #8791a0;
+  --c-st-todo: #b4bdc9;
+  --c-st-scheduled: #8791a0;
+  --c-st-ready: #7cc4ff;
+  --c-st-running: #ffc83d;
+  --c-st-blocked: #ff6b6b;
+  --c-st-review: #a995ff;
+  --c-st-done: #4ade9c;
+  --c-st-archived: #5f6a79;
+
+  /* single-hue activity ramp (heatmap) */
+  --c-heat-0: #2b333e;
+  --c-heat-1: #4a3d14;
+  --c-heat-2: #8a6b17;
+  --c-heat-3: #d1a028;
+  --c-heat-4: #ffc83d;
+
+  --card-pad: 12px;
+  --row-h: 32px;
+}
+
+/* ---------- Light "Day yard" ---------- */
+.light {
+  color-scheme: light;
+
+  --c-canvas: #eef0ec;
+  --c-well: #e6e9e4;
+  --c-surface: #fbfbf9;
+  --c-raised: #ffffff;
+  --c-line: #d3d8d0;
+  --c-line-strong: #b9c0b6;
+
+  --c-ink: #171c22;
+  --c-ink-2: #3a4350;
+  --c-ink-3: #5b6573;
+  --c-ink-4: #8a93a0;
+
+  --c-lantern: #f5b70a;
+  --c-lantern-ink: #1b1400;
+  --c-lantern-tint: rgb(245 183 10 / 0.16);
+  --c-accent-text: #7a5200;
+  --c-focus: #2457d6;
+
+  --c-danger: #c43d3d;
+  --c-danger-text: #9a2222;
+  --c-danger-tint: rgb(196 61 61 / 0.1);
+  --c-warning: #b45f00;
+  --c-success: #167a4e;
+
+  --c-st-triage: #5b6573;
+  --c-st-todo: #3a4350;
+  --c-st-scheduled: #5b6573;
+  --c-st-ready: #1f6fb8;
+  --c-st-running: #b77b00;
+  --c-st-blocked: #c43d3d;
+  --c-st-review: #6146d9;
+  --c-st-done: #167a4e;
+  --c-st-archived: #8a93a0;
+
+  --c-heat-0: #dde1d9;
+  --c-heat-1: #f6e2a6;
+  --c-heat-2: #f0c95a;
+  --c-heat-3: #d9a012;
+  --c-heat-4: #a87700;
+}
+
+[data-density="compact"] {
+  --card-pad: 10px;
+  --row-h: 28px;
+}
+
+/* ---------- Tailwind theme ---------- */
+@theme inline {
+  /* new names */
+  --color-canvas: var(--c-canvas);
+  --color-well: var(--c-well);
+  --color-surface: var(--c-surface);
+  --color-raised: var(--c-raised);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-ink-4: var(--c-ink-4);
+  --color-lantern: var(--c-lantern);
+  --color-lantern-ink: var(--c-lantern-ink);
+  --color-lantern-tint: var(--c-lantern-tint);
+  --color-focus: var(--c-focus);
+  --color-danger: var(--c-danger);
+  --color-danger-text: var(--c-danger-text);
+  --color-danger-tint: var(--c-danger-tint);
+  --color-warning: var(--c-warning);
+  --color-success: var(--c-success);
+
+  --color-heat-0: var(--c-heat-0);
+  --color-heat-1: var(--c-heat-1);
+  --color-heat-2: var(--c-heat-2);
+  --color-heat-3: var(--c-heat-3);
+  --color-heat-4: var(--c-heat-4);
+
+  /* legacy aliases so existing components keep rendering during migration */
+  --color-bg: var(--c-canvas);
+  --color-inset: var(--c-well);
+  --color-surface-raised: var(--c-raised);
+  --color-accent: var(--c-accent-text);
+  --color-accent-tint: var(--c-lantern-tint);
+  --color-dim: var(--c-ink-4);
+  --color-info: var(--c-st-ready);
+
+  /* shadcn semantic aliases */
+  --color-background: var(--c-canvas);
+  --color-foreground: var(--c-ink);
+  --color-card: var(--c-surface);
+  --color-card-foreground: var(--c-ink);
+  --color-popover: var(--c-raised);
+  --color-popover-foreground: var(--c-ink);
+  --color-primary: var(--c-ink);
+  --color-primary-foreground: var(--c-canvas);
+  --color-secondary: var(--c-raised);
+  --color-secondary-foreground: var(--c-ink);
+  --color-muted: var(--c-raised);
+  --color-muted-foreground: var(--c-ink-3);
+  --color-border: var(--c-line);
+  --color-input: var(--c-line-strong);
+  --color-ring: var(--c-focus);
+  --color-destructive: var(--c-danger);
+  --color-destructive-foreground: var(--c-canvas);
+
+  /* type */
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Semi Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.25rem;
+
+  /* shape */
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-panel: 14px;
+
+  /* elevation: floating things only */
+  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.55), 0 0 0 1px var(--c-line-strong);
+
+  --animate-lamp: lamp-pulse 2s ease-out infinite;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--c-canvas);
+    color: var(--c-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-line-strong) transparent;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Motion ---------- */
+@keyframes lamp-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes track-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* The one orchestrated moment. Add `board-enter` to the board root on first load per session. */
+.track-line {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--lamp);
+  opacity: 0.75;
+  transform-origin: left center;
+}
+.board-enter .track-line {
+  animation: track-draw 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-enter .track-line,
+  .animate-lamp {
+    animation: none !important;
+  }
+}

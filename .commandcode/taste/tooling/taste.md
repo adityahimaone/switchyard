@@ -1,31 +1,10 @@
 # Tooling
 
-- Develops primarily on a Windows host. Expect Windows paths, PowerShell/cmd.exe
-  semantics, and awareness of how the two differ (e.g. `&` chains commands in
-  cmd but is PowerShell's job operator; `where` is not a reliable existence
-  probe — `Get-Command` is). Confidence: 0.8
-- The Windows dev machine has **no administrator rights**, so tools must be
-  installed portably rather than via MSI. Working pattern: download the official
-  zip, extract to `%LOCALAPPDATA%\Programs\<Tool>`, append `go\bin` to the
-  user-level PATH via `[Environment]::SetEnvironmentVariable(..., "User")`.
-  Confidence: 0.7
-- Node/pnpm are supplied by Volta; Go was installed separately and is not
-  Volta-managed. Expects missing toolchains to be installed as part of a setup
-  task rather than treated as a blocker. Confidence: 0.6
-- Stale persistent environment variables (user/machine scope) from previous
-  installs are a recurring source of silent misbehaviour here. Check
-  User/Machine/Process scopes before concluding a config file is wrong.
-  Confidence: 0.65
-- **WSL is available and is the way to exercise Linux-bound behaviour from this
-  host.** `wsl -d Ubuntu -e bash -lc '...'` works, and the Windows tree is
-  reachable at `/mnt/c/...`. Install Go there without sudo — download the
-  tarball, `tar -C ~/sdk -xzf go.tgz`, prepend `~/sdk/go/bin` to PATH — because
-  `sudo` silently stalls on an unattended password prompt. The WSL user
-  (`adit`) differs from the Windows user, so tests asserting an absolute
-  `/home/<name>/...` path fail for environmental reasons, not code ones.
-  Confidence: 0.7
-- When verifying formatting on a Windows checkout, `gofmt -l` flags nearly
-  every file because of CRLF noise from checkout settings. Judge real formatting
-  by content instead: run `gofmt -w` on the touched files and see whether git
-  reports a substantive change. A copy-through-temp-file trick (`type f > f.tmp`)
-  does not work — cmd's `type` re-adds CRLF. Confidence: 0.65
+- Git Credential Manager ships with Git for Windows but is **not on PATH** (`Get-Command git-credential-manager` fails). Invoke it by full path:
+  `& "C:\Program Files\Git\mingw64\bin\git-credential-manager.exe" <args>`
+  Useful subcommands: `github list`, `github logout <account>`, `--version`. Confidence: 0.9
+- GitHub account is `adityahimaone`. `gh` CLI is **not** installed on this machine, so it is not an alternative auth path. Confidence: 0.9
+- Commit author identity is `aditya.himawan <aditya.himawan@fast-8.com>`, set in the global `.gitconfig`, and that is what `user.name` / `user.email` still report. Confidence: 0.9
+- The author name/email is **intentionally different** from the GitHub handle `adityahimaone`. Offered an amend to align the author with the handle, the user chose to leave it. Don't propose rewriting commit authorship for cosmetic consistency. Confidence: 0.8
+- The global `.gitconfig` has no `github` section, so `credential.helper=manager` picks whichever account GCM has cached — that account applies to **every** GitHub repo on the machine, not per-repo. Push failures with 403/`Permission denied` are usually an account mismatch here, not a repo or network problem. Confidence: 0.85
+- Repos live under `C:/Development/<repo>`; use the `git -C <path>` form for git commands. Confidence: 0.85
