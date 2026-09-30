@@ -2,18 +2,28 @@ import { useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, setProfileAvatarUrl, uploadProfileAvatar, type Profile, type ProfileDetail } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { AlertCircle, Bot, ImagePlus, Link2, Loader2, Plus, Trash2, Pencil, ShieldAlert, ShieldCheck, Activity, X } from "lucide-react"
+import { EntryCard, Metric } from "@/components/app/entry-card"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterBar } from "@/components/app/filter-bar"
+import { PageHeader } from "@/components/app/page-header"
+import { StatusLamp } from "@/components/ui/status-lamp"
+import {
+  AlertCircle, Bot, ImagePlus, Link2, Loader2, MoreHorizontal, Pencil, Plus,
+  ShieldAlert, ShieldCheck, Trash2, X,
+} from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
 
 const FALLBACK_PROVIDERS = [
@@ -410,6 +420,8 @@ function ProfileForm({
 export default function ProfilesPage() {
   const qc = useQueryClient()
   const [form, setForm] = useState<{ open: boolean; edit: ProfileDetail | null }>({ open: false, edit: null })
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [q, setQ] = useState("")
 
   const profiles = useQuery({
     queryKey: ["profiles-full"],
@@ -429,6 +441,10 @@ export default function ProfilesPage() {
   })
   const del = useMutation({
     mutationFn: (name: string) => api(`/api/profiles/${name}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); setPendingDelete(null) },
+  })
+  const activate = useMutation({
+    mutationFn: (name: string) => api(`/api/profiles/${name}/activate`, { method: "POST" }),
     onSuccess: invalidate,
   })
 
@@ -437,92 +453,154 @@ export default function ProfilesPage() {
     setForm({ open: true, edit: detail })
   }
 
+  const list = profiles.data ?? []
+  const loading = profiles.isLoading
+  const failed = profiles.isError
+
+  const needle = q.trim().toLowerCase()
+  const filtered = needle === ""
+    ? list
+    : list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(needle) ||
+          (p.model ?? "").toLowerCase().includes(needle) ||
+          (p.provider ?? "").toLowerCase().includes(needle),
+      )
+
   return (
-    <div className="mx-auto w-full max-w-6xl p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Profiles</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Agent Profiles</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Sumber: <code className="text-ink-3">~/.hermes/profiles/&lt;name&gt;/</code> — config.yaml (model), SOUL.md (system prompt), skills/.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
-            {profiles.data?.length ?? 0}
-          </span>
-          <Button size="sm" onClick={() => setForm({ open: true, edit: null })}
-            className="ml-auto bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Profiles"
+        description="Agent profiles. Each one owns a model, a system prompt and a skill set."
+        actions={
+          <Button variant="signal" size="sm" onClick={() => setForm({ open: true, edit: null })}>
             <Plus className="size-3.5" /> New profile
           </Button>
-        </div>
-      </div>
+        }
+      >
+        <FilterBar
+          query={q}
+          onQueryChange={setQ}
+          placeholder="Search profiles"
+          shown={filtered.length}
+          total={list.length}
+        />
+      </PageHeader>
 
-      {profiles.isLoading ? (
-        <LoadingState label="Memuat agent profiles" />
-      ) : (
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          {(profiles.data ?? []).map((p) => (
-            <Card key={p.name} className={`decorative-card border-[var(--color-line)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-accent)]/35 ${p.active ? "border-[var(--color-accent)]/55" : ""}`}>
-              <CardContent className="p-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  {p.avatar_url ? (
-                    <Avatar className="size-9 shrink-0 rounded-lg">
-                      <AvatarImage src={p.avatar_url} alt={p.name} />
-                      <AvatarFallback className="rounded-lg bg-[var(--color-inset)] text-[10px] text-[var(--color-accent)]">{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loading ? (
+          <LoadingState label="Loading profiles" />
+        ) : failed ? (
+          <EmptyState
+            title="Couldn't load profiles"
+            hint={(profiles.error as Error).message}
+            action={<Button variant="secondary" onClick={() => void profiles.refetch()}>Retry</Button>}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={list.length ? `No profiles match "${q}"` : "No profiles yet"}
+            hint={list.length ? undefined : "A profile binds a model, a system prompt and a set of skills."}
+            action={
+              list.length ? undefined : (
+                <Button variant="signal" onClick={() => setForm({ open: true, edit: null })}>
+                  New profile
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6">
+            {filtered.map((p) => (
+              <EntryCard
+                key={p.name}
+                density="identity"
+                selected={p.active}
+                lead={
+                  p.avatar_url ? (
+                    <Avatar className="size-7">
+                      <AvatarImage src={p.avatar_url} alt="" />
+                      <AvatarFallback className="bg-well text-2xs text-ink-2">
+                        {p.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                   ) : (
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-accent)]/15 bg-[var(--color-inset)]">
-                      <Bot className="size-4 text-[var(--color-accent)]" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-semibold leading-5" title={p.name}>{p.name}</h3>
-                        <p className="mt-0.5 truncate font-mono text-[11px] text-ink-3" title={`${p.model || "—"} · ${p.provider || "—"}`}>
-                          {p.model || "—"} · {p.provider || "—"}
-                        </p>
-                      </div>
-                      {p.active && (
-                        <Badge className="shrink-0 gap-1 bg-[var(--color-accent)]/15 text-[10px] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/15">
-                          <Activity className="size-3" /> active
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-end justify-between gap-3">
-                  {"skills" in p ? (
-                    <div title={p.skills?.join(", ") || undefined}>
-                      <p className="font-mono text-xl font-semibold leading-none text-ink">{p.skills?.length ?? 0}</p>
-                      <p className="mt-1 text-[10px] uppercase tracking-wider text-ink-4">skills</p>
-                    </div>
-                  ) : <span />}
-                  {p.valid === false ? (
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-red-300"><ShieldAlert className="size-3.5" /> broken config</span>
-                  ) : (
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-emerald-300"><ShieldCheck className="size-3.5" /> valid</span>
-                  )}
-                </div>
-                <Separator className="my-3" />
-                <div className="flex gap-1.5">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(p.name)}>
+                    <span className="flex size-7 items-center justify-center rounded-full bg-well">
+                      <Bot className="size-4 text-ink-3" aria-hidden />
+                    </span>
+                  )
+                }
+                title={p.name}
+                state={
+                  p.active ? (
+                    <StatusLamp status="running" label="Active" size="sm" />
+                  ) : undefined
+                }
+                subtitle={`${p.model || "No model"} · ${p.provider || "No provider"}`}
+                mono
+                metrics={
+                  <>
+                    {"skills" in p && <Metric value={p.skills?.length ?? 0} label="skills" />}
+                    {p.valid === false ? (
+                      <span className="inline-flex items-center gap-1 text-danger-text">
+                        <ShieldAlert className="size-3" aria-hidden /> Broken config
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-ink-3">
+                        <ShieldCheck className="size-3" aria-hidden /> Valid
+                      </span>
+                    )}
+                  </>
+                }
+                primary={
+                  <Button variant="secondary" size="sm" onClick={() => void openEdit(p.name)}>
                     <Pencil className="size-3.5" /> Edit
                   </Button>
-                  <Button
-                    variant="outline" size="sm" disabled={p.active} aria-label={`Delete profile ${p.name}`} title={p.active ? "Active profile cannot be deleted" : `Delete ${p.name}`}
-                    className="ml-auto border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                    onClick={() => { if (confirm(`Delete profile "${p.name}"?`)) del.mutate(p.name) }}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                }
+                overflow={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`More actions for ${p.name}`}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem disabled={p.active} onSelect={() => activate.mutate(p.name)}>
+                        Set as active
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={p.active}
+                        onSelect={() => setPendingDelete(p.name)}
+                        className="text-danger-text focus:text-danger-text"
+                      >
+                        Delete profile
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title="Delete profile"
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete}"? Its skills, model and system prompt are removed. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete profile"
+        busy={del.isPending}
+        onConfirm={() => pendingDelete && del.mutate(pendingDelete)}
+      />
 
       {form.open && (
         <ProfileForm
