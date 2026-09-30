@@ -12,7 +12,6 @@ function readCollapsed(): boolean {
 export function AppShell({
   page,
   onSelectPage,
-  onNewChat,
   onSettings,
   onLogout,
   renderHeader,
@@ -20,7 +19,6 @@ export function AppShell({
 }: {
   page: Page
   onSelectPage: (p: Page) => void
-  onNewChat: () => void
   onSettings: () => void
   onLogout?: () => void
   /** The header needs the sidebar state, and must be able to reopen it. */
@@ -65,7 +63,6 @@ export function AppShell({
         <AppSidebar
           activeId={page}
           onCollapse={collapse}
-          onNewChat={onNewChat}
           onNavigate={(id) => onSelectPage(id as Page)}
           onSettings={onSettings}
           onLogout={onLogout}

@@ -171,7 +171,6 @@ export default function App() {
     <AppShell
       page={page}
       onSelectPage={handleSelectPage}
-      onNewChat={() => { setChatSidebarOpen(true); setChatRouteID(undefined); setPage("chat"); go("/chat") }}
       onSettings={() => handleSelectPage("settings")}
       onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
       renderHeader={({ hidden, expand }) => (

@@ -1,9 +1,8 @@
 import * as React from "react"
 import {
   Activity, Boxes, Brain, ChevronUp, Clock, FolderGit2, KanbanSquare, LogOut, PanelRight,
-  MessageSquare, Network, Plus, Route, ScrollText, Search, ServerCog, Settings, UserCog,
+  MessageSquare, Network, Route, ScrollText, ServerCog, Settings, UserCog,
 } from "lucide-react"
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { LogoMark, LogoWordmark } from "@/components/app/brand"
 import { cn } from "@/lib/utils"
@@ -66,32 +65,17 @@ const idleItem =
 export function AppSidebar({
   activeId,
   onCollapse,
-  onNewChat,
   onNavigate,
   onSettings,
   onLogout,
 }: {
   activeId: string
   onCollapse: () => void
-  onNewChat: () => void
   onNavigate: (id: string) => void
   onSettings: () => void
   onLogout?: () => void
 }) {
   const [open, setOpen] = React.useState<Record<string, boolean>>({})
-  const searchRef = React.useRef<HTMLInputElement>(null)
-
-  // The reference focuses sidebar search on Cmd/Ctrl+K.
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault()
-        searchRef.current?.focus()
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [])
 
   return (
     // Glass, standing directly on the tinted and dotted canvas, so there is real
@@ -126,24 +110,6 @@ export function AppSidebar({
       </div>
 
       <div className="flex min-h-0 w-[250px] flex-1 flex-col gap-4 px-3 pb-4">
-        <div aria-hidden className="h-px w-full shrink-0 bg-line" />
-
-        {/* Search */}
-        <InputGroup className="w-full shrink-0">
-          <Search className="size-4 shrink-0 text-ink-3" aria-hidden />
-          <InputGroupInput
-            ref={searchRef}
-            type="search"
-            placeholder="Search anything"
-            aria-label="Search pages"
-          />
-          <InputGroupAddon aria-hidden className="transition-opacity group-focus-within/input:opacity-0">
-            <span className="flex size-4 items-center justify-center rounded p-0.5 text-xs leading-none font-medium text-ink-2">
-              K
-            </span>
-          </InputGroupAddon>
-        </InputGroup>
-
         {/* Navigation: groups scroll, the account card pins to the bottom. */}
         <nav className="flex min-h-0 w-[226px] flex-1 flex-col items-center justify-between gap-5 overflow-y-auto overflow-x-hidden [scrollbar-width:none]">
           <div className="flex w-full flex-col gap-5">
@@ -167,11 +133,10 @@ export function AppSidebar({
           </div>
         </nav>
 
-        {/* Footer: the reference pins an account card here. Switchyard has a single
-            shared password and no user record, so the actions take its place
-            rather than inventing an identity. */}
+        {/* Footer. Settings and Sign out only: New chat moved to the board's own
+            header and global search moved to the app header, because neither is
+            navigation and neither belongs in a list of destinations. */}
         <div className="flex w-[226px] shrink-0 flex-col gap-0.5">
-          <SidebarAction icon={Plus} label="New chat" onClick={onNewChat} />
           <SidebarAction icon={Settings} label="Settings" onClick={onSettings} />
           {onLogout && <SidebarAction icon={LogOut} label="Sign out" onClick={onLogout} />}
         </div>
