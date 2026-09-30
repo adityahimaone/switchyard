@@ -106,7 +106,7 @@ export function AppSidebar({
       <div className="flex w-[250px] items-center justify-between overflow-clip px-3 py-3.5">
         <div className="group/brand flex w-[200px] items-center gap-2.5 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40">
           <LogoMark
-            className="size-6 shrink-0 text-accent transition-transform duration-300 ease-[var(--ease-out-expo)] group-hover/brand:rotate-[-8deg] group-hover/brand:scale-105"
+            className="size-6 shrink-0 rounded-md transition-transform duration-300 ease-[var(--ease-out-expo)] group-hover/brand:scale-105"
           />
           <LogoWordmark className="flex-1" />
         </div>

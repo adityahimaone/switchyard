@@ -551,10 +551,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--c-canvas)]">
     {sidebarOpen && <aside className="flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-[var(--c-line)] bg-[var(--c-surface)]">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] px-2">
-        <span className="px-1 text-sm font-semibold tracking-tight">{showArchived ? "Archived chats" : "Chats"}</span>
+        <h1 className="px-1 text-sm font-semibold tracking-tight">{showArchived ? "Archived chats" : "Chats"}</h1>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className={`size-7 ${showArchived ? "text-[var(--c-accent)]" : ""}`} onClick={() => setShowArchived((value) => !value)} title={showArchived ? "Show active chats" : "Show archived chats"}><Archive className="size-3.5" /></Button>
-          {!showArchived && <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} title="New chat"><Plus className="size-4" /></Button>}
+          <Button size="icon" variant="ghost" className={`size-7 ${showArchived ? "text-[var(--c-accent)]" : ""}`} onClick={() => setShowArchived((value) => !value)} aria-label={showArchived ? "Show active chats" : "Show archived chats"} title={showArchived ? "Show active chats" : "Show archived chats"}><Archive className="size-3.5" /></Button>
+          {!showArchived && <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} aria-label="New chat" title="New chat"><Plus className="size-4" /></Button>}
         </div>
       </div>
       <div className="border-b border-[var(--c-line)] p-2">
@@ -610,7 +610,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] bg-[var(--c-surface)] px-4">
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</h1>
+          {/* The session title is the content, so it is an h2. The page h1 is
+              "Chat" and lives on the session rail, which is the page's own
+              label rather than a string the user retypes on every navigation. */}
+          <h2 className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</h2>
         </div>
         {current.data && <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />}
       </header>

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "../../api"
-import { LogoMark, LogoMascot, LogoWordmark } from "@/components/app/brand"
+import { LogoMark, LogoWordmark } from "@/components/app/brand"
 import { cn } from "@/lib/utils"
 
 const LAMPS = ["triage", "todo", "ready", "running", "blocked", "review", "done"] as const
@@ -31,9 +31,8 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: () => v
         onSubmit={submit}
       >
         <div className="flex flex-col items-start gap-4">
-          <LogoMascot className="size-14 object-contain" alt="" />
+          <LogoMark className="size-14 rounded-[14px]" />
           <div className="flex items-center gap-2">
-            <LogoMark className="size-5 text-accent" />
             <LogoWordmark />
           </div>
           {/* Seven track lines, one per status. Draws in once; static under

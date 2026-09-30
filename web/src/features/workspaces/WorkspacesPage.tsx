@@ -531,12 +531,14 @@ function FileBrowser({ ws }: { ws: Workspace }) {
                     {selected?.path ?? "No file selected"}
                   </span>
                   {selected && !selected.is_dir && (
-                    <a
-                      href={downloadWorkspaceFileURL(ws.id, selected.path)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-control px-2 text-xs text-accent hover:bg-accent-tint"
-                    >
-                      <Download className="size-3.5" aria-hidden /> Download
-                    </a>
+                    // This is a real link, not a button, so it needs its own focus ring. Without
+                      // `focus-visible` a keyboard user could not see where they were.
+                      <a
+                        href={downloadWorkspaceFileURL(ws.id, selected.path)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-control px-2 text-xs text-accent outline-none hover:bg-accent-tint focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                      >
+                        <Download className="size-3.5" aria-hidden /> Download
+                      </a>
                   )}
                 </div>
                 <div className="min-h-0 flex-1 pt-3">
