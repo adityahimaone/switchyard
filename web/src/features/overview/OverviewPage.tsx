@@ -344,8 +344,8 @@ export default function OverviewPage() {
 
   const heatmapData = useMemo(() => activity.data ? activityToHeatmap(activity.data) : [], [activity.data])
 
-  if (overview.isLoading) return <LoadingState label="Memuat overview" />
-  if (overview.isError || !data) return <LoadingState label="Gagal load overview" description={(overview.error as Error)?.message} />
+  if (overview.isLoading) return <LoadingState label="Loading overview" />
+  if (overview.isError || !data) return <LoadingState label="Could not load overview" description={(overview.error as Error)?.message} />
 
   const memoryPct = data.metrics.memory_total_mb > 0 ? (data.metrics.memory_used_mb / data.metrics.memory_total_mb) * 100 : 0
   const finished = data.completed_tasks + data.failed_tasks

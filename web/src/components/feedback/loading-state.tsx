@@ -10,15 +10,15 @@ type LoadingStateProps = {
 }
 
 export default function LoadingState({
-  label = "Memuat data",
-  description = "Menyiapkan halaman ini.",
+  label = "Loading",
+  description = "Preparing this page.",
 }: LoadingStateProps) {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6" role="status" aria-label={label} aria-live="polite">
       <div className="flex w-full max-w-xs flex-col items-center text-center">
         <HtLoader size={72} label={label} />
-        <p className="mt-5 text-sm font-medium text-[var(--color-ink)]">{label}</p>
-        <p className="mt-1.5 text-xs leading-5 text-[var(--color-ink-3)]">{description}</p>
+        <p className="mt-5 text-sm font-medium text-ink">{label}</p>
+        <p className="mt-1.5 text-xs leading-5 text-ink-3">{description}</p>
       </div>
     </div>
   )

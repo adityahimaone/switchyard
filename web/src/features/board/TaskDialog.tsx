@@ -227,7 +227,7 @@ export default function TaskDialog({
           className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm" />
         {executor === "shell" && <div className="mt-3 rounded-lg border border-warning/30 bg-warning-tint p-3">
           <p className="text-xs font-medium text-warning">Autonomous shell access</p>
-          <p className="mt-1 text-[11px] leading-4 text-ink-3">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
+          <p className="mt-1 text-[11px] leading-4 text-ink-3">The orchestrator will read the workspace, edit files, run tests and retry commands until the task is ready for review.</p>
         </div>}
         {executionMode === "agentic" && <div className="mt-3 flex items-center gap-2">
           <Label className="text-[11px] text-ink-3">Max iterations</Label>
