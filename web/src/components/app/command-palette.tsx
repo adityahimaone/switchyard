@@ -40,7 +40,6 @@ export default function CommandPalette({
   page,
   onPage,
   onNewTask,
-  onToggleFilters,
   onOpenTask,
   onOpenBoard,
   open: controlledOpen,
@@ -55,7 +54,6 @@ export default function CommandPalette({
   page: Page
   onPage: (page: Page) => void
   onNewTask: () => void
-  onToggleFilters: () => void
   onOpenTask?: (taskId: string) => void
   onOpenBoard?: (slug: string) => void
   open?: boolean
@@ -104,10 +102,9 @@ export default function CommandPalette({
       { id: "new-task", label: `New task${board ? ` in ${board.name}` : ""}`, group: "Actions", icon: FilePlus, hint: "N", keywords: "create task new", run: onNewTask },
       { id: "toggle-board", label: page === "board" ? "Open overview" : "Open board", group: "Navigation", icon: LayoutGrid, hint: "G B", keywords: "board overview", run: () => onPage(page === "board" ? "overview" : "board") },
       { id: "settings", label: "Open settings", group: "Navigation", icon: Settings, hint: "G S", keywords: "settings", run: () => onPage("settings") },
-      { id: "toggle-filters", label: "Toggle filters", group: "Actions", icon: Command, keywords: "filter toggle", run: onToggleFilters },
     ]
     return base
-  }, [board, page, onPage, onNewTask, onToggleFilters])
+  }, [board, page, onPage, onNewTask])
 
   const needle = q.trim()
 

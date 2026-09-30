@@ -497,19 +497,6 @@
 .map-control { display:flex; width:28px; height:28px; align-items:center; justify-content:center; color:var(--c-ink-3); transition:color 120ms var(--ease-out-quint),background-color 120ms var(--ease-out-quint); }
 .map-control:hover { background: var(--c-raised); color: var(--c-ink); }
 .map-control:focus-visible { outline:2px solid var(--c-focus); outline-offset:-2px; }
-.decorative-card, .kanban-task-card { position: relative; overflow: hidden; background: var(--c-surface); }
-.kanban-column { border-top-color: color-mix(in srgb, var(--column-accent) 55%, var(--c-line)); }
-.kanban-column-title { color: var(--c-ink-2); }
-.kanban-column-title > span:last-child { border: 1px solid var(--c-line); background: var(--c-well); }
-.kanban-column-cyan { --column-accent: var(--c-st-triage); }
-.kanban-column-blue { --column-accent: var(--c-st-ready); }
-.kanban-column-violet { --column-accent: var(--c-st-review); }
-.kanban-column-indigo { --column-accent: var(--c-st-ready); }
-.kanban-column-amber { --column-accent: var(--c-st-running); }
-.kanban-column-red { --column-accent: var(--c-st-blocked); }
-.kanban-column-purple { --column-accent: var(--c-st-review); }
-.kanban-column-emerald { --column-accent: var(--c-st-done); }
-.kanban-column-slate { --column-accent: var(--c-st-archived); }
 .kanban-drop-placeholder { animation: kanban-drop-in 180ms var(--ease-out-quint); }
 @keyframes kanban-drop-in { from { opacity: 0; transform: scaleY(.55); } to { opacity: 1; transform: scaleY(1); } }
 @keyframes cg-waterfall { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }

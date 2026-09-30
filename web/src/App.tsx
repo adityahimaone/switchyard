@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, boardHealth, bulkTasks, COLUMNS, openEventStream, reorderTasks, toastGlobal, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
 import TaskCard from "./features/board/TaskCard"
+import { BoardColumn, useBoardEntrance } from "./features/board/BoardColumn"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterChip } from "@/components/app/filter-bar"
+import { STATUS_LABEL } from "@/components/ui/status-lamp"
+import { cn } from "@/lib/utils"
 import CommandPalette from "@/components/app/command-palette"
 import { Toaster } from "@/components/app/toaster"
 const TaskDialog = lazy(() => import("./features/board/TaskDialog"))
@@ -25,7 +30,7 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
-import { Archive, CheckSquare, Inbox, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react"
+import { Archive, CheckSquare, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu"
 import { useSettings } from "./hooks/useSettings"
 import LoadingState from "@/components/feedback/loading-state"
@@ -35,20 +40,8 @@ import NotificationCenter from "./features/notifications/NotificationCenter"
 
 const BOARD_COLUMNS: Status[] = [...COLUMNS, "archived"]
 
-const COLUMN_TONES: Record<Status, string> = {
-  triage: "kanban-column-cyan",
-  todo: "kanban-column-blue",
-  scheduled: "kanban-column-violet",
-  ready: "kanban-column-indigo",
-  running: "kanban-column-amber",
-  blocked: "kanban-column-red",
-  review: "kanban-column-purple",
-  done: "kanban-column-emerald",
-  archived: "kanban-column-slate",
-}
-
-const PROFILE_OPTIONS = [{ value: "__all", label: "Semua agent" }]
-const WORKSPACE_OPTIONS = [{ value: "__all", label: "Semua workspace" }]
+const PROFILE_OPTIONS = [{ value: "__all", label: "All agents" }]
+const WORKSPACE_OPTIONS = [{ value: "__all", label: "All workspaces" }]
 
 function labelForPage(page: Page): string {
   const item = SIDEBAR_ITEMS.find((i) => i.id === page)
@@ -67,7 +60,6 @@ export default function App() {
   const [detail, setDetail] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
-  const [filtersOpen, setFiltersOpen] = useState(true)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [q, setQ] = useState("")
@@ -80,6 +72,7 @@ export default function App() {
   const savedViews = useMemo(() => { try { return JSON.parse(window.localStorage.getItem(viewsKey) || "[]") as { name: string; filters: { q: string; fStatus: string; fAgent: string; fWorkspace: string; fPriority: string } }[] } catch { return [] } }, [viewsKey])
   const { refreshMs } = useSettings()
   const qc = useQueryClient()
+  const enterBoard = useBoardEntrance()
 
   useEffect(() => openEventStream((ev) => {
     if (ev.kind === "workspace_ping" || ev.kind === "workspace_updated" || ev.kind === "workspace_deleted") {
@@ -260,9 +253,10 @@ export default function App() {
 
   function handleSelectPage(p: Page) {
     if (p === "board") {
-      if (detailId) { setDetail(null); setDetailId(null); setPage("board"); go(pagePath("board", slug)); return }
-      if (page === "board") { setFiltersOpen((v) => !v); return }
-      setDetail(null); setPage("board"); go(pagePath("board", slug))
+      setDetail(null)
+      setDetailId(null)
+      setPage("board")
+      go(pagePath("board", slug))
       return
     }
     setDetail(null)
@@ -283,49 +277,59 @@ export default function App() {
 
   const boardBody =
     tasks.isLoading ? (
-      <LoadingState variant="board" label="Memuat kanban" />
+      <LoadingState variant="board" label="Loading board" />
     ) : tasks.isError ? (
-      <p className="p-6 text-sm text-red-400">Gagal load tasks: {(tasks.error as Error).message}</p>
+      <EmptyState
+        title="Couldn't load tasks"
+        hint={(tasks.error as Error).message}
+        action={<Button variant="secondary" onClick={() => void tasks.refetch()}>Retry</Button>}
+      />
     ) : (
-      <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3">
-        {BOARD_COLUMNS.map((col) => {
+      <main
+        className={cn(
+          "flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3",
+          enterBoard && "board-enter",
+        )}
+      >
+        {BOARD_COLUMNS.map((col, colIndex) => {
           const cards = byCol(col)
           return (
-          <section
-            key={col}
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.dataTransfer.dropEffect = "move"
-              if (e.target === e.currentTarget || !cards.length) setDropTarget({ status: col, index: cards.length })
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              const raw = draggingId || e.dataTransfer.getData("text/plain")
-              if (!raw) return
-              const t = (tasks.data ?? []).find((x) => x.id === raw)
-              if (!t) return
-              const target = dropTarget && dropTarget.status === col ? dropTarget : { status: col, index: cards.length }
-              if (t.status === "running" && col !== "blocked" && col !== "done" && col !== "review") return
-              reorderTask(t.id, col, target.index)
-              setDraggingId(null); setDropTarget(null)
-              if (t.status !== col) move.mutate({ id: t.id, status: col })
-            }}
-            className={`kanban-column ${COLUMN_TONES[col]} flex h-full shrink-0 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface/60 backdrop-blur supports-[backdrop-filter]:bg-surface/60 ${col === "archived" ? "w-60 opacity-90" : "w-72"} ${dropTarget?.status === col ? "ring-1 ring-[var(--color-accent)]" : ""}`}
-          >
-            <h2 className="kanban-column-title flex shrink-0 items-center justify-between px-3 py-3 text-xs font-semibold uppercase tracking-wider text-ink-3">
-              <span className="flex items-center gap-1.5">
-                {col === "archived" && <Archive className="size-3" />}
-                {col}
-              </span>
-              <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px]">{cards.length}</span>
-            </h2>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
+            <BoardColumn
+              key={col}
+              status={col}
+              index={colIndex}
+              count={cards.length}
+              isOver={dropTarget?.status === col}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (e.target === e.currentTarget || !cards.length) setDropTarget({ status: col, index: cards.length })
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const raw = draggingId || e.dataTransfer.getData("text/plain")
+                if (!raw) return
+                const t = (tasks.data ?? []).find((x) => x.id === raw)
+                if (!t) return
+                const target = dropTarget && dropTarget.status === col ? dropTarget : { status: col, index: cards.length }
+                if (t.status === "running" && col !== "blocked" && col !== "done" && col !== "review") return
+                reorderTask(t.id, col, target.index)
+                setDraggingId(null); setDropTarget(null)
+                if (t.status !== col) move.mutate({ id: t.id, status: col })
+              }}
+            >
               {cards.map((t, index) => (
-                <div key={t.id} onDragOver={(e) => { e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); setDropTarget({ status: col, index: index + (e.clientY < rect.top + rect.height / 2 ? 0 : 1) }) }}>
+                <li
+                  key={t.id}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    setDropTarget({ status: col, index: index + (e.clientY < rect.top + rect.height / 2 ? 0 : 1) })
+                  }}
+                >
                   {dropTarget?.status === col && dropTarget.index === index && draggingId !== t.id && (
-                    <div className="kanban-drop-placeholder mb-2 flex min-h-[104px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--column-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--column-accent)_10%,transparent)] text-[color-mix(in_srgb,var(--column-accent)_70%,var(--color-ink-3))]">
-                      <span className="text-[11px] font-medium tracking-wide">Lepas di sini</span>
-                      <span className="text-[10px] opacity-70">geser kartu lain ke bawah</span>
+                    <div className="mb-2 flex min-h-[104px] items-center justify-center rounded-card border border-dashed border-line-strong text-xs text-ink-3">
+                      Drop here
                     </div>
                   )}
                   <TaskCard
@@ -343,126 +347,113 @@ export default function App() {
                     selected={selectedTasks.has(t.id)}
                     onToggleSelect={bulkMode ? toggleTask : undefined}
                   />
-                </div>
+                </li>
               ))}
               {dropTarget?.status === col && dropTarget.index === cards.length && draggingId && (
-                <div className="kanban-drop-placeholder flex min-h-[104px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--column-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--column-accent)_10%,transparent)] text-[color-mix(in_srgb,var(--column-accent)_70%,var(--color-ink-3))]">
-                  <span className="text-[11px] font-medium tracking-wide">Lepas di sini</span>
-                  <span className="text-[10px] opacity-70">posisi paling bawah</span>
-                </div>
+                <li className="flex min-h-[104px] items-center justify-center rounded-card border border-dashed border-line-strong text-xs text-ink-3">
+                  Drop at the end
+                </li>
               )}
-              {!cards.length && (
-                draggingId ? (
-                  <div className="kanban-drop-placeholder flex min-h-[104px] flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--column-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--column-accent)_8%,transparent)] text-[color-mix(in_srgb,var(--column-accent)_70%,var(--color-ink-3))]">
-                    <Inbox className="size-5 opacity-70" />
-                    <span className="text-[11px] font-medium tracking-wide">Lepas di sini</span>
-                  </div>
-                ) : (
-                  <div className="flex min-h-[104px] flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] bg-[color-mix(in_srgb,var(--color-inset)_40%,transparent)] px-3 py-6 text-center">
-                    <Inbox className="size-5 text-[color-mix(in_srgb,var(--column-accent)_55%,transparent)]" />
-                    <span className="text-[11px] font-medium text-ink-4">Belum ada task</span>
-                    <span className="text-[10px] leading-snug text-ink-4">Tarik kartu ke sini atau buat baru</span>
-                  </div>
-                )
-              )}
-            </div>
-          </section>
+            </BoardColumn>
           )
         })}
       </main>
     )
 
-  const filterRail = page === "board" && !detailId && filtersOpen && (
-    <aside className="glass-panel flex h-full w-72 shrink-0 flex-col rounded-none border-y-0 border-l-0">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--color-line)] px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Filters</span>
-        {filtersActive && <span className="size-2 rounded-full bg-[var(--color-accent)]" />}
+  const filterRail = page === "board" && !detailId && (
+    <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 md:px-6">
+      <div className="relative w-full max-w-56">
+        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search tasks"
+          aria-label="Search tasks"
+          className="pl-8"
+        />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-ink-2">{filtered.length} / {tasks.data?.length ?? 0} match</span>
-            {filtersActive && (
-              <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-ink-3" onClick={clearFilters}>
-                <X className="size-3" /> reset
-              </Button>
-            )}
-          </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari judul / body / id / result…"
-              className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-ink-4">Status</label>
-            <Select value={fStatus} onValueChange={setFStatus}>
-              <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-                <SelectItem value="__all" className="text-xs">Semua status</SelectItem>
-                {BOARD_COLUMNS.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-ink-4">Agent</label>
-            <Select value={fAgent} onValueChange={setFAgent}>
-              <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-                {PROFILE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
-                ))}
-                {(profiles.data ?? []).map((p) => (
-                  <SelectItem key={p.name} value={p.name} className="text-xs">{p.name}</SelectItem>
-                ))}
-                <SelectItem value="" className="text-xs">unassigned</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-ink-4">Workspace</label>
-            <Select value={fWorkspace} onValueChange={setFWorkspace}>
-              <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-                {WORKSPACE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
-                ))}
-                {(workspaces.data ?? []).map((w) => (
-                  <SelectItem key={w.id} value={w.path} className="text-xs">{w.name}</SelectItem>
-                ))}
-                <SelectItem value="" className="text-xs">scratch (no path)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        <div>
-          <label className="mb-1 block text-[11px] text-ink-4">Priority</label>
-          <Select value={fPriority} onValueChange={setFPriority}>
-            <SelectTrigger size="sm" className="w-full border-[var(--color-line)] bg-[var(--color-bg)] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-              <SelectItem value="__all" className="text-xs">Semua</SelectItem>
-              <SelectItem value="0" className="text-xs">P0 normal</SelectItem>
-              <SelectItem value="1" className="text-xs">P1</SelectItem>
-              <SelectItem value="2" className="text-xs">P2 high</SelectItem>
-              <SelectItem value="3" className="text-xs">P3 urgent</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="mb-1 block text-[11px] text-ink-4">Saved views</label>
-          <div className="flex gap-1.5">
-            <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Nama view…" className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
-            <Button variant="outline" size="sm" disabled={!viewName.trim()} onClick={saveView} className="shrink-0 border-[var(--color-line)] text-xs">Save</Button>
-          </div>
-          {savedViews.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
+
+      <FilterChip
+        label="Status"
+        value={fStatus}
+        onChange={setFStatus}
+        options={[
+          { value: "__all", label: "All" },
+          ...BOARD_COLUMNS.map((s) => ({ value: s, label: STATUS_LABEL[s] })),
+        ]}
+      />
+      <FilterChip
+        label="Agent"
+        value={fAgent}
+        onChange={setFAgent}
+        options={[
+          ...PROFILE_OPTIONS,
+          ...(profiles.data ?? []).map((p) => ({ value: p.name, label: p.name })),
+          { value: "", label: "Unassigned" },
+        ]}
+      />
+      <FilterChip
+        label="Workspace"
+        value={fWorkspace}
+        onChange={setFWorkspace}
+        options={[
+          ...WORKSPACE_OPTIONS,
+          ...(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.name })),
+          { value: "", label: "Scratch (no path)" },
+        ]}
+      />
+      <FilterChip
+        label="Priority"
+        value={fPriority}
+        onChange={setFPriority}
+        options={[
+          { value: "__all", label: "All" },
+          { value: "0", label: "P0 normal" },
+          { value: "1", label: "P1" },
+          { value: "2", label: "P2 high" },
+          { value: "3", label: "P3 urgent" },
+        ]}
+      />
+
+      <span className="tabular text-xs text-ink-3" aria-live="polite">
+        {filtered.length === (tasks.data?.length ?? 0)
+          ? `${tasks.data?.length ?? 0}`
+          : `${filtered.length} of ${tasks.data?.length ?? 0}`}
+      </span>
+
+      {filtersActive && (
+        <Button variant="ghost" size="sm" onClick={clearFilters} className="text-ink-3">
+          <X className="size-3" /> Clear
+        </Button>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        <Input
+          value={viewName}
+          onChange={(e) => setViewName(e.target.value)}
+          placeholder="View name"
+          aria-label="Saved view name"
+          className="h-8 w-32"
+        />
+        <Button variant="outline" size="sm" disabled={!viewName.trim()} onClick={saveView}>
+          Save view
+        </Button>
+        {savedViews.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">Views</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
               {savedViews.map((v) => (
-                <button key={v.name} onClick={() => applyView(v.name)} className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] text-ink-3 hover:border-[var(--color-accent)]/50 hover:text-[var(--color-accent)]">{v.name}</button>
+                <DropdownMenuItem key={v.name} onSelect={() => applyView(v.name)}>
+                  {v.name}
+                </DropdownMenuItem>
               ))}
-            </div>
-          )}
-        </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
-    </aside>
+    </div>
   )
 
   const boardSwitcher = page === "board" ? (
@@ -569,7 +560,6 @@ export default function App() {
         page={page}
         onPage={handleSelectPage}
         onNewTask={() => setCreating(true)}
-        onToggleFilters={() => setFiltersOpen((v) => !v)}
         onOpenTask={(id) => { setDetail(null); setDetailId(id); setPage("board"); go(pagePath("board", slug, id)) }}
         onOpenBoard={(nextSlug) => { setDetail(null); setDetailId(null); setSlug(nextSlug); setPage("board"); go(pagePath("board", nextSlug)) }}
       />

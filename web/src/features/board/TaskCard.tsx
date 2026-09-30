@@ -1,12 +1,17 @@
-import { parseTaskExecutionMeta, type Profile, type Status, type Task, type TaskHealth, type Workspace } from "../../api"
+import type { CSSProperties } from "react"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
-import { Apple, ExternalLink, HardDrive, Laptop, Square, X } from "lucide-react"
-import { RunningIndicator } from "./AgentStatus"
+  AlertTriangle, Apple, ArrowRightLeft, ChevronDown, ExternalLink, HardDrive, Laptop, Square,
+} from "lucide-react"
+import { parseTaskExecutionMeta, type Profile, type Status, type Task, type TaskHealth, type Workspace } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { StatusLamp, STATUS_LABEL, statusColor } from "@/components/ui/status-lamp"
+import { RunningIndicator } from "./AgentStatus"
+import { cn } from "@/lib/utils"
 
-const HEALTH_TONE: Record<string, string> = { healthy: "text-emerald-300", silent: "text-amber-300", stuck: "text-red-300", lost: "text-red-300/70" }
 const STATUS_TARGETS: Record<Status, Status[]> = {
   triage: ["todo", "ready"],
   todo: ["ready", "blocked", "triage"],
@@ -19,166 +24,194 @@ const STATUS_TARGETS: Record<Status, Status[]> = {
   archived: [],
 }
 
-function isSshPath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/Users/")
+/** Health is text plus the lamp, never color alone. */
+const HEALTH_TONE: Record<string, string> = {
+  healthy: "text-success",
+  silent: "text-warning",
+  stuck: "text-danger-text",
+  lost: "text-danger-text",
 }
 
-function OsInfo({ ws }: { ws?: Workspace }) {
-  const os = (ws?.os || "").toLowerCase()
-  const path = ws?.path || ""
-  const host = (ws?.host || "").toLowerCase()
-  if (os === "windows" || host.includes("windows") || /^[A-Za-z]:[\\/]/.test(path)) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><Laptop className="size-3" />win</span>
-  }
-  if (os === "mac" || host.includes("mac") || path.startsWith("/Users/")) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><Apple className="size-3" />mac</span>
-  }
-  if (os === "linux" || ws) {
-    return <span className="flex shrink-0 items-center gap-1 text-xs text-ink-4/70"><HardDrive className="size-3" />linux</span>
-  }
-  return null
+function HostChip({ ws }: { ws?: Workspace }) {
+  if (!ws) return null
+  const os = (ws.os || "").toLowerCase()
+  const path = ws.path || ""
+  const host = (ws.host || "").toLowerCase()
+  const isWindows = os === "windows" || host.includes("windows") || /^[A-Za-z]:[\\/]/.test(path)
+  const isMac = os === "mac" || host.includes("mac") || path.startsWith("/Users/")
+  const Icon = isWindows ? Laptop : isMac ? Apple : HardDrive
+  const label = isWindows ? "Windows" : isMac ? "Mac" : ws.os ? ws.os : "Linux"
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-ink-3" title={ws.name}>
+      <Icon className="size-3" aria-hidden />
+      {label}
+    </span>
+  )
 }
 
-export default function TaskCard({ task, profiles, health, workspaces, onOpen, onOpenPage, onMove, onStop, onReassign, onDragStart, onDragEnd, selected, onToggleSelect }: {
+const firstLine = (text: string) => text.split("\n").find((l) => l.trim())?.trim() ?? ""
+
+export interface TaskCardProps {
   task: Task
   profiles: Profile[]
-  health?: TaskHealth
   workspaces?: Workspace[]
+  health?: TaskHealth
+  selected?: boolean
   onOpen: () => void
   onOpenPage: () => void
-  onMove: (s: Status) => void
-  onStop: () => void
-  onReassign: (a: string) => void
+  onMove: (status: Status) => void
+  onStop?: () => void
+  onReassign: (assignee: string) => void
+  onToggleSelect?: (taskId: string, next: boolean) => void
   onDragStart?: (taskId: string) => void
   onDragEnd?: () => void
-  selected?: boolean
-  onToggleSelect?: (taskId: string, next: boolean) => void
-}) {
+}
+
+export default function TaskCard({
+  task, profiles, workspaces, health, selected,
+  onOpen, onOpenPage, onMove, onStop, onReassign, onToggleSelect, onDragStart, onDragEnd,
+}: TaskCardProps) {
   const targets = STATUS_TARGETS[task.status] ?? []
   const profile = profiles.find((p) => p.name === task.assignee)
   const ws = (workspaces ?? []).find((w) => w.path === task.workspace_path)
-  const wsIsSsh = ws ? !!ws.host && ws.host !== "localhost" && ws.host !== "127.0.0.1" : isSshPath(task.workspace_path || "")
-  const desc = task.result || task.body
+  const running = task.status === "running"
+  const summary = firstLine(task.result || task.body || "")
   const jev = parseTaskExecutionMeta(task.execution_meta)
+
   return (
     <article
-      draggable={task.status !== "running"}
-      onDragStart={(e) => { if (task.status === "running") { e.preventDefault(); return }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); onDragStart?.(task.id) }}
+      draggable={!running}
+      data-status={task.status}
+      data-selected={selected || undefined}
+      onDragStart={(e) => {
+        if (running) { e.preventDefault(); return }
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setData("text/plain", task.id)
+        onDragStart?.(task.id)
+      }}
       onDragEnd={onDragEnd}
-      className="decorative-card kanban-task-card group shrink-0 rounded-lg border border-line/60 bg-surface/45 p-3.5 shadow-none transition-[border-color,background-color,box-shadow,transform] duration-150 hover:border-line-strong hover:bg-inset/45 hover:shadow-[inset_0_1px_0_rgba(255,255,255,.06)] backdrop-blur supports-[backdrop-filter]:bg-surface/45 data-[dragging=true]:opacity-50"
-    >
-      {onToggleSelect && (
-        <div className="mb-1.5 -ml-1">
-          <label className="inline-flex items-center gap-1.5 text-[10px] leading-none text-ink-4">
-            <input type="checkbox" checked={!!selected} onChange={(e) => onToggleSelect(task.id, e.currentTarget.checked)} className="size-3.5 rounded border-[var(--color-line)] bg-[var(--color-inset)] accent-[var(--color-accent)]" />
-            select
-          </label>
-        </div>
+      style={{ "--lamp": statusColor(task.status) } as CSSProperties}
+      className={cn(
+        "group relative rounded-card border border-line bg-surface p-[var(--card-pad)] pl-4",
+        "transition-[border-color,background-color] duration-100",
+        "hover:border-line-strong focus-within:border-line-strong",
+        "data-[selected]:border-lantern data-[selected]:bg-lantern-tint",
+        "data-[dragging=true]:opacity-40 active:cursor-grabbing",
       )}
-      {/* title + open-page icon */}
-      <div className="flex items-start justify-between gap-2">
-        <button onClick={onOpen} className="min-w-0 flex-1 text-left">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-ink">{task.title}</h3>
-        </button>
+    >
+      {/* coupler tick: the card's link to its track */}
+      <span aria-hidden className="absolute top-3 left-0 h-5 w-[3px] rounded-r-full bg-[var(--lamp)]" />
+
+      <div className="flex items-start gap-2">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${task.title}`}
+            checked={!!selected}
+            onChange={(e) => onToggleSelect(task.id, e.currentTarget.checked)}
+            className={cn(
+              "mt-0.5 size-3.5 shrink-0 accent-lantern transition-opacity",
+              "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 checked:opacity-100",
+            )}
+          />
+        )}
         <button
-          onClick={onOpenPage}
-          title="Buka detail page"
-          className="shrink-0 rounded p-1 text-ink-4 hover:text-[var(--color-accent)]"
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 flex-1 rounded-control text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
-          <ExternalLink className="size-3.5" />
+          <h3 className="line-clamp-2 font-sans text-sm leading-5 font-medium tracking-normal text-ink">
+            {task.title}
+          </h3>
         </button>
+        <Button variant="ghost" size="icon-xs" aria-label="Open task page" onClick={onOpenPage}>
+          <ExternalLink />
+        </Button>
       </div>
 
-      {/* description */}
-      {desc && (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-ink-3">{desc}</p>
+      {summary && (
+        <p className="mt-1.5 truncate font-mono text-2xs text-ink-3" title={summary}>
+          {summary}
+        </p>
       )}
 
-      {task.status === "running" && (
-        <div className="mt-2 flex items-center justify-between">
-          <span className={`text-[10px] uppercase tracking-wider ${HEALTH_TONE[health?.health ?? ""] ?? "text-amber-300/80"}`} title={health?.reason}>{health?.health ?? "active"}</span>
-          <RunningIndicator startedAt={task.started_at} compact />
+      {running && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <StatusLamp status="running" label={health?.health ?? "active"} />
+          <span className={cn("text-xs tabular", HEALTH_TONE[health?.health ?? ""] ?? "text-ink-3")} title={health?.reason}>
+            <RunningIndicator startedAt={task.started_at} compact />
+          </span>
         </div>
       )}
 
-      {/* metadata — 2-row hierarchy */}
-      <div className="space-y-2 pt-2">
-        {/* primary: agent + failure */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Select value={task.assignee || "__none"} onValueChange={(v) => onReassign(v === "__none" ? "" : v)}>
-            <SelectTrigger
-              size="sm"
-              title={profile ? `${profile.name} — ${profile.model}` : "Agent profile"}
-              className="h-7 w-auto max-w-32 gap-1 rounded-md border-none bg-[var(--color-inset)] px-2.5 text-xs font-medium text-ink shadow-none hover:bg-[var(--color-line)] focus-visible:ring-0"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-              <SelectItem value="__none" className="text-[11px]">unassigned</SelectItem>
-              {profiles.map((p) => (
-                <SelectItem key={p.name} value={p.name} disabled={!p.valid} className="text-[11px]">{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-            </Select>
-            {profile && (
-              <Avatar className="size-5 shrink-0" title={profile.name}>
-                {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.name} />}
-                <AvatarFallback className="bg-[var(--color-inset)] text-[9px] text-[var(--color-accent)]">
-                  {profile.name.slice(0, 2).toUpperCase()}
+      <footer className="mt-3 flex items-center justify-between gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="xs" className="-ml-1.5 max-w-36" aria-label="Change assignee">
+              <Avatar className="size-4">
+                {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt="" />}
+                <AvatarFallback className="bg-well text-[8px] text-ink-2">
+                  {(profile?.name ?? "?").slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-            )}
-          </div>
-          {profile && !profile.valid && (
-            <span className="shrink-0 text-[11px] font-medium text-red-400" title={`provider ${profile.provider} invalid — worker crash`}>broken</span>
+              <span className="truncate">{task.assignee || "Unassigned"}</span>
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => onReassign("")}>Unassigned</DropdownMenuItem>
+            {profiles.map((p) => (
+              <DropdownMenuItem key={p.name} disabled={!p.valid} onSelect={() => onReassign(p.name)}>
+                {p.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="flex items-center gap-2">
+          <HostChip ws={ws} />
+          {task.priority > 0 && (
+            <span className="shrink-0 text-xs text-ink-3" title={`Priority ${task.priority}`}>
+              P{task.priority}
+            </span>
           )}
           {task.consecutive_failures > 0 && (
-            <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-red-400">
-              <X className="size-3" /> {task.consecutive_failures} fail{task.consecutive_failures > 1 ? "s" : ""}
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-danger-text">
+              <AlertTriangle className="size-3" aria-hidden />
+              {task.consecutive_failures} failed
             </span>
+          )}
+          {running && onStop && (
+            <Button variant="ghost" size="icon-xs" aria-label="Stop task" onClick={onStop}>
+              <Square className="fill-current" />
+            </Button>
+          )}
+          {targets.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="Move task">
+                  <ArrowRightLeft />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {targets.map((s) => (
+                  <DropdownMenuItem key={s} onSelect={() => onMove(s)}>
+                    Move to {STATUS_LABEL[s]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
-        {/* secondary: env · os · id */}
-        <div className="flex min-w-0 items-center gap-2 text-xs text-ink-4">
-          {(task.workspace_path || task.priority > 0) && (
-            <span className="min-w-0 truncate" title={task.workspace_path}>
-              {wsIsSsh && "ssh · "}{ws?.name ?? (task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "")}
-              {task.priority > 0 && <span className="ml-1.5 font-medium text-amber-300/90">P{task.priority}</span>}
-            </span>
-          )}
-          <OsInfo ws={ws} />
-          {jev && (
-            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-violet-300/80" title={`JEV: ${jev.case} · ${jev.scope} · ${jev.source} · confidence ${(jev.confidence * 100).toFixed(0)}%`}>
-              <span className="rounded border border-violet-400/20 bg-violet-400/10 px-1 py-0.5">{jev.case}</span>
-              <span className="text-violet-300/50">{jev.scope}</span>
-            </span>
-          )}
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-ink-4/40">{task.id}</span>
-        </div>
-      </div>
+      </footer>
 
-      {/* status moves — hover only */}
-      {(targets.length > 0 || task.status === "running") && (
-        <div className="mt-2 flex flex-wrap gap-1 border-t border-[var(--color-line)]/40 pt-2">
-          {task.status === "running" && (
-            <button
-              onClick={onStop}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-red-300 transition-colors hover:bg-red-500/15 hover:text-red-200"
-            >
-              <Square className="size-2.5 fill-current" /> stop
-            </button>
-          )}
-          {targets.map((s) => (
-            <button
-              key={s}
-              onClick={() => onMove(s)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-ink-3 transition-colors hover:bg-[var(--color-line)] hover:text-[var(--color-accent)]"
-            >
-              → {s}
-            </button>
-          ))}
-        </div>
+      {jev && (
+        <p
+          className="mt-2 truncate text-2xs text-ink-4"
+          title={`JEV: ${jev.case} · ${jev.scope} · ${jev.source} · confidence ${(jev.confidence * 100).toFixed(0)}%`}
+        >
+          {jev.case} · {jev.scope}
+        </p>
       )}
     </article>
   )
