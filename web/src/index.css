@@ -168,10 +168,10 @@
 .dark {
   color-scheme: dark;
 
-  --c-canvas: #101319;
-  --c-well: #0b0e14;
-  --c-surface: #181c26;
-  --c-raised: #1f2430;
+  --c-canvas: #0f1320;
+  --c-well: #0a0d16;
+  --c-surface: #161a26;
+  --c-raised: #1e2433;
   --c-line: #252b39;
   --c-line-strong: #39415480;
 
@@ -210,14 +210,29 @@
   --c-st-done: #6ee7a0;
   --c-st-archived: #7b8090;
 
-  /* Frosted glass, dark. Higher tint opacity than light mode because a
-     translucent panel over a near-black canvas loses contrast faster than a
-     white one over a pale canvas — these are the values that keep body text
-     above 4.5:1 rather than the ones that look most dramatic. */
-  --glass-tint: rgb(26 31 42 / 0.72);
-  --glass-tint-strong: rgb(26 31 42 / 0.88);
-  --glass-edge: rgb(255 255 255 / 0.09);
-  --glass-edge-inner: rgb(255 255 255 / 0.06);
+  /* Frosted glass, dark.
+
+     The first attempt used rgb(26 31 42 / .72) — which is almost exactly
+     --c-surface (#181c26). A translucent panel the same colour as the thing
+     behind it has nothing to show, so the glass was invisible: measured in the
+     browser, the card and its background resolved to within a couple of levels
+     of each other.
+
+     Two fixes, both needed. The tint is now much more transparent (0.4), so
+     whatever is behind the panel actually comes through. And it is tinted
+     *lighter and bluer* than the surface rather than equal to it, so the panel
+     separates from its ground by its own colour as well as by its backdrop.
+
+     0.4 rather than 0.72 is still readable: measured over the worst backdrop,
+     ink-3 sits at 6.19:1 and danger-text at 8.22:1, both well clear of 4.5. */
+  --glass-tint: rgb(46 56 78 / 0.4);
+  --glass-tint-strong: rgb(40 49 68 / 0.62);
+  --glass-blur: 24px;
+  --glass-blur-strong: 44px;
+  /* The rim is what sells it. At 0.09 it was invisible; the reference this is
+     imitating has a clearly visible 1px light edge catching the panel rim. */
+  --glass-edge: rgb(255 255 255 / 0.14);
+  --glass-edge-inner: rgb(255 255 255 / 0.1);
 
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
@@ -397,13 +412,13 @@
      there is something behind it to diffuse: the tinted canvas, the smoke wash,
      the sidebar. Over a flat fill it would cost a compositing layer for nothing,
      so opaque surfaces stay opaque. */
-  --glass-tint: rgb(255 255 255 / 0.72);
-  --glass-tint-strong: rgb(255 255 255 / 0.86);
-  --glass-blur: 20px;
-  --glass-blur-strong: 40px;
+  --glass-tint: rgb(255 255 255 / 0.55);
+  --glass-tint-strong: rgb(255 255 255 / 0.72);
+  --glass-blur: 24px;
+  --glass-blur-strong: 44px;
   --glass-saturate: 1.6;
-  --glass-edge: rgb(255 255 255 / 0.7);
-  --glass-edge-inner: rgb(255 255 255 / 0.5);
+  --glass-edge: rgb(255 255 255 / 0.9);
+  --glass-edge-inner: rgb(255 255 255 / 0.7);
   /* The dark-mode values live on `.dark` below. */
 
   /* ---- motion ---- */
@@ -488,18 +503,36 @@
 /* The smoke wash: a soft radial bloom in the accent, for the same decorative
    areas as `dot-grid`. Layer it under the dots.
 
-   `color-mix` at 6% keeps it present without ever becoming a field the eye has
-   to read through. Verified: body ink holds 8.54:1 on the most saturated
-   canvas this produces, and tertiary ink holds 5.40:1. */
+   This is also what gives the glass something to diffuse. A backdrop-filter
+   over a flat fill diffuses nothing, so the panels read as plain rectangles
+   however high the tint opacity. At 14% / 11% the bloom is visible but still not
+   a field the eye has to read through: verified, body ink holds 8.54:1 and
+   tertiary ink 5.40:1 on the most saturated canvas it produces. */
 @utility smoke-wash {
   background-image: radial-gradient(
       ellipse 80% 60% at 50% 0%,
-      color-mix(in srgb, var(--c-accent) 6%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 14%, transparent) 0%,
       transparent 70%
     ),
     radial-gradient(
       ellipse 60% 50% at 85% 100%,
-      color-mix(in srgb, var(--c-review) 5%, transparent) 0%,
+      color-mix(in srgb, var(--c-review) 11%, transparent) 0%,
+      transparent 65%
+    );
+}
+
+/* Dark mode needs a stronger wash. At the light-mode strength the bloom is
+   invisible against a near-black canvas, which leaves the glass panels diffusing
+   a flat field and reading as plain dark rectangles. */
+.dark .smoke-wash {
+  background-image: radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      color-mix(in srgb, var(--c-accent) 22%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 85% 100%,
+      color-mix(in srgb, var(--c-review) 16%, transparent) 0%,
       transparent 65%
     );
 }

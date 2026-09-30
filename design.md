@@ -280,12 +280,12 @@ Six tokens, four utilities. Tokens on the light block, overridden on `.dark`:
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `glass-tint` | `rgb(255 255 255 / .72)` | `rgb(26 31 42 / .72)` | panel fill |
-| `glass-tint-strong` | `rgb(255 255 255 / .86)` | `rgb(26 31 42 / .88)` | topmost layer fill |
-| `glass-blur` | 20px | 20px | `backdrop-filter` radius |
-| `glass-blur-strong` | 40px | 40px | `backdrop-filter` radius, topmost layers |
+| `glass-tint` | `rgb(255 255 255 / .55)` | `rgb(46 56 78 / .40)` | panel fill |
+| `glass-tint-strong` | `rgb(255 255 255 / .72)` | `rgb(40 49 68 / .62)` | topmost layer fill |
+| `glass-blur` | 24px | 24px | `backdrop-filter` radius |
+| `glass-blur-strong` | 44px | 44px | `backdrop-filter` radius, topmost layers |
 | `glass-saturate` | 1.6 | 1.6 | keeps the blur from going grey |
-| `glass-edge` | `rgb(255 255 255 / .7)` | `rgb(255 255 255 / .09)` | inset rim |
+| `glass-edge` | `rgb(255 255 255 / .9)` | `rgb(255 255 255 / .14)` | inset rim |
 
 Utilities: `glass`, `glass-strong`, `glass-card`, `glass-hairline`.
 
@@ -294,10 +294,35 @@ a card cannot end up frosted but flat. The **rim highlight** is what makes glass
 read as glass — a 1px inset light line at the top edge, as though light catches
 the edge. Without it the panel is just grey.
 
-Dark mode uses a *higher* tint opacity than light. A translucent panel over a
-near-black canvas loses contrast faster than a white one over a pale canvas, so
-those are the values that keep body text above 4.5:1, not the ones that look
-most dramatic.
+**Why the tint is transparent rather than milky.** The first pass used
+`rgb(26 31 42 / .72)` in dark mode, which is almost exactly `--c-surface`
+(`#181c26`). Measured in the browser, the panel and its background resolved to
+within a couple of levels of each other, so the glass was invisible: correct
+mechanism, no visible effect. Three things had to change together:
+
+1. **The tint must differ from the surface.** It is now lighter and bluer than
+   the surface (`46 56 78` over `161a26`), so the panel separates by its own
+   colour as well as by its backdrop.
+2. **The tint must be transparent enough to see through.** 0.40 in dark, 0.55 in
+   light. A milky tint hides what is behind it, which is the one thing glass is
+   for.
+3. **The rim has to be visible.** `glass-edge` was at 0.09 in dark — effectively
+   nothing. The reference has a clearly readable 1px light edge.
+
+And the ground itself has to carry something: `smoke-wash` went from 6% / 5% to
+14% / 11% in light and 22% / 16% in dark, because a backdrop-filter over a flat
+fill diffuses nothing.
+
+Re-measured after the change, compositing the tint over its backdrop in sRGB and
+running WCAG relative luminance. Bar is 4.5:1.
+
+| | ink | ink-2 | ink-3 | accent-text | success-text | danger-text |
+|---|---|---|---|---|---|---|
+| **Light** glass | 17.13 | 7.96 | 6.06 | 6.14 | 5.09 | **4.88** |
+| **Dark** glass | 13.52 | 9.55 | 6.07 | 7.73 | 11.29 | 8.05 |
+
+The `glass-strong` layers, which sit over the canvas rather than a card, are
+higher still: light ink-3 6.15, dark ink-3 5.32.
 
 - **Elevation:** content sits flat on tonal steps (`well` < `canvas` < `surface`
   < `raised`) plus a 1px `line`. Shadows only for things that float:
