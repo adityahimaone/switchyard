@@ -21,6 +21,48 @@ export function applyTheme(preference: ThemePreference) {
   document.documentElement.dataset.theme = preference
 }
 
+export type Density = "comfortable" | "compact"
+export const DENSITY_KEY = "kb-density"
+
+/** Migrates the old `kb-compact-cards` boolean so existing installs keep their density. */
+export function readDensity(): Density {
+  try {
+    if (localStorage.getItem(DENSITY_KEY) === null) {
+      const legacy = localStorage.getItem("kb-compact-cards")
+      if (legacy !== null) {
+        const density: Density = JSON.parse(legacy) === true ? "compact" : "comfortable"
+        localStorage.setItem(DENSITY_KEY, density)
+        return density
+      }
+    }
+    const value = localStorage.getItem(DENSITY_KEY)
+    return value === "compact" ? "compact" : "comfortable"
+  } catch { return "comfortable" }
+}
+
+export function applyDensity(density: Density) {
+  document.documentElement.dataset.density = density
+}
+
+export type MotionPreference = "system" | "reduce"
+export const MOTION_KEY = "kb-motion"
+
+export function readMotion(): MotionPreference {
+  try {
+    return localStorage.getItem(MOTION_KEY) === "reduce" ? "reduce" : "system"
+  } catch { return "system" }
+}
+
+export function applyMotion(preference: MotionPreference) {
+  document.documentElement.dataset.motion = preference
+}
+
+/** True when motion should be suppressed, honouring both the OS and the manual setting. */
+export function prefersReducedMotion(): boolean {
+  if (document.documentElement.dataset.motion === "reduce") return true
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
 export function saveTheme(preference: ThemePreference) {
   try { localStorage.setItem(THEME_KEY, preference) } catch {}
   applyTheme(preference)

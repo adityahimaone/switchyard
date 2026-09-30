@@ -5,12 +5,14 @@ import { bind } from "cuelume"
 import AppErrorBoundary from "@/components/app/app-error-boundary"
 import AuthGate from "./AuthGate"
 import "./index.css"
-import { applyTheme, readTheme } from "./hooks/useSettings"
+import { applyDensity, applyMotion, applyTheme, readDensity, readMotion, readTheme } from "./hooks/useSettings"
 import { armChunkRecovery } from "./lib/chunk-recovery"
 import { syncSoundEngine, watchSoundPreferences } from "./lib/sound"
 
 bind()
 applyTheme(readTheme())
+applyDensity(readDensity())
+applyMotion(readMotion())
 syncSoundEngine()
 watchSoundPreferences()
 if ("serviceWorker" in navigator && window.location.protocol === "https:") {
