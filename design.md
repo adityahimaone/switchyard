@@ -285,44 +285,70 @@ Six tokens, four utilities. Tokens on the light block, overridden on `.dark`:
 | `glass-blur` | 24px | 24px | `backdrop-filter` radius |
 | `glass-blur-strong` | 44px | 44px | `backdrop-filter` radius, topmost layers |
 | `glass-saturate` | 1.6 | 1.6 | keeps the blur from going grey |
-| `glass-edge` | `rgb(255 255 255 / .9)` | `rgb(255 255 255 / .14)` | inset rim |
+| `glass-edge` | `rgb(255 255 255 / .9)` | `rgb(255 255 255 / .14)` | reserved for inset wells |
+| `glass-lift` | soft wide + inset | dark contact + wide ambient | the elevation, per theme |
 
-Utilities: `glass`, `glass-strong`, `glass-card`, `glass-hairline`.
+Utilities: `glass`, `glass-strong`, `glass-card`, `glass-flat`,
+`glass-flat-strong`, `glass-hairline`.
 
-`glass-card` bundles radius, inset rim and float shadow together on purpose, so
-a card cannot end up frosted but flat. The **rim highlight** is what makes glass
-read as glass — a 1px inset light line at the top edge, as though light catches
-the edge. Without it the panel is just grey.
+`glass-card` bundles radius and the elevation shadow together, so a card cannot
+end up frosted and unrounded.
 
-**Why the tint is transparent rather than milky.** The first pass used
-`rgb(26 31 42 / .72)` in dark mode, which is almost exactly `--c-surface`
-(`#181c26`). Measured in the browser, the panel and its background resolved to
-within a couple of levels of each other, so the glass was invisible: correct
-mechanism, no visible effect. Three things had to change together:
+**Glass is defined by elevation, not by an outline.** The earlier version drew a
+0.8px light rim and almost no shadow. Measured, that left the panel only
+**1.16:1** against its own ground in dark and **1.05:1** in light — the rim was
+doing essentially all the work, and the result read as an *outlined box* rather
+than a sheet of glass. A shadow is the honest signal, because glass is a surface
+*above* something and that is exactly what a shadow says. Compared side by side
+in both themes, dropping the rim and adding elevation was unmistakably more
+glass-like; a rim *and* a shadow muddied both, and a dark hairline in place of
+the rim fought the shadow.
 
-1. **The tint must differ from the surface.** It is now lighter and bluer than
-   the surface (`46 56 78` over `161a26`), so the panel separates by its own
-   colour as well as by its backdrop.
-2. **The tint must be transparent enough to see through.** 0.40 in dark, 0.55 in
-   light. A milky tint hides what is behind it, which is the one thing glass is
-   for.
-3. **The rim has to be visible.** `glass-edge` was at 0.09 in dark — effectively
-   nothing. The reference has a clearly readable 1px light edge.
+The inset top highlight stays, at low strength. It is the one cue that reads as
+a lit surface rather than a drawn edge.
 
-And the ground itself has to carry something: `smoke-wash` went from 6% / 5% to
-14% / 11% in light and 22% / 16% in dark, because a backdrop-filter over a flat
-fill diffuses nothing.
+### Glass is capped by depth, not spread
 
-Re-measured after the change, compositing the tint over its backdrop in sRGB and
-running WCAG relative luminance. Bar is 4.5:1.
+`backdrop-filter` is not free. Every element carrying one becomes its own
+compositing layer and the browser cannot batch them. Measured on `/skills`, a
+normal-sized page:
 
-| | ink | ink-2 | ink-3 | accent-text | success-text | danger-text |
-|---|---|---|---|---|---|---|
-| **Light** glass | 17.13 | 7.96 | 6.06 | 6.14 | 5.09 | **4.88** |
-| **Dark** glass | 13.52 | 9.55 | 6.07 | 7.73 | 11.29 | 8.05 |
+| | backdrop-filter layers |
+|---|---|
+| before | **463** |
+| registry cards flattened | 232 |
+| glass Buttons flattened | **1** |
 
-The `glass-strong` layers, which sit over the canvas rather than a card, are
-higher still: light ink-3 6.15, dark ink-3 5.32.
+So the material is chosen by depth rather than spread:
+
+| Utility | Backdrop | Use |
+|---|---|---|
+| `glass` / `glass-strong` / `glass-card` | yes | cards, floating panels, dialogs, sheets, popovers, the sidebar |
+| `glass-flat` / `glass-flat-strong` | no | dense rows and list items, and every Button |
+
+`glass-flat` keeps the tint and the elevation shadow — the two things that make
+a surface legible — and drops only the blur. On `/skills` the remaining single
+layer is the sidebar, which is the one place the blur earns its keep.
+
+### Density
+
+`--card-pad` and `--row-h` existed but were consumed by exactly one component,
+so the density setting did nothing on collection pages. Card padding is now on
+the `EntryCard` variants themselves: identity and infrastructure are the same
+shape (`gap-2.5 p-3.5`) because they carry the same information volume, and
+`registry` is denser (`gap-1 p-2.5`) because it lists rather than describes.
+
+### Motion
+
+The audit found **zero** animations running on a static page, which is correct:
+nothing in the app loops forever. Every repeating animation means something is
+actually happening — a streaming response, a running task, a fetch in flight.
+
+What was missing was the opposite problem. There is now one orchestrated
+entrance: `CollectionGrid` rises its first eight children 6px over 260ms on
+`--ease-out-expo`, staggered 14ms apart, and the rest are simply present. Past
+eight the stagger becomes latency rather than choreography. It is keyframed, not
+a transition, so it runs once and stops; and it is skipped under reduced motion.
 
 - **Elevation:** content sits flat on tonal steps (`well` < `canvas` < `surface`
   < `raised`) plus a 1px `line`. Shadows only for things that float:

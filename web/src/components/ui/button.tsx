@@ -21,16 +21,24 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /** Frosted surface control. The page-level default. */
+        /** Frosted surface control. The page-level default.
+         *
+         * Flat rather than blurred, deliberately. A control is small and sits on
+         * top of a card that is already glass, so there is nothing behind it
+         * left to diffuse — and on a list page these are the most repeated
+         * element in the app. Measured on /skills: 231 of them were carrying a
+         * `backdrop-filter`, which is 231 compositing layers the browser cannot
+         * batch. The tint and elevation shadow carry the surface; the blur was
+         * pure cost. */
         default:
-          "glass rounded-control text-ink-2 hover:shadow-lift data-[state=open]:shadow-lift",
+          "glass-flat rounded-control text-ink-2 hover:-translate-y-px hover:shadow-lift data-[state=open]:shadow-lift motion-reduce:transform-none",
         /** The one forward action per screen. Solid, not glass: a translucent
             accent fill would muddy the label and lose the "this is the action"
             signal that a solid fill carries. */
         signal:
           "rounded-control border border-accent bg-accent text-accent-ink hover:brightness-95",
         secondary:
-          "glass rounded-control text-ink",
+          "glass-flat rounded-control text-ink",
         outline:
           "rounded-control border-[0.8px] border-line-strong bg-transparent text-ink hover:bg-raised",
         ghost: "rounded-control text-ink-2 hover:bg-raised hover:text-ink",

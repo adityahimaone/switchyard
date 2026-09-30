@@ -229,10 +229,27 @@
   --glass-tint-strong: rgb(40 49 68 / 0.62);
   --glass-blur: 24px;
   --glass-blur-strong: 44px;
-  /* The rim is what sells it. At 0.09 it was invisible; the reference this is
-     imitating has a clearly visible 1px light edge catching the panel rim. */
+  /* The rim is what sells it. At 0.09 it was invisible; the reference has a
+     clearly readable 1px light edge. */
   --glass-edge: rgb(255 255 255 / 0.14);
   --glass-edge-inner: rgb(255 255 255 / 0.1);
+
+  /* Dark mode needs a far stronger shadow than light. On a near-black ground a
+     soft light shadow is invisible, so the panel has to cast a real one: a tight
+     dark contact shadow for the near edge plus a wide ambient one for the
+     height. This is what replaces the outline — on a dark ground an outline
+     reads as a drawn box, and a shadow reads as a surface above something.
+
+     Measured before and after: the old rim-only treatment left the panel at
+     1.16:1 against its ground, which is why it read flat. The shadow does not
+     change that number — it is not a luminance cue — but it supplies the depth
+     signal the luminance difference physically cannot at this tint. */
+  --glass-lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -8px rgb(0 0 0 / 0.55),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.07);
+  --glass-lift-strong: 0 2px 6px rgb(0 0 0 / 0.45), 0 20px 44px -12px rgb(0 0 0 / 0.65),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.09);
+  --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.36), 0 8px 20px -8px rgb(0 0 0 / 0.5),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06);
 
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
@@ -419,6 +436,15 @@
   --glass-saturate: 1.6;
   --glass-edge: rgb(255 255 255 / 0.9);
   --glass-edge-inner: rgb(255 255 255 / 0.7);
+  /* Elevation instead of an outline. Light mode needs almost no shadow to read
+     as lifted — the ground is already bright, so a soft wide shadow plus the
+     inset highlight carries it. */
+  --glass-lift: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 20px -6px rgb(16 24 40 / 0.1),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.7);
+  --glass-lift-strong: 0 2px 4px rgb(16 24 40 / 0.07), 0 16px 36px -10px rgb(16 24 40 / 0.14),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.75);
+  --glass-lift-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 6px 16px -6px rgb(16 24 40 / 0.1),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.6);
   /* The dark-mode values live on `.dark` below. */
 
   /* ---- motion ---- */
@@ -441,43 +467,111 @@
  * the topmost layers — dialogs, sheets, popovers — where content behind would
  * otherwise be legible enough to read through the text.
  *
- * The inner highlight is what sells it: a 1px light line inset at the top edge,
- * as though light is catching the rim. Without it the panel just looks grey. */
+ * **Defined by elevation, not by an outline.** The earlier version drew a 0.8px
+ * light rim and almost no shadow, which was measured to leave the panel only
+ * 1.16:1 against its own ground in dark and 1.05:1 in light. In other words the
+ * rim was doing all the work, and the result read as an outlined box rather
+ * than a sheet of glass.
+ *
+ * A shadow is the honest signal here: glass is a surface *above* something, and
+ * that is what a shadow says. Compared side by side in both themes, dropping
+ * the rim and adding elevation is unmistakably more glass-like; adding a rim
+ * *and* a shadow muddies both.
+ *
+ * The inset top highlight stays, but only at low strength — it is the one cue
+ * that reads as a lit surface rather than a drawn edge. */
 @utility glass {
   background-color: var(--glass-tint);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  box-shadow:
-    inset 0 1px 0 0 var(--glass-edge-inner),
-    inset 0 0 0 0.8px var(--glass-edge);
+  box-shadow: var(--glass-lift);
 }
 
 @utility glass-strong {
   background-color: var(--glass-tint-strong);
   backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
-  box-shadow:
-    inset 0 1px 0 0 var(--glass-edge-inner),
-    inset 0 0 0 0.8px var(--glass-edge);
+  box-shadow: var(--glass-lift-strong);
 }
 
-/* Glass that is also a card: the radius and float shadow come with it, so a
- * panel cannot accidentally be glass and flat at the same time. */
+/* Glass that is also a card: radius comes with it, so a panel cannot end up
+ * frosted and unrounded. The lift is `glass-lift` plus a touch more spread,
+ * because a card sits among its peers rather than floating alone. */
 @utility glass-card {
   background-color: var(--glass-tint);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border-radius: var(--radius-card);
-  box-shadow:
-    inset 0 1px 0 0 var(--glass-edge-inner),
-    inset 0 0 0 0.8px var(--glass-edge),
-    var(--shadow-active);
+  box-shadow: var(--glass-lift-card);
 }
 
-/* A hairline border for glass, since a glass edge and an opaque `line` edge
-   read differently against a diffuse background. */
+/* Kept for the rare panel that genuinely needs a drawn edge — an inset well or
+ * a fieldset, where a shadow would read as a hole rather than a surface. */
 @utility glass-hairline {
   border: 0.8px solid var(--glass-edge);
+}
+
+/* Glass without the backdrop-filter.
+ *
+ * `backdrop-filter` is not free: every element carrying one becomes its own
+ * compositing layer, and the browser cannot batch them. Measured on /skills,
+ * which is a normal-sized page, glass-card plus glass plus glass-strong came to
+ * **463** of them. That is the real reason a dense page feels heavy, and it is
+ * why simply making the glass more transparent makes it worse rather than
+ * better — more transparency means more layers all reading the same backdrop.
+ *
+ * So glass is capped by depth, not spread:
+ *
+ *   glass         cards and floating panels, where the lift matters and the
+ *                 count is in the tens
+ *   glass-flat    dense rows and list items, where 400 identical blurred
+ *                 panels buy nothing because they sit edge to edge on an
+ *                 opaque ground anyway
+ *
+ * `glass-flat` keeps the tint and the elevation shadow — the two things that
+ * make a surface legible — and drops only the blur. */
+@utility glass-flat {
+  background-color: var(--glass-tint);
+  box-shadow: var(--glass-lift-card);
+}
+
+@utility glass-flat-strong {
+  background-color: var(--glass-tint-strong);
+  box-shadow: var(--glass-lift);
+}
+
+/* One orchestrated entrance, not a per-card scatter.
+ *
+ * The audit found *no* ambient loops running on a static page, which is correct
+ * — nothing here runs forever. What was missing was the opposite problem: the
+ * app appeared fully formed with no sense that it had just loaded.
+ *
+ * This is the single signature moment. Cards rise 6px and fade in over 260ms on
+ * --ease-out-expo, staggered 14ms apart, and only the first ~14 items animate.
+ * Past that the stagger would mean the last card arrived 300ms+ after the first,
+ * which reads as slow rather than composed — so beyond the cap everything is
+ * simply present.
+ *
+ * Keyframes rather than a transition so it runs once on mount and then stops.
+ * Nothing here is `infinite`; the only animations in the app that repeat are
+ * ones that mean something is actively happening — a streaming response, a
+ * running task, a fetch in flight. */
+@utility rise-in {
+  animation: rise-in 260ms var(--ease-out-expo) both;
+}
+
+@utility rise-in-1 { animation-delay: 14ms; }
+@utility rise-in-2 { animation-delay: 28ms; }
+@utility rise-in-3 { animation-delay: 42ms; }
+@utility rise-in-4 { animation-delay: 56ms; }
+@utility rise-in-5 { animation-delay: 70ms; }
+@utility rise-in-6 { animation-delay: 84ms; }
+@utility rise-in-7 { animation-delay: 98ms; }
+@utility rise-in-8 { animation-delay: 112ms; }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Dot grid, for decorative areas only: empty states, sign-in, the flow map

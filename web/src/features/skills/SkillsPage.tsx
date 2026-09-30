@@ -194,6 +194,10 @@ function SkillCard({
   const label = skillOriginLabel(skill)
   return (
     <EntryCard
+      // Hundreds of skills per profile. `flat` keeps the tint and the elevation
+      // but drops the backdrop-filter, which would otherwise mean one
+      // compositing layer per card.
+      material="flat"
       density="registry"
       selected={selected}
       title={skill.name}

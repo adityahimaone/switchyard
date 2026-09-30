@@ -1,5 +1,14 @@
-import type { ReactNode } from "react"
+import { Children, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+
+/** Eight steps is enough to read as an ordered arrival, and short enough that
+ *  the last card lands ~120ms after the first. Beyond that, stagger becomes
+ *  latency. */
+const STAGGER_LIMIT = 8
+
+function staggerClass(i: number): string {
+  return `rise-in rise-in-${i} motion-reduce:animate-none`
+}
 
 /**
  * Content width for a Collection page.
@@ -60,6 +69,11 @@ export function CollectionBody({
 /**
  * Responsive card grid. Two columns by default, one on narrow, then three and
  * four as the viewport grows so cards fill the row instead of leaving a gap.
+ *
+ * Owns the one orchestrated entrance: the first eight children rise in on a
+ * 14ms stagger, the rest are simply present. Applying it here rather than per
+ * card means a page cannot accidentally animate its own list twice, and it is
+ * skipped entirely under reduced motion.
  */
 export function CollectionGrid({
   children,
@@ -68,6 +82,7 @@ export function CollectionGrid({
   children: ReactNode
   className?: string
 }) {
+  const items = Children.toArray(children)
   return (
     <div
       className={cn(
@@ -75,7 +90,15 @@ export function CollectionGrid({
         className,
       )}
     >
-      {children}
+      {items.map((child, i) =>
+        i < STAGGER_LIMIT ? (
+          <div key={i} className={staggerClass(i)}>
+            {child}
+          </div>
+        ) : (
+          <div key={i}>{child}</div>
+        ),
+      )}
     </div>
   )
 }
