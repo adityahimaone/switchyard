@@ -1,6 +1,12 @@
-import { useState, type ReactNode } from "react"
-import { AppRail } from "@/components/app/app-rail"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { AppSidebar } from "@/components/app/app-sidebar"
 import type { Page } from "@/lib/sidebar-preferences"
+
+const COLLAPSED_KEY = "kb-sidebar-collapsed"
+
+function readCollapsed(): boolean {
+  try { return localStorage.getItem(COLLAPSED_KEY) === "1" } catch { return false }
+}
 
 export function AppShell({
   page,
@@ -11,32 +17,40 @@ export function AppShell({
   header,
   children,
 }: {
-  page: Page;
-  onSelectPage: (p: Page) => void;
-  onNewChat: () => void;
-  onSettings: () => void;
-  onLogout?: () => void;
-  header: ReactNode;
-  children: ReactNode;
+  page: Page
+  onSelectPage: (p: Page) => void
+  onNewChat: () => void
+  onSettings: () => void
+  onLogout?: () => void
+  header: ReactNode
+  children: ReactNode
 }) {
-  const [pinned, setPinned] = useState(false)
+  const [collapsed, setCollapsed] = useState(readCollapsed)
+
+  const toggle = useCallback(() => {
+    setCollapsed((v) => {
+      const next = !v
+      try { localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0") } catch {}
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const sync = (e: StorageEvent) => { if (e.key === COLLAPSED_KEY) setCollapsed(readCollapsed()) }
+    window.addEventListener("storage", sync)
+    return () => window.removeEventListener("storage", sync)
+  }, [])
+
   return (
     <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
-      <AppRail
+      <AppSidebar
         activeId={page}
-        expanded={pinned}
+        collapsed={collapsed}
+        onToggleCollapse={toggle}
         onNewChat={onNewChat}
         onNavigate={(id) => onSelectPage(id as Page)}
         onSettings={onSettings}
         onLogout={onLogout}
-      />
-      {/* The pin toggle lives in the gutter so content never sits under the rail. */}
-      <button
-        type="button"
-        aria-label={pinned ? "Collapse navigation" : "Expand navigation"}
-        aria-pressed={pinned}
-        onClick={() => setPinned((v) => !v)}
-        className="w-2 shrink-0 cursor-pointer border-r border-line bg-surface transition-colors duration-150 ease-[var(--ease-out-quint)] hover:bg-raised focus-visible:outline-2 focus-visible:outline-focus"
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {header}

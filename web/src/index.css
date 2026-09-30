@@ -23,7 +23,10 @@
 
   --c-ink: #0f172a;
   --c-ink-2: #475569;
-  --c-ink-3: #64748b;
+  /* Darkened from #64748b: on `well` that value measured 4.20:1 and on `canvas`
+     4.48:1, both under the 4.5 requirement. This measures 5.15 / 5.49 / 5.83
+     on well / canvas / surface. */
+  --c-ink-3: #5b6675;
   --c-ink-4: #94a3b8;
 
   --c-accent: #2563eb;
