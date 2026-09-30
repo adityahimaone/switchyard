@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/api"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Download, Puzzle, Search, X } from "lucide-react"
+import { EntryCard } from "@/components/app/entry-card"
+import { DetailSheet } from "@/components/app/detail-sheet"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterChip, FilterBar } from "@/components/app/filter-bar"
+import { PageHeader, SectionHeader } from "@/components/app/page-header"
+import { Download } from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
 
 export type SkillOrigin = "npx" | "hermes"
@@ -21,17 +22,10 @@ interface SkillMeta {
 }
 
 const ORIGIN_FILTERS: { value: SkillOrigin | "all"; label: string; hint: string }[] = [
-  { value: "all", label: "Semua", hint: "Semua skill" },
-  { value: "npx", label: "npx skills", hint: "Terinstall lewat `npx skills add` (ada di .hub/lock.json)" },
-  { value: "hermes", label: "Hermes", hint: "Builtin hermes, dikelola web UI, atau tanpa catatan asal" },
+  { value: "all", label: "All", hint: "Every skill" },
+  { value: "npx", label: "npx skills", hint: "Installed with `npx skills add`" },
+  { value: "hermes", label: "Hermes", hint: "Built in, or managed from this UI" },
 ]
-
-// originBadgeTints keeps the per-card chip consistent with the segmented filter.
-function originBadgeTint(skill: SkillMeta): string {
-  if (skill.origin === "npx") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-  if (skill.origin_source === "official") return "border-[var(--color-line)] bg-[var(--color-bg)] text-ink-2"
-  return "border-[var(--color-line)] bg-[var(--color-inset)] text-ink-4"
-}
 
 export function skillOriginLabel(skill: SkillMeta): string {
   if (skill.origin === "npx") return "npx"
@@ -54,25 +48,30 @@ export default function SkillsPage() {
     enabled: !!active,
   })
 
+  const all = skills.data ?? []
+
   const originCounts = useMemo(() => {
     const counts: Record<string, number> = { npx: 0, hermes: 0 }
-    for (const s of skills.data ?? []) {
+    for (const s of all) {
       if (s.origin === "npx") counts.npx += 1
       else counts.hermes += 1
     }
     return counts
-  }, [skills.data])
+  }, [all])
 
   // Origin is applied before the search short-circuit: a filtered list must not
   // reappear just because the search box is empty.
   const filtered = useMemo(() => {
-    const list = (skills.data ?? []).filter((s) => (origin === "all" ? true : s.origin === origin))
+    const list = all.filter((s) => (origin === "all" ? true : s.origin === origin))
     const needle = q.trim().toLowerCase()
     if (!needle) return list
     return list.filter(
-      (s) => s.name.toLowerCase().includes(needle) || s.description.toLowerCase().includes(needle) || (s.category ?? "").toLowerCase().includes(needle),
+      (s) =>
+        s.name.toLowerCase().includes(needle) ||
+        s.description.toLowerCase().includes(needle) ||
+        (s.category ?? "").toLowerCase().includes(needle),
     )
-  }, [skills.data, q, origin])
+  }, [all, q, origin])
 
   const grouped = useMemo(() => {
     const groups = new Map<string, SkillMeta[]>()
@@ -84,115 +83,143 @@ export default function SkillsPage() {
   }, [filtered])
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Registry</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Skills</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">Read-only registry dari <code className="text-ink-3">~/.hermes/skills</code> — klik skill buat liat SKILL.md.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
-            {filtered.length === (skills.data?.length ?? 0) ? `${skills.data?.length ?? 0}` : `${filtered.length}/${skills.data?.length ?? 0}`} installed
-          </span>
-          <div className="flex items-center gap-1" role="group" aria-label="Filter asal skill">
-            {ORIGIN_FILTERS.map((f) => {
-              const count = f.value === "all" ? (skills.data?.length ?? 0) : originCounts[f.value] ?? 0
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  aria-pressed={origin === f.value}
-                  title={f.hint}
-                  onClick={() => setOrigin(f.value)}
-                  className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
-                    origin === f.value
-                      ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                      : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
-                  }`}
-                >
-                  {f.label}
-                  <span className="font-mono text-[10px] opacity-70">{count}</span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="relative w-64">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari skill…" className="h-8 border-[var(--color-line)] bg-[var(--color-bg)] pl-7 text-xs" />
-          </div>
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Skills"
+        description="Read-only registry. Select a skill to read its SKILL.md."
+      >
+        <FilterBar
+          query={q}
+          onQueryChange={setQ}
+          placeholder="Search skills"
+          shown={filtered.length}
+          total={all.length}
+        >
+          <FilterChip
+            label="Origin"
+            value={origin}
+            onChange={(v) => setOrigin(v as SkillOrigin | "all")}
+            options={ORIGIN_FILTERS.map((f) => ({
+              value: f.value,
+              label: `${f.label} (${f.value === "all" ? all.length : (originCounts[f.value] ?? 0)})`,
+            }))}
+          />
+        </FilterBar>
+      </PageHeader>
 
-      <Separator className="my-3" />
-
-      {skills.isLoading ? (
-        <LoadingState label="Memuat skills" />
-      ) : skills.isError ? (
-        <p className="text-sm text-red-400">Gagal load skills: {(skills.error as Error).message}</p>
-      ) : (
-        <div className={`grid min-h-0 flex-1 gap-3 overflow-hidden ${active ? "lg:grid-cols-[1fr_1.2fr]" : ""}`}>
-          <div className="min-h-0 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {skills.isLoading ? (
+          <LoadingState label="Loading skills" />
+        ) : skills.isError ? (
+          <EmptyState
+            title="Couldn't load skills"
+            hint={(skills.error as Error).message}
+            action={<Button variant="secondary" onClick={() => void skills.refetch()}>Retry</Button>}
+          />
+        ) : grouped.length === 0 ? (
+          <EmptyState
+            title={
+              q.trim()
+                ? `No skills match "${q.trim()}"`
+                : origin === "all"
+                  ? "No skills installed"
+                  : `No skills from ${origin}`
+            }
+            hint={
+              q.trim()
+                ? undefined
+                : "Skills are read from ~/.hermes/skills and installed with `npx skills add`."
+            }
+          />
+        ) : (
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 p-4 md:p-6">
             {grouped.map(([category, categorySkills]) => (
-              <section key={category} className="mb-5 last:mb-0">
-                <div className="mb-2 flex items-center gap-2">
-                  <h2 className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3" title={category}>{category}</h2>
-                  <span className="font-mono text-[10px] text-ink-4">{categorySkills.length}</span>
-                  <div className="h-px flex-1 bg-[var(--color-line)]" />
-                </div>
-                <div className={`grid gap-2 ${active ? "lg:grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
+              <section key={category} className="flex flex-col gap-3">
+                <SectionHeader
+                  title={category}
+                  description={`${categorySkills.length} ${categorySkills.length === 1 ? "skill" : "skills"}`}
+                />
+                {/* Denser than the other collections: 3 across on large screens. */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {categorySkills.map((s) => (
-                    <Card
+                    <SkillCard
                       key={s.path || s.name}
-                      className={`decorative-card cursor-pointer border-[var(--color-line)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-accent)]/35 ${active === s.name ? "border-[var(--color-accent)]/60" : ""}`}
-                      onClick={() => setActive(s.name)}
-                    >
-                      <CardContent className="flex min-h-[96px] flex-col p-3.5">
-                        <div className="flex min-w-0 items-start gap-2.5">
-                          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-[var(--color-accent)]/15 bg-[var(--color-inset)]">
-                            <Puzzle className="size-3.5 text-[var(--color-accent)]" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <h3 className="truncate text-sm font-semibold leading-5" title={s.name}>{s.name}</h3>
-                              {s.origin && (
-                                <Badge variant="outline" className={`shrink-0 gap-1 px-1.5 py-0 text-[9px] leading-none ${originBadgeTint(s)}`}>
-                                  {s.origin === "npx" && <Download className="size-2.5" aria-hidden />}
-                                  {skillOriginLabel(s)}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="mt-1 line-clamp-2 min-h-[30px] text-[11px] leading-snug text-ink-3">{s.description || "—"}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                      skill={s}
+                      selected={active === s.name}
+                      onOpen={() => setActive(s.name)}
+                    />
                   ))}
                 </div>
               </section>
             ))}
-            {!filtered.length && (
-              <p className="text-sm text-ink-4">
-                {q.trim() ? `No skills matched "${q}".` : `Tidak ada skill untuk asal "${origin === "all" ? "semua" : origin}".`}
-              </p>
-            )}
           </div>
+        )}
+      </div>
 
-          {active && (
-            <div className="flex min-h-0 flex-col rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]">
-              <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-line)] px-3 py-2">
-                <h2 className="truncate font-mono text-xs font-semibold text-[var(--color-accent)]">{active}/SKILL.md</h2>
-                <Button variant="ghost" size="sm" className="ml-auto size-6 p-0" onClick={() => setActive(null)}>
-                  <X className="size-3.5" />
-                </Button>
-              </div>
-              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-ink-2">
-                {content.isLoading ? "Loading…" : content.isError ? (content.error as Error).message : content.data?.content}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+      <DetailSheet
+        open={active !== null}
+        onOpenChange={(o) => !o && setActive(null)}
+        title={active ?? ""}
+        description="SKILL.md"
+      >
+        {content.isLoading ? (
+          <LoadingState label="Loading skill" />
+        ) : content.isError ? (
+          <EmptyState
+            title="Couldn't load this skill"
+            hint={(content.error as Error).message}
+            action={
+              <Button variant="secondary" onClick={() => void content.refetch()}>Retry</Button>
+            }
+          />
+        ) : (
+          <pre className="max-w-[72ch] font-mono text-2xs leading-relaxed break-words whitespace-pre-wrap text-ink-2">
+            {content.data?.content}
+          </pre>
+        )}
+      </DetailSheet>
     </div>
+  )
+}
+
+function SkillCard({
+  skill,
+  selected,
+  onOpen,
+}: {
+  skill: SkillMeta
+  selected: boolean
+  onOpen: () => void
+}) {
+  const label = skillOriginLabel(skill)
+  return (
+    <EntryCard
+      density="registry"
+      selected={selected}
+      title={skill.name}
+      state={
+        <span
+          className={
+            label === "npx"
+              ? "inline-flex shrink-0 items-center gap-1 rounded-control border border-success/30 bg-success-tint px-1.5 py-0.5 text-2xs leading-none text-success"
+              : "inline-flex shrink-0 items-center gap-1 rounded-control border border-line bg-well px-1.5 py-0.5 text-2xs leading-none text-ink-3"
+          }
+        >
+          {label === "npx" && <Download className="size-2.5" aria-hidden />}
+          {label}
+        </span>
+      }
+      // Two lines, clamped, so the grid keeps a stable rhythm.
+      metrics={
+        <p className="line-clamp-2 text-xs leading-snug text-ink-3">
+          {skill.description || "No description"}
+        </p>
+      }
+      primary={
+        <Button variant="secondary" size="xs" onClick={onOpen}>
+          Read skill
+        </Button>
+      }
+    />
   )
 }

@@ -2,223 +2,412 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, createProvider, deleteProvider, discoverProviderModels, type ProfileDetail } from "@/api"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
-import { Server, Search, X, KeyRound } from "lucide-react"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { EntryCard, Metric } from "@/components/app/entry-card"
+import { ConfirmDialog } from "@/components/app/confirm-dialog"
+import { DetailSheet } from "@/components/app/detail-sheet"
+import { EmptyState } from "@/components/app/empty-state"
+import { FilterBar } from "@/components/app/filter-bar"
+import { PageHeader, SectionHeader } from "@/components/app/page-header"
+import { KeyRound, MoreHorizontal, Plus, Server, Trash2 } from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
+
+type Provider = {
+  name: string
+  base_url: string
+  default_model: string
+  models: string[]
+  api_key_set: boolean
+}
 
 export default function ProvidersPage({ onUseInProfile }: { onUseInProfile?: (name: string, model: string) => void }) {
   const [q, setQ] = useState("")
-  const [active, setActive] = useState<string | null>(null)
-  const [name, setName] = useState("")
-  const [baseURL, setBaseURL] = useState("")
-  const [apiKey, setAPIKey] = useState("")
-  const [defaultModel, setDefaultModel] = useState("")
-  const [actionError, setActionError] = useState("")
+  const [selected, setSelected] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
   const queryClient = useQueryClient()
 
   const providers = useQuery({
     queryKey: ["providers"],
-    queryFn: () => api<{ name: string; base_url: string; default_model: string; models: string[]; api_key_set: boolean }[]>("/api/providers"),
+    queryFn: () => api<Provider[]>("/api/providers"),
   })
   const profiles = useQuery({
     queryKey: ["profiles-full"],
     queryFn: () => api<ProfileDetail[]>("/api/profiles-full"),
   })
 
-  const list = (providers.data ?? []).filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.base_url.toLowerCase().includes(q.toLowerCase()))
-  const selected = (providers.data ?? []).find((p) => p.name === active)
+  const all = providers.data ?? []
+  const needle = q.trim().toLowerCase()
+  const list = all.filter(
+    (p) =>
+      needle === "" ||
+      p.name.toLowerCase().includes(needle) ||
+      p.base_url.toLowerCase().includes(needle),
+  )
+  const current = all.find((p) => p.name === selected) ?? null
 
-  async function refreshProviders() {
+  async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["providers"] })
   }
 
-  async function handleCreate() {
+  async function run(fn: () => Promise<void>, ok?: string) {
     setBusy(true)
-    setActionError("")
+    setNote("")
     try {
-      await createProvider({ name, base_url: baseURL, api_key: apiKey || undefined, default_model: defaultModel || undefined })
-      setName(""); setBaseURL(""); setAPIKey(""); setDefaultModel("")
-      await refreshProviders()
+      await fn()
+      await refresh()
+      if (ok) setNote(ok)
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Provider save failed")
-    } finally { setBusy(false) }
+      setNote(error instanceof Error ? error.message : "That action failed.")
+    } finally {
+      setBusy(false)
+    }
   }
 
-  async function handleDiscover(providerName: string) {
-    setBusy(true)
-    setActionError("")
-    try {
-      const result = await discoverProviderModels(providerName)
-      await refreshProviders()
-      setActionError(`${result.models.length} models discovered for ${providerName}`)
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Model discovery failed")
-    } finally { setBusy(false) }
-  }
-
-  async function handleDelete(providerName: string) {
-    if (!window.confirm(`Delete provider ${providerName}?`)) return
-    setBusy(true)
-    setActionError("")
-    try {
-      await deleteProvider(providerName)
-      if (active === providerName) setActive(null)
-      await refreshProviders()
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Provider delete failed")
-    } finally { setBusy(false) }
+  async function handleDelete(name: string) {
+    await run(async () => {
+      await deleteProvider(name)
+      if (selected === name) setSelected(null)
+      setPendingDelete(null)
+    })
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-[var(--color-accent)]">Hermes Registry</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Providers</h1>
-          <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            Roster model dari <code className="text-ink-3">~/.hermes/config.yaml</code> custom_providers. Pakai di profile lewat dropdown bawah.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 text-[10px] text-ink-3">
-            {providers.data?.length ?? 0}
-          </span>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-4" />
-            <input
-              value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari provider…"
-              className="w-44 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] py-1.5 pl-8 pr-2 text-xs outline-none focus:border-[var(--color-accent)]/50"
-            />
-          </div>
-        </div>
-      </div>
-      <Card className="mt-4 border-[var(--color-line)] bg-[var(--color-surface)]">
-        <CardHeader className="p-3.5 pb-1"><CardTitle className="text-xs uppercase tracking-wider text-ink-3">Add provider</CardTitle></CardHeader>
-        <CardContent className="grid gap-2 p-3.5 pt-2 md:grid-cols-4">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
-          <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.example.com/v1" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
-          <input value={apiKey} onChange={(e) => setAPIKey(e.target.value)} placeholder="API key (server-side)" type="password" className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" />
-          <div className="flex gap-2"><input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="default model" className="min-w-0 flex-1 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-xs" /><Button size="sm" disabled={busy || !name.trim() || !baseURL.trim()} onClick={handleCreate}>Save</Button></div>
-        </CardContent>
-      </Card>
-      {actionError && <p className="mt-2 text-xs text-[var(--color-accent)]">{actionError}</p>}
-      {providers.isLoading ? (
-        <LoadingState label="Memuat providers" />
-      ) : (
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          {list.map((p) => (
-            <Card key={p.name} className={`provider-card decorative-card relative cursor-pointer overflow-hidden border-[var(--color-line)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-accent)]/40 ${active === p.name ? "border-[var(--color-accent)]/60" : ""}`}
-              onClick={() => setActive(active === p.name ? null : p.name)}>
-              <span className="provider-card-grid pointer-events-none absolute inset-0" />
-              <span className="provider-card-scan pointer-events-none absolute right-[-20%] top-1/2 h-px w-2/3" />
-              <CardHeader className="relative p-3.5 pb-2">
-                <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-[var(--color-accent)]/15 bg-[var(--color-inset)]">
-                    <Server className="size-3.5 text-[var(--color-accent)]" />
-                  </div>
-                  <span className="min-w-0 flex-1 truncate" title={p.name}>{p.name}</span>
-                  {p.api_key_set ? (
-                    <Badge variant="outline" className="ml-auto shrink-0 border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-300">
-                      <KeyRound className="size-2.5" /> key set
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="ml-auto shrink-0 border-red-500/30 bg-red-500/10 text-[10px] text-red-300">
-                      key missing
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="relative p-3.5 pt-0">
-                <p className="truncate font-mono text-[11px] text-ink-4" title={p.base_url}>{p.base_url || "—"}</p>
-                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" className="border-[var(--color-line)] text-[10px] text-ink-2">
-                    {p.models.length} models
-                  </Badge>
-                  {p.default_model && (
-                    <Badge variant="outline" className="max-w-full border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 text-[10px] text-[var(--color-accent)]">
-                      <span className="truncate">default: {p.default_model}</span>
-                    </Badge>
-                  )}
-                </div>
-                {active === p.name && p.models.length > 0 && (
-                  <>
-                    <Separator className="my-2.5" />
-                    <div className="max-h-40 overflow-y-auto">
-                      <div className="flex flex-wrap gap-1">
-                        {p.models.slice(0, 60).map((m) => (
-                          <span key={m} className="rounded bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[10px] text-ink-3">{m}</span>
-                        ))}
-                        {p.models.length > 60 && (
-                          <span className="px-1 py-0.5 text-[10px] text-ink-4">+{p.models.length - 60} more</span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-                {active === p.name && (
-                  <div className="mt-2.5 flex items-center gap-2">
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => handleDiscover(p.name)}>Discover models</Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => handleDelete(p.name)} className="text-red-300">Delete</Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          {!list.length && <p className="text-sm text-ink-4">No provider matched.</p>}
-        </div>
-      )}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title="Providers"
+        description="Model endpoints. A profile points at one of these to pick up its models."
+        actions={
+          <Button variant="signal" size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="size-3.5" /> Add provider
+          </Button>
+        }
+      >
+        <FilterBar
+          query={q}
+          onQueryChange={setQ}
+          placeholder="Search providers"
+          shown={list.length}
+          total={all.length}
+        />
+      </PageHeader>
 
-      {/* link providers -> profiles */}
-      <Card className="decorative-card mt-6 border-[var(--color-line)] bg-[var(--color-surface)]">
-        <CardHeader className="p-3.5 pb-1">
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-ink-3">
-            Pakai provider di agent profile
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3 p-3.5 pt-1">
-          <Select
-            onValueChange={(profileName) => {
-              if (!selected) return
-              // PATCH profile model (default model of provider) — provider stays "custom"
-              fetch(`/api/profiles/${profileName}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ model: selected.default_model, provider: "custom" }),
-              }).then(() => profiles.refetch())
-            }}
-          >
-            <SelectTrigger className="w-56 border-[var(--color-line)] bg-[var(--color-bg)] text-xs">
-              <SelectValue placeholder={selected ? `Set ${selected.name} → profile…` : "Pilih provider dulu di atas"} />
-            </SelectTrigger>
-            <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
-              {(profiles.data ?? []).filter((p) => p.name !== "default").map((p) => (
-                <SelectItem key={p.name} value={p.name} className="text-xs">{p.name} (model: {p.model || "—"})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selected && (
-            <span className="flex items-center gap-1.5 text-xs text-ink-3">
-              <X className="size-3" /> clear: klik kartu lagi
-            </span>
-          )}
-          {selected ? (
-            <span className="text-xs text-ink-4">
-              akan set model=<span className="font-mono text-ink-2">{selected.default_model || "?"}</span> provider=<span className="font-mono text-ink-2">custom</span>
-            </span>
-          ) : (
-            <span className="text-xs text-ink-4">klik satu provider card, lalu pilih profile target</span>
-          )}
-          {onUseInProfile && (
-            <Button variant="outline" size="sm" className="ml-auto" onClick={() => selected && onUseInProfile(selected.name, selected.default_model)}>
-              Edit profiles page
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {note && (
+          <p role="status" className="mx-auto w-full max-w-[1200px] px-4 pt-4 text-sm text-ink-2 md:px-6">
+            {note}
+          </p>
+        )}
+
+        {providers.isLoading ? (
+          <LoadingState label="Loading providers" />
+        ) : providers.isError ? (
+          <EmptyState
+            title="Couldn't load providers"
+            hint={(providers.error as Error).message}
+            action={<Button variant="secondary" onClick={() => void providers.refetch()}>Retry</Button>}
+          />
+        ) : list.length === 0 ? (
+          <EmptyState
+            title={all.length ? `No providers match "${q}"` : "No providers yet"}
+            hint={all.length ? undefined : "Add an endpoint so profiles can select a model from it."}
+            action={
+              all.length ? undefined : (
+                <Button variant="signal" onClick={() => setAddOpen(true)}>Add provider</Button>
+              )
+            }
+          />
+        ) : (
+          <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-6">
+            {list.map((p) => (
+              <EntryCard
+                key={p.name}
+                density="infrastructure"
+                selected={selected === p.name}
+                lead={
+                  <span className="flex size-7 items-center justify-center rounded-full bg-well">
+                    <Server className="size-4 text-ink-3" aria-hidden />
+                  </span>
+                }
+                title={p.name}
+                state={
+                  <StatusKey set={p.api_key_set} />
+                }
+                subtitle={p.base_url || "No endpoint"}
+                mono
+                metrics={
+                  <>
+                    <Metric value={p.models.length} label="models" />
+                    {p.default_model && (
+                      <span className="truncate text-xs text-ink-3" title={p.default_model}>
+                        default: <span className="font-mono text-ink-2">{p.default_model}</span>
+                      </span>
+                    )}
+                  </>
+                }
+                primary={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSelected(selected === p.name ? null : p.name)}
+                    aria-expanded={selected === p.name}
+                  >
+                    {selected === p.name ? "Hide models" : "Show models"}
+                  </Button>
+                }
+                overflow={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${p.name}`}>
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={busy}
+                        onSelect={() => void run(() => discoverProviderModels(p.name).then((r) => { setNote(`${r.models.length} models discovered for ${p.name}.`) }))}
+                      >
+                        Discover models
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setPendingDelete(p.name)}
+                        className="text-danger-text focus:text-danger-text"
+                      >
+                        <Trash2 className="size-3.5" /> Delete provider
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                }
+              >
+                {/* Expanded roster stays inside the card, bounded, behind a divider. */}
+                {selected === p.name && p.models.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto border-t border-line pt-2">
+                    <div className="flex flex-wrap gap-1">
+                      {p.models.slice(0, 60).map((m) => (
+                        <span
+                          key={m}
+                          className={cnChip(m === p.default_model)}
+                          title={m}
+                        >
+                          {m}
+                        </span>
+                      ))}
+                      {p.models.length > 60 && (
+                        <span className="px-1.5 py-0.5 text-2xs text-ink-3">
+                          +{p.models.length - 60} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </EntryCard>
+            ))}
+          </div>
+        )}
+
+        {/* Link providers to profiles. */}
+        {all.length > 0 && (
+          <div className="mx-auto w-full max-w-[1200px] px-4 pb-6 md:px-6">
+            <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
+              <SectionHeader
+                title="Use a provider in a profile"
+                description={
+                  current
+                    ? `Sets model to ${current.default_model || "unset"} and provider to custom.`
+                    : "Select a provider above, then pick the profile to update."
+                }
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value=""
+                  disabled={!current}
+                  onValueChange={(profileName) => {
+                    if (!current) return
+                    void run(async () => {
+                      await api(`/api/profiles/${profileName}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ model: current.default_model, provider: "custom" }),
+                      });
+                      await profiles.refetch();
+                    }, `Updated ${profileName} to ${current.default_model || "unset"}.`);
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-64"
+                    aria-label="Choose a profile to update"
+                  >
+                    <SelectValue placeholder={current ? "Choose a profile" : "Select a provider first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(profiles.data ?? [])
+                      .filter((p) => p.name !== "default")
+                      .map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name} (model: {p.model || "unset"})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {onUseInProfile && current && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onUseInProfile(current.name, current.default_model)}
+                  >
+                    Edit on Profiles
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <AddProviderSheet
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        busy={busy}
+        onCreate={async (data) => {
+          await run(async () => {
+            await createProvider(data);
+            setAddOpen(false);
+          }, `Added ${data.name}.`);
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title="Delete provider"
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete}"? Profiles pointing at it lose their model reference. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete provider"
+        busy={busy}
+        onConfirm={() => pendingDelete && void handleDelete(pendingDelete)}
+      />
     </div>
+  )
+}
+
+/** Key state reads as connection health: a lamp plus a label, never colour alone. */
+function StatusKey({ set }: { set: boolean }) {
+  return (
+    <span
+      className={
+        set
+          ? "inline-flex items-center gap-1 text-xs font-medium text-success"
+          : "inline-flex items-center gap-1 text-xs font-medium text-danger-text"
+      }
+    >
+      <KeyRound className="size-3" aria-hidden />
+      {set ? "Key set" : "Key missing"}
+    </span>
+  )
+}
+
+function cnChip(isDefault: boolean) {
+  return [
+    "max-w-full truncate rounded-control border px-1.5 py-0.5 font-mono text-2xs",
+    isDefault
+      ? "border-accent/30 bg-accent-tint text-accent"
+      : "border-line bg-well text-ink-3",
+  ].join(" ")
+}
+
+function AddProviderSheet({
+  open,
+  onOpenChange,
+  busy,
+  onCreate,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  busy: boolean
+  onCreate: (data: { name: string; base_url: string; api_key?: string; default_model?: string }) => Promise<void>
+}) {
+  const [name, setName] = useState("")
+  const [baseURL, setBaseURL] = useState("")
+  const [apiKey, setAPIKey] = useState("")
+  const [defaultModel, setDefaultModel] = useState("")
+  const [err, setErr] = useState("")
+
+  const canSubmit = name.trim() !== "" && baseURL.trim() !== ""
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canSubmit) {
+      setErr("Name and endpoint are required.")
+      return
+    }
+    setErr("")
+    await onCreate({
+      name: name.trim(),
+      base_url: baseURL.trim(),
+      api_key: apiKey || undefined,
+      default_model: defaultModel || undefined,
+    })
+    setName(""); setBaseURL(""); setAPIKey(""); setDefaultModel("")
+  }
+
+  return (
+    <DetailSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add provider"
+      description="An OpenAI-compatible endpoint. The key is stored server-side."
+    >
+      <form id="add-provider" onSubmit={submit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="ap-name">Name</Label>
+          <Input
+            id="ap-name" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="9router" autoFocus aria-invalid={!!err}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="ap-url">Endpoint</Label>
+          <Input
+            id="ap-url" value={baseURL} onChange={(e) => setBaseURL(e.target.value)}
+            placeholder="https://api.example.com/v1" className="font-mono text-xs"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="ap-key">API key</Label>
+          <Input
+            id="ap-key" type="password" value={apiKey} onChange={(e) => setAPIKey(e.target.value)}
+            placeholder="Optional" autoComplete="off"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="ap-model">Default model</Label>
+          <Input
+            id="ap-model" value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}
+            placeholder="Optional" className="font-mono text-xs"
+          />
+        </div>
+        {err && <p className="text-sm text-danger-text" role="alert">{err}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="signal" loading={busy} disabled={!canSubmit}>
+            Add provider
+          </Button>
+        </div>
+      </form>
+    </DetailSheet>
   )
 }
