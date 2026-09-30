@@ -21,28 +21,28 @@ function useCopy(text: string) {
 // ── ANSI → tailwind ──────────────────────────────────────────────
 const FG: Record<string, string> = {
   "30": "text-zinc-600",
-  "31": "text-red-400",
-  "32": "text-emerald-400",
-  "33": "text-amber-400",
-  "34": "text-sky-400",
+  "31": "text-danger-text",
+  "32": "text-success",
+  "33": "text-warning",
+  "34": "text-accent-text",
   "35": "text-fuchsia-400",
   "36": "text-cyan-400",
   "37": "text-zinc-200",
   "90": "text-zinc-500",
-  "91": "text-red-300",
-  "92": "text-emerald-300",
-  "93": "text-amber-300",
-  "94": "text-sky-300",
+  "91": "text-danger-text",
+  "92": "text-success",
+  "93": "text-warning",
+  "94": "text-accent-text",
   "95": "text-fuchsia-300",
   "96": "text-cyan-300",
   "97": "text-white",
 }
 const BG: Record<string, string> = {
   "40": "bg-zinc-800",
-  "41": "bg-red-500/20",
-  "42": "bg-emerald-500/20",
-  "43": "bg-amber-500/20",
-  "44": "bg-sky-500/20",
+  "41": "bg-danger-tint",
+  "42": "bg-success-tint",
+  "43": "bg-warning-tint",
+  "44": "bg-accent-tint",
   "45": "bg-fuchsia-500/20",
   "46": "bg-cyan-500/20",
   "47": "bg-white/10",
@@ -121,7 +121,7 @@ function workerHint(line: string) {
   if (/(warn|warning)/.test(l)) return "text-warning"
   if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-success"
   if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-[var(--color-info)]"
-  if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-ink-4"
+  if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-ink-3"
   return ""
 }
 
@@ -133,7 +133,7 @@ function ResultSpans({ line }: { line: string }) {
       {parts.map((p, i) => {
         if (/^`[^`]+`$/.test(p)) {
           return (
-            <span key={i} className="rounded border border-[var(--color-line)] bg-[var(--color-line)]/40 px-1 font-mono text-meta text-[var(--color-info)]">
+            <span key={i} className="rounded border border-[var(--c-line)] bg-[var(--c-line)]/40 px-1 font-mono text-meta text-[var(--color-info)]">
               {p.slice(1, -1)}
             </span>
           )
@@ -150,7 +150,7 @@ function ResultSpans({ line }: { line: string }) {
                     href={u}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
-                    className="text-[var(--color-info)] underline decoration-[var(--color-line-strong)] underline-offset-2"
+                    className="text-[var(--color-info)] underline decoration-[var(--c-line-strong)] underline-offset-2"
                   >
                     {u}
                   </a>
@@ -159,7 +159,7 @@ function ResultSpans({ line }: { line: string }) {
               // file paths: foo/bar.ts:12:3
               if (/^[\w./-]+\.[a-z]{1,5}(:\d+)?/.test(u.trim()) && u.includes(".")) {
                 return (
-                  <span key={j} className="text-violet-300">
+                  <span key={j} className="text-review-text">
                     {u}
                   </span>
                 )
@@ -175,7 +175,7 @@ function ResultSpans({ line }: { line: string }) {
 
 function resultLineClass(line: string) {
   const t = line.trim()
-  if (!t) return "text-ink-4"
+  if (!t) return "text-ink-3"
   if (/^#{1,6}\s/.test(t)) return "font-semibold text-ink"
   if (/^(✔|✓|✅|🎉|✨)/.test(t) || (/success|completed|done/i.test(t) && /[✓✔]/.test(line))) return "text-success"
   if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-danger-text"
@@ -186,7 +186,7 @@ function resultLineClass(line: string) {
       ? "text-success"
       : t.startsWith("-")
         ? "text-danger-text"
-        : "text-ink-4"
+        : "text-ink-3"
   }
   if (/^\s*[-*•]\s/.test(line)) return "text-ink-2"
   return "text-ink-2"
@@ -363,14 +363,14 @@ function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta
   return (
     <div className="space-y-1">
       {meta.sessionId && (
-        <dl className="mb-2 flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-[var(--color-line)] bg-[var(--color-line)]/20 px-2.5 py-1.5">
+        <dl className="mb-2 flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-[var(--c-line)] bg-[var(--c-line)]/20 px-2.5 py-1.5">
           {[
             ["Session", meta.sessionId, "max-w-[14rem]"],
             ["Workspace", meta.workspace?.split("/").pop(), "max-w-[10rem]"],
             ["CWD", meta.cwd, "max-w-[14rem]"],
           ].filter(([, value]) => value).map(([label, value, maxW]) => (
             <div key={label as string} className="flex min-w-0 items-baseline gap-1.5">
-              <dt className="shrink-0 text-2xs text-ink-4">{label}</dt>
+              <dt className="shrink-0 text-2xs text-ink-3">{label}</dt>
               <dd className={`truncate font-mono text-meta text-ink-2 ${maxW}`} title={value as string}>{value as string}</dd>
             </div>
           ))}
@@ -381,15 +381,15 @@ function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta
           case "turn":
             return (
               <div key={idx} className="mt-3 mb-1 flex items-center gap-2 first:mt-0">
-                <span className="rounded border border-[var(--color-line)] bg-[var(--color-line)]/30 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-[0.14em] text-ink-3">
+                <span className="rounded border border-[var(--c-line)] bg-[var(--c-line)]/30 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-[0.14em] text-ink-3">
                   Turn {event.turn}
                 </span>
-                <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
+                <span className="h-px flex-1 bg-[var(--c-line)]" aria-hidden />
               </div>
             )
           case "step":
             return (
-              <div key={idx} className="flex items-center gap-1.5 py-0.5 pl-1 text-meta text-ink-4">
+              <div key={idx} className="flex items-center gap-1.5 py-0.5 pl-1 text-meta text-ink-3">
                 <CornerDownRight className="size-3 shrink-0" aria-hidden />
                 Step {event.step}
               </div>
@@ -410,8 +410,8 @@ function DshLogTimeline({ events, meta }: { events: ParsedDshLog["events"]; meta
           }
           case "final":
             return (
-              <div key={idx} className="mt-2 mb-1 rounded-md border border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] px-2.5 py-2">
-                <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">Answer</p>
+              <div key={idx} className="mt-2 mb-1 rounded-md border border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] px-2.5 py-2">
+                <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)]">Answer</p>
                 <p className="whitespace-pre-wrap break-words text-body leading-relaxed text-ink-2">{event.text}</p>
               </div>
             )
@@ -432,14 +432,14 @@ function CollapsibleThinking({ text, defaultCollapsed }: { text: string; default
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="-mx-1.5 flex h-7 w-[calc(100%+0.75rem)] items-center gap-1.5 rounded px-1.5 text-left transition-colors hover:bg-[var(--color-line)]/40"
+        className="-mx-1.5 flex h-7 w-[calc(100%+0.75rem)] items-center gap-1.5 rounded px-1.5 text-left transition-colors hover:bg-[var(--c-line)]/40"
       >
-        <BrainCircuit className="size-3.5 shrink-0 text-ink-4" aria-hidden />
-        <span className="shrink-0 text-2xs italic text-ink-4">thinking</span>
-        {!open && preview && <span className="min-w-0 flex-1 truncate text-2xs text-ink-4/80">{preview}</span>}
+        <BrainCircuit className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+        <span className="shrink-0 text-2xs italic text-ink-3">thinking</span>
+        {!open && preview && <span className="min-w-0 flex-1 truncate text-2xs text-ink-3/80">{preview}</span>}
       </button>
       {open && (
-        <p className="whitespace-pre-wrap break-words border-l-2 border-[var(--color-line)] py-1 pl-3 text-meta italic leading-relaxed text-ink-3">
+        <p className="whitespace-pre-wrap break-words border-l-2 border-[var(--c-line)] py-1 pl-3 text-meta italic leading-relaxed text-ink-3">
           {text}
         </p>
       )}
@@ -535,21 +535,21 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
   const lines = useMemo(() => liveText.split("\n").flatMap((line) => prettyJSONLine(line)?.split("\n") ?? [line]), [liveText])
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
-        <Terminal className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+    <div className="overflow-hidden rounded-lg border border-[var(--c-line)]">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--c-line)] bg-[var(--c-line)]/30 px-3 py-2">
+        <Terminal className="size-3.5 shrink-0 text-ink-3" aria-hidden />
         <h4 className="text-meta font-semibold text-ink">Worker log</h4>
         <span
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs ${
             running
-              ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-              : "border-[var(--color-line)] text-ink-4"
+              ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+              : "border-[var(--c-line)] text-ink-3"
           }`}
         >
-          <span className={`size-1.5 rounded-full ${running ? "bg-[var(--color-accent)]" : "bg-ink-4"}`} aria-hidden />
+          <span className={`size-1.5 rounded-full ${running ? "bg-[var(--c-accent)]" : "bg-ink-4"}`} aria-hidden />
           {running ? "live" : "exited"}
         </span>
-        <span className="text-2xs tabular-nums text-ink-4">{lines.length} lines</span>
+        <span className="text-2xs tabular-nums text-ink-3">{lines.length} lines</span>
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {isDsh && (
@@ -560,8 +560,8 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
               title={effectiveView === "structured" ? "Switch to raw JSONL" : "Switch to structured view"}
               className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
                 effectiveView === "structured"
-                  ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                  : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                  ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                  : "text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
               }`}
             >
               <Layers3 className="size-3.5" />
@@ -576,8 +576,8 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             title={follow ? "Stop following worker log" : "Follow worker log to the bottom"}
             className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
               follow
-                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                : "text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
             }`}
           >
             <ArrowDownToLine className="size-3.5" />
@@ -591,8 +591,8 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             title={wrap ? "Disable line wrap" : "Enable line wrap"}
             className={`inline-flex size-7 items-center justify-center rounded-md transition-colors ${
               wrap
-                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                : "text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
             }`}
           >
             <WrapText className="size-3.5" />
@@ -602,7 +602,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             onClick={() => copy()}
             aria-label="Copy worker log"
             title="Copy worker log"
-            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
@@ -611,7 +611,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Collapse worker log" : "Expand worker log"}
-            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             <ChevronDown className={`size-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
           </button>
@@ -619,7 +619,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
       </div>
 
       {open ? (
-        <div className="bg-[var(--color-void)]">
+        <div className="bg-[var(--c-well)]">
           <div
             ref={logViewportRef}
             onScroll={(event) => {
@@ -638,7 +638,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
               <div className="flex min-w-0">
                 <div
                   aria-hidden
-                  className="sticky left-0 shrink-0 select-none border-r border-[var(--color-line)] bg-[var(--color-void)] px-2 py-3 text-right font-mono text-2xs leading-5 text-ink-4"
+                  className="sticky left-0 shrink-0 select-none border-r border-[var(--c-line)] bg-[var(--c-well)] px-2 py-3 text-right font-mono text-2xs leading-5 text-ink-3"
                 >
                   {lines.map((_, i) => (
                     <div key={i} className="tabular-nums">
@@ -672,7 +672,7 @@ export function WorkerLogPanel({ text, running, slug, taskId }: { text: string; 
           </div>
         </div>
       ) : (
-        <p className="px-3 py-2.5 text-meta text-ink-4">Log collapsed. {lines.length} lines available.</p>
+        <p className="px-3 py-2.5 text-meta text-ink-3">Log collapsed. {lines.length} lines available.</p>
       )}
     </div>
   )
@@ -737,8 +737,8 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
   const panelId = `result-panel-${title || harnessName}`
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
+    <div className="overflow-hidden rounded-lg border border-[var(--c-line)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-line)] bg-[var(--c-line)]/30 px-3 py-2">
         <button
           type="button"
           aria-expanded={open}
@@ -746,20 +746,20 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
           onClick={() => setOpen((value) => !value)}
           className="flex min-w-0 items-center gap-1.5 rounded text-left"
         >
-          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
-          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--color-accent-tint)] text-[var(--color-accent)]">
+          <ChevronDown className={`size-3.5 shrink-0 text-ink-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--c-accent-tint)] text-[var(--c-accent)]">
             <BrainCircuit className="size-3.5" />
           </span>
           <span className="truncate text-meta font-semibold text-ink">{title || `${harnessName} answer`}</span>
         </button>
-        <span className="rounded-full border border-[var(--color-line)] px-2 py-0.5 text-2xs text-ink-4">{harnessName}</span>
+        <span className="rounded-full border border-[var(--c-line)] px-2 py-0.5 text-2xs text-ink-3">{harnessName}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <span className="hidden text-2xs tabular-nums text-ink-4 sm:inline">{trace.length} trace events</span>
+          <span className="hidden text-2xs tabular-nums text-ink-3 sm:inline">{trace.length} trace events</span>
           <button
             type="button"
             onClick={() => copy()}
             aria-label="Copy raw result"
-            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
@@ -769,7 +769,7 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
       {open && (
         <div id={panelId} className="p-3">
           {parsed.provenance && (
-            <dl className="mb-3 grid gap-x-4 gap-y-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-line)]/20 p-2.5 sm:grid-cols-2">
+            <dl className="mb-3 grid gap-x-4 gap-y-1.5 rounded-md border border-[var(--c-line)] bg-[var(--c-line)]/20 p-2.5 sm:grid-cols-2">
               {[
                 ["Session", parsed.provenance.sessionId],
                 ["Workspace", parsed.provenance.workspace],
@@ -777,7 +777,7 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
                 ["Binary", parsed.provenance.bin],
               ].filter(([, value]) => value).map(([label, value]) => (
                 <div key={label as string} className="min-w-0">
-                  <dt className="text-2xs text-ink-4">{label}</dt>
+                  <dt className="text-2xs text-ink-3">{label}</dt>
                   <dd className="truncate font-mono text-meta text-ink-2" title={value as string}>{value as string}</dd>
                 </div>
               ))}
@@ -786,20 +786,20 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
 
           <AgentMarkdown text={answer} />
 
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] pt-2.5">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--c-line)] pt-2.5">
             <button
               type="button"
               aria-expanded={traceOpen}
               onClick={() => setTraceOpen((value) => !value)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
             >
               <Layers3 className="size-3.5" />
               {traceOpen ? "Hide raw trace" : "Show raw trace"}
             </button>
-            {hasWorking && <span className="text-2xs text-ink-4">Working trace is in the worker log above.</span>}
+            {hasWorking && <span className="text-2xs text-ink-3">Working trace is in the worker log above.</span>}
           </div>
           {traceOpen && (
-            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--color-line)] bg-[var(--color-void)] p-3 font-mono text-meta leading-relaxed text-ink-2">
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--c-line)] bg-[var(--c-well)] p-3 font-mono text-meta leading-relaxed text-ink-2">
               {text}
             </pre>
           )}
@@ -819,8 +819,8 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
   const panelId = `result-panel-${title || "result"}`
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-line)]">
-      <div className="flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-3 py-2">
+    <div className="overflow-hidden rounded-lg border border-[var(--c-line)]">
+      <div className="flex items-center gap-2 border-b border-[var(--c-line)] bg-[var(--c-line)]/30 px-3 py-2">
         <button
           type="button"
           aria-expanded={open}
@@ -828,8 +828,8 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
           onClick={() => setOpen((v) => !v)}
           className="flex min-w-0 items-center gap-1.5 rounded text-left"
         >
-          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
-          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--color-accent-tint)] text-[var(--color-accent)]">
+          <ChevronDown className={`size-3.5 shrink-0 text-ink-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--c-accent-tint)] text-[var(--c-accent)]">
             <FileCheck2 className="size-3.5" />
           </span>
           <span className="truncate text-meta font-semibold text-ink">{title || "Result"}</span>
@@ -841,8 +841,8 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
             onClick={() => setWrap((v) => !v)}
             className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs transition-colors ${
               wrap
-                ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+                ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                : "text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
             }`}
           >
             <WrapText className="size-3.5" />
@@ -852,15 +852,15 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
             type="button"
             onClick={() => copy()}
             aria-label="Copy result"
-            className="inline-flex size-7 items-center justify-center rounded-md text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="inline-flex size-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
         </div>
       </div>
       {open ? (
-        <div id={panelId} className="relative bg-[var(--color-void)]">
-          <div className="absolute inset-y-0 left-0 w-0.5 bg-[var(--color-accent)]/50" aria-hidden />
+        <div id={panelId} className="relative bg-[var(--c-well)]">
+          <div className="absolute inset-y-0 left-0 w-0.5 bg-[var(--c-accent)]/50" aria-hidden />
           <pre
             className={`max-h-[30rem] overflow-auto py-3 pl-4 pr-3 font-mono text-body leading-relaxed ${
               wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
@@ -874,10 +874,10 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
           </pre>
         </div>
       ) : (
-        <p className="px-3 py-2.5 text-meta text-ink-4">Collapsed</p>
+        <p className="px-3 py-2.5 text-meta text-ink-3">Collapsed</p>
       )}
       {!hasWorking && open && (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-line)]/20 px-3 py-2 text-2xs text-ink-4">
+        <p className="border-t border-[var(--c-line)] bg-[var(--c-line)]/20 px-3 py-2 text-2xs text-ink-3">
           Single-block output. No separate working log was detected for this task.
         </p>
       )}
@@ -914,7 +914,7 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
     <div className="space-y-2">
       <div className="flex items-baseline gap-2">
         <h4 className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Results</h4>
-        <span className="text-2xs tabular-nums text-ink-4">{results.length}</span>
+        <span className="text-2xs tabular-nums text-ink-3">{results.length}</span>
       </div>
       {results.map((r, i) => (
         <ResultPanel key={i} text={r.text} hasWorking={false} title={`Result ${r.index} · ${r.outcome}`} defaultOpen={i === results.length - 1} executor={task.executor} />
@@ -925,12 +925,12 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
 
 export function ResultEmpty({ running }: { running?: boolean }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] px-3 py-6 text-center">
-      <FileCheck2 className="size-5 text-ink-4" aria-hidden />
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--c-line)] px-3 py-6 text-center">
+      <FileCheck2 className="size-5 text-ink-3" aria-hidden />
       <p className="text-meta text-ink-3">
         {running ? "Worker still running" : "No result yet"}
       </p>
-      <p className="max-w-[36ch] text-2xs leading-relaxed text-ink-4">
+      <p className="max-w-[36ch] text-2xs leading-relaxed text-ink-3">
         {running
           ? "The answer appears here once the worker finishes its run."
           : "Run the task to produce an answer. Output from each run is kept separately."}

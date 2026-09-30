@@ -89,7 +89,7 @@ export default function TaskDetail({
   const eventCount = events.data?.length ?? 0
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-[var(--color-void)]/60 p-0 sm:p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-[var(--c-well)]/60 p-0 sm:p-3" onClick={onClose}>
       <aside
         id="task-detail-drawer"
         role="dialog"
@@ -98,7 +98,7 @@ export default function TaskDetail({
         className="task-detail-drawer glass-panel flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-y-0 border-l-0 pb-[env(safe-area-inset-bottom)] sm:rounded-xl sm:border sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur-xl">
+        <div className="shrink-0 border-b border-[var(--c-line)] bg-[var(--c-surface)]/95 px-4 py-3 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2 id="task-detail-title" className="line-clamp-2 text-base font-semibold leading-snug text-ink" title={task.title}>
@@ -118,7 +118,7 @@ export default function TaskDetail({
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={task.status} />
             <PriorityBadge priority={task.priority} />
-            <span className="max-w-full truncate font-mono text-2xs text-ink-4">{task.id}</span>
+            <span className="max-w-full truncate font-mono text-2xs text-ink-3">{task.id}</span>
           </div>
           <div role="tablist" aria-label="Task detail sections" className="mt-3 flex gap-1">
             {(["overview", "output"] as const).map((key) => (
@@ -129,8 +129,8 @@ export default function TaskDetail({
                 onClick={() => setPanel(key)}
                 className={`h-7 rounded-md px-2.5 text-meta transition-colors ${
                   panel === key
-                    ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                    : "text-ink-4 hover:bg-[var(--color-line)]/40 hover:text-ink-2"
+                    ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                    : "text-ink-3 hover:bg-[var(--c-line)]/40 hover:text-ink-2"
                 }`}
               >
                 {key === "overview" ? "Overview" : "Output"}
@@ -159,7 +159,7 @@ export default function TaskDetail({
                       <span className="flex items-center justify-end gap-1.5" title={task.workspace_path}>
                         <OsIcon ws={ws} />
                         <span className="truncate">{ws?.name ?? task.workspace_path.split(/[\\/]/).pop()}</span>
-                        {wsIsSsh && <span className="text-ink-4">· ssh</span>}
+                        {wsIsSsh && <span className="text-ink-3">· ssh</span>}
                       </span>
                     ) : "scratch"}
                   </Field>
@@ -172,15 +172,15 @@ export default function TaskDetail({
               </Section>
 
               {jev && (
-                <Section title={<span className="text-violet-300">JEV routing</span>}>
+                <Section title={<span className="text-review-text">JEV routing</span>}>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-meta text-ink-4">{jev.case}</span>
-                    <span className="text-ink-4">·</span>
-                    <span className="text-meta text-ink-4">scope: {jev.scope}</span>
-                    <span className="text-ink-4">·</span>
-                    <span className="text-meta text-ink-4">{(jev.confidence * 100).toFixed(0)}%</span>
+                    <span className="text-meta text-ink-3">{jev.case}</span>
+                    <span className="text-ink-3">·</span>
+                    <span className="text-meta text-ink-3">scope: {jev.scope}</span>
+                    <span className="text-ink-3">·</span>
+                    <span className="text-meta text-ink-3">{(jev.confidence * 100).toFixed(0)}%</span>
                   </div>
-                  <p className="mt-1.5 truncate text-2xs text-ink-4" title={jev.model}>
+                  <p className="mt-1.5 truncate text-2xs text-ink-3" title={jev.model}>
                     {jev.model || "local"}{jev.input_tokens ? ` · ${jev.input_tokens} input tokens` : ""}
                   </p>
                 </Section>
@@ -235,7 +235,7 @@ export default function TaskDetail({
           )}
         </div>
 
-        <div className="shrink-0 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 p-3 backdrop-blur-xl">
+        <div className="shrink-0 border-t border-[var(--c-line)] bg-[var(--c-surface)]/95 p-3 backdrop-blur-xl">
           <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5">
             <ExternalLink className="size-3.5" /> Open full detail page
           </Button>

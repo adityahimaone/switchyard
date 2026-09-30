@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, toastGlobal, type Task } from "../../api"
 import { Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus } from "lucide-react"
+import { ReviewGateBar } from "./ReviewGateBar"
 
 type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
 type DiffFile = { name: string; lines: DiffLine[] }
@@ -41,54 +41,124 @@ export function parseDiffFiles(raw: string, authoritativeNames: string[] = []): 
     const byName = new Map(files.map((entry) => [entry.name, entry]))
     return authoritativeNames.map((name) => byName.get(name) || { name, lines: [] })
   }
-  return files.length ? files : [{ name: "workspace changes", lines: raw ? raw.split("\n").map((content) => ({ type: "context" as const, content })) : [] }]
+  return files.length
+    ? files
+    : [{ name: "workspace changes", lines: raw ? raw.split("\n").map((content) => ({ type: "context" as const, content })) : [] }]
 }
 
-function DiffDisclosure({ file, complete, copyText, selected, onToggle }: { file: DiffFile; complete: boolean; copyText: string; selected: boolean; onToggle: () => void }) {
+function DiffDisclosure({
+  file, complete, copyText, selected, onToggle,
+}: {
+  file: DiffFile
+  complete: boolean
+  copyText: string
+  selected: boolean
+  onToggle: () => void
+}) {
   const [open, setOpen] = useState(true)
   const [copied, setCopied] = useState(false)
-  const added = file.lines.filter((line) => line.type === "added").length
-  const removed = file.lines.filter((line) => line.type === "removed").length
+  const added = file.lines.filter((l) => l.type === "added").length
+  const removed = file.lines.filter((l) => l.type === "removed").length
+
   async function copy() {
     await navigator.clipboard.writeText(copyText)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1200)
   }
+
   return (
-    <section className={`overflow-hidden rounded-lg border bg-black/10 ${selected ? "border-emerald-500/30" : "border-[var(--color-line)]"}`}>
-      <div className={`flex items-center gap-2 border-b px-3 py-2 ${selected ? "border-emerald-500/20 bg-emerald-500/5" : "border-[var(--color-line)] bg-white/[0.025]"}`}>
-        <input type="checkbox" checked={selected} onChange={onToggle} className="size-3.5 accent-violet-500" aria-label={`Select ${file.name}`} />
-        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-ink">
-          <ChevronDown className={`size-3.5 shrink-0 text-ink-4 transition-transform ${open ? "" : "-rotate-90"}`} />
-          <FileCode2 className="size-3.5 shrink-0 text-violet-300" />
+    <section
+      className={
+        selected
+          ? "overflow-hidden rounded-control border border-accent/40 bg-accent-tint/30"
+          : "overflow-hidden rounded-control border border-line"
+      }
+    >
+      <div className="flex items-center gap-2 border-b border-line bg-well px-3 py-2">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          className="size-3.5 accent-[var(--c-accent)]"
+          aria-label={`Select ${file.name}`}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+        >
+          <ChevronDown
+            className={`size-3.5 shrink-0 text-ink-3 transition-transform ${open ? "" : "-rotate-90"}`}
+            aria-hidden
+          />
+          <FileCode2 className="size-3.5 shrink-0 text-ink-3" aria-hidden />
           <span className="truncate font-mono" title={file.name}>{file.name}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
-            <span className="text-emerald-300">+{added}</span><span className="text-rose-300">-{removed}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-2xs tabular">
+            {/* The gutter glyph repeats this, so colour is never the only signal.
+                -text tokens: this row sits on `well`, where the solid success
+                value measures 2.5:1. */}
+            <span className="text-success-text">+{added}</span>
+            <span className="text-danger-text">−{removed}</span>
           </span>
         </button>
-        <button type="button" onClick={copy} className="rounded p-1 text-ink-4 hover:bg-white/10 hover:text-ink" title="Copy diff">
-          {copied ? <Check className="size-3.5 text-emerald-300" /> : <Copy className="size-3.5" />}
+        <button
+          type="button"
+          onClick={copy}
+          className="rounded-control p-1 text-ink-3 outline-none transition-colors hover:bg-raised hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+          aria-label={`Copy the diff for ${file.name}`}
+        >
+          {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
         </button>
       </div>
-      {open && <div className="max-h-72 overflow-auto py-1 font-mono text-[11px] leading-5">
-        {file.lines.map((line, index) => (
-          <div key={`${file.name}-${index}`} className={`grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] ${line.type === "added" ? "bg-emerald-500/10 text-emerald-100" : line.type === "removed" ? "bg-rose-500/10 text-rose-100" : "text-ink-3"}`}>
-            <span className="select-none pr-2 text-right text-ink-4">{line.oldLine ?? ""}</span>
-            <span className="select-none pr-2 text-right text-ink-4">{line.newLine ?? ""}</span>
-            <span className={`select-none text-center ${line.type === "added" ? "text-emerald-300" : line.type === "removed" ? "text-rose-300" : "text-ink-4"}`}>{line.type === "added" ? <Plus className="mx-auto size-3" /> : line.type === "removed" ? <Minus className="mx-auto size-3" /> : " "}</span>
-            <span className="whitespace-pre-wrap break-words pr-3">{line.content || " "}</span>
-          </div>
-        ))}
-        {!file.lines.length && <p className="px-3 py-4 text-ink-4">No textual lines returned.</p>}
-      </div>}
-      {!open && complete && <div className="px-3 py-1.5 text-[10px] text-ink-4">Diff collapsed · click file to expand</div>}
+
+      {open && (
+        <div className="max-h-72 overflow-auto py-1 font-mono text-2xs leading-5">
+          {file.lines.map((line, index) => (
+            <div
+              key={`${file.name}-${index}`}
+              className={
+                line.type === "added"
+                  ? "grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] bg-success-tint text-ink"
+                  : line.type === "removed"
+                    ? "grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] bg-danger-tint text-ink"
+                    : "grid grid-cols-[2.5rem_2.5rem_1.25rem_minmax(0,1fr)] text-ink-3"
+              }
+            >
+              <span className="select-none pr-2 text-right text-ink-3">{line.oldLine ?? ""}</span>
+              <span className="select-none pr-2 text-right text-ink-3">{line.newLine ?? ""}</span>
+              <span
+                className={
+                  line.type === "added"
+                    ? "select-none text-center text-success"
+                    : line.type === "removed"
+                      ? "select-none text-center text-danger-text"
+                      : "select-none text-center"
+                }
+              >
+                {line.type === "added" ? (
+                  <Plus className="mx-auto size-3" aria-label="added" />
+                ) : line.type === "removed" ? (
+                  <Minus className="mx-auto size-3" aria-label="removed" />
+                ) : (
+                  " "
+                )}
+              </span>
+              <span className="pr-3 break-words whitespace-pre-wrap">{line.content || " "}</span>
+            </div>
+          ))}
+          {!file.lines.length && <p className="px-3 py-4 text-ink-3">No textual lines returned.</p>}
+        </div>
+      )}
+      {!open && complete && (
+        <div className="px-3 py-1.5 text-2xs text-ink-3">Collapsed. Select the file to expand it.</div>
+      )}
     </section>
   )
 }
 
 export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task; onDone: () => void }) {
   const qc = useQueryClient()
-  const [action, setAction] = useState<"done" | "commit" | "commit_push" | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -100,15 +170,17 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
     retry: false,
   })
 
-  const files = useMemo(() => parseDiffFiles(diff.data?.diff || "", diff.data?.files || []), [diff.data?.diff, diff.data?.files])
-  const complete = !diff.isLoading
-  const additions = files.flatMap((file) => file.lines).filter((line) => line.type === "added").length
-  const removals = files.flatMap((file) => file.lines).filter((line) => line.type === "removed").length
-
-  // init select all on load
+  const files = useMemo(
+    () => parseDiffFiles(diff.data?.diff || "", diff.data?.files || []),
+    [diff.data?.diff, diff.data?.files],
+  )
+  const allLines = files.flatMap((f) => f.lines)
+  const additions = allLines.filter((l) => l.type === "added").length
+  const removals = allLines.filter((l) => l.type === "removed").length
   const allNames = files.map((f) => f.name)
   const selectedCount = selected.size
   const allSelected = selectedCount === files.length && files.length > 0
+
   function toggle(name: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -117,27 +189,24 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
       return next
     })
   }
-  function selectAll() { setSelected(new Set(allNames)) }
-  function invert() {
-    setSelected((prev) => {
-      const next = new Set<string>()
-      for (const n of allNames) if (!prev.has(n)) next.add(n)
-      return next
-    })
-  }
 
-  // when files first arrive, default select all once
+  // Default to selecting everything once the diff first arrives, so the common
+  // case is one click rather than a select-all first.
   useEffect(() => {
     if (diff.data && !diff.data.clean && files.length && selected.size === 0) {
       setSelected(new Set(allNames))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diff.data, files.length, allNames.join("|")])
 
   const approve = useMutation({
-    mutationFn: (a: "done" | "commit" | "commit_push") => {
-      const body: Record<string, unknown> = { action: a }
-      if (a !== "done" && selectedCount > 0 && selectedCount < files.length) body.files = [...selected]
-      // when all selected, omit files => backend does git add -A (same result, cheaper)
+    mutationFn: (action: "done" | "commit" | "commit_push") => {
+      const body: Record<string, unknown> = { action }
+      // When everything is selected, omit the file list so the backend can do a
+      // plain `git add -A`, which is both cheaper and less error-prone.
+      if (action !== "done" && selectedCount > 0 && selectedCount < files.length) {
+        body.files = [...selected]
+      }
       return api<{ status: string }>(`/api/boards/${slug}/tasks/${task.id}/approve`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -155,79 +224,120 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
   if (task.status !== "review") return null
 
   return (
-    <div className="glass-inset-card overflow-hidden rounded-xl border border-violet-500/30">
-      <div className="border-b border-violet-500/15 bg-violet-500/[0.06] px-3 py-3">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <ChevronDown className={`size-4 shrink-0 text-violet-300 transition-transform ${open ? "" : "-rotate-90"}`} />
-            <div className="min-w-0"><h3 className="text-xs font-semibold text-violet-200">Review changes</h3><p className="mt-0.5 truncate font-mono text-[10px] text-ink-4">{diff.data?.stat.split("\n")[0] || "workspace diff"}</p></div>
-          </button>
-          <div className="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
-            {diff.isLoading && <Loader2 className="size-3 animate-spin text-violet-300" />}
-            <span className="text-ink-4">{files.length} files</span>
-            <span className="text-emerald-300">+{additions}</span>
-            <span className="text-rose-300">-{removals}</span>
+    <section className="flex flex-col overflow-hidden rounded-panel border border-line">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+        >
+          <ChevronDown
+            className={`size-4 shrink-0 text-ink-3 transition-transform ${open ? "" : "-rotate-90"}`}
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-ink">Review changes</h3>
+            <p className="mt-0.5 truncate font-mono text-2xs text-ink-3">
+              {diff.data?.stat.split("\n")[0] || "workspace diff"}
+            </p>
           </div>
+        </button>
+        <div className="flex shrink-0 items-center gap-2 text-2xs text-ink-3 tabular">
+          {diff.isLoading && <Loader2 className="size-3 animate-spin" aria-label="Loading" />}
+          <span>{files.length} files</span>
+          <span className="text-success-text">+{additions}</span>
+          <span className="text-danger-text">−{removals}</span>
         </div>
       </div>
-      {open && <div className="space-y-2 p-2">
-        {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
-          <details className="rounded-lg border border-sky-500/20 bg-sky-500/[0.04] px-3 py-2">
-            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-sky-200">Execution provenance</summary>
-            <div className="mt-2 space-y-1 font-mono text-[10px] text-ink-3">
-              <p><span className="text-ink-4">CodeGraph:</span> {diff.data?.codegraph || "skipped or unavailable"}</p>
-              {(diff.data?.provenance ?? []).map((line, index) => <p key={`${line}-${index}`} className="break-all"><span className="text-ink-4">Worker:</span> {line}</p>)}
+
+      {open && (
+        <div className="flex flex-col gap-2 p-3">
+          {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
+            <details className="rounded-control border border-line bg-well px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-ink-2">
+                Execution provenance
+              </summary>
+              <div className="mt-2 flex flex-col gap-1 font-mono text-2xs text-ink-3">
+                <p>
+                  <span className="text-ink-3">CodeGraph:</span>{" "}
+                  {diff.data?.codegraph || "skipped or unavailable"}
+                </p>
+                {(diff.data?.provenance ?? []).map((line, index) => (
+                  <p key={`${line}-${index}`} className="break-all">
+                    <span className="text-ink-3">Worker:</span> {line}
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {!diff.data?.clean && !diff.isLoading && files.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setSelected(new Set(allNames))}
+                disabled={allSelected}
+              >
+                Select all
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() =>
+                  setSelected(new Set(allNames.filter((n) => !selected.has(n))))
+                }
+              >
+                Invert
+              </Button>
+              <span className="ml-auto text-2xs text-ink-3 tabular">
+                {selectedCount} of {files.length} selected
+              </span>
             </div>
-          </details>
-        )}
-        {!diff.data?.clean && !diff.isLoading && files.length > 1 && (
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="sm" onClick={selectAll} disabled={allSelected} className="h-6 px-2 text-[10px]">Select all</Button>
-            <Button variant="outline" size="sm" onClick={invert} className="h-6 px-2 text-[10px]">Invert</Button>
-            <span className="ml-auto font-mono text-[10px] text-ink-4">{selectedCount} selected → {selectedCount === files.length ? "all files" : `${selectedCount} files`} will be committed</span>
-          </div>
-        )}
-        {!diff.data?.clean && !diff.isLoading && <p className="font-mono text-[10px] text-ink-4">Commit adds only checked files: git add -- &lt;checked&gt; && git commit</p>}
-        {err && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">{err}</p>}
-        {diff.error && <p className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">Gagal load diff: {(diff.error as Error).message}</p>}
-        {diff.isLoading ? <div className="flex items-center gap-2 px-2 py-8 font-mono text-[11px] text-ink-4"><Loader2 className="size-3 animate-spin" /> Loading file changes…</div> : diff.data?.clean ? <p className="px-2 py-6 text-center text-[11px] text-ink-4">No workspace changes.</p> : files.map((file) => <DiffDisclosure key={file.name} file={file} complete={complete} copyText={file.lines.map((line) => line.content).join("\n")} selected={selected.has(file.name)} onToggle={() => toggle(file.name)} />)}
-      </div>}
-      {/* approve bar at card bottom — matches /prototype foot */}
-      <div className="flex items-center gap-1.5 border-t border-violet-500/15 bg-violet-500/[0.04] px-3 py-2.5">
-        {diff.data?.clean ? (
-          <>
-            <span className="font-mono text-[10px] text-ink-4">No workspace changes — ready to close.</span>
-            <Button size="sm" disabled={approve.isPending || diff.isLoading} onClick={() => { setErr(null); approve.mutate("done") }} className="ml-auto h-8 gap-1 bg-violet-500 text-white hover:bg-violet-400">{approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null} Mark done</Button>
-          </>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1">
-              <Select value={action ?? ""} onValueChange={(v) => setAction(v as "commit" | "commit_push")}>
-                <SelectTrigger className="h-8 w-full border-[var(--color-line)] bg-[var(--color-surface)] text-[11px]"><SelectValue placeholder="Pilih aksi…" /></SelectTrigger>
-                <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]"><SelectItem value="commit" className="text-xs">Commit</SelectItem><SelectItem value="commit_push" className="text-xs">Commit & Push</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={approve.isPending || diff.isLoading}
-              onClick={() => { setErr(null); approve.mutate("done") }}
-              className="h-8 shrink-0 border-amber-500/30 px-2 text-[10px] text-amber-200 hover:bg-amber-500/10"
-            >
-              Mark done
-            </Button>
-            <Button
-              size="sm"
-              disabled={!action || approve.isPending || selectedCount === 0 || diff.isLoading}
-              onClick={() => { setErr(null); approve.mutate(action!) }}
-              className="h-8 shrink-0 gap-1 bg-violet-500 text-white hover:bg-violet-400"
-            >
-              {approve.isPending ? <Loader2 className="size-3 animate-spin" /> : null}
-              {selectedCount > 0 && selectedCount < files.length ? `Commit (${selectedCount})` : "Approve"}
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
+          )}
+
+          {diff.error && (
+            <p role="alert" className="rounded-control border border-danger/30 bg-danger-tint px-2 py-1.5 text-xs text-danger-text">
+              Could not load the diff: {(diff.error as Error).message}
+            </p>
+          )}
+
+          {diff.isLoading ? (
+            <p className="flex items-center gap-2 px-2 py-8 text-xs text-ink-3">
+              <Loader2 className="size-3 animate-spin" /> Loading file changes…
+            </p>
+          ) : diff.data?.clean ? (
+            <p className="px-2 py-6 text-center text-xs text-ink-3">
+              No workspace changes.
+            </p>
+          ) : (
+            files.map((file) => (
+              <DiffDisclosure
+                key={file.name}
+                file={file}
+                complete={!diff.isLoading}
+                copyText={file.lines.map((l) => l.content).join("\n")}
+                selected={selected.has(file.name)}
+                onToggle={() => toggle(file.name)}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      <ReviewGateBar
+        files={files.length}
+        added={additions}
+        removed={removals}
+        selectedCount={selectedCount}
+        clean={!!diff.data?.clean}
+        busy={approve.isPending}
+        error={err}
+        onMarkDone={() => { setErr(null); approve.mutate("done") }}
+        onCommit={() => { setErr(null); approve.mutate("commit") }}
+        onCommitPush={() => { setErr(null); approve.mutate("commit_push") }}
+      />
+    </section>
   )
 }

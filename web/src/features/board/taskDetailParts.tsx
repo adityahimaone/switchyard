@@ -14,27 +14,26 @@ import { COLUMNS, type Profile, type Status, type Task, type Workspace } from ".
 
 /* ---------------------------------------------------------------- tokens -- */
 
+/* Status uses the nine lamp colours, not hand-mixed Tailwind hues. */
 export const STATUS_CHIP: Record<string, string> = {
-  done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-  running: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-  blocked: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-  review: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-  archived: "border-[var(--color-line)] bg-[var(--color-inset)] text-ink-3",
+  done: "border-success/30 bg-success-tint text-success-text",
+  running: "border-accent/30 bg-accent-tint text-accent-text",
+  blocked: "border-danger/30 bg-danger-tint text-danger-text",
+  review: "border-review/30 bg-review-tint text-review-text",
+  archived: "border-line bg-well text-ink-3",
 }
 
-export const STATUS_FALLBACK_CHIP =
-  "border-[var(--color-line)] bg-[var(--color-inset)] text-ink-2"
+export const STATUS_FALLBACK_CHIP = "border-line bg-well text-ink-2"
 
 /* --------------------------------------------------------------- section -- */
 
-/* Section header. Distinct from the inline Field label below: sections carry
-   real weight (size + tracking), fields are sentence case. When both use the
-   same treatment the eye can no longer tell structure from data. */
+/* Section header. h2, not h3: the page title is the h1, so a section that
+   jumped to h3 skipped a level and broke the document outline. */
 export function SectionTitle({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <h3 className={`text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3 ${className}`}>
+    <h2 className={`text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase ${className}`}>
       {children}
-    </h3>
+    </h2>
   )
 }
 
@@ -45,7 +44,7 @@ export function Section({ title, children, className = "", bodyClassName = "" }:
   bodyClassName?: string
 }) {
   return (
-    <section className={`glass-inset-card min-w-0 rounded-lg p-3 ${className}`}>
+    <section className={`min-w-0 rounded-card border border-line bg-surface p-3 ${className}`}>
       {title && <SectionTitle>{title}</SectionTitle>}
       <div className={title ? `mt-2 ${bodyClassName}` : bodyClassName}>{children}</div>
     </section>
@@ -59,14 +58,14 @@ export function Section({ title, children, className = "", bodyClassName = "" }:
 export function Field({ label, children, className = "" }: { label: ReactNode; children: ReactNode; className?: string }) {
   return (
     <div className={`flex items-baseline justify-between gap-3 py-1.5 ${className}`}>
-      <dt className="shrink-0 text-meta text-ink-4">{label}</dt>
+      <dt className="shrink-0 text-meta text-ink-3">{label}</dt>
       <dd className="min-w-0 truncate text-right text-body text-ink-2">{children}</dd>
     </div>
   )
 }
 
 export function FieldList({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <dl className={`divide-y divide-[var(--color-line)]/60 ${className}`}>{children}</dl>
+  return <dl className={`divide-y divide-[var(--c-line)]/60 ${className}`}>{children}</dl>
 }
 
 /* ------------------------------------------------------------ empty state -- */
@@ -78,10 +77,10 @@ export function EmptyNote({ icon, title, hint, className = "" }: {
   className?: string
 }) {
   return (
-    <div className={`flex flex-col items-center gap-1 rounded-md border border-dashed border-[var(--color-line)] px-3 py-4 text-center ${className}`}>
-      {icon && <span className="text-ink-4" aria-hidden>{icon}</span>}
+    <div className={`flex flex-col items-center gap-1 rounded-md border border-dashed border-[var(--c-line)] px-3 py-4 text-center ${className}`}>
+      {icon && <span className="text-ink-3" aria-hidden>{icon}</span>}
       <p className="text-meta text-ink-3">{title}</p>
-      {hint && <p className="max-w-[28ch] text-2xs leading-relaxed text-ink-4">{hint}</p>}
+      {hint && <p className="max-w-[28ch] text-2xs leading-relaxed text-ink-3">{hint}</p>}
     </div>
   )
 }
@@ -111,7 +110,10 @@ export function StatusBadge({ status }: { status: string }) {
 export function PriorityBadge({ priority }: { priority: number }) {
   if (!(priority > 0)) return null
   return (
-    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-2xs leading-none text-amber-300">
+    <Badge
+      variant="outline"
+      className="border-line bg-well px-1.5 py-0 text-2xs leading-none text-ink-2"
+    >
       P{priority}
     </Badge>
   )
@@ -148,7 +150,7 @@ export function AgentPicker({ task, profiles, onReassign, onError, className = "
         </SelectContent>
       </Select>
       {profile && (
-        <p className="mt-1.5 truncate text-2xs text-ink-4" title={`${profile.model || "—" } · ${profile.provider || "—"}`}>
+        <p className="mt-1.5 truncate text-2xs text-ink-3" title={`${profile.model || "—" } · ${profile.provider || "—"}`}>
           {profile.model || "—"} · {profile.provider || "—"}
         </p>
       )}
@@ -196,8 +198,8 @@ export function TaskActions({
 }) {
   const running = task.status === "running"
   const healthTone =
-    health?.health === "healthy" ? "text-emerald-300"
-    : health?.health === "silent" ? "text-amber-300"
+    health?.health === "healthy" ? "text-success"
+    : health?.health === "silent" ? "text-warning"
     : "text-danger-text"
 
   return (
@@ -263,7 +265,7 @@ export function TaskActions({
               variant="ghost"
               size="xs"
               onClick={() => onMove(s)}
-              className="text-ink-4 hover:border-[var(--color-line-strong)] hover:text-[var(--color-accent)]"
+              className="text-ink-3 hover:border-[var(--c-line-strong)] hover:text-[var(--c-accent)]"
             >
               → {s}
             </Button>

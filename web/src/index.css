@@ -43,8 +43,17 @@
   --c-danger-tint: rgb(220 38 38 / 0.08);
   --c-warning: #b45309;
   --c-success: #15803d;
+  /* Text-safe variants for use *on* a tinted fill. The solid value lands at
+     4.4:1 against its own 10% tint, which rounds under the 4.5 floor. */
+  --c-success-text: #116633;
   --c-success-tint: rgb(21 128 61 / 0.1);
   --c-warning-tint: rgb(180 83 9 / 0.1);
+  --c-warning-text: #92400e;
+  /* Review is its own hue: it is the state the review gate acts on, so it needs
+     to be findable without reading the label. */
+  --c-review: #7c3aed;
+  --c-review-text: #6d28d9;
+  --c-review-tint: rgb(124 58 237 / 0.1);
 
   /* status lamps: filled = has a state, hollow = waiting or parked.
      None of these equal the accent, so "selected" never reads as "running". */
@@ -179,8 +188,13 @@
   --c-danger-tint: rgb(248 113 113 / 0.14);
   --c-warning: #fbbf24;
   --c-success: #4ade80;
+  --c-success-text: #86efac;
   --c-success-tint: rgb(74 222 128 / 0.14);
   --c-warning-tint: rgb(251 191 36 / 0.14);
+  --c-warning-text: #fcd34d;
+  --c-review: #a78bfa;
+  --c-review-text: #c4b5fd;
+  --c-review-tint: rgb(167 139 250 / 0.16);
 
   --c-st-triage: #5b6775;
   --c-st-todo: #b0bbcb;
@@ -248,8 +262,13 @@
   --color-danger-tint: var(--c-danger-tint);
   --color-warning: var(--c-warning);
   --color-success: var(--c-success);
+  --color-success-text: var(--c-success-text);
   --color-success-tint: var(--c-success-tint);
   --color-warning-tint: var(--c-warning-tint);
+  --color-warning-text: var(--c-warning-text);
+  --color-review: var(--c-review);
+  --color-review-text: var(--c-review-text);
+  --color-review-tint: var(--c-review-tint);
 
   --color-heat-0: var(--c-heat-0);
   --color-heat-1: var(--c-heat-1);

@@ -174,7 +174,7 @@ export function parseEventCards(events: TaskEvent[]): EventGroup[] {
 }
 
 export const TONE_DOT: Record<EventTone, string> = {
-  accent: "bg-[var(--color-accent)]",
+  accent: "bg-[var(--c-accent)]",
   success: "bg-success",
   warning: "bg-warning",
   danger: "bg-danger",
@@ -183,8 +183,8 @@ export const TONE_DOT: Record<EventTone, string> = {
 }
 
 export const TONE_TEXT: Record<EventTone, string> = {
-  accent: "text-[var(--color-accent)]",
-  success: "text-emerald-300",
+  accent: "text-[var(--c-accent)]",
+  success: "text-success",
   warning: "text-warning",
   danger: "text-danger-text",
   neutral: "text-ink-2",
@@ -192,10 +192,10 @@ export const TONE_TEXT: Record<EventTone, string> = {
 }
 
 export const TONE_BORDER: Record<EventTone, string> = {
-  accent: "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)]",
-  success: "border-emerald-500/40 bg-emerald-500/5",
+  accent: "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)]",
+  success: "border-success/30 bg-success-tint",
   warning: "border-warning/40 bg-warning/5",
   danger: "border-danger/40 bg-danger/5",
-  neutral: "border-[var(--color-line)] bg-transparent",
+  neutral: "border-[var(--c-line)] bg-transparent",
   info: "border-info/40 bg-info/5",
 }

@@ -42,14 +42,14 @@ function ReplyStatus({ state }: { state: ReplyState }) {
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors ${
                 done
-                  ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                  : "border-[var(--color-line)] text-ink-4"
+                  ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                  : "border-[var(--c-line)] text-ink-3"
               }`}
             >
               {done ? <Check className="size-3" aria-hidden /> : <span className="size-1.5 rounded-full bg-ink-4" aria-hidden />}
               {step.label}
             </span>
-            {index < REPLY_STEPS.length - 1 && <ChevronRight className="size-3 shrink-0 text-ink-4" aria-hidden />}
+            {index < REPLY_STEPS.length - 1 && <ChevronRight className="size-3 shrink-0 text-ink-3" aria-hidden />}
           </li>
         )
       })}
@@ -130,10 +130,10 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2">
-        <MessageSquare className="size-3.5 shrink-0 text-ink-4" aria-hidden />
-        <h3 className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Discussion</h3>
+        <MessageSquare className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+        <h2 className="text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase">Discussion</h2>
         {list.length > 0 && (
-          <span className="text-2xs tabular-nums text-ink-4">
+          <span className="text-2xs tabular-nums text-ink-3">
             {list.length} {list.length === 1 ? "message" : "messages"}
             {agentReplies > 0 && ` · ${agentReplies} from agent`}
           </span>
@@ -141,7 +141,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
 
         {profiles.filter((p) => p.valid).length > 0 && (
           <div className="ml-auto flex flex-wrap items-center gap-1">
-            <span className="text-2xs text-ink-4">Tag</span>
+            <span className="text-2xs text-ink-3">Tag</span>
             {profiles.filter((p) => p.valid).map((p) => (
               <button
                 key={p.name}
@@ -149,8 +149,8 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
                 onClick={() => mention(p.name)}
                 className={`inline-flex h-6 items-center rounded-full border px-2 text-2xs transition-colors ${
                   task.assignee === p.name
-                    ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)] text-[var(--color-accent)]"
-                    : "border-[var(--color-line)] text-ink-3 hover:border-[var(--color-line-strong)] hover:text-[var(--color-accent)]"
+                    ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
+                    : "border-[var(--c-line)] text-ink-3 hover:border-[var(--c-line-strong)] hover:text-[var(--c-accent)]"
                 }`}
                 title={`Insert @${p.name} into the reply`}
                 aria-label={`Tag ${p.name}`}
@@ -173,22 +173,22 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
               key={c.id}
               className={`rounded-lg border px-3 py-2 ${
                 mine
-                  ? "border-[var(--color-line-strong)] bg-[var(--color-accent-tint)]/40"
-                  : "border-[var(--color-line)] bg-[var(--color-surface)]/50"
+                  ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)]/40"
+                  : "border-[var(--c-line)] bg-[var(--c-surface)]/50"
               }`}
             >
               <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className={`text-meta font-semibold ${mine ? "text-[var(--color-accent)]" : "text-ink-2"}`}>
+                <span className={`text-meta font-semibold ${mine ? "text-[var(--c-accent)]" : "text-ink-2"}`}>
                   {mine ? "You" : c.author}
                 </span>
                 <time
-                  className="font-mono text-2xs tabular-nums text-ink-4"
+                  className="font-mono text-2xs tabular-nums text-ink-3"
                   dateTime={new Date(c.created_at * 1000).toISOString()}
                 >
                   {new Date(c.created_at * 1000).toLocaleString()}
                 </time>
                 {!mine && (
-                  <span className="ml-auto shrink-0 rounded-full border border-[var(--color-line)] px-1.5 text-2xs text-ink-4">
+                  <span className="ml-auto shrink-0 rounded-full border border-[var(--c-line)] px-1.5 text-2xs text-ink-3">
                     agent
                   </span>
                 )}
@@ -201,16 +201,16 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
         {comments.isLoading && (
           <div className="space-y-1.5" aria-hidden>
             {[0, 1].map((i) => (
-              <div key={i} className="h-14 animate-pulse rounded-lg border border-[var(--color-line)] bg-[var(--color-line)]/20" />
+              <div key={i} className="h-14 animate-pulse rounded-lg border border-[var(--c-line)] bg-[var(--c-line)]/20" />
             ))}
           </div>
         )}
 
         {!comments.isLoading && !list.length && (
-          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--color-line)] px-3 py-8 text-center">
-            <MessageSquare className="size-5 text-ink-4" aria-hidden />
+          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--c-line)] px-3 py-8 text-center">
+            <MessageSquare className="size-5 text-ink-3" aria-hidden />
             <p className="text-meta text-ink-3">No messages yet</p>
-            <p className="max-w-[40ch] text-2xs leading-relaxed text-ink-4">
+            <p className="max-w-[40ch] text-2xs leading-relaxed text-ink-3">
               Start a conversation. Comments are delivered into the agent's worker context, so a tagged
               agent sees them on its next step.
             </p>
@@ -220,7 +220,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
 
       <ReplyStatus state={replyState} />
 
-      <div className="mt-2.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/40 focus-within:border-[var(--color-line-strong)]">
+      <div className="mt-2.5 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)]/40 focus-within:border-[var(--c-line-strong)]">
         <label htmlFor={`reply-${task.id}`} className="sr-only">Write a reply</label>
         <Textarea
           id={`reply-${task.id}`}
@@ -237,11 +237,11 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
           placeholder={`Reply to the agent… tag @${task.assignee || "an agent"} to get a response`}
           className="min-h-0 resize-none border-none bg-transparent text-body focus-visible:ring-0"
         />
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] px-2.5 py-2">
-          <p className="min-w-0 flex-1 text-2xs leading-relaxed text-ink-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--c-line)] px-2.5 py-2">
+          <p className="min-w-0 flex-1 text-2xs leading-relaxed text-ink-3">
             If the task is done or blocked, tagging the assignee requeues it to todo so the agent respawns and replies.
           </p>
-          <span className="hidden shrink-0 font-mono text-2xs text-ink-4 sm:inline">⌘↵</span>
+          <span className="hidden shrink-0 font-mono text-2xs text-ink-3 sm:inline">⌘↵</span>
           <Button
             size="sm"
             disabled={!canSend}
@@ -261,7 +261,7 @@ function CommentSection({ slug, task, profiles }: { slug: string; task: Task; pr
 function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone?: string }) {
   const long = value.length > FIELD_TRUNCATE_LEN
   const [expanded, setExpanded] = useState(false)
-  const toneCls = tone === "danger" ? "text-danger-text" : tone === "warning" ? "text-amber-300" : "text-ink-2"
+  const toneCls = tone === "danger" ? "text-danger-text" : tone === "warning" ? "text-warning" : "text-ink-2"
   if (!long) return <dd className={`break-all text-body ${mono ? "font-mono" : ""} ${toneCls}`}>{value}</dd>
   return (
     <dd className={`break-all text-body ${mono ? "font-mono" : ""} ${toneCls}`}>
@@ -270,7 +270,7 @@ function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        className="-mb-1 ml-1 inline-flex h-6 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--color-line)]/50"
+        className="-mb-1 ml-1 inline-flex h-6 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--c-line)]/50"
       >
         {expanded ? "Show less" : "Show more"}
       </button>
@@ -290,7 +290,7 @@ function EventCardNode({ card }: { card: EventCard }) {
             aria-expanded={open}
             aria-label={`${open ? "Collapse" : "Expand"} ${card.label}`}
             onClick={() => setOpen((v) => !v)}
-            className="-ml-1 flex size-6 shrink-0 items-center justify-center rounded text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="-ml-1 flex size-6 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
@@ -299,7 +299,7 @@ function EventCardNode({ card }: { card: EventCard }) {
         )}
         <card.icon className={`size-3.5 shrink-0 ${TONE_TEXT[card.tone]}`} aria-hidden />
         <span className={`min-w-0 flex-1 truncate text-body font-medium ${TONE_TEXT[card.tone]}`}>{card.label}</span>
-        <span className="shrink-0 font-mono text-2xs text-ink-4">
+        <span className="shrink-0 font-mono text-2xs text-ink-3">
           {new Date(card.at * 1000).toLocaleTimeString()}
         </span>
       </div>
@@ -312,7 +312,7 @@ function EventCardNode({ card }: { card: EventCard }) {
             <dl className="mt-1.5 ml-7.5 space-y-0.5">
               {card.fields.map((f, i) => (
                 <div key={i} className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-2.5">
-                  <dt className="truncate text-2xs text-ink-4">{f.label}</dt>
+                  <dt className="truncate text-2xs text-ink-3">{f.label}</dt>
                   <TruncValue value={f.value} mono={f.mono} tone={f.tone} />
                 </div>
               ))}
@@ -335,11 +335,11 @@ function CollapsibleGroup({ group }: { group: EventGroup }) {
         onClick={() => setOpen((v) => !v)}
         className="group/head -mx-1 flex w-full items-center gap-1.5 rounded px-1 text-left"
       >
-        {open ? <ChevronDown className="size-3.5 shrink-0 text-ink-4" /> : <ChevronRight className="size-3.5 shrink-0 text-ink-4" />}
+        {open ? <ChevronDown className="size-3.5 shrink-0 text-ink-3" /> : <ChevronRight className="size-3.5 shrink-0 text-ink-3" />}
         <span className={`size-2 shrink-0 rounded-full ${TONE_DOT[group.tone]}`} aria-hidden />
-        <h3 className={`text-2xs font-semibold uppercase tracking-[0.14em] ${TONE_TEXT[group.tone]}`}>{group.title}</h3>
-        <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
-        <span className="shrink-0 text-2xs tabular-nums text-ink-4">{group.cards.length}</span>
+        <h2 className={`text-2xs font-semibold tracking-[0.14em] uppercase ${TONE_TEXT[group.tone]}`}>{group.title}</h2>
+        <span className="h-px flex-1 bg-[var(--c-line)]" aria-hidden />
+        <span className="shrink-0 text-2xs tabular-nums text-ink-3">{group.cards.length}</span>
       </button>
       {open && (
         <div className="mt-2 space-y-1.5">
@@ -473,24 +473,24 @@ export default function TaskDetailPage({
         </div>
 
         <Tabs defaultValue="overview" className="mt-4">
-          <TabsList variant="line" className="w-full justify-start gap-1 border-b border-[var(--color-line)] pb-0">
+          <TabsList variant="line" className="w-full justify-start gap-1 border-b border-[var(--c-line)] pb-0">
             <TabsTrigger value="overview" className="gap-1.5 text-meta"><GitBranch className="size-3.5" />Overview</TabsTrigger>
             <TabsTrigger value="output" className="gap-1.5 text-meta">Output</TabsTrigger>
             <TabsTrigger value="discussion" className="gap-1.5 text-meta"><MessageSquare className="size-3.5" />Discussion</TabsTrigger>
             <TabsTrigger value="history" className="gap-1.5 text-meta">
               <History className="size-3.5" />History
-              {eventCount > 0 && <span className="rounded-full bg-[var(--color-line)]/60 px-1.5 text-2xs tabular-nums text-ink-3">{eventCount}</span>}
+              {eventCount > 0 && <span className="rounded-full bg-[var(--c-line)]/60 px-1.5 text-2xs tabular-nums text-ink-3">{eventCount}</span>}
             </TabsTrigger>
           </TabsList>
 
           {/* ---------------------------------------------------- overview -- */}
           <TabsContent value="overview" className="mt-4 space-y-3">
-            <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
+            <div className="rounded-xl border border-[var(--c-line)] bg-[var(--c-canvas)] p-4">
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline" className="px-1.5 py-0 font-mono text-2xs leading-none text-ink-3">{task.id}</Badge>
-                {jev && <Badge variant="outline" className="border-violet-400/25 bg-violet-400/10 px-1.5 py-0 text-2xs leading-none text-violet-200">JEV {jev.case}</Badge>}
-                <span className="text-2xs text-ink-4">created {new Date(task.created_at * 1000).toLocaleString()}</span>
-                {task.completed_at && <span className="text-2xs text-ink-4">· finished {new Date(task.completed_at * 1000).toLocaleString()}</span>}
+                {jev && <Badge variant="outline" className="border-review/30 bg-review-tint px-1.5 py-0 text-2xs leading-none text-review-text">JEV {jev.case}</Badge>}
+                <span className="text-2xs text-ink-3">created {new Date(task.created_at * 1000).toLocaleString()}</span>
+                {task.completed_at && <span className="text-2xs text-ink-3">· finished {new Date(task.completed_at * 1000).toLocaleString()}</span>}
               </div>
 
               <div className="mt-3 space-y-3">
@@ -512,7 +512,7 @@ export default function TaskDetailPage({
                       {ws ? ws.name : task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "scratch"}
                     </span>
                   </p>
-                  <p className="mt-1.5 truncate font-mono text-2xs text-ink-4">
+                  <p className="mt-1.5 truncate font-mono text-2xs text-ink-3">
                     {task.workspace_kind || "dir"}{ws?.host ? ` · ${ws.host}` : ""}
                   </p>
                   {task.consecutive_failures > 0 && (
@@ -522,7 +522,7 @@ export default function TaskDetailPage({
               </div>
 
               {jev && (
-                <Section title={<span className="text-violet-300">JEV routing</span>} className="mt-2.5">
+                <Section title={<span className="text-review-text">JEV routing</span>} className="mt-2.5">
                   <FieldList>
                     <Field label="Case">{jev.case}</Field>
                     <Field label="Scope">{jev.scope}</Field>
@@ -575,7 +575,7 @@ export default function TaskDetailPage({
                   {(dependencies.data ?? []).map((d) => {
                     const dep = boardTasks.data?.find((t) => t.id === d.depends_on_id)
                     return (
-                      <div key={d.depends_on_id} className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-2 py-1.5">
+                      <div key={d.depends_on_id} className="flex items-center gap-2 rounded-md border border-[var(--c-line)] px-2 py-1.5">
                         <span className="min-w-0 flex-1 truncate font-mono text-meta" title={dep ? `${dep.id} · ${dep.title}` : d.depends_on_id}>
                           {dep ? `${dep.id} — ${dep.title}` : d.depends_on_id}
                         </span>
@@ -632,11 +632,11 @@ export default function TaskDetailPage({
               <Section title="Runs">
                 <div className="space-y-1.5">
                   {(runs.data ?? []).map((run) => (
-                    <div key={run.index} className="rounded-md border border-[var(--color-line)] px-2 py-1.5">
+                    <div key={run.index} className="rounded-md border border-[var(--c-line)] px-2 py-1.5">
                       <div className="flex items-center gap-2 text-meta">
                         <span className="font-medium text-ink-2">Run {run.index}</span>
-                        <span className="text-ink-4">{run.outcome}</span>
-                        <span className="ml-auto text-2xs tabular-nums text-ink-4">{run.events.length} events</span>
+                        <span className="text-ink-3">{run.outcome}</span>
+                        <span className="ml-auto text-2xs tabular-nums text-ink-3">{run.events.length} events</span>
                       </div>
                       {run.usage && run.usage.totalTokens > 0 && (
                         <dl className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-ink-3">

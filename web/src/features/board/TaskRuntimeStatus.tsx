@@ -3,11 +3,12 @@ import { Badge } from "@/components/ui/badge"
 import { codeGraphReport, nodeAgentHealth, type CodeGraphReport, type NodeAgent, type Profile, type Task, type TaskEvent, type TaskRun, type Workspace } from "../../api"
 
 function chip(label: string, tone: "good" | "warn" | "bad" | "muted" = "muted") {
+  // Text on a tinted fill uses the *-text variants, which clear 4.5:1 there.
   const styles = {
-    good: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    warn: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    bad: "border-danger/30 bg-danger/10 text-danger-text",
-    muted: "border-[var(--color-line)] bg-[var(--color-inset)] text-ink-3",
+    good: "border-success/30 bg-success-tint text-success-text",
+    warn: "border-warning/30 bg-warning-tint text-warning-text",
+    bad: "border-danger/30 bg-danger-tint text-danger-text",
+    muted: "border-[var(--c-line)] bg-[var(--c-well)] text-ink-3",
   }
   return <Badge variant="outline" className={`px-1.5 py-0 text-2xs leading-4 ${styles[tone]}`}>{label}</Badge>
 }
@@ -39,7 +40,7 @@ function isRemoteWorkspace(workspace?: Workspace) {
 function StatusLine({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-2 py-1.5">
-      <dt className="shrink-0 text-meta text-ink-4">{label}</dt>
+      <dt className="shrink-0 text-meta text-ink-3">{label}</dt>
       <dd className="min-w-0 truncate text-right text-body text-ink-2">{children}</dd>
     </div>
   )
@@ -95,13 +96,13 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ru
   if (compact) return (
     <section className="glass-inset-card min-w-0 rounded-lg p-2.5" aria-label="Runtime status">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-4">Runtime</span>
+        <span className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Runtime</span>
         {chip(`${task.assignee || "unassigned"} · ${profileState}`, profileTone)}
         {chip(`node · ${nodeState}`, nodeTone)}
         {chip(`CodeGraph · ${graphState}`, graphTone)}
         {hasUsage && chip(`tokens · ${usage.totalTokens.toLocaleString()}`, "good")}
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-ink-4">
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-ink-3">
         <span>phase: <strong className="font-medium text-ink-2">{currentPhase}</strong></span>
         {profile && tasks.length > 0 && <span>{running} running · {queued} queued</span>}
       </div>
@@ -109,21 +110,22 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ru
   )
 
   return (
-    <section className="glass-inset-card min-w-0 rounded-lg p-3" aria-label="Runtime status">
+    <section className="min-w-0 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)] p-3" aria-label="Runtime status">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Runtime status</h3>
+        {/* h2: the page title is the h1, so h3 here would skip a level. */}
+        <h2 className="text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase">Runtime status</h2>
         {chip(currentPhase, task.status === "running" ? "good" : "muted")}
       </div>
-      <dl className="divide-y divide-[var(--color-line)]/60">
+      <dl className="divide-y divide-[var(--c-line)]/60">
         <StatusLine label="Agent profile">{chip(profile ? `${profile.name} · ${profileState}` : "unassigned", profileTone)}</StatusLine>
         {profile && <StatusLine label="Queue">{running} running · {queued} queued</StatusLine>}
-        <StatusLine label="Node">{chip(nodeState, nodeTone)} {node && <span className="ml-1 text-ink-4">{node.hostname || node.node_id}</span>}</StatusLine>
+        <StatusLine label="Node">{chip(nodeState, nodeTone)} {node && <span className="ml-1 text-ink-3">{node.hostname || node.node_id}</span>}</StatusLine>
         <StatusLine label="CodeGraph">{chip(graphState, graphTone)}</StatusLine>
         <StatusLine label="Current phase">{currentPhase}</StatusLine>
         {hasUsage && <StatusLine label="Token usage">{usage.totalTokens.toLocaleString()} total · {usage.inputTokens.toLocaleString()} in · {usage.outputTokens.toLocaleString()} out · {usage.cacheReadTokens.toLocaleString()} cache · {runs?.length ?? 0} runs</StatusLine>}
       </dl>
       {nodeState === "offline" && <p className="mt-2 text-2xs leading-relaxed text-warning">Node agent is unreachable. Remote runs may remain queued until the agent reconnects.</p>}
-      {nodeState === "not registered" && <p className="mt-2 text-2xs leading-relaxed text-ink-4">Node agent is reachable, but no node has claimed this workspace.</p>}
+      {nodeState === "not registered" && <p className="mt-2 text-2xs leading-relaxed text-ink-3">Node agent is reachable, but no node has claimed this workspace.</p>}
       {graphState === "unavailable" && <p className="mt-2 text-2xs leading-relaxed text-warning">CodeGraph unavailable. Worker can continue with normal file inspection.</p>}
     </section>
   )

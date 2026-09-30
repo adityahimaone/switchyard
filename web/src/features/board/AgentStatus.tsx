@@ -55,7 +55,7 @@ function LoaderGrid() {
       {CHEVRON.map((delay, index) => (
         <span
           key={index}
-          className="size-1 rounded-[1px] bg-[var(--color-accent)]"
+          className="size-1 rounded-[1px] bg-[var(--c-accent)]"
           style={{ opacity: 0.18, animation: `pixel-on 650ms ease-in-out ${delay}ms infinite` }}
         />
       ))}
@@ -75,13 +75,13 @@ function ProgressRing({ step, total, period = 1100 }: { step: number; total: num
   return (
     <span className="relative inline-flex size-6 shrink-0 items-center justify-center">
       <svg width={size} height={size} className="absolute inset-0">
-        <circle cx={12} cy={12} r={radius} fill="none" stroke="var(--color-line-strong)" strokeWidth={stroke} />
+        <circle cx={12} cy={12} r={radius} fill="none" stroke="var(--c-line-strong)" strokeWidth={stroke} />
         <circle
           cx={12}
           cy={12}
           r={radius}
           fill="none"
-          stroke="var(--color-accent)"
+          stroke="var(--c-accent)"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${circumference * share} ${circumference * (1 - share)}`}
@@ -185,7 +185,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {live ? <LoaderGrid /> : <span className={`size-2 shrink-0 rounded-full ${task.status === "done" || task.status === "review" ? "bg-success" : "bg-ink-4"}`} aria-hidden />}
-          <h3 className="truncate text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">Agent progress</h3>
+          <h2 className="truncate text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase">Agent progress</h2>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <span className="font-mono text-meta tabular-nums text-ink-3">
@@ -198,7 +198,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
             aria-expanded={!minimized}
             aria-label={minimized ? "Expand agent progress" : "Minimize agent progress"}
             onClick={() => setMinimized((value) => !value)}
-            className="flex size-7 items-center justify-center rounded-md text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink"
+            className="flex size-7 items-center justify-center rounded-md text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink"
           >
             <ChevronDown className="size-3.5 transition-transform duration-200" style={{ transform: minimized ? undefined : "rotate(180deg)" }} />
           </button>
@@ -219,8 +219,8 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
         </p>
       ) : (
         <>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-ink-4">
-            <span className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-1.5 py-0.5">{task.status}</span>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-ink-3">
+            <span className="rounded border border-[var(--c-line)] bg-[var(--c-canvas)] px-1.5 py-0.5">{task.status}</span>
             {task.assignee && <span>agent: {task.assignee}</span>}
             {remote && <span>node: remote workspace</span>}
           </div>
@@ -235,10 +235,10 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                   const isActive = event.id === activeEvent?.id
                   const open = openRows[event.id] ?? isActive
                   return (
-                    <div key={event.id} className="overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)]/50">
+                    <div key={event.id} className="overflow-hidden rounded-md border border-[var(--c-line)] bg-[var(--c-surface)]/50">
                       <button
                         type="button"
-                        className="flex min-h-11 w-full items-center gap-2 px-2.5 text-left hover:bg-[var(--color-line)]/40"
+                        className="flex min-h-11 w-full items-center gap-2 px-2.5 text-left hover:bg-[var(--c-line)]/40"
                         aria-expanded={open}
                         onClick={() => setOpenRows((current) => ({ ...current, [event.id]: !open }))}
                       >
@@ -259,10 +259,10 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                           </span>
                         )}
                         {tone === "green" && (
-                          <span className="inline-flex h-5 items-center rounded-full bg-success/10 px-2 text-2xs font-medium text-success">Completed</span>
+                          <span className="inline-flex h-5 items-center rounded-full bg-success-tint px-2 text-2xs font-medium text-success-text">Completed</span>
                         )}
-                        <span className="shrink-0 font-mono text-2xs tabular-nums text-ink-4">{formatTime(event.created_at)}</span>
-                        <ChevronDown className="size-3.5 shrink-0 text-ink-4 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : undefined }} aria-hidden />
+                        <span className="shrink-0 font-mono text-2xs tabular-nums text-ink-3">{formatTime(event.created_at)}</span>
+                        <ChevronDown className="size-3.5 shrink-0 text-ink-3 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : undefined }} aria-hidden />
                       </button>
                       <div
                         className="grid transition-[grid-template-rows,opacity] duration-200"
@@ -270,14 +270,14 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                       >
                         <div className="overflow-hidden">
                           <div className="mb-2 grid grid-cols-[16px_1fr] gap-2.5 px-2.5">
-                            <span aria-hidden className="mx-auto h-full w-px bg-[var(--color-line)]" />
+                            <span aria-hidden className="mx-auto h-full w-px bg-[var(--c-line)]" />
                             <dl className="flex flex-col gap-1">
                               {details.length > 0 ? details.map(([key, value]) => (
                                 <div key={`${key}-${value}`} className="flex items-baseline justify-between gap-3">
                                   <dt className="truncate text-meta text-ink-3">{key}</dt>
                                   <dd className="max-w-[62%] whitespace-pre-wrap break-words text-right font-mono text-meta tabular-nums text-ink-2">{value}</dd>
                                 </div>
-                              )) : <p className="text-meta text-ink-4">No event details</p>}
+                              )) : <p className="text-meta text-ink-3">No event details</p>}
                             </dl>
                           </div>
                         </div>
@@ -287,14 +287,14 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
                 })}
               </div>
             </div>
-          ) : <p className="mt-2 text-meta text-ink-4">Waiting for worker events…</p>}
+          ) : <p className="mt-2 text-meta text-ink-3">Waiting for worker events…</p>}
 
           {rows.length > 6 && (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
-              className="-mx-1 mt-2 inline-flex h-7 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--color-line)]/50"
+              className="-mx-1 mt-2 inline-flex h-7 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--c-line)]/50"
             >
               {expanded ? "Show latest 6" : `Show full timeline (${rows.length})`}
             </button>

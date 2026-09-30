@@ -189,7 +189,7 @@ export default function TaskDialog({
     onClose()
   }
 
-  const selCls = "w-full border-[var(--color-line)] bg-[var(--color-bg)] text-sm data-[size=default]:h-9"
+  const selCls = "w-full border-[var(--c-line)] bg-[var(--c-canvas)] text-sm data-[size=default]:h-9"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -197,7 +197,7 @@ export default function TaskDialog({
         <h2 className="text-sm font-semibold">New Task</h2>
         <Label className="mt-3 block text-xs text-ink-3">Title</Label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Judul task"
-          className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)]" />
+          className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)]" />
         <div className="mt-3 flex items-center justify-between">
           <Label className="text-xs text-ink-3">Body</Label>
           <div className="flex items-center gap-1">
@@ -205,7 +205,7 @@ export default function TaskDialog({
               variant="outline" size="sm"
               disabled={aiBusy || !body.trim()}
               onClick={() => improveBody("fast")}
-              className="h-6 gap-1 border-[var(--color-accent)]/40 px-2 text-[11px] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
+              className="h-6 gap-1 border-[var(--c-accent)]/40 px-2 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
               title="Improve instan pakai template (tanpa AI call)"
             >
               <Sparkles className="size-3" />
@@ -215,7 +215,7 @@ export default function TaskDialog({
               variant="outline" size="sm"
               disabled={aiBusy || !body.trim()}
               onClick={() => improveBody("deep")}
-              className="h-6 gap-1 border-[var(--color-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
+              className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
               title="Improve pakai AI model (lebih lambat, hasil lebih kontekstual)"
             >
               {aiMode === "deep" ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
@@ -224,27 +224,27 @@ export default function TaskDialog({
           </div>
         </div>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} placeholder="Deskripsi (opsional) — klik AI improve biar prompt-nya dirapikan"
-          className="mt-1 border-[var(--color-line)] bg-[var(--color-bg)] text-sm" />
-        {executor === "shell" && <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
-          <p className="text-xs font-medium text-amber-200">Autonomous shell access</p>
+          className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm" />
+        {executor === "shell" && <div className="mt-3 rounded-lg border border-warning/30 bg-warning-tint p-3">
+          <p className="text-xs font-medium text-warning">Autonomous shell access</p>
           <p className="mt-1 text-[11px] leading-4 text-ink-3">Orchestrator akan membaca workspace, mengedit file, menjalankan test, dan retry command sampai task siap direview.</p>
         </div>}
         {executionMode === "agentic" && <div className="mt-3 flex items-center gap-2">
           <Label className="text-[11px] text-ink-3">Max iterations</Label>
-          <Input type="number" min="1" max="24" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--color-line)] bg-[var(--color-bg)] text-xs" />
+          <Input type="number" min="1" max="24" value={maxIterations} onChange={(e) => setMaxIterations(e.target.value)} className="h-7 w-20 border-[var(--c-line)] bg-[var(--c-canvas)] text-xs" />
         </div>}
         <Label className="mt-3 block text-xs text-ink-3">Agent Profile</Label>
         <Select value={assignee} onValueChange={setAssignee}>
           <SelectTrigger className={`mt-1 ${selCls}`}>
             <SelectValue placeholder="profile" />
           </SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+          <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
             {profiles.map((p) => (
               <SelectItem key={p.name} value={p.name} disabled={!p.valid} className="text-sm">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <Avatar className="size-4 shrink-0">
                     {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.name} />}
-                    <AvatarFallback className="bg-[var(--color-inset)] text-[7px] text-[var(--color-accent)]">{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarFallback className="bg-[var(--c-well)] text-[7px] text-[var(--c-accent)]">{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <span className="min-w-0 truncate">{p.name}{p.model ? ` — ${p.model}` : ""}{p.active ? " (active)" : ""}{!p.valid ? " (broken config)" : ""}</span>
                 </span>
@@ -255,7 +255,7 @@ export default function TaskDialog({
         <Label className="mt-3 block text-xs text-ink-3">Execution</Label>
         <Select value={executor} onValueChange={(v) => setExecutor(v as typeof executor)}>
           <SelectTrigger className={`mt-1 ${selCls}`}><SelectValue /></SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+          <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
             {visibleExecutors.map((e) => (
               <SelectItem key={e} value={e} className="text-sm">{EXECUTOR_LABELS[e] ?? e}</SelectItem>
             ))}
@@ -264,7 +264,7 @@ export default function TaskDialog({
         <Label className="mt-3 block text-xs text-ink-3">Execution mode</Label>
         <Select value={executionMode} onValueChange={(v) => setExecutionMode(v as typeof executionMode)}>
           <SelectTrigger className={`mt-1 ${selCls}`}><SelectValue /></SelectTrigger>
-          <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+          <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
             <SelectItem value="direct" className="text-sm">Direct</SelectItem>
             <SelectItem value="agentic" className="text-sm">Agentic (plan and iterate)</SelectItem>
           </SelectContent>
@@ -276,7 +276,7 @@ export default function TaskDialog({
               <SelectTrigger className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                 <SelectValue placeholder="workspace" />
               </SelectTrigger>
-              <SelectContent className="max-w-[22rem] border-[var(--color-line)] bg-[var(--color-surface)]">
+              <SelectContent className="max-w-[22rem] border-[var(--c-line)] bg-[var(--c-surface)]">
                 {workspaces.map((w) => {
                   const ssh = isSshWorkspace(w)
                   const live = isLive(w)
@@ -285,10 +285,10 @@ export default function TaskDialog({
                   return (
                     <SelectItem key={w.id} value={w.path} className="text-sm" title={`${w.name} — ${w.path}${w.host ? ` (${w.host})` : ""}${w.status ? ` · ${w.status}` : ""}`}>
                       <span className="flex min-w-0 items-center gap-1.5">
-                        {live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" title={w.status === "local" ? "local" : `connected ${w.ping_ms != null ? Math.round(w.ping_ms) + "ms" : ""}`} />}
+                        {live && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-success" title={w.status === "local" ? "local" : `connected ${w.ping_ms != null ? Math.round(w.ping_ms) + "ms" : ""}`} />}
                         <span className="min-w-0 flex-1 truncate">{w.name}</span>
-                        {ssh && <Badge variant="outline" className="shrink-0 border-violet-500/30 bg-violet-500/10 px-1 py-0 text-[9px] leading-none text-violet-300">ssh</Badge>}
-                        {osLabel && <Badge variant="outline" className="shrink-0 border-[var(--color-line)] bg-[var(--color-bg)] px-1 py-0 text-[9px] leading-none text-ink-3">{osLabel}</Badge>}
+                        {ssh && <Badge variant="outline" className="shrink-0 border-review/30 bg-review-tint px-1 py-0 text-[9px] leading-none text-review-text">ssh</Badge>}
+                        {osLabel && <Badge variant="outline" className="shrink-0 border-[var(--c-line)] bg-[var(--c-canvas)] px-1 py-0 text-[9px] leading-none text-ink-3">{osLabel}</Badge>}
                       </span>
                     </SelectItem>
                   )
@@ -303,7 +303,7 @@ export default function TaskDialog({
               <SelectTrigger className={`mt-1 ${selCls}`}>
                 <SelectValue placeholder="priority" />
               </SelectTrigger>
-              <SelectContent className="border-[var(--color-line)] bg-[var(--color-surface)]">
+              <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
                 <SelectItem value="0" className="text-sm">0 — normal</SelectItem>
                 <SelectItem value="1" className="text-sm">1</SelectItem>
                 <SelectItem value="2" className="text-sm">2 — high</SelectItem>
@@ -312,7 +312,7 @@ export default function TaskDialog({
             </Select>
           </div>
         </div>
-        {err && <p className="mt-3 text-xs text-red-400">{err}</p>}
+        {err && <p className="mt-3 text-xs text-danger-text">{err}</p>}
         <div className="mt-3">
           <Label className="block text-xs text-ink-3">Attachments (image / PDF)</Label>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files ?? [])} />
@@ -323,7 +323,7 @@ export default function TaskDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy || uploading} className="bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent)]/90">
+          <Button size="sm" onClick={submit} disabled={busy || uploading} className="bg-[var(--c-accent)] text-black hover:bg-[var(--c-accent)]/90">
             {busy ? "…" : "Create"}
           </Button>
         </div>

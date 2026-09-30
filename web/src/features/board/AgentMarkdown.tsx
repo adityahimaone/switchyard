@@ -27,9 +27,9 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   }
 
   return (
-    <figure className="group/code my-3 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-void)]">
-      <figcaption className="flex items-center gap-1.5 border-b border-[var(--color-line)] bg-[var(--color-line)]/30 px-2.5 py-1.5">
-        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-ink-4">{label}</span>
+    <figure className="group/code my-3 overflow-hidden rounded-lg border border-[var(--c-line)] bg-[var(--c-well)]">
+      <figcaption className="flex items-center gap-1.5 border-b border-[var(--c-line)] bg-[var(--c-line)]/30 px-2.5 py-1.5">
+        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-ink-3">{label}</span>
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -38,7 +38,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
             aria-label={wrap ? "Disable line wrap" : "Enable line wrap"}
             title={wrap ? "Disable line wrap" : "Enable line wrap"}
             className={`inline-flex size-6 items-center justify-center rounded transition-colors ${
-              wrap ? "bg-[var(--color-accent-tint)] text-[var(--color-accent)]" : "text-ink-4 hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+              wrap ? "bg-[var(--c-accent-tint)] text-[var(--c-accent)]" : "text-ink-3 hover:bg-[var(--c-line)]/50 hover:text-ink-2"
             }`}
           >
             <WrapText className="size-3.5" />
@@ -48,7 +48,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
             onClick={copy}
             aria-label="Copy code"
             title="Copy code"
-            className="inline-flex size-6 items-center justify-center rounded text-ink-4 transition-colors hover:bg-[var(--color-line)]/50 hover:text-ink-2"
+            className="inline-flex size-6 items-center justify-center rounded text-ink-3 transition-colors hover:bg-[var(--c-line)]/50 hover:text-ink-2"
           >
             {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
           </button>
@@ -67,7 +67,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 function InlineCode({ children }: { children?: React.ReactNode }) {
   return (
-    <code className="rounded border border-[var(--color-line)] bg-[var(--color-line)]/40 px-1 py-0.5 font-mono text-meta text-ink-2">
+    <code className="rounded border border-[var(--c-line)] bg-[var(--c-line)]/40 px-1 py-0.5 font-mono text-meta text-ink-2">
       {children}
     </code>
   )
@@ -93,7 +93,7 @@ const components = {
     <ul className="my-2 space-y-1.5 pl-1 text-body text-ink-2">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="my-2 list-decimal space-y-1.5 pl-5 text-body text-ink-2 marker:text-ink-4">{children}</ol>
+    <ol className="my-2 list-decimal space-y-1.5 pl-5 text-body text-ink-2 marker:text-ink-3">{children}</ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => (
     <li className="flex gap-2">
@@ -102,22 +102,22 @@ const components = {
     </li>
   ),
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="my-3 border-l-2 border-[var(--color-line-strong)] bg-[var(--color-accent-tint)]/40 py-1.5 pl-3 pr-2 text-body italic text-ink-3">
+    <blockquote className="my-3 border-l-2 border-[var(--c-line-strong)] bg-[var(--c-accent-tint)]/40 py-1.5 pl-3 pr-2 text-body italic text-ink-3">
       {children}
     </blockquote>
   ),
-  hr: () => <hr className="my-4 border-[var(--color-line)]" />,
+  hr: () => <hr className="my-4 border-[var(--c-line)]" />,
   strong: ({ children }: { children?: React.ReactNode }) => (
     <strong className="font-semibold text-ink">{children}</strong>
   ),
   em: ({ children }: { children?: React.ReactNode }) => <em className="italic">{children}</em>,
-  del: ({ children }: { children?: React.ReactNode }) => <del className="text-ink-4 line-through">{children}</del>,
+  del: ({ children }: { children?: React.ReactNode }) => <del className="text-ink-3 line-through">{children}</del>,
   a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="text-[var(--color-info)] underline decoration-[var(--color-line-strong)] underline-offset-2 transition-colors hover:decoration-[var(--color-accent)]"
+      className="text-[var(--color-info)] underline decoration-[var(--c-line-strong)] underline-offset-2 transition-colors hover:decoration-[var(--c-accent)]"
     >
       {children}
     </a>
@@ -132,25 +132,25 @@ const components = {
   },
   pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   table: ({ children }: { children?: React.ReactNode }) => (
-    <div className="my-3 overflow-x-auto rounded-lg border border-[var(--color-line)]">
+    <div className="my-3 overflow-x-auto rounded-lg border border-[var(--c-line)]">
       <table className="w-full border-collapse text-body">{children}</table>
     </div>
   ),
   thead: ({ children }: { children?: React.ReactNode }) => (
-    <thead className="bg-[var(--color-line)]/30">{children}</thead>
+    <thead className="bg-[var(--c-line)]/30">{children}</thead>
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
-    <th className="border-b border-[var(--color-line)] px-3 py-2 text-left text-2xs font-semibold uppercase tracking-[0.1em] text-ink-3">
+    <th className="border-b border-[var(--c-line)] px-3 py-2 text-left text-2xs font-semibold uppercase tracking-[0.1em] text-ink-3">
       {children}
     </th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="border-b border-[var(--color-line)]/50 px-3 py-2 align-top text-ink-2 last:border-b-0">
+    <td className="border-b border-[var(--c-line)]/50 px-3 py-2 align-top text-ink-2 last:border-b-0">
       {children}
     </td>
   ),
   input: (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <input {...props} disabled className="mr-1.5 size-3 accent-[var(--color-accent)] align-middle" readOnly />
+    <input {...props} disabled className="mr-1.5 size-3 accent-[var(--c-accent)] align-middle" readOnly />
   ),
 }
 
