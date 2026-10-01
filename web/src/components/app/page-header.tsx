@@ -45,7 +45,7 @@ export function PageHeader({
         </nav>
       )}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-baseline gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <h1 className="truncate text-xl font-semibold text-ink">{title}</h1>
           {description &&
             (inline ? (

@@ -16,7 +16,7 @@ import NotificationsTab from "./tabs/NotificationsTab"
 import VisionTab from "./tabs/VisionTab"
 
 const TABS = [
-  { id: "general", label: "General", keywords: "polling refresh sound volume" },
+  { id: "general", label: "General", keywords: "polling refresh sound volume sidebar latest change card release note" },
   { id: "appearance", label: "Appearance", keywords: "theme dark light density compact motion" },
   { id: "notifications", label: "Notifications", keywords: "alert browser review failure" },
   { id: "vision", label: "Vision and attachments", keywords: "ai jev image pdf model routing" },
@@ -75,10 +75,19 @@ export default function SettingsPage() {
       </PageHeader>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Nav above 1024px; a Select takes over below. */}
+        {/* Nav above 1024px; a Select takes over below.
+
+            `w-50` was the source of the dead space on the right: a fixed 200px
+            column forced every label into the same narrow track, so "Vision and
+            attachments" truncated and the whole right edge of the rail was empty
+            regardless of label length. Sizing to content instead (`w-max` with a
+            `min-w-44` floor) means the rail is exactly as wide as the longest
+            label needs, and the border sits against the text rather than a
+            fixed gutter. The labels keep `truncate`, which now only engages if a
+            label is genuinely longer than the floor. */}
         <nav
           aria-label="Settings"
-          className="hidden w-50 shrink-0 flex-col gap-0.5 border-r border-line p-3 lg:flex"
+          className="hidden w-max min-w-44 shrink-0 flex-col gap-0.5 border-r border-line px-2 py-3 lg:flex"
         >
           {visibleTabs.map((t) => {
             const current = t.id === active
@@ -102,7 +111,7 @@ export default function SettingsPage() {
                 {current && (
                   <span
                     aria-hidden
-                    className="absolute top-2 bottom-2 -left-3 w-0.5 rounded-full bg-accent"
+                    className="absolute top-2 bottom-2 -left-2 w-0.5 rounded-full bg-accent"
                   />
                 )}
                 <span className="truncate">{t.label}</span>

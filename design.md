@@ -31,7 +31,7 @@ whole app turned hazy.
 
 So the layering is explicit:
 
-- the **canvas** carries the smoke wash and dot grid — the material to diffuse
+- the **canvas** carries the glow (`glow-ground`) — the material to diffuse
 - the **sidebar** stands directly on it, so it is glass
 - **cards, popovers, sheets, dialogs** sit on top and diffuse what is behind them
 - the **page `<main>` stays opaque** (`bg-surface`), because a full-bleed
@@ -261,6 +261,30 @@ Two utilities, both composable:
   `radial-gradient`, so no extra request and the pitch is a variable.
 - `smoke-wash` — two soft radial blooms, accent at 6% and review at 5%. Keeps
   the page ground alive without becoming a field the eye reads through.
+- `glow-ground` — three blooms with a real falloff curve (0 → peak → 0 via an
+  extra midpoint stop), accent 14% / review 11% peaking. This is the **app shell
+  ground**, where the sidebar's glass stands directly on it.
+
+**`glow-ground` replaced `dot-grid` on the shell.** The dot grid was the wrong
+texture at that specific spot for two reasons, both measured rather than
+eyeballed:
+
+1. 1px dots at a 22px pitch are too fine to survive the sidebar's
+   `backdrop-filter`. The blur averaged them into a flat haze, so the glass was
+   diffusing nothing — the exact failure the wash was introduced to prevent.
+   A dot grid only works where nothing blurs over it.
+2. A regular lattice reads as graph paper. Switchyard is a work tool; the shell
+   wants a material, not a texture.
+
+The glow keeps a scale the blur cannot flatten, and the soft edge reads as
+emission where a hard-tinted field reads as paint. `dot-grid` stays on the flow
+map canvas, empty states and sign-in.
+
+Peak alphas match `smoke-wash` deliberately: the sidebar's 12px section labels
+sit directly on this ground. Verified against the canvas the blooms peak on —
+body ink 13.30:1, `ink-2` 6.19:1, `ink-3` **4.71:1**, the narrowest margin on the
+labels. Dark mode needs 22% / 16% for the same reason the wash does (a near-black
+canvas swallows the light-mode strength); verified at `ink-3` 4.77:1.
 
 **Where they are allowed:** empty states, sign-in, the flow map canvas, page
 headers. Anywhere with no data on it.

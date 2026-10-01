@@ -62,7 +62,7 @@ export default function LogsPage() {
   }, [logs.data, autoRefresh])
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       <PageHeader
         title="Logs"
         description="Live runtime output from ~/.hermes/logs."
@@ -124,7 +124,7 @@ export default function LogsPage() {
             </div>
             <pre
               ref={preRef}
-              className="mt-2 min-h-0 flex-1 overflow-auto rounded-control border border-line bg-well p-3 font-mono text-[11px] leading-relaxed"
+              className="mt-2 min-h-0 min-w-0 flex-1 overflow-auto rounded-control border border-line bg-well p-3 font-mono text-[11px] leading-relaxed"
             >
               {logs.data?.lines.length
                 ? logs.data.lines.map((l, i) => (

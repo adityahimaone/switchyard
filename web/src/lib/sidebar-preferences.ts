@@ -1,6 +1,6 @@
 /**
  * The app has no router. `Page` is the set of things the user can navigate to,
- * and the rail (components/app/app-rail.tsx) is the single nav manifest.
+ * and the manifest (components/app-shell/app-shared.tsx) is the single nav list.
  * `parseRoute` / `pagePath` in lib/routes.ts turn a page into a URL.
  */
 export type Page =

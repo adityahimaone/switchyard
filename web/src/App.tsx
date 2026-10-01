@@ -1,14 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AppShell } from "@/components/app/app-shell"
-import { AppHeader } from "@/components/app/app-header"
+import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
 import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
 import { BoardPage } from "./features/board/BoardPage"
 import type { Page } from "./lib/sidebar-preferences"
 import CommandPalette from "@/components/app/command-palette"
 import { Toaster } from "@/components/app/toaster"
-import NotificationCenter from "@/features/notifications/NotificationCenter"
 import { NewBoardDialog, EditBoardDialog } from "./components/board/board-dialogs"
 import { MoreHorizontal, Pencil, Plus } from "lucide-react"
 import {
@@ -114,13 +112,6 @@ export default function App() {
 
   const currentBoard = (boards.data ?? []).find((b) => b.slug === slug) ?? null
 
-  // The breadcrumb expresses location, not title. It is only populated for a
-  // page genuinely nested below its nav entry; every other page carries its own
-  // h1 in its page header, so naming it twice would be noise.
-  const breadcrumb = detailPage
-    ? ["Board", detailPage.title]
-    : undefined
-
   function handleSelectPage(p: Page) {
     if (p === "board") {
       setDetail(null)
@@ -171,17 +162,8 @@ export default function App() {
     <AppShell
       page={page}
       onSelectPage={handleSelectPage}
-      onSettings={() => handleSelectPage("settings")}
-      onLogout={() => { void api("/api/auth/logout", { method: "POST" }).then(() => window.location.reload()) }}
-      renderHeader={({ hidden, expand }) => (
-        <AppHeader
-          segments={breadcrumb}
-          sidebarHidden={hidden}
-          onExpandSidebar={expand}
-          right={<NotificationCenter />}
-          onOpenPalette={() => setPaletteOpen(true)}
-        />
-      )}
+      onNewChat={() => handleSelectPage("chat")}
+      onOpenPalette={() => setPaletteOpen(true)}
     >
       <CommandPalette
         open={paletteOpen}
@@ -212,7 +194,7 @@ export default function App() {
           {page === "workspaces" && <div className="flex-1 overflow-y-auto"><WorkspacesPage /></div>}
           {page === "profiles" && <div className="flex-1 overflow-y-auto"><ProfilesPage /></div>}
           {page === "providers" && <div className="flex-1 overflow-y-auto"><ProvidersPage /></div>}
-          {page === "logs" && <div className="flex min-h-0 flex-1 flex-col"><LogsPage /></div>}
+          {page === "logs" && <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"><LogsPage /></div>}
           {page === "skills" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SkillsPage /></div>}
           {page === "memory" && <div className="flex-1 overflow-y-auto"><MemoryPage /></div>}
           {page === "overview" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><OverviewPage /></div>}

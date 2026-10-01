@@ -280,7 +280,8 @@ export default function CommandPalette({
 
           <div className="flex items-center justify-between border-t border-[var(--color-line)] bg-[color-mix(in_srgb,var(--color-inset)_45%,transparent)] px-3 py-2 text-[11px] text-[var(--color-ink-4)]">
             <span className="inline-flex items-center gap-1.5">
-              <Command className="size-3" /> {flat.length} results
+              <Command className="size-3" /> {flat.length}{" "}
+              {flat.length === 1 ? "result" : "results"}
             </span>
             <span className="hidden items-center gap-1 sm:inline-flex">
               <Kbd className="h-5 px-1 text-[10px]">⌘</Kbd>

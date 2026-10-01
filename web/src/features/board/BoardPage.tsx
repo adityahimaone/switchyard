@@ -6,6 +6,7 @@ import {
   type Profile, type Status, type Task, type Workspace,
 } from "@/api"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -58,7 +59,7 @@ function BoardScroller({ children, enter }: { children: ReactNode; enter: boolea
   }, [measure])
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="relative min-h-0 min-w-0 flex-1">
       <div
         ref={ref}
         onScroll={measure}
@@ -273,7 +274,7 @@ export function BoardPage({
   const total = tasks.data?.length ?? 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {/* The shared PageHeader, so the board's title is a real h1 rather than an
           h2 behind a screen-reader-only h1 that said just "Board" and lost the
           board name. The filter row is its toolbar slot. */}
@@ -352,9 +353,18 @@ export function BoardPage({
           ]}
         />
 
-        <span className="tabular text-xs text-ink-3" aria-live="polite">
-          {filtered.length === total ? `${total}` : `${filtered.length} of ${total}`}
-        </span>
+        {/* Matches FilterBar's count badge: the board hand-rolled the same bare
+            number, so it had the same stray-data look. `h-7` here rather than
+            FilterBar's `h-8`, because the board's toolbar is built from
+            `size="sm"` controls (h-7) and an h-8 badge would stand taller than
+            every other thing in its row. */}
+        <Badge
+          variant="outline"
+          aria-live="polite"
+          className="tabular h-7 w-auto flex-none gap-0 self-center border-line bg-well px-2 text-xs font-normal text-ink-3"
+        >
+          {filtered.length === total ? total : `${filtered.length} of ${total}`}
+        </Badge>
 
         {filtersActive && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="text-ink-3">

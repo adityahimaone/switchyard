@@ -5,6 +5,7 @@ import { useSoundSettings } from "@/hooks/useSettings"
 import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
 import { SettingRow, SettingsSection } from "../settings-parts"
 import { useSetting } from "../useSetting"
+import { LATEST_CHANGE_KEY } from "@/components/latest-change"
 
 const REFRESH_KEY = "kb-refresh-interval"
 const PING_KEY = "kb-ping-interval"
@@ -31,6 +32,7 @@ export default function GeneralTab() {
   const [pingMs, setPing] = useSetting(PING_KEY, 30000)
   const [hover, setHover] = useSetting(SOUND_HOVER_KEY, true)
   const [click, setClick] = useSetting(SOUND_CLICK_KEY, true)
+  const [latestChange, setLatestChange] = useSetting(LATEST_CHANGE_KEY, 0)
   const sound = useSoundSettings()
 
   // The engine caches its configuration, so re-apply when a preference changes.
@@ -72,6 +74,23 @@ export default function GeneralTab() {
               ))}
             </SelectContent>
           </Select>
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Sidebar"
+        description="What the navigation rail shows alongside the page list."
+      >
+        <SettingRow
+          label="Latest change card"
+          help="Shows the release note at the foot of the sidebar. Off by default."
+          htmlFor="set-latest-change"
+        >
+          <Switch
+            id="set-latest-change"
+            onCheckedChange={(v) => setLatestChange(v ? 1 : 0)}
+            checked={latestChange === 1}
+          />
         </SettingRow>
       </SettingsSection>
 

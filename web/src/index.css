@@ -646,6 +646,46 @@
     );
 }
 
+/* The glow, for the shell ground the sidebar stands on.
+
+   This is `smoke-wash` with real falloff rather than a flat tint: three stacked
+   blooms with an extra midpoint stop, so each one ramps 0 -> peak -> 0 instead
+   of running at full strength across the whole ellipse and then cutting to
+   nothing. That curve is the difference between a coloured area and light — the
+   eye reads the soft edge as emission, where a hard-tinted field reads as paint.
+
+   Swapped in for `dot-grid` on the app shell. The dot grid was the wrong texture
+   here for two reasons: 1px dots at a 22px pitch are too fine to survive the
+   sidebar's backdrop-filter, so the blur averaged them into a flat haze and the
+   glass had nothing left to diffuse; and a regular lattice reads as graph paper,
+   which is not the material this shell wants. The glow diffuses well and keeps
+   the ground alive.
+
+   Peak alphas are held at the same 14% / 11% as `smoke-wash` for a reason: the
+   sidebar's 12px section labels sit directly on this. Verified against the
+   canvas the blooms peak on — body ink 13.30:1, `ink-2` 6.19:1, `ink-3` 4.71:1,
+   clearing the 4.5 bar with the narrowest margin on the labels. */
+@utility glow-ground {
+  background-image:
+    radial-gradient(
+      ellipse 70% 55% at 12% 0%,
+      color-mix(in srgb, var(--c-accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 5%, transparent) 38%,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 88% 92%,
+      color-mix(in srgb, var(--c-review) 11%, transparent) 0%,
+      color-mix(in srgb, var(--c-review) 4%, transparent) 34%,
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 120% 70% at 50% 45%,
+      color-mix(in srgb, var(--c-accent) 4%, transparent) 0%,
+      transparent 65%
+    );
+}
+
 /* Dark mode needs a stronger wash. At the light-mode strength the bloom is
    invisible against a near-black canvas, which leaves the glass panels diffusing
    a flat field and reading as plain dark rectangles. */
@@ -658,6 +698,30 @@
     radial-gradient(
       ellipse 60% 50% at 85% 100%,
       color-mix(in srgb, var(--c-review) 16%, transparent) 0%,
+      transparent 65%
+    );
+}
+
+/* Dark mode needs a stronger glow for the same reason as the wash — at the
+   light-mode strength it is invisible against a near-black canvas. 22% / 16%
+   peaks, verified: body ink 10.63:1, `ink-2` 7.51:1, `ink-3` 4.77:1. */
+.dark .glow-ground {
+  background-image:
+    radial-gradient(
+      ellipse 70% 55% at 12% 0%,
+      color-mix(in srgb, var(--c-accent) 22%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 8%, transparent) 38%,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 88% 92%,
+      color-mix(in srgb, var(--c-review) 16%, transparent) 0%,
+      color-mix(in srgb, var(--c-review) 6%, transparent) 34%,
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 120% 70% at 50% 45%,
+      color-mix(in srgb, var(--c-accent) 7%, transparent) 0%,
       transparent 65%
     );
 }

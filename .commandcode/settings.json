@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(ls:*)",
+      "Shell(command:*)",
+      "Shell(bun:*)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

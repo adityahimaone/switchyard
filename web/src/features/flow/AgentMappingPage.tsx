@@ -6,6 +6,7 @@ import { elbowPath, elbowPathV, pathLength } from "./elbow"
 import { TravelingDot } from "./TravelingDot"
 import { useFlowTasks, type FlowStage, type FlowTask } from "./useFlowTasks"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 
 const CARD_W = 188
 const CARD_H = 52
@@ -133,7 +134,15 @@ export default function AgentMappingPage() {
           <SelectTrigger size="sm" aria-label="Filter task stage" className="w-32 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">All stages</SelectItem><SelectItem value="dispatched">Dispatched</SelectItem><SelectItem value="running">Running</SelectItem><SelectItem value="done">Done</SelectItem><SelectItem value="failed">Failed</SelectItem></SelectContent>
         </Select>
-        <span className="font-mono text-[10px] text-ink-3">{activeCount} active</span>
+        {/* Was a bare "12 active" in mono at 10px, which read as debug output
+            rather than a count. The badge gives it the same shape as the count
+            badges elsewhere. `h-7` matches the `size="sm"` Select beside it. */}
+        <Badge
+          variant="outline"
+          className="tabular h-7 w-auto flex-none gap-0 self-center border-line bg-well px-2 font-mono text-[11px] font-normal text-ink-3"
+        >
+          {activeCount} active
+        </Badge>
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-success-text"><i className="size-1.5 rounded-full bg-current" /> connected</span>
       </div>
     </PageHeader>

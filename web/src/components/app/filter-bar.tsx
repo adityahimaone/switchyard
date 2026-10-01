@@ -5,6 +5,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 
 export interface FilterOption { value: string; label: string }
 
@@ -65,9 +66,28 @@ export function FilterBar({
         />
       </div>
       {children}
-      <span className="tabular text-xs text-ink-3" aria-live="polite">
-        {shown === total ? `${total}` : `${shown} of ${total}`}
-      </span>
+      {/* A bare number next to the search box read as stray data — it had no
+          noun and no container, so "12" was ambiguous between matches, results
+          and items. The badge gives it a shape and keeps the noun in the
+          placeholder, so the number reads as a count of what the field searches.
+
+          `h-8` matches `Input` exactly (both from this design system). The
+          badge's own default is `text-xs px-2 py-0.5`, which is a ~20px pill —
+          visibly shorter than the 32px search box it sits beside, so the row
+          looked misaligned rather than deliberate.
+
+          `w-auto` fights the row stretching it. This is a direct flex child of a
+          `flex-wrap` row, so its default `flex-basis: auto` resolves against the
+          remaining space and it grows to fill it — a one-character count came out
+          as a 300px-wide pill. Sizing to the content keeps the aspect ratio
+          honest: the badge should be a count, not a panel. */}
+      <Badge
+        variant="outline"
+        aria-live="polite"
+        className="tabular h-8 w-auto flex-none gap-0 self-center border-line bg-well px-2 text-[13px] font-normal text-ink-3"
+      >
+        {shown === total ? total : `${shown} of ${total}`}
+      </Badge>
       {trailing && <div className="ml-auto flex items-center gap-2">{trailing}</div>}
     </div>
   )
