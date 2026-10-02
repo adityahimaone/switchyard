@@ -32,11 +32,19 @@ export const buttonVariants = cva(
          * pure cost. */
         default:
           "glass-flat rounded-control text-ink-2 hover:-translate-y-px hover:shadow-lift data-[state=open]:shadow-lift motion-reduce:transform-none",
-        /** The one forward action per screen. Solid, not glass: a translucent
-            accent fill would muddy the label and lose the "this is the action"
-            signal that a solid fill carries. */
+        /** The one forward action per screen.
+         *
+         * Frosted rather than solid, so a primary action shares the material of
+         * the panel it sits on instead of reading as a pasted rectangle.
+         *
+         * The accent fill is kept nearly opaque (80%) because a translucent
+         * accent over glass muddies the label — the fill is the only thing
+         * separating "this is the action" from the controls beside it. The blur
+         * is what the design system calls cheap elsewhere: at most one signal
+         * button is on screen at a time, so this is a single compositing layer,
+         * not the 231 that made a list of default buttons jank. */
         signal:
-          "rounded-control border border-accent bg-accent text-accent-ink hover:brightness-95",
+          "rounded-control border border-accent/70 bg-accent/80 text-accent-ink backdrop-blur-[10px] backdrop-saturate-150 hover:bg-accent/90 hover:border-accent active:bg-accent/70",
         secondary:
           "glass-flat rounded-control text-ink",
         outline:
