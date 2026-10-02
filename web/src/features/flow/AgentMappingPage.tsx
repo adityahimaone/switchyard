@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { AppWindow, Brain, Database, Expand, GitPullRequest, Kanban, Laptop, Minimize2, Radio, Search, Server, ZoomIn, ZoomOut, Maximize2, X } from "lucide-react"
+import { AppWindow, Brain, Database, Expand, GitPullRequest, Kanban, Laptop, Minimize2, Radio, Search, Server, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import { PageHeader } from "@/components/app/page-header"
 import { NODES, EDGES, taskCardPositions, type FlowNodeId, type Point } from "./layout"
 import { elbowPath, elbowPathV, pathLength } from "./elbow"
 import { TravelingDot } from "./TravelingDot"
+import { FlowNodeCard } from "./FlowNodeCard"
+import { NodeDetailPanel } from "./NodeDetailPanel"
 import { useFlowTasks, type FlowStage, type FlowTask } from "./useFlowTasks"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { useIsMobile } from "@/hooks/use-mobile"
 
-const CARD_W = 188
+// Node width is the card's, not the graph's: `design-surfaces.md` §12 calls for
+// 200px, and `anchor()` measures from this constant to place the connectors. Keep
+// the two in step or the edges stop kissing the card edge.
+const CARD_W = 200
 const CARD_H = 52
 const GRAPH_W = 1360
 const GRAPH_H = 700
@@ -62,7 +68,8 @@ export default function AgentMappingPage() {
   const [expanded, setExpanded] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
-  const nodeDragRef = useRef<{ id: FlowNodeId; x: number; y: number; origin: Point } | null>(null)
+  const nodeDragRef = useRef<{ id: FlowNodeId; x: number; y: number; origin: Point; moved: boolean } | null>(null)
+  const isMobile = useIsMobile()
 
   useLayoutEffect(() => {
     if (!canvasRef.current) return
@@ -108,26 +115,51 @@ export default function AgentMappingPage() {
   const activeCount = tasks.filter((t) => t.stage === "dispatched" || t.stage === "running").length
   const onNodePointerDown = (e: React.PointerEvent, id: FlowNodeId) => {
     e.stopPropagation()
-    nodeDragRef.current = { id, x: e.clientX, y: e.clientY, origin: positions[id] }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    nodeDragRef.current = { id, x: e.clientX, y: e.clientY, origin: positions[id], moved: false }
   }
   const onNodePointerMove = (e: React.PointerEvent) => {
     const drag = nodeDragRef.current
     if (!drag) return
-    setOverrides((current) => ({ ...current, [drag.id]: { x: drag.origin.x + (e.clientX - drag.x) / actualView.scale, y: drag.origin.y + (e.clientY - drag.y) / actualView.scale } }))
+    const dx = (e.clientX - drag.x) / actualView.scale
+    const dy = (e.clientY - drag.y) / actualView.scale
+    // A few pixels of slack, or every press reads as a drag and tapping a node to
+    // read it never selects it.
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return
+    drag.moved = true
+    setOverrides((current) => ({ ...current, [drag.id]: { x: drag.origin.x + dx, y: drag.origin.y + dy } }))
   }
-  const onNodePointerUp = (e: React.PointerEvent, id: FlowNodeId) => {
-    e.stopPropagation()
+  const onNodePointerUp = (id: FlowNodeId) => {
+    const drag = nodeDragRef.current
     nodeDragRef.current = null
-    setSelected(id)
+    // Dropping a node somewhere selects it — that used to mean every reposition
+    // also opened the inspector, which is not what either gesture is asking for.
+    if (drag?.moved) return
+    setSelected((current) => (current === id ? current : id))
   }
+  const onNodePointerCancel = () => { nodeDragRef.current = null }
   const toggleExpand = () => {
     if (document.fullscreenElement) document.exitFullscreen()
     else canvasRef.current?.requestFullscreen()
   }
 
-  return <div className="relative flex min-h-0 flex-1 flex-col text-ink">
-    <PageHeader title="Flow Map" description="Live task routing and execution map.">
+  // The map owns the left column and the inspector takes a 320px one beside it.
+  // The panel is a sibling, not an overlay, so the canvas keeps its own width —
+  // which the ResizeObserver above picks up, and `fit` already tracks `dims`.
+  const panel = selected ? (
+    <NodeDetailPanel
+      label={LABEL[selected]}
+      group={GROUP[selected]}
+      sub={nodeMapSub(selected)}
+      color={COLORS[selected]}
+      task={selectedTask}
+      stageColor={selectedTask ? STAGE_COLOR[selectedTask.stage] : undefined}
+      onClose={() => setSelected(null)}
+    />
+  ) : null
+
+  return <div className="relative flex min-h-0 flex-1 text-ink">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <PageHeader title="Flow Map" description="Live task routing and execution map.">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-48"><Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-ink-3" /><input aria-label="Search active tasks" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks" className="h-8 w-full rounded-control border border-line bg-well pl-7 pr-2 text-xs outline-none placeholder:text-ink-3 focus:border-accent/70 focus:ring-[3px] focus:ring-focus/40" /></div>
         <Select value={stage} onValueChange={(value) => setStage(value as FlowStage | "all")}>
@@ -158,12 +190,12 @@ export default function AgentMappingPage() {
         </svg>
         {visibleTasks.slice(0, 24).flatMap((t, i) => { const chain = channelChain(t); return chain.slice(0, -1).flatMap((from, hop) => { const to = chain[hop + 1]; const path = anchor(from, to, positions)[2]; return [0, 1, 2, 3, 4, 5, 6, 7].map((dot) => <TravelingDot key={`${t.task_id}-${from}-${to}-${dot}`} taskId={`${t.task_id}-${i}`} pathD={path} pathLen={pathLength(path)} phaseRatio={dot / 8} active />) }) })}
         {edgePaths.flatMap((edge, i) => [0, 1].map((phase) => <TravelingDot key={`idle-${edge.from}-${edge.to}-${phase}`} taskId={`idle-${i}`} pathD={edge.path} pathLen={pathLength(edge.path)} phaseRatio={(i * .21 + phase / 2) % 1} idle />))}
-        {NODES.map((node) => { const Icon = ICON[node.id], task = stageFor(node.id, visibleTasks), color = task ? STAGE_COLOR[task.stage] : COLORS[node.id]; return <button key={node.id} type="button" onPointerDown={(e) => onNodePointerDown(e, node.id)} onPointerMove={onNodePointerMove} onPointerUp={(e) => onNodePointerUp(e, node.id)} onPointerCancel={() => { nodeDragRef.current = null }} className={`glass-card map-node absolute flex h-[52px] w-[188px] cursor-grab items-center gap-2 px-3 text-left transition-shadow duration-150 hover:shadow-lift active:cursor-grabbing focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40 ${!visibleTasks.length ? "map-idle-card" : ""} ${selected === node.id ? "ring-[1.5px] ring-accent" : ""}`} style={{ left: positions[node.id].x - CARD_W / 2, top: positions[node.id].y - CARD_H / 2, borderColor: task ? color : selected === node.id ? color : "var(--c-line-strong)", boxShadow: task ? `0 0 0 1px ${color}, 0 0 18px ${color}66, var(--shadow-active)` : undefined }}><span className="absolute inset-y-2 left-0.5 w-0.5 rounded-full" style={{ background: color }} /><Icon className="ml-1 size-3.5 shrink-0" style={{ color }} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-semibold">{LABEL[node.id]}</span><span className="block truncate font-mono text-[9px] text-ink-3">{task ? `${task.stage} · ${task.task_id}` : node.sub}</span></span>{countFor(node.id) > 0 && <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-canvas text-[9px] font-bold text-ink">{countFor(node.id)}</span>}</button> })}
-        {taskCards.map(({ task, position }) => <span key={`task-${task.task_id}`} title={task.title} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-accent/40 bg-canvas/95 px-1.5 py-1 font-mono text-[9px] text-accent-text shadow-lg" style={{ left: position.x, top: position.y }}>{task.task_id}</span>)}
+        {NODES.map((node) => { const Icon = ICON[node.id], task = stageFor(node.id, visibleTasks), color = task ? STAGE_COLOR[task.stage] : COLORS[node.id]; return <FlowNodeCard key={node.id} label={LABEL[node.id]} sub={node.sub} icon={Icon} color={color} count={countFor(node.id)} meta={task ? task.task_id : undefined} selected={selected === node.id} idle={!visibleTasks.length} onSelect={() => onNodePointerUp(node.id)} onDragStart={(e) => onNodePointerDown(e, node.id)} onDragMove={onNodePointerMove} onDragCancel={onNodePointerCancel} style={{ left: positions[node.id].x - CARD_W / 2, top: positions[node.id].y - CARD_H / 2 }} /> })}
+        {taskCards.map(({ task, position }) => <span key={`task-${task.task_id}`} title={task.title} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-accent/40 bg-surface px-1.5 py-1 font-mono text-[9px] text-accent-text" style={{ left: position.x, top: position.y }}>{task.task_id}</span>)}
         <div className="absolute left-16 top-[282px] font-mono text-[9px] text-ink-3">{visibleTasks.length ? "live route activity" : "no active task"}</div>
       </div>
-      <div onPointerDown={(e) => e.stopPropagation()} className="glass-strong absolute bottom-4 left-4 flex items-center gap-1 rounded-control p-1"><button aria-label="Zoom out" title="Zoom out" className="map-control" onClick={() => zoomAt(.8)}><ZoomOut className="size-3.5" /></button><span className="w-10 text-center font-mono text-[10px] text-ink-3">{Math.round(actualView.scale * 100)}%</span><button aria-label="Zoom in" title="Zoom in" className="map-control" onClick={() => zoomAt(1.2)}><ZoomIn className="size-3.5" /></button><button aria-label="Fit graph" title="Fit graph" className="map-control" onClick={() => setView(null)}><Maximize2 className="size-3.5" /></button><button aria-label={expanded ? "Exit expanded map" : "Expand map"} title={expanded ? "Exit expanded map" : "Expand map"} className="map-control" onClick={toggleExpand}>{expanded ? <Minimize2 className="size-3.5" /> : <Expand className="size-3.5" />}</button></div>
-      <button type="button" aria-label="Recenter map from minimap" title="Recenter map" onPointerDown={(e) => e.stopPropagation()} onClick={() => setView({ scale: actualView.scale, x: dims.w / 2 - (GRAPH_W / 2) * actualView.scale, y: dims.h / 2 - (GRAPH_H / 2) * actualView.scale })} className="glass-strong absolute bottom-4 right-4 hidden rounded-control p-2 text-left md:block" style={{ width: MINIMAP_W, height: MINIMAP_H }}>
+      <div onPointerDown={(e) => e.stopPropagation()} className="absolute bottom-4 left-4 flex items-center gap-1 rounded-card border border-line bg-raised p-1"><button aria-label="Zoom out" title="Zoom out" className="map-control" onClick={() => zoomAt(.8)}><ZoomOut className="size-3.5" /></button><span className="w-10 text-center font-mono text-[10px] text-ink-3">{Math.round(actualView.scale * 100)}%</span><button aria-label="Zoom in" title="Zoom in" className="map-control" onClick={() => zoomAt(1.2)}><ZoomIn className="size-3.5" /></button><button aria-label="Fit graph" title="Fit graph" className="map-control" onClick={() => setView(null)}><Maximize2 className="size-3.5" /></button><button aria-label={expanded ? "Exit expanded map" : "Expand map"} title={expanded ? "Exit expanded map" : "Expand map"} className="map-control" onClick={toggleExpand}>{expanded ? <Minimize2 className="size-3.5" /> : <Expand className="size-3.5" />}</button></div>
+      <button type="button" aria-label="Recenter map from minimap" title="Recenter map" onPointerDown={(e) => e.stopPropagation()} onClick={() => setView({ scale: actualView.scale, x: dims.w / 2 - (GRAPH_W / 2) * actualView.scale, y: dims.h / 2 - (GRAPH_H / 2) * actualView.scale })} className="absolute bottom-4 right-4 hidden rounded-card border border-line bg-raised p-2 text-left md:block" style={{ width: MINIMAP_W, height: MINIMAP_H }}>
         <span className="absolute inset-2 block">
           <svg viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`} preserveAspectRatio="xMidYMid meet" aria-label="Map minimap" role="img" className="h-full w-full" onClick={(e) => {
             e.stopPropagation()
@@ -176,14 +208,23 @@ export default function AgentMappingPage() {
             setView({ scale: actualView.scale, x: dims.w / 2 - gx * actualView.scale, y: dims.h / 2 - gy * actualView.scale })
           }}>
             {edgePaths.map((edge) => <path key={`${edge.from}-${edge.to}`} d={edge.path} fill="none" stroke="var(--c-line-strong)" strokeWidth="7" strokeLinecap="round" />)}
-            {NODES.map((n) => <rect key={n.id} x={positions[n.id].x - CARD_W / 2} y={positions[n.id].y - CARD_H / 2} width={CARD_W} height={CARD_H} rx="12" fill={COLORS[n.id]} opacity=".72" />)}
+            {NODES.map((n) => <rect key={n.id} x={positions[n.id].x - CARD_W / 2} y={positions[n.id].y - CARD_H / 2} width={CARD_W} height={CARD_H} rx="12" fill={COLORS[n.id]} fillOpacity={selected === n.id ? 1 : 0.55} />)}
             <rect x={minimapView.left} y={minimapView.top} width={minimapView.width} height={minimapView.height} rx="8" fill="var(--c-accent-tint)" stroke="var(--c-accent)" strokeWidth="3" />
           </svg>
         </span>
         <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[.14em] text-ink-3">MINIMAP</span>
       </button>
     </div>
-    {selected && <aside className="absolute right-0 top-16 bottom-0 z-20 w-full max-w-[320px] border-l border-line bg-surface p-4 shadow-2xl md:top-16"><button aria-label="Close inspector" title="Close inspector" onClick={() => setSelected(null)} className="absolute right-3 top-3 rounded-md p-1 text-ink-3 hover:bg-well hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><X className="size-4" /></button><p className="font-mono text-[9px] uppercase tracking-[.16em]" style={{ color: COLORS[selected] }}>{GROUP[selected]}</p><h2 className="mt-2 text-base font-semibold tracking-tight">{LABEL[selected]}</h2><p className="mt-1 font-mono text-[10px] text-ink-3">{nodeMapSub(selected)}</p><div className="my-4 border-t border-line" /><p className="text-[10px] uppercase tracking-wider text-ink-3">Route activity</p>{selectedTask ? <div className="mt-2 rounded-lg border border-line bg-canvas p-3"><p className="truncate text-xs font-medium">{selectedTask.title}</p><p className="mt-2 font-mono text-[10px]" style={{ color: STAGE_COLOR[selectedTask.stage] }}>{selectedTask.stage}</p><p className="mt-1 truncate font-mono text-[10px] text-ink-3">{selectedTask.task_id}</p><p className="mt-3 text-[10px] text-ink-3">{new Date(selectedTask.updated_at).toLocaleString()}</p></div> : <p className="mt-2 text-xs text-ink-3">No matching task currently routed through this service.</p>}</aside>}
+    </div>
+    {/* The panel is a sibling of the map column, not a child of it — inside that
+        `flex-col` it would stack under the canvas instead of standing beside it.
+        Below `md` a 320px column would leave the map unreadable, so there it
+        overlays instead. */}
+    {panel && (isMobile ? (
+      <div className="absolute inset-0 z-20 flex justify-end bg-canvas/60 backdrop-blur-[2px]">
+        {panel}
+      </div>
+    ) : panel)}
   </div>
 }
 
