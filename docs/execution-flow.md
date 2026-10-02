@@ -41,7 +41,45 @@ ssh mac-tailscale 'test -d /Users/adityahimawan/Development/next-portfolio-blog 
 
 Parent path registration does not replace exact child path registration when routing requires a distinct app workspace.
 
-Remote paths must not be downgraded to SSH or to a VPS-local run: the local dispatcher excludes any task whose `workspace_transport` is `ssh` or `node-agent` (`hermes_cli/kanban_db_dispatch.py`), so a misclassified row would otherwise be claimed by the wrong dispatcher instead of failing loudly.
+Remote paths must not be downgraded to a VPS-local run: the local dispatcher excludes any task whose `workspace_transport` is `node-agent` (`hermes_cli/kanban_db_dispatch.py`), so a misclassified row would otherwise be claimed by the wrong dispatcher instead of failing loudly.
+
+The `ssh` transport is retired. Tasks that still carried it were rewritten to
+`node-agent` at server startup (`MigrateRetiredTransport`), because a card parked
+in `review` can only leave that column through approve. `workspace_ssh_target`
+survives as the node-agent target and keeps its historical column name.
+
+## Task isolation
+
+A task runs either in the shared workspace checkout or in its own git worktree:
+
+| `isolation` | Where work happens | Merge behaviour |
+|---|---|---|
+| `workspace` (default) | The registered workspace path | Changes land in the shared checkout directly |
+| `worktree` | `<repo>/.switchyard/<task-id>` on branch `switchyard/<task-id>` | Merged back into the repo's current branch on approve |
+
+Worktree isolation is what makes declared `paths` containment rather than
+cooperation: two tasks on one repository cannot interleave edits, and the review
+diff is exactly the task's own work. It is created on the worker at dispatch
+time, before the agent runs, because the worker refuses a workspace directory
+that does not exist.
+
+Ordering is load-bearing and is enforced in `EnsureTaskWorktree`:
+
+1. The worktree must exist before anything is dispatched into it.
+2. The review gate reads the diff from the worktree, not the shared checkout.
+3. Approve commits on the worktree branch, then merges it into the base branch.
+   A merge conflict leaves the card in review for a human; it is never
+   auto-resolved.
+
+`.switchyard/` is added to the repo's `.git/info/exclude` on the worker — local
+to the machine, so it needs no commit and does not dirty the tracked
+`.gitignore`. Without it, every task's diff would include the worktree
+directories.
+
+A worktree belonging to a task that finished more than 72 hours ago is removed
+at the next server startup. The branch is deliberately kept: its commits may
+have been pushed, and discarding them on a timer is not a decision the server
+should make unattended.
 
 ## Executor matrix
 
