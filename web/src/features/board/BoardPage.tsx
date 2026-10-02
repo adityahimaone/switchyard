@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Archive, CheckSquare, Plus, Search, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  api, boardHealth, bulkTasks, COLUMNS, reorderTasks, toastGlobal,
+  api, boardHealth, boardLeases, bulkTasks, COLUMNS, reorderTasks, toastGlobal,
   type Profile, type Status, type Task, type Workspace,
 } from "@/api"
 import { Button } from "@/components/ui/button"
@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { EmptyState } from "@/components/app/empty-state"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FilterChip } from "@/components/app/filter-bar"
+import {
+  applyFilters, FilterBar, fieldsFor, firstValuePerField, toFilters, type Filter,
+} from "./boardFilters"
 import { PageHeader } from "@/components/app/page-header"
-import { STATUS_LABEL } from "@/components/ui/status-lamp"
 import { cn } from "@/lib/utils"
 import TaskCard from "./TaskCard"
 import { BoardColumn, useBoardEntrance } from "./BoardColumn"
@@ -23,9 +24,6 @@ import LoadingState from "@/components/feedback/loading-state"
 import { useSettings } from "@/hooks/useSettings"
 
 const BOARD_COLUMNS: Status[] = [...COLUMNS, "archived"]
-
-const PROFILE_OPTIONS = [{ value: "__all", label: "All agents" }]
-const WORKSPACE_OPTIONS = [{ value: "__all", label: "All workspaces" }]
 
 /**
  * Horizontal scroll for the column grid, with edges that make it obvious more
@@ -83,6 +81,15 @@ function BoardScroller({ children, enter }: { children: ReactNode; enter: boolea
 
 interface SavedView {
   name: string
+  /**
+   * The full token list, when the view was saved with the token bar. This is
+   * what preserves operators and multi-value filters, which the four strings
+   * below cannot express.
+   *
+   * Optional on purpose: views saved before the token bar have no `tokens`, and
+   * must keep loading rather than silently becoming "no filter".
+   */
+  tokens?: Filter[]
   filters: { q: string; fStatus: string; fAgent: string; fWorkspace: string; fPriority: string }
 }
 
@@ -117,13 +124,23 @@ export function BoardPage({
   const enterBoard = useBoardEntrance()
 
   const [q, setQ] = useState("")
-  const [fStatus, setFStatus] = useState("__all")
-  const [fAgent, setFAgent] = useState("__all")
-  const [fWorkspace, setFWorkspace] = useState("__all")
-  const [fPriority, setFPriority] = useState("__all")
+  /*
+   * The token list is the real filter state.
+   *
+   * This began as four strings that saved views serialise, with the token bar
+   * projected onto them. That could not express an operator or a second token on
+   * the same field, and it made the add button disappear, because any token the
+   * four strings could not represent disabled the bar that owned it. The four
+   * strings now exist only as a fallback when reading a view saved before the
+   * token bar existed.
+   */
+  const [tokens, setTokens] = useState<Filter[]>([])
   const [viewName, setViewName] = useState("")
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ status: Status; index: number } | null>(null)
+
+  // The token list is the single source of truth for the field filters; see the
+  // note where it is declared.
   const [taskOrder, setTaskOrder] = useState<Record<string, string[]>>({})
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
   const [bulkMode, setBulkMode] = useState(false)
@@ -146,6 +163,13 @@ export function BoardPage({
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
 
+  // Built from the live workspace and profile lists, so an option that no longer
+  // exists cannot be offered as a filter.
+  const filterFields = useMemo(
+    () => fieldsFor({ profiles: profiles.data ?? [], workspaces: workspaces.data ?? [] }),
+    [profiles.data, workspaces.data],
+  )
+
   const move = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Status }) =>
       api(`/api/boards/${slug}/tasks/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
@@ -161,29 +185,28 @@ export function BoardPage({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks", slug] }),
   })
 
-  const filtered = useMemo(() => {
+  // Search is applied here; the field filters come from the token bar, which is
+  // their single source of truth. Filtering in two places is how the bar and the
+  // old dropdowns drifted apart before.
+  const searchMatched = useMemo(() => {
     let list = tasks.data ?? []
     const needle = q.trim().toLowerCase()
-    if (needle) {
-      list = list.filter((t) =>
-        t.title.toLowerCase().includes(needle) ||
-        (t.body ?? "").toLowerCase().includes(needle) ||
-        t.id.toLowerCase().includes(needle) ||
-        (t.result ?? "").toLowerCase().includes(needle),
-      )
-    }
-    if (fStatus !== "__all") list = list.filter((t) => t.status === fStatus)
-    if (fAgent !== "__all") list = list.filter((t) => (t.assignee || "") === fAgent)
-    if (fWorkspace !== "__all") list = list.filter((t) => t.workspace_path === fWorkspace)
-    if (fPriority !== "__all") list = list.filter((t) => String(t.priority) === fPriority)
-    return list
-  }, [tasks.data, q, fStatus, fAgent, fWorkspace, fPriority])
+    if (!needle) return list
+    return list.filter((t) =>
+      t.title.toLowerCase().includes(needle) ||
+      (t.body ?? "").toLowerCase().includes(needle) ||
+      t.id.toLowerCase().includes(needle) ||
+      (t.result ?? "").toLowerCase().includes(needle),
+    )
+  }, [tasks.data, q])
 
-  const filtersActive =
-    q.trim() !== "" || fStatus !== "__all" || fAgent !== "__all" || fWorkspace !== "__all" || fPriority !== "__all"
+  const filtered = useMemo(() => applyFilters(searchMatched, tokens), [searchMatched, tokens])
+
+  const filtersActive = q.trim() !== "" || tokens.length > 0
 
   const clearFilters = () => {
-    setQ(""); setFStatus("__all"); setFAgent("__all"); setFWorkspace("__all"); setFPriority("__all")
+    setQ("")
+    setTokens([])
   }
 
   function saveView() {
@@ -191,7 +214,9 @@ export function BoardPage({
     if (!name) return
     const next = [
       ...savedViews.filter((v) => v.name !== name),
-      { name, filters: { q, fStatus, fAgent, fWorkspace, fPriority } },
+      // `tokens` carries the operators; the four strings are kept in step so a
+      // view saved by an older build, or read by one, still resolves.
+      { name, tokens, filters: { q, ...firstValuePerField(tokens) } },
     ]
     window.localStorage.setItem(viewsKey, JSON.stringify(next))
     setViewName("")
@@ -202,10 +227,10 @@ export function BoardPage({
     const v = savedViews.find((x) => x.name === name)
     if (!v) return
     setQ(v.filters.q)
-    setFStatus(v.filters.fStatus)
-    setFAgent(v.filters.fAgent)
-    setFWorkspace(v.filters.fWorkspace)
-    setFPriority(v.filters.fPriority)
+    // A view saved before the token bar has no tokens: rebuild them from the
+    // four strings so it opens as plain equality filters rather than silently
+    // showing everything.
+    setTokens(v.tokens ?? toFilters(v.filters))
   }
 
   function toggleTask(id: string, next: boolean) {
@@ -308,6 +333,7 @@ export function BoardPage({
               </SelectContent>
             </Select>
             {boardMenu}
+            <LeaseChips slug={slug} />
             <Button size="sm" variant="signal" onClick={onNewTask}>
               <Plus className="size-3.5" /> New task
             </Button>
@@ -330,27 +356,13 @@ export function BoardPage({
           />
         </div>
 
-        <FilterChip
-          label="Status" value={fStatus} onChange={setFStatus}
-          options={[{ value: "__all", label: "All" }, ...BOARD_COLUMNS.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]}
-        />
-        <FilterChip
-          label="Agent" value={fAgent} onChange={setFAgent}
-          options={[...PROFILE_OPTIONS, ...(profiles.data ?? []).map((p) => ({ value: p.name, label: p.name })), { value: "", label: "Unassigned" }]}
-        />
-        <FilterChip
-          label="Workspace" value={fWorkspace} onChange={setFWorkspace}
-          options={[...WORKSPACE_OPTIONS, ...(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.name })), { value: "", label: "Scratch (no path)" }]}
-        />
-        <FilterChip
-          label="Priority" value={fPriority} onChange={setFPriority}
-          options={[
-            { value: "__all", label: "All" },
-            { value: "0", label: "P0 normal" },
-            { value: "1", label: "P1" },
-            { value: "2", label: "P2 high" },
-            { value: "3", label: "P3 urgent" },
-          ]}
+        <FilterBar
+          fields={filterFields}
+          value={tokens}
+          onChange={setTokens}
+          addLabel="Filter"
+          emptyLabel="Add filter"
+          aria-label="Filter tasks"
         />
 
         {/* Matches FilterBar's count badge: the board hand-rolled the same bare
@@ -500,6 +512,58 @@ export function BoardPage({
             )
           })}
         </BoardScroller>
+      )}
+    </div>
+  )
+}
+
+/**
+ * LeaseChips shows which declared scopes are currently held, and by whom.
+ *
+ * A lease means a task is editing those paths right now — or has uncommitted
+ * work in review. Seeing that in the header is what makes the board's queue
+ * legible: a card in todo that never starts usually means it is waiting on a
+ * lease rather than being broken.
+ *
+ * Only the first few are shown, because a busy board can hold many and the
+ * header is not the place for a list.
+ */
+function LeaseChips({ slug }: { slug: string }) {
+  const { data: leases } = useQuery({
+    queryKey: ["board-leases", slug],
+    queryFn: () => boardLeases(slug),
+    // Leases change when a task is claimed or approved, which the SSE stream
+    // already signals; polling as well keeps the header honest after a reload
+    // or a missed event.
+    refetchInterval: 30_000,
+    // A board with no leases is the common case, so a failure is not worth
+    // surfacing — the chips simply do not appear.
+    retry: false,
+  })
+
+  const active = leases ?? []
+  if (active.length === 0) return null
+
+  const MAX = 3
+  return (
+    <div className="flex items-center gap-1" aria-label="Held path scopes">
+      {active.slice(0, MAX).map((l) => (
+        <Badge
+          key={`${l.task_id}:${l.glob}`}
+          variant="outline"
+          className="shrink-0 border-line bg-well px-1.5 py-0 text-2xs leading-none text-ink-3"
+          title={`${l.title || l.task_id} (${l.status}) holds ${l.glob}`}
+        >
+          <span className="font-mono">{l.glob}</span>
+        </Badge>
+      ))}
+      {active.length > MAX && (
+        <span
+          className="shrink-0 text-2xs text-ink-3"
+          title={active.slice(MAX).map((l) => `${l.title || l.task_id}: ${l.glob}`).join("\n")}
+        >
+          +{active.length - MAX} more
+        </span>
       )}
     </div>
   )

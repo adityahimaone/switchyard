@@ -64,43 +64,7 @@ export function SettingRow({
   )
 }
 
-/** Small segmented control for Theme, Density and Reduce motion. */
-export function Segmented<T extends string>({
-  value,
-  onChange,
-  options,
-  label,
-}: {
-  value: T
-  onChange: (v: T) => void
-  options: { value: T; label: string }[]
-  label: string
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className="inline-flex rounded-control border border-line bg-well p-0.5"
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={o.value === value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "h-6 rounded-control px-2.5 text-xs font-medium outline-none",
-            "transition-colors duration-100",
-            "focus-visible:ring-[3px] focus-visible:ring-focus/40",
-            o.value === value
-              ? "bg-raised text-ink shadow-xs"
-              : "text-ink-3 hover:text-ink",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
+// Segmented moved to components/ui: the Create Task dialog needs it too, and
+// importing a UI primitive across features is the wrong direction. Re-exported
+// here so the existing settings callers keep their import path.
+export { Segmented } from "@/components/ui/segmented"

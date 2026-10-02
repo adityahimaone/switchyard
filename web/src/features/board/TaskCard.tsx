@@ -4,6 +4,7 @@ import {
 } from "lucide-react"
 import { parseTaskExecutionMeta, type Profile, type Status, type Task, type TaskHealth, type Workspace } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -173,6 +174,55 @@ export default function TaskCard({
           {task.priority > 0 && (
             <span className="shrink-0 text-xs text-ink-3" title={`Priority ${task.priority}`}>
               P{task.priority}
+            </span>
+          )}
+          {task.paths && task.paths.length > 0 && (
+            <span
+              className="shrink-0 text-2xs text-ink-3"
+              title={`Declared scope: ${task.paths.join(", ")}`}
+            >
+              {task.paths.length} path{task.paths.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {task.isolation === "worktree" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-line bg-well px-1.5 py-0 text-2xs leading-none text-ink-3"
+              title={
+                task.branch
+                  ? `Isolated in its own git worktree on branch ${task.branch}`
+                  : "Isolated in its own git worktree"
+              }
+            >
+              worktree
+            </Badge>
+          )}
+          {/* The gate verdict. A failed gate blocks approval until a reviewer
+              overrides it, so it has to be visible on the card rather than only
+              inside the detail drawer. */}
+          {task.gate_status === "passed" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-success/30 bg-success-tint px-1.5 py-0 text-2xs leading-none text-success-text"
+            >
+              gate ✓
+            </Badge>
+          )}
+          {task.gate_status === "failed" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-danger/30 bg-danger-tint px-1.5 py-0 text-2xs leading-none text-danger-text"
+              title={task.gate_output ? `Gate failed: ${task.gate_output.slice(0, 300)}` : "Gate failed"}
+            >
+              gate ✗
+            </Badge>
+          )}
+          {task.gate_status === "running" && (
+            <span className="shrink-0 text-2xs text-ink-3">gate running…</span>
+          )}
+          {task.attempt && task.attempt > 1 && (
+            <span className="shrink-0 text-2xs text-ink-3" title="Retry attempt number">
+              attempt {task.attempt}
             </span>
           )}
           {task.consecutive_failures > 0 && (

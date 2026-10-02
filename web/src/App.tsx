@@ -234,6 +234,14 @@ export default function App() {
           slug={slug}
           workspaces={workspaces.data ?? []}
           profiles={profiles.data ?? []}
+          // Board tasks the dependency picker offers. The list is already
+          // cached here, so the picker filters in memory rather than issuing a
+          // request per keystroke.
+          candidates={(tasks.data ?? []).map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+          }))}
           onClose={() => setCreating(false)}
           onCreate={(payload) =>
             api<Task>(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(async (created) => {

@@ -1,5 +1,10 @@
 # Switchyard Harness Session Continuity
 
+> **Historical record.** The file list below describes one change as it stood at
+> the time. `cmd/server/ssh_dispatch.go` has since been retired: the SSH
+> transport is gone and `cmd/server/remote_dispatch.go` is the only dispatcher.
+> See [execution-flow.md](execution-flow.md) for the current routing rules.
+
 ## Main task
 
 Keep DSH task execution bound to stable workspace and session identity across initial runs, retries, and review feedback.

@@ -40,12 +40,12 @@ func validateWorkspacePath(p string) error {
 	if isRegisteredRemotePath(p) {
 		return nil
 	}
-	// Sub-paths of a registered remote workspace are fine too: the ssh
-	// dispatcher runs git/agents on the remote host via SSH, so any path
-	// under a registered remote root (e.g. .../saas/gadjian/app under
-	// .../saas) is dispatchable the same way. Exit-3 protection is about
-	// the LOCAL dispatcher never seeing these paths, which hardGuardTransport
-	// in ssh_dispatch.go already guarantees.
+	// Sub-paths of a registered remote workspace are fine too: the worker runs
+	// git and agents on the remote host via node-agent, so any path under a
+	// registered remote root (e.g. .../saas/gadjian/app under .../saas) is
+	// dispatchable the same way. Exit-3 protection is about the LOCAL
+	// dispatcher never seeing these paths, which the persisted
+	// workspace_transport guarantees.
 	if isUnderRegisteredRemotePath(p) {
 		return nil
 	}
@@ -126,6 +126,35 @@ func workspaceHostForPath(p string) string {
 		}
 	}
 	return ""
+}
+
+// TransportForPath resolves the dispatch transport and node-agent target for a
+// workspace path. It is the single place that decides how a path is reached, and
+// the transport migration reuses it so a legacy row lands on the same target a
+// freshly created task would get.
+func TransportForPath(p string) (transport, target string, isRemote bool) {
+	return transportForPath(p)
+}
+
+// TransportForExistingPath resolves transport and target for a task row that may
+// already carry a target. An existing target wins, because it was resolved when
+// the task was created and re-resolving could silently move a card to a
+// different worker.
+func TransportForExistingPath(workspacePath, existingTarget string) (string, string) {
+	transport, target, _ := transportForPath(workspacePath)
+	if transport == "" {
+		// Local path, or a registry that no longer knows it. An existing target
+		// still identifies a real worker, so keep it rather than dropping the
+		// card's routing.
+		if existingTarget != "" {
+			return "node-agent", existingTarget
+		}
+		return "", ""
+	}
+	if existingTarget != "" {
+		return transport, existingTarget
+	}
+	return transport, target
 }
 
 func transportForPath(p string) (transport, target string, isRemote bool) {

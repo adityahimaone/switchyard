@@ -74,11 +74,15 @@ flowchart TB
 
 ## Dispatcher and transport
 
-`cmd/server/ssh_dispatch.go` is the single owner for task claims. It polls every 30 seconds. Successful tasks land in `review` — never `done` directly.
+`cmd/server/remote_dispatch.go` is the single owner for task claims. It polls every 30 seconds. Successful tasks land in `review` — never `done` directly.
+
+There is one dispatch path. The legacy SSH transport is retired: tasks that
+still carried `workspace_transport='ssh'` are rewritten to `node-agent` at
+startup, and the review gate reaches the worker through node-agent too.
 
 | Task choice | Route | Executor |
 |---|---|---|
-| `auto` | Legacy SSH from VPS | Hermes on VPS, file access over SSH |
+| `auto` | node-agent | Resolved on the workspace host, so the VPS never runs an agent against a path it cannot see |
 | `hermes` | node-agent | Hermes on workspace host |
 | `codex` | node-agent | Codex on workspace host |
 | `dsh` | node-agent | DeepSeek Harness session on workspace host |
@@ -364,7 +368,34 @@ Workspace source of truth is `~/.hermes/workspaces.json` (shared with Hermes CLI
 | POST | `/api/remote/dispatch` | Manual dispatch to node-agent |
 | GET | `/api/nodes` | Node-agent status |
 
-All `/api/*` routes require the `kanban_session` HttpOnly cookie except `/api/auth/status`, `/api/auth/login`, `/api/auth/logout`, and `/api/auth/password`.
+All `/api/*` routes require the `kanban_session` cookie except `/api/auth/status`, `/api/auth/login`, `/api/auth/logout`, and `/api/auth/password`.
+
+### First run
+
+The admin password is created once, in this order:
+
+1. `SWITCHYARD_ADMIN_PASSWORD` (12+ characters) — used verbatim, never logged.
+2. `SWITCHYARD_DEV=1` — seeds the dev password `123456`. **Local development
+   only**; it is below the password minimum by design.
+3. Otherwise — a random 24-character password is generated and printed to the
+   startup log **once**. Save it. A password change is then required at first
+   login before the app will load.
+
+```sh
+switchyard: ─────────────────────────────────────────────
+switchyard:   password: k3PqR7xWn2VbYc8ZdFtLmHsJ
+switchyard:   This is shown ONCE. Save it now.
+switchyard: ─────────────────────────────────────────────
+```
+
+Set `SWITCHYARD_ADMIN_PASSWORD_REQUIRED=1` to refuse to start without an
+operator-chosen password instead of logging a generated one.
+
+Passwords are stored as argon2id hashes. Login is rate limited per client IP.
+The session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` whenever the
+request arrived over HTTPS — put a TLS-terminating proxy in front of this server
+and forward `X-Forwarded-Proto`. Full details, including an nginx config, are in
+[docs/security.md](docs/security.md).
 
 ## Context optimization
 
@@ -423,14 +454,21 @@ Frontend builds are RAM-heavy. On a 2 GB VPS, stop large PM2 processes first if 
 
 | Path | Role |
 |---|---|
-| `cmd/server/main.go` | HTTP API and startup |
-| `cmd/server/ssh_dispatch.go` | Single dispatcher, legacy SSH, and node-agent routing |
+| `cmd/server/main.go` | Startup, route wiring, and the HTTP server lifecycle |
+| `cmd/server/*_routes.go` | One `registerXRoutes` per resource: boards, auth, profiles, chat, cron, ecosystem, … |
+| `cmd/server/remote_dispatch.go` | The single dispatcher: polls boards and dispatches to node-agent |
+| `cmd/server/review.go` | Review gate: diff, approve, per-task locking |
+| `cmd/server/security.go` | Origin check, security headers, cookie flags |
 | `internal/kanban/kanban.go` | Task model and column migrations |
 | `internal/kanban/nodeagent.go` | Node-agent HTTP client |
-| `internal/kanban/workspace_validate.go` | Workspace path validation |
+| `internal/kanban/workspace_validate.go` | Workspace path validation and transport resolution |
+| `internal/kanban/auth.go`, `password_hash.go` | argon2id password hashing and sessions |
+| `internal/kanban/schema_contract.go` | Startup check that boards match the columns this server queries |
 | `web/src/features/board/TaskDialog.tsx` | Task form and executor picker |
 | `web/src/features/board/TaskDetail.tsx` | Task detail and metadata |
 | `docs/specs/` | Design decisions and review gate |
+| `docs/security.md` | Auth model, rate limiting, transport, deployment notes |
+| `docs/refactor-kanban-package.md` | Assessment and plan for splitting `internal/kanban` |
 
 ## Troubleshooting
 

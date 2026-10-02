@@ -32,7 +32,6 @@ round N sees rounds 1..N-1.
 | Schema | `internal/kanban/kanban.go:148` | `harness_bindings` table, `harness_kind` column |
 | Task column | `internal/kanban/kanban.go:183` | `tasks.commandcode_session_id` |
 | Dispatch | `cmd/server/remote_dispatch.go:189` | node-agent lane, builds the continuation request |
-| Legacy dispatcher | `cmd/server/ssh_dispatch.go:319` | same binding logic on the SSH lane |
 | Result validation | `internal/kanban/nodeagent.go:233` | `resolveDSHResultIdentity`, `finalizeRemoteResult` |
 | Executor settings | `internal/kanban/executor_settings.go` | order, disabled list, default mode |
 | UI picker | `web/src/features/board/TaskDialog.tsx` | executor dropdown |
@@ -209,7 +208,7 @@ Approving a `review` card moves it to `done`. A plain `PATCH .../status` with
 
 ## 7. Retry policy
 
-`cmd/server/ssh_dispatch.go:373` retries transient failures up to 3 times, but
+The dispatcher retries transient failures up to 3 times, but
 skips retry for these deterministic signals:
 
 - `dispatch_wait_timeout:`

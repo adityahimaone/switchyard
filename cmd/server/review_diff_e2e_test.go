@@ -12,8 +12,9 @@ import (
 )
 
 // seedReviewTask writes a single review-status task row into a board DB that
-// loadReviewTask can open. transport "ssh" keeps the test off the network —
-// runGitFunc is swapped out below.
+// loadReviewTask can open. The transport is node-agent: the legacy 'ssh' lane
+// was retired, and the review gate now rejects anything else. runGitFunc is
+// swapped out below, so the test stays off the network.
 func seedReviewTask(t *testing.T, home string) {
 	t.Helper()
 	// boardDir("default") is hermesHome() itself, not a boards/<slug> subdir.
@@ -35,7 +36,7 @@ func seedReviewTask(t *testing.T, home string) {
 	}
 	_, err = db.Exec(`INSERT OR REPLACE INTO tasks
 		(id, title, body, status, workspace_path, workspace_transport, workspace_ssh_target, result)
-		VALUES ('t_test', 'test', '', 'review', '/ws', 'ssh', 'mac-tailscale', '')`)
+		VALUES ('t_test', 'test', '', 'review', '/ws', 'node-agent', 'mac-tailscale', '')`)
 	if err != nil {
 		t.Fatal(err)
 	}

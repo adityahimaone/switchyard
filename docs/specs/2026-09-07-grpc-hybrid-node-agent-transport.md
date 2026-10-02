@@ -1,3 +1,9 @@
+> **Archived spec.** This describes the design as it stood when the SSH
+> dispatcher was still in place. That transport has since been retired and
+> `cmd/server/ssh_dispatch.go` no longer exists — `cmd/server/remote_dispatch.go`
+> is the only dispatcher. See [../execution-flow.md](../execution-flow.md) for
+> the current routing rules.
+
 # Hybrid gRPC transport for node-agent
 
 Status: proposed.  
