@@ -9,6 +9,28 @@ Part of a two-repo system:
 
 Stack: Go, SQLite, React, Vite, and node-agent over gRPC-hybrid with HTTP long-poll fallback.
 
+## Interface
+
+One system across every surface: a single sidebar and header, a tonal ladder
+(`canvas < well < surface < raised`) shared by light and dark, status shown by
+lamp plus label so state never depends on colour alone, and one type scale.
+
+| Kanban board | Agent chat |
+|---|---|
+| ![Kanban board](docs/screenshots/board.png) | ![Agent chat](docs/screenshots/chat.png) |
+
+| Flow map | Overview |
+|---|---|
+| ![Flow map](docs/screenshots/flow-map.png) | ![Overview](docs/screenshots/overview.png) |
+
+The **board** shows the review gate holding work — cards sit in `review` until
+the diff is approved, never straight to `done`. The **flow map** traces live
+task routing from the Kanban state through the dispatcher, node-agent server
+and Tailscale to each worker; selecting a node docks its detail beside the map
+instead of covering the routing it describes. **Chat** runs agents against the
+workspace with live context activity, and **overview** carries task health and
+resource utilisation.
+
 ## Architecture
 
 ```mermaid

@@ -1,7 +1,8 @@
 # Screenshots
 
 Reference captures of redesigned surfaces, checked in so a PR can show the
-result rather than ask a reviewer to run the app.
+result rather than ask a reviewer to run the app. The main grid lives in the
+[project README](../../README.md); this folder holds the source images.
 
 ## Flow map — opaque nodes and docked inspector
 
