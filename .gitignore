@@ -3,6 +3,16 @@ web/node_modules/
 web/dist/
 web/*.tsbuildinfo
 .scratch/
+
+# Compiled server binary. `go build -o switchyard` at the repo root is the
+# documented local build, so the name collides with the tracked source dir.
+/switchyard
+/switchyard.exe
+
+# Agent tool state: local indexes, logs and scratch renders.
+/.codegraph/
+.superpowers/
+
 # Local secrets
 .env
 .env.*

@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref so a busy branch does not queue up.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go (vet, race, lint, vulns)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # -race is the reason this job is slow and the reason it is worth running:
+      # the dispatchers and the SQLite-backed stores are concurrent.
+      - name: Test (race)
+        run: go test -race ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web:
+    name: Web (typecheck, build, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # `build` runs `tsc -b` first, so a type error fails here rather than
+      # producing a bundle that fails at runtime.
+      - name: Typecheck and build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the audit found a compiled binary and a patch file
+          # carrying a real hostname, so the working tree is not the only place
+          # a secret can hide.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A private fork without the free org plan cannot read this by
+          # default; scanning the fetched history keeps the job useful anyway.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false

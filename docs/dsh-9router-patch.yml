@@ -1,0 +1,31 @@
+# DeepSeek Harness custom provider route for a 9router gateway.
+#
+# This is a template, not a drop-in config. Replace every occurrence of
+# <GATEWAY_HOST> with your own gateway hostname before applying it, e.g.
+#
+#   sed 's/<GATEWAY_HOST>/9router.example.com/g' \
+#     docs/dsh-9router-patch.yml > ~/.hermes/patch.yml
+#
+# The provider id must match the hostname, because Hermes derives the provider
+# key from it. Credentials are never stored here: `apiKeyEnv` only names the
+# environment variable to read at runtime.
+#
+# Apply with: hermes config apply < ~/.hermes/patch.yml
+- id: agent-default-model
+  config:
+    provider: <GATEWAY_HOST>
+    model: codex
+- id: llm-pi-ai
+  config:
+    providers:
+      <GATEWAY_HOST>:
+        displayName: 9router
+        apiKeyEnv: DEEPSEEK_API_KEY
+        api: openai-completions
+        baseURL: https://<GATEWAY_HOST>/v1
+        compat:
+          supportsDeveloperRole: false
+          maxTokensField: max_tokens
+        models:
+          - id: codex
+            name: codex
