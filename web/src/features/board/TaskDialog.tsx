@@ -429,7 +429,7 @@ export default function TaskDialog({
                 <SelectTrigger id="task-workspace" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                   <SelectValue placeholder="workspace" />
                 </SelectTrigger>
-                <SelectContent className="max-w-[22rem] border-[var(--c-line)] bg-[var(--c-surface)]">
+                <SelectContent className="max-w-[22rem]">
                   {workspaces.map((w) => {
                     const ssh = isSshWorkspace(w)
                     const live = isLive(w)
@@ -489,7 +489,7 @@ export default function TaskDialog({
                 <SelectTrigger id="task-executor" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
+                <SelectContent className="">
                   {visibleExecutors.map((e) => (
                     <SelectItem key={e} value={e} className="text-sm">
                       {EXECUTOR_LABELS[e] ?? e}
@@ -593,7 +593,7 @@ export default function TaskDialog({
                 <SelectTrigger id="task-deps" className={`${selCls} min-w-0 [&>span]:truncate`}>
                   <SelectValue placeholder="Pick a card…" />
                 </SelectTrigger>
-                <SelectContent className="max-w-[22rem] border-[var(--c-line)] bg-[var(--c-surface)]">
+                <SelectContent className="max-w-[22rem]">
                   {depOptions.length === 0 ? (
                     <SelectItem value="__none" disabled className="text-sm">
                       No other cards
@@ -684,7 +684,7 @@ export default function TaskDialog({
                 <SelectTrigger id="task-assignee" className={`mt-1 ${selCls}`}>
                   <SelectValue placeholder="profile" />
                 </SelectTrigger>
-                <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
+                <SelectContent className="">
                   {profiles.map((p) => (
                     <SelectItem key={p.name} value={p.name} disabled={!p.valid} className="text-sm">
                       <span className="flex min-w-0 items-center gap-1.5">
@@ -719,7 +719,7 @@ export default function TaskDialog({
                   <SelectTrigger id="task-exec-mode" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
+                  <SelectContent className="">
                     <SelectItem value="direct" className="text-sm">
                       Direct
                     </SelectItem>
@@ -737,7 +737,7 @@ export default function TaskDialog({
                   <SelectTrigger id="task-priority" className={`mt-1 ${selCls}`}>
                     <SelectValue placeholder="priority" />
                   </SelectTrigger>
-                  <SelectContent className="border-[var(--c-line)] bg-[var(--c-surface)]">
+                  <SelectContent className="">
                     <SelectItem value="0" className="text-sm">
                       0 — normal
                     </SelectItem>

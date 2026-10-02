@@ -281,7 +281,7 @@ function ProfileForm({
                   <SelectTrigger className="mt-1.5 w-full border-line bg-well">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[min(18rem,var(--radix-select-content-available-height))]">
+                  <SelectContent className="max-h-[min(26rem,var(--radix-select-content-available-height))]">
                     {providerNames.map((p) => <SelectItem key={p} value={p} className="text-sm">{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -298,8 +298,8 @@ function ProfileForm({
                       pushing it above — so on a short window the panel rendered
                       143px off the top with the search row unreachable, which is
                       the worst instance of this bug in the app. */}
-                  <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
-                    <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
+                  <SelectContent position="popper" align="start" className="max-h-[min(26rem,var(--radix-select-content-available-height))] w-72 min-w-72 max-w-72">
+                    <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                       <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="border-line bg-well text-xs" />
                     </div>
                     <SelectItem value="__default">model default</SelectItem>

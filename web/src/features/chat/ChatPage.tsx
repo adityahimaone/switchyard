@@ -1024,8 +1024,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                     `position="popper"` panel to the trigger and will not push it
                     above, so the panel has to be willing to shrink. The sticky
                     search row above still pins inside it. */}
-              <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+              <SelectContent position="popper" align="start" className="max-h-[min(26rem,var(--radix-select-content-available-height))] w-72">
+                <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                   <Input
                     value={modelSearch}
                     onChange={(event) => setModelSearch(event.target.value)}

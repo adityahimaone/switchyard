@@ -69,20 +69,20 @@ export default function LogsPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Select value={file} onValueChange={setFile}>
-              <SelectTrigger size="sm" className="w-44 border-line bg-raised text-xs">
+              <SelectTrigger size="sm" className="w-44 text-xs">
               <SelectValue placeholder="file" />
             </SelectTrigger>
-            <SelectContent className="border-line bg-raised">
+            <SelectContent className="">
               {LOG_FILES.map((f) => (
                 <SelectItem key={f.value} value={f.value} className="text-xs">{f.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={tail} onValueChange={setTail}>
-            <SelectTrigger size="sm" className="w-28 border-line bg-raised text-xs">
+            <SelectTrigger size="sm" className="w-28 text-xs">
               <SelectValue placeholder="tail" />
             </SelectTrigger>
-            <SelectContent className="border-line bg-raised">
+            <SelectContent className="">
               {TAILS.map((t) => (
                 <SelectItem key={t} value={t} className="text-xs">last {t}</SelectItem>
               ))}
