@@ -159,7 +159,7 @@ export default function AgentMappingPage() {
 
   return <div className="relative flex min-h-0 flex-1 text-ink">
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-    <PageHeader title="Flow Map" description="Live task routing and execution map.">
+      <PageHeader title="Flow Map" description="Live task routing and execution map.">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-48"><Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-ink-3" /><input aria-label="Search active tasks" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks" className="h-8 w-full rounded-control border border-line bg-well pl-7 pr-2 text-xs outline-none placeholder:text-ink-3 focus:border-accent/70 focus:ring-[3px] focus:ring-focus/40" /></div>
         <Select value={stage} onValueChange={(value) => setStage(value as FlowStage | "all")}>
@@ -215,14 +215,16 @@ export default function AgentMappingPage() {
         <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[.14em] text-ink-3">MINIMAP</span>
       </button>
     </div>
-    {/* Below `md` a 320px column would leave the map unreadable, so the panel
-        overlays the canvas instead of competing with it for width. */}
+    </div>
+    {/* The panel is a sibling of the map column, not a child of it — inside that
+        `flex-col` it would stack under the canvas instead of standing beside it.
+        Below `md` a 320px column would leave the map unreadable, so there it
+        overlays instead. */}
     {panel && (isMobile ? (
       <div className="absolute inset-0 z-20 flex justify-end bg-canvas/60 backdrop-blur-[2px]">
         {panel}
       </div>
     ) : panel)}
-    </div>
   </div>
 }
 

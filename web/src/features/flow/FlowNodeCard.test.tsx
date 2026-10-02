@@ -103,4 +103,12 @@ describe("NodeDetailPanel", () => {
   it("explains an empty route instead of rendering a blank panel", () => {
     expect(panel()).toContain("No matching task currently routed")
   })
+
+  it("takes its own column, not a share of the map's height", () => {
+    // `shrink-0` is what stops the column collapsing to nothing, and the width
+    // cap is what keeps it a panel rather than a full-width strip.
+    const out = panel()
+    expect(out).toMatch(/class="[^"]*shrink-0[^"]*"/)
+    expect(out).toContain("max-w-[320px]")
+  })
 })
