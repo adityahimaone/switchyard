@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"kanban-board/internal/kanban"
@@ -63,9 +65,29 @@ type reviewTask struct {
 	Transport     string
 	SSHTarget     string
 	Result        string
+	// Branch and WorktreePath are set for a worktree-isolated task. When
+	// WorktreePath is non-empty the diff and the commit happen there, not in
+	// the shared checkout, so the review covers exactly this task's changes.
+	Branch       string
+	WorktreePath string
+}
+
+// Workdir is where this task's commands run: its worktree when it has one,
+// otherwise the shared workspace. Routing every command through this one method
+// is what stops the diff, the commit and the agent run from disagreeing about
+// which checkout they are looking at.
+func (t *reviewTask) Workdir() string {
+	return kanban.WorktreeWorkspace(t.WorkspacePath, t.WorktreePath)
 }
 
 func loadReviewTask(slug, id string) (*reviewTask, error) {
+	// Migrate before querying: this function names columns that a board created
+	// by an older binary does not have, and a raw sql.Open skips the migration
+	// openDB would have run. Without this the review gate 500s with
+	// "no such column" on exactly the boards that most need reviewing.
+	if _, err := kanban.MigrateBoardSchemaPublic(slug); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", "file:"+kanban.BoardDBPath(slug)+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
@@ -75,8 +97,10 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 	t.Slug = slug
 	err = db.QueryRow(`SELECT id, title, status, workspace_path,
 		COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,'mac-tailscale')
-		, COALESCE(result,'') FROM tasks WHERE id=?`, id).
-		Scan(&t.ID, &t.Title, &t.Status, &t.WorkspacePath, &t.Transport, &t.SSHTarget, &t.Result)
+		, COALESCE(result,''), COALESCE(branch,''), COALESCE(worktree_path,'')
+		FROM tasks WHERE id=?`, id).
+		Scan(&t.ID, &t.Title, &t.Status, &t.WorkspacePath, &t.Transport, &t.SSHTarget, &t.Result,
+			&t.Branch, &t.WorktreePath)
 	if err != nil {
 		return nil, err
 	}
@@ -88,31 +112,36 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 // without a live Mac/Windows node.
 var runGitFunc = runGit
 
-// runGit executes a git command inside the task workspace over SSH.
+// runGit executes a git command inside the task workspace, on the worker that
+// owns the workspace, via node-agent.
+//
+// There is deliberately no SSH branch any more. The retired `ssh` transport was
+// rewritten to `node-agent` at startup (see MigrateRetiredTransport), so a
+// workspace is always reachable through exactly one path.
+//
+// The dispatch targets t.Workdir(), which is the task's worktree when it has one.
+// That is what makes a worktree-isolated task's diff exact: the command runs in
+// the same checkout the agent edited, not in the shared one.
 func runGit(t *reviewTask, args string) (string, int) {
-	if t.Transport == "node-agent" {
-		res, err := kanban.DispatchRemoteRaw(kanban.NodeDispatchRequest{
-			TaskID: fmt.Sprintf("review-%s-%d", t.ID, time.Now().UnixNano()),
-			Title:  t.Title, Board: t.Slug, Workspace: t.WorkspacePath,
-			Executor: "shell", Command: args, NoRTK: true,
-		}, kanban.RemoteDispatchWait())
-		if err != nil {
-			return err.Error(), 255
-		}
-		if res == nil {
-			return "node-agent returned no result", 255
-		}
-		out := res.Output
-		if res.Error != "" {
-			out += "\n" + res.Error
-		}
-		if !res.Success {
-			return out, 1
-		}
-		return out, 0
+	res, err := kanban.DispatchRemoteRaw(kanban.NodeDispatchRequest{
+		TaskID: fmt.Sprintf("review-%s-%d", t.ID, time.Now().UnixNano()),
+		Title:  t.Title, Board: t.Slug, Workspace: t.Workdir(),
+		Executor: "shell", Command: args, NoRTK: true,
+	}, kanban.RemoteDispatchWait())
+	if err != nil {
+		return err.Error(), 255
 	}
-	target := taskSSHTarget(t.SSHTarget)
-	return sshRun(target, t.WorkspacePath, args)
+	if res == nil {
+		return "node-agent returned no result", 255
+	}
+	out := res.Output
+	if res.Error != "" {
+		out += "\n" + res.Error
+	}
+	if !res.Success {
+		return out, 1
+	}
+	return out, 0
 }
 
 // reviewIsWindowsWorker reports whether the WORKER owning this task is a
@@ -219,8 +248,11 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("task not in review (status=%s)", t.Status), 400)
 		return
 	}
-	if t.Transport != "ssh" && t.Transport != "node-agent" {
-		fail(w, fmt.Errorf("unsupported transport %q for diff", t.Transport), 400)
+	if t.Transport != "node-agent" {
+		// A local task never reaches review: nothing wrote to a remote
+		// workspace, so there is no diff to show. The startup migration should
+		// have rewritten any legacy 'ssh' row before this point.
+		fail(w, fmt.Errorf("task %s is not on a worker workspace (transport=%q)", t.ID, t.Transport), 400)
 		return
 	}
 	// Keep the clean-workspace path cheap. In particular, do not run a full
@@ -261,12 +293,51 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GateFailedError reports that a task's quality gate failed, carrying the output
+// so the reviewer can see why without a second request.
+type GateFailedError struct {
+	Output string
+}
+
+func (e *GateFailedError) Error() string {
+	msg := "quality gate failed; review the output and approve anyway to override"
+	if trimmed := strings.TrimSpace(e.Output); trimmed != "" {
+		msg += ": " + truncate(trimmed, 500)
+	}
+	return msg
+}
+
+// approveLocks serialises approve operations per task.
+//
+// The gate is deliberately wider than the git command: two approvals racing on
+// one task would both see a dirty workspace, both run `git add`, and the second
+// `git commit` would either fail with "nothing to commit" or sweep up the
+// first one's staged changes. Holding the lock across the commit and the status
+// write is what makes the whole sequence atomic from the caller's point of view.
+var approveLocks sync.Map // map[string]*sync.Mutex
+
+// lockApprove returns the mutex for a task, creating it on first use.
+func lockApprove(taskID string) *sync.Mutex {
+	v, _ := approveLocks.LoadOrStore(taskID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	slug, id := r.PathValue("slug"), r.PathValue("id")
+
+	// One approval at a time per task, released when this handler returns so a
+	// crashed or abandoned request cannot wedge the card forever.
+	mu := lockApprove(id)
+	mu.Lock()
+	defer mu.Unlock()
+
 	var req struct {
 		Action  string   `json:"action"`            // done | commit | commit_push
 		Message string   `json:"message,omitempty"` // optional commit message override
 		Files   []string `json:"files,omitempty"`   // per-file selective commit
+		// Force approves a task whose quality gate failed. It is recorded in
+		// task_events, so "who shipped past a red gate" is answerable later.
+		Force bool `json:"force,omitempty"`
 	}
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -283,15 +354,40 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if t.Status != "review" {
+		// Re-approving a card that is already done is a no-op, not an error.
+		// This is what makes a double-click, a retried request, or a refresh
+		// after a slow response harmless.
+		if t.Status == "done" {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"status": "done",
+				"output": "already approved",
+			})
+			return
+		}
 		fail(w, fmt.Errorf("task not in review (status=%s)", t.Status), 400)
 		return
 	}
-	if t.Transport != "ssh" && t.Transport != "node-agent" {
-		fail(w, fmt.Errorf("unsupported transport %q for approve", t.Transport), 400)
+	if t.Transport != "node-agent" {
+		// A local task never reaches review. See the equivalent guard in
+		// handleTaskDiff.
+		fail(w, fmt.Errorf("task %s is not on a worker workspace (transport=%q)", t.ID, t.Transport), 400)
 		return
 	}
+	// A failed quality gate is a signal, not a veto: the diff is still on
+	// screen and the reviewer may knowingly accept it. What must not happen is
+	// passing a red gate by accident, so approval is refused unless the caller
+	// says so explicitly and the override is recorded.
+	if gateStatus, gateOut, gErr := kanban.GateResult(slug, id); gErr == nil && gateStatus == "failed" {
+		if !req.Force {
+			fail(w, &GateFailedError{Output: gateOut}, http.StatusConflict)
+			return
+		}
+		if err := kanban.RecordGateOverride(slug, id); err != nil {
+			log.Printf("approve: %s: could not record gate override: %v", id, err)
+		}
+	}
 	if req.Action == "done" {
-		if err := kanban.StatusTransition(slug, id, "done"); err != nil {
+		if err := completeApprove(slug, id); err != nil {
 			fail(w, err, 500)
 			return
 		}
@@ -305,7 +401,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if clean {
-		if err := kanban.StatusTransition(slug, id, "done"); err != nil {
+		if err := completeApprove(slug, id); err != nil {
 			fail(w, err, 500)
 			return
 		}
@@ -356,19 +452,157 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	out, code := runGitFunc(t, reviewScopeSetup+script)
 	if code != 0 {
+		// "nothing to commit" after a successful earlier attempt means the
+		// commit already landed and only the bookkeeping failed. Treat that as
+		// success, or the card is stuck in review forever and a retry can never
+		// clear it.
+		if isNothingToCommit(out) {
+			log.Printf("approve: %s: nothing to commit, treating as already approved", id)
+			if err := completeApprove(slug, id); err != nil {
+				fail(w, err, 500)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"status": "done",
+				"output": "already committed; marked done",
+			})
+			return
+		}
 		fail(w, fmt.Errorf("git failed (exit %d): %s", code, truncate(out, 500)), 500)
 		return
 	}
-	if err := kanban.StatusTransition(slug, id, "done"); err != nil {
+	// The commit exists now. Record the SHA before touching the status so that a
+	// crash between the two leaves evidence of what happened, and so a retry can
+	// recognise the commit as its own.
+	sha := headSHA(t)
+	if sha != "" {
+		if err := recordApproveCommit(slug, id, sha); err != nil {
+			log.Printf("approve: %s: could not record commit sha: %v", id, err)
+		}
+	}
+
+	// A worktree-isolated task committed onto its own branch, which the shared
+	// checkout does not have. Merge it back before marking the task done,
+	// otherwise "done" would mean "committed somewhere nobody is working".
+	//
+	// A conflict is reported and the task is left in review: resolving it is a
+	// judgement call about two pieces of work, and the reviewer is the one who
+	// has both on screen.
+	if t.WorktreePath != "" {
+		if err := mergeWorktreeBack(t); err != nil {
+			log.Printf("approve: %s: merge back failed: %v", id, err)
+			kanban.RecordWorktreeMergeConflict(slug, id, err.Error())
+			fail(w, err, http.StatusConflict)
+			return
+		}
+	}
+
+	if err := completeApprove(slug, id); err != nil {
 		fail(w, err, 500)
 		return
 	}
-	db, err := sql.Open("sqlite", "file:"+kanban.BoardDBPath(slug)+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
-	if err == nil {
-		_, _ = db.Exec(`UPDATE tasks SET completed_at=? WHERE id=?`, time.Now().Unix(), id)
-		db.Close()
+	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000), "commit": sha})
+}
+
+// mergePlanFor derives the worktree plan used to merge a task's branch back.
+//
+// It lives apart from mergeWorktreeBack so the plan can be asserted without a
+// worker. The two subtleties it encodes: the repo is the shared checkout (a
+// worktree cannot check out a branch that is already checked out elsewhere), and
+// the recorded branch wins over the derived name, so a task whose branch was
+// renamed is still merged.
+func mergePlanFor(t *reviewTask) kanban.WorktreePlan {
+	plan := kanban.PlanWorktree(t.WorkspacePath, t.ID)
+	if t.Branch != "" {
+		plan.Branch = t.Branch
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000)})
+	if t.WorktreePath != "" {
+		plan.Path = t.WorktreePath
+	}
+	return plan
+}
+
+// mergeWorktreeBack merges a task's worktree branch into the repository's
+// current branch on the worker.
+//
+// A worktree cannot check out a branch that is already checked out elsewhere, so
+// the merge has to happen from the main checkout, not from the worktree.
+func mergeWorktreeBack(t *reviewTask) error {
+	plan := mergePlanFor(t)
+	out, err := kanban.MergeWorktreeToBase(t.WorkspacePath, plan)
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, truncate(out, 500))
+	}
+	log.Printf("approve: %s: merged %s into the base branch", t.ID, plan.Branch)
+	return nil
+}
+
+// completeApprove moves a task to done and stamps completed_at in one
+// statement, so the two can never disagree.
+//
+// It also refuses to move a task that is no longer in review, which is what
+// makes a second approval a no-op rather than a second event.
+func completeApprove(slug, id string) error {
+	db, err := sql.Open("sqlite", "file:"+kanban.BoardDBPath(slug)+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	res, err := db.Exec(`UPDATE tasks SET status='done', completed_at=COALESCE(completed_at, ?) WHERE id=? AND status='review'`,
+		time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Either the task is gone or another path already moved it. Report
+		// success rather than a 500: the desired end state is already reached.
+		return nil
+	}
+	// Reaching done is the end of this task's declared scope: nothing it
+	// declared is being edited any more, so its paths are free for others.
+	// A failure here only delays a path becoming available — the startup sweep
+	// reclaims it — so it is logged rather than failing an approved commit.
+	if err := kanban.ReleaseTaskLeases(db, id); err != nil {
+		log.Printf("approve: %s: could not release path leases: %v", id, err)
+	}
+	return nil
+}
+
+// recordApproveCommit stores the SHA the approve produced, for diagnostics and
+// for recognising an already-applied commit.
+func recordApproveCommit(slug, id, sha string) error {
+	db, err := sql.Open("sqlite", "file:"+kanban.BoardDBPath(slug)+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE tasks SET last_approve_commit=? WHERE id=?`, sha, id); err != nil {
+		return err
+	}
+	return nil
+}
+
+// headSHA reads the current HEAD commit, or "" if it cannot be determined.
+func headSHA(t *reviewTask) string {
+	out, code := runGitFunc(t, "git rev-parse HEAD 2>/dev/null")
+	if code != 0 {
+		return ""
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+// isNothingToCommit reports whether git refused because the index matched HEAD.
+// Both phrasings matter: older git says "nothing to commit", newer versions
+// add "working tree clean" or "nothing added to commit".
+func isNothingToCommit(out string) bool {
+	l := strings.ToLower(out)
+	return strings.Contains(l, "nothing to commit") ||
+		strings.Contains(l, "nothing added to commit") ||
+		strings.Contains(l, "no changes added to commit")
 }
 
 func reviewProvenance(result string) []string {

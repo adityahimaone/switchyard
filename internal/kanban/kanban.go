@@ -57,6 +57,30 @@ type Task struct {
 	Failures      int    `json:"consecutive_failures"`
 	LastError     string `json:"last_failure_error"`
 	ExecutionMeta string `json:"execution_meta,omitempty"`
+	// Declared edit scope as globs relative to WorkspacePath. Used to detect
+	// two tasks that would edit the same files. Advisory for review, enforced
+	// for scheduling by the claim transaction.
+	Paths []string `json:"paths,omitempty"`
+	// DependsOn lists task ids that must reach done before this one is
+	// claimable. Applied after the row is written, since a dependency can only
+	// reference a task that already exists.
+	DependsOn []string `json:"depends_on,omitempty"`
+	// Quality gate run on the worker after a successful executor run.
+	GateCommand string `json:"gate_command,omitempty"`
+	GateStatus  string `json:"gate_status,omitempty"` // "", running, passed, failed
+	GateOutput  string `json:"gate_output,omitempty"`
+	// manual: wait for the dispatcher poll. now: claim on create.
+	StartMode string `json:"start_mode,omitempty"`
+	// Retry counter. Attempt 1 is the original run.
+	Attempt int `json:"attempt,omitempty"`
+	// "workspace" runs in the shared checkout; "worktree" runs in a dedicated
+	// git worktree on its own branch. Set at create time, not by the user
+	// mid-flight, because switching would strand whatever is already on disk.
+	Isolation string `json:"isolation,omitempty"`
+	// The branch and worktree path created for this task. Empty for a
+	// workspace-isolated task.
+	Branch       string `json:"branch,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"`
 }
 
 type TaskEvent struct {
@@ -104,6 +128,11 @@ type Workspace struct {
 	Status          string         `json:"status,omitempty"`
 	StatusMsg       string         `json:"status_message,omitempty"`
 	PingMs          *float64       `json:"ping_ms,omitempty"`
+	// RepoIdentity is the workspace's stable repository identity, normally the
+	// git common directory. It is the namespace path leases are scoped to, so
+	// two workspace entries pointing at one repo contend for the same files.
+	// Empty means "not resolved yet", and leases fall back to the path.
+	RepoIdentity string `json:"repo_identity,omitempty"`
 }
 
 type Profile struct {
@@ -140,7 +169,44 @@ func openDB(slug string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensurePathLeasesSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
+}
+
+// ensurePathLeasesSchema creates the table backing declared edit scope.
+//
+// Leases are keyed by (glob, task_id) so one task can hold several, and carry a
+// project column because the lease namespace is the repository rather than the
+// workspace entry: two workspace records pointing at one repo must contend for
+// the same paths.
+func ensurePathLeasesSchema(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS path_leases (
+		glob        TEXT NOT NULL,
+		task_id     TEXT NOT NULL,
+		project     TEXT NOT NULL,
+		acquired_at INTEGER NOT NULL,
+		PRIMARY KEY (glob, task_id)
+	); CREATE INDEX IF NOT EXISTS idx_path_leases_project ON path_leases(project)`)
+	return err
+}
+
+// MigrateBoardSchemaPublic applies the additive schema migrations to a board
+// and returns how many orphan leases it swept.
+//
+// The dispatcher calls this before querying, because a query naming a column
+// that does not exist yet fails outright, and the dispatch loop would otherwise
+// skip the board in silence — a board that quietly stops dispatching is far
+// worse than a logged error.
+func MigrateBoardSchemaPublic(slug string) (int, error) {
+	db, err := openDB(slug)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	return SweepOrphanLeases(db)
 }
 
 // ensureTaskExecutionColumns keeps boards created by older Hermes versions usable.
@@ -188,6 +254,32 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		// "no such column", which blocks board writes entirely.
 		`ALTER TABLE tasks ADD COLUMN workspace_transport TEXT`,
 		`ALTER TABLE tasks ADD COLUMN workspace_ssh_target TEXT`,
+		// The SHA the review gate produced, recorded so an approve that
+		// committed but failed to update the status can be recognised on retry.
+		`ALTER TABLE tasks ADD COLUMN last_approve_commit TEXT`,
+		// Declared edit scope, stored as a JSON array. Overlap between two
+		// tasks' globs is decided in Go (pathscope.go), never in SQL.
+		`ALTER TABLE tasks ADD COLUMN paths TEXT NOT NULL DEFAULT '[]'`,
+		// Quality gate: a command run on the worker after a successful
+		// executor run, before a human may approve. gate_run_id fences a late
+		// result from a superseded run.
+		`ALTER TABLE tasks ADD COLUMN gate_command TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN gate_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN gate_output TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN gate_run_id TEXT`,
+		// manual = wait for the dispatcher poll; now = claim on create.
+		`ALTER TABLE tasks ADD COLUMN start_mode TEXT NOT NULL DEFAULT 'manual'`,
+		// Incremented by retry. Attempt 1 is the original run.
+		`ALTER TABLE tasks ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`,
+		// Isolation mode and the worktree a task was given.
+		//
+		// 'workspace' (the default) runs the task in the shared checkout, which
+		// is what every existing card does. 'worktree' runs it in a dedicated git
+		// worktree under <repo>/.switchyard/<task-id> on its own branch, so two
+		// tasks cannot interleave edits and the diff belongs to one task.
+		`ALTER TABLE tasks ADD COLUMN isolation TEXT NOT NULL DEFAULT 'workspace'`,
+		`ALTER TABLE tasks ADD COLUMN branch TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN worktree_path TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -257,6 +349,12 @@ func CreateTask(slug string, t *Task) error {
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("title required")
 	}
+	// Field caps, path scoping and control-character checks run before anything
+	// is written, so a rejected task leaves no row behind. The same function
+	// backs POST /tasks/validate, which is what keeps the dry run honest.
+	if err := ValidateNewTaskError(t); err != nil {
+		return err
+	}
 	if t.Status == "" {
 		t.Status = "todo"
 	}
@@ -319,19 +417,65 @@ func CreateTask(slug string, t *Task) error {
 	}
 	t.Title = strings.TrimSpace(t.Title)
 	t.CreatedAt = time.Now().Unix()
+	// Normalize the new fields once, here, so what lands in the row is exactly
+	// what the lease and gate logic will later read back.
+	t.Paths = PathsParse(PathsJSON(t.Paths))
+	if t.StartMode == "" {
+		t.StartMode = "manual"
+	}
+	if t.Attempt < 1 {
+		// Attempt 1 is the original run; a create is always attempt 1, so a
+		// client-supplied higher number is not honoured here.
+		t.Attempt = 1
+	}
+	if t.Isolation == "" {
+		t.Isolation = "workspace"
+	}
+	// The branch and worktree path are derived at dispatch, once the task has
+	// been claimed. A create must not be able to point itself at an arbitrary
+	// path on a worker.
+	t.Branch = ""
+	t.WorktreePath = ""
 	db, err := openDB(slug)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt)
+
+	// The row and its dependencies are written in one transaction. Doing the
+	// INSERT first and the dependencies second would leave an orphan card
+	// pointing at a task that does not exist whenever a dependency is rejected.
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation); err != nil {
+		return err
+	}
+	if len(t.DependsOn) > 0 {
+		if err := ensureDependenciesTx(tx); err != nil {
+			return err
+		}
+		if err := AddTaskDependenciesDB(tx, t.ID, t.DependsOn); err != nil {
+			return err
+		}
+		if err := insertEventTx(tx, t.ID, "dependencies_added",
+			map[string]any{"source": "board-ui", "depends_on": t.DependsOn}); err != nil {
+			return err
+		}
+	}
+	if err := insertEventTx(tx, t.ID, "created", map[string]any{"source": "board-ui", "status": t.Status}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	broadcastEvent("task_created", map[string]any{"board": slug, "task_id": t.ID, "status": t.Status})
-	return insertEvent(db, t.ID, "created", map[string]any{"source": "board-ui", "status": t.Status})
+	return nil
 }
 
 // StatusTransition moves a task between board-managed statuses. Refuses to touch

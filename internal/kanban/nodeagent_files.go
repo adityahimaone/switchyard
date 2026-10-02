@@ -123,6 +123,16 @@ func DeleteNodeAgentFile(ws Workspace, path string) error {
 	return err
 }
 
+// TerminalSession identifies a terminal owned by a node-agent worker.
+// Terminals always run on a worker, never on the control plane: there is
+// deliberately no local `sh -c` path, because it would execute a caller-supplied
+// string on the VPS that runs this server.
+type TerminalSession struct {
+	SessionID string `json:"session_id"`
+	Transport string `json:"transport"`
+	Host      string `json:"host,omitempty"`
+}
+
 func StartNodeAgentTerminal(ws Workspace, command string) (TerminalSession, error) {
 	if ws.Host == "" || ws.Host == "localhost" || ws.Host == "127.0.0.1" {
 		return TerminalSession{}, fmt.Errorf("not a remote workspace")

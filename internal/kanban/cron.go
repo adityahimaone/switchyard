@@ -3,13 +3,17 @@ package kanban
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 // CronSchedule mirrors the on-disk schedule shape in ~/.hermes/cron/jobs.json.
@@ -145,16 +149,33 @@ func GetCronJob(id string) (*CronJob, error) {
 	return nil, fmt.Errorf("job %q not found", id)
 }
 
+// validateCronID restricts a job id to a conservative allowlist.
+//
+// The SQL it guards is now parameterised, so this is defence in depth rather
+// than the only thing standing between a request parameter and an injected
+// query. It still matters because the same id is passed to the hermes CLI.
 func validateCronID(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("job id required")
 	}
-	if strings.ContainsAny(id, " \t\n/\\") {
-		return fmt.Errorf("invalid job id %q", id)
-	}
 	if len(id) > 64 {
 		return fmt.Errorf("job id too long")
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return fmt.Errorf("invalid job id %q: only letters, digits, '-', '_' and '.' are allowed", id)
+		}
+	}
+	// A leading dot would let an id name a hidden file, and "." / ".." are
+	// path traversal in any context that joins it onto a directory.
+	if strings.HasPrefix(id, ".") {
+		return fmt.Errorf("invalid job id %q", id)
 	}
 	return nil
 }
@@ -410,31 +431,70 @@ func CronStatus() (string, error) {
 	return string(out), nil
 }
 
+// readCronExecutions reads cron history from executions.db.
+//
+// It used to shell out to the `sqlite3` binary and build the query by string
+// interpolation. That added a runtime dependency on a tool that may not be
+// installed, and made the job id a SQL injection point whose only protection was
+// validateCronID. modernc.org/sqlite is already linked into this binary, so the
+// query runs in-process with the id bound as a parameter.
+//
+// A missing database is not an error: cron history is a view, and a board that
+// has never run a job simply has no rows.
 func readCronExecutions(dbPath, jobID string, limit int) ([]CronExecution, error) {
-	// Use sqlite CLI via exec to avoid adding driver dependency.
-	// If unavailable, return empty.
 	if _, err := os.Stat(dbPath); err != nil {
 		return []CronExecution{}, nil
 	}
-	query := fmt.Sprintf("SELECT id, job_id, source, status, claimed_at, started_at, finished_at, error, delivery_outcome, scheduled_instant FROM executions ORDER BY claimed_at DESC LIMIT %d", limit)
-	if strings.TrimSpace(jobID) != "" {
-		// quote jobID safely: validateCronID ensures no injection
-		query = fmt.Sprintf("SELECT id, job_id, source, status, claimed_at, started_at, finished_at, error, delivery_outcome, scheduled_instant FROM executions WHERE job_id='%s' ORDER BY claimed_at DESC LIMIT %d", jobID, limit)
+	if limit <= 0 || limit > 500 {
+		limit = 20
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "sqlite3", "-json", dbPath, query)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=mode(ro)", dbPath))
+	if err != nil {
 		return []CronExecution{}, nil
 	}
-	var rows []CronExecution
-	if err := json.Unmarshal(out.Bytes(), &rows); err != nil {
+	defer db.Close()
+
+	const cols = `id, job_id, source, status, claimed_at, started_at, finished_at, error, delivery_outcome, scheduled_instant`
+	query := `SELECT ` + cols + ` FROM executions`
+	var args []any
+	if id := strings.TrimSpace(jobID); id != "" {
+		query += ` WHERE job_id = ?`
+		args = append(args, id)
+	}
+	query += ` ORDER BY claimed_at DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		// A schema change in Hermes should not break the cron page.
+		log.Printf("cron: executions query failed: %v", err)
 		return []CronExecution{}, nil
 	}
-	if rows == nil {
-		rows = []CronExecution{}
+	defer rows.Close()
+
+	out := []CronExecution{}
+	for rows.Next() {
+		var e CronExecution
+		var started, finished, execErr, delivery, scheduled sql.NullString
+		if err := rows.Scan(&e.ID, &e.JobID, &e.Source, &e.Status, &e.ClaimedAt,
+			&started, &finished, &execErr, &delivery, &scheduled); err != nil {
+			continue
+		}
+		e.StartedAt = nullString(started)
+		e.FinishedAt = nullString(finished)
+		e.Error = nullString(execErr)
+		e.DeliveryOutcome = nullString(delivery)
+		e.ScheduledInstant = nullString(scheduled)
+		out = append(out, e)
 	}
-	return rows, nil
+	return out, rows.Err()
+}
+
+func nullString(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	s := v.String
+	return &s
 }
