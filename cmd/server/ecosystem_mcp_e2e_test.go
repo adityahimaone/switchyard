@@ -70,6 +70,7 @@ mcp_servers:
 func TestEcosystemMCPAuthE2E(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HERMES_HOME", home)
+	t.Setenv("SWITCHYARD_DEV", "1")
 	if err := kanban.EnsureAuthSeed(); err != nil {
 		t.Fatal(err)
 	}

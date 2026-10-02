@@ -153,6 +153,7 @@ func decodeView(t *testing.T, res *http.Response) kanban.WorkspaceIdentityView {
 
 func TestWorkspaceIdentityAuthE2E(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
+	t.Setenv("SWITCHYARD_DEV", "1")
 	if err := kanban.EnsureAuthSeed(); err != nil {
 		t.Fatal(err)
 	}
