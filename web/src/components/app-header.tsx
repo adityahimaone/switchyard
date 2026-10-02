@@ -34,10 +34,20 @@ export function AppHeader({
 	   navigation. */
 	const activeItem = activeNavItem(page);
 
+	/* `glass-flat` rather than a bare `backdrop-blur-sm`: it gives the same tint
+	   and elevation without `backdrop-filter`. That matters because this header
+	   contains overlay triggers — the notification bell, the theme switch, the
+	   account menu — and a `backdrop-filter` ancestor becomes the containing
+	   block for any `position: fixed` descendant. Radix portals those overlays to
+	   `document.body` today so they escape it, but the guarantee should not rest
+	   on every future overlay remembering to portal: one that forgets would be
+	   positioned *and* clipped to the header. Dropping the filter removes the
+	   failure mode entirely, and this bar sits on the opaque `bg-surface` inset,
+	   so there was never a meaningful backdrop to diffuse anyway. */
 	return (
 		<header
 			className={cn(
-				"sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6"
+				"glass-flat sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 md:px-6"
 			)}
 		>
 			<div className="flex min-w-0 items-center gap-3">

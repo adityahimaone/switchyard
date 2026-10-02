@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, setProfileAvatarUrl, uploadProfileAvatar, type Profile, type ProfileDetail } from "@/api"
+import { api, setProfileAvatarUrl, toastGlobal, uploadProfileAvatar, type Profile, type ProfileDetail } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -281,7 +281,7 @@ function ProfileForm({
                   <SelectTrigger className="mt-1.5 w-full border-line bg-well">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="max-h-72">
+                  <SelectContent className="max-h-[min(18rem,var(--radix-select-content-available-height))]">
                     {providerNames.map((p) => <SelectItem key={p} value={p} className="text-sm">{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -292,7 +292,13 @@ function ProfileForm({
                   <SelectTrigger size="sm" className="mt-1.5 w-full border-line bg-well">
                     <SelectValue>{model || "model default"}</SelectValue>
                   </SelectTrigger>
-                  <SelectContent position="popper" align="start" className="h-[300px] max-h-[300px] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
+                  {/* `max-h-*` deriving from the space Radix reports, never a fixed `h-*`.
+                      A hard height overrides the base cap entirely, and Radix
+                      anchors a `position="popper"` panel to its trigger without
+                      pushing it above — so on a short window the panel rendered
+                      143px off the top with the search row unreachable, which is
+                      the worst instance of this bug in the app. */}
+                  <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72 min-w-72 max-w-72 border-[var(--color-line)] bg-[var(--color-surface)]">
                     <div className="sticky top-0 z-10 bg-[var(--color-surface)] p-1" onKeyDown={(event) => event.stopPropagation()}>
                       <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="border-line bg-well text-xs" />
                     </div>
@@ -445,7 +451,13 @@ export default function ProfilesPage() {
   })
   const activate = useMutation({
     mutationFn: (name: string) => api(`/api/profiles/${name}/activate`, { method: "POST" }),
-    onSuccess: invalidate,
+    onSuccess: (_data, name) => {
+      invalidate()
+      toastGlobal(`${name} is now the active profile`, "success")
+    },
+    // Without this the failure was invisible: the dropdown closed, the refetch
+    // never happened, and the card looked untouched.
+    onError: (error: Error) => toastGlobal(error.message, "error"),
   })
 
   async function openEdit(name: string) {
@@ -568,10 +580,21 @@ export default function ProfilesPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem disabled={p.active} onSelect={() => activate.mutate(p.name)}>
-                        Set as active
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      {/* Hidden rather than disabled while active: a permanently
+                          greyed "Set as active" on the active card reads as a
+                          broken control, and it was the only item the overflow
+                          ever showed for the common case. */}
+                      {!p.active && (
+                        <>
+                          <DropdownMenuItem
+                            disabled={activate.isPending}
+                            onSelect={() => activate.mutate(p.name)}
+                          >
+                            Set as active
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
                       <DropdownMenuItem
                         disabled={p.active}
                         onSelect={() => setPendingDelete(p.name)}

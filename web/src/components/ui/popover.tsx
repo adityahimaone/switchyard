@@ -26,8 +26,15 @@ function PopoverContent({
         data-slot="popover-content"
         align={align}
         sideOffset={sideOffset}
+        /* Viewport-relative max-height rather than a fixed one. The Radix portal
+           escapes every `overflow: hidden` ancestor — measured, there is no
+           clipping ancestor in this app — so content past the viewport edge is
+           genuinely unreachable here: `html, body, #root` are `height: 100%`
+           with `overflow: visible`, so the page cannot scroll to reveal it.
+           Letting the panel shrink is what keeps it on screen; callers can
+           still override via className. */
         className={cn(
-          "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-control p-1 text-ink shadow-xl outline-none",
+          "z-50 max-h-[calc(100dvh-2rem)] w-72 origin-(--radix-popover-content-transform-origin) rounded-control p-1 text-ink shadow-xl outline-none",
           "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           "glass-strong",

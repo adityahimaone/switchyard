@@ -14,9 +14,11 @@ import BoardsTab from "./tabs/BoardsTab"
 import GeneralTab from "./tabs/GeneralTab"
 import NotificationsTab from "./tabs/NotificationsTab"
 import VisionTab from "./tabs/VisionTab"
+import WorkspaceTab from "./tabs/WorkspaceTab"
 
 const TABS = [
   { id: "general", label: "General", keywords: "polling refresh sound volume sidebar latest change card release note" },
+  { id: "workspace", label: "Workspace", keywords: "name avatar identity brand monogram" },
   { id: "appearance", label: "Appearance", keywords: "theme dark light density compact motion" },
   { id: "notifications", label: "Notifications", keywords: "alert browser review failure" },
   { id: "vision", label: "Vision and attachments", keywords: "ai jev image pdf model routing" },
@@ -142,6 +144,7 @@ export default function SettingsPage() {
             ) : (
               <>
                 {active === "general" && <GeneralTab />}
+                {active === "workspace" && <WorkspaceTab />}
                 {active === "appearance" && <AppearanceTab />}
                 {active === "notifications" && <NotificationsTab />}
                 {active === "vision" && <VisionTab />}

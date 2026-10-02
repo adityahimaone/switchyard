@@ -22,6 +22,9 @@ export function NavGroup({
 	items,
 	onSelectPage,
 }: SidebarNavGroup & { onSelectPage: (p: Page) => void }) {
+	/* Leaf rows use `SidebarMenuButton` directly rather than `asChild` with an
+	   <a>: this app has no router, so there is no href to follow and navigation
+	   goes through onSelectPage. */
 	return (
 		<SidebarGroup>
 			{label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
@@ -67,9 +70,7 @@ export function NavGroup({
 										</SidebarMenuSub>
 									</CollapsibleContent>
 								</>
-							) : (
-								/* Not asChild with an <a>: this app has no router, so there is
-								   no href to follow and navigation goes through onSelectPage. */
+) : (
 								<SidebarMenuButton
 									isActive={item.isActive}
 									tooltip={item.title}

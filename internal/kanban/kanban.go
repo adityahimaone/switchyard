@@ -512,6 +512,7 @@ func ProfileModel(name string) (string, error) {
 
 func ListProfiles() ([]Profile, error) {
 	out := []Profile{}
+	active := ActiveProfile()
 	root := filepath.Join(hermesHome(), "profiles")
 	entries, err := os.ReadDir(root)
 	if err == nil {
@@ -520,6 +521,7 @@ func ListProfiles() ([]Profile, error) {
 				continue
 			}
 			p := Profile{Name: e.Name()}
+			p.Active = e.Name() == active
 			raw, err := os.ReadFile(filepath.Join(root, e.Name(), "config.yaml"))
 			if err == nil {
 				p.Model, p.Provider, p.BaseURL = parseModelYAML(string(raw))
@@ -534,7 +536,7 @@ func ListProfiles() ([]Profile, error) {
 		}
 	}
 	// implicit default profile — read model from the top-level config
-	def := Profile{Name: "default", Active: true}
+	def := Profile{Name: "default", Active: active == "default"}
 	if raw, err := os.ReadFile(filepath.Join(hermesHome(), "config.yaml")); err == nil {
 		def.Model, def.Provider, def.BaseURL = parseModelYAML(string(raw))
 	}

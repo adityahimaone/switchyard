@@ -449,6 +449,61 @@ export function removeProfileAvatar(name: string) {
   return api<{ ok: boolean }>(`/api/profiles/${name}/avatar`, { method: "DELETE" })
 }
 
+/**
+ * The workspace's own name and avatar, as opposed to an agent profile.
+ * `name` is empty until someone sets it — the caller owns the fallback, so the
+ * server never invents a label for the workspace.
+ */
+export interface WorkspaceIdentity {
+  name: string
+  /** The URL to render: either `/api/workspace/avatar` or an external image. */
+  avatar_url: string
+  /** Distinguishes an uploaded blob (cache-bust it) from an external URL. */
+  has_uploaded_avatar: boolean
+}
+
+export function getWorkspaceIdentity() {
+  return api<WorkspaceIdentity>("/api/workspace")
+}
+
+export function saveWorkspaceIdentity(name: string) {
+  return api<WorkspaceIdentity>("/api/workspace", {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function setWorkspaceAvatarUrl(url: string) {
+  return api<WorkspaceIdentity>("/api/workspace/avatar-url", {
+    method: "PUT",
+    body: JSON.stringify({ url }),
+  })
+}
+
+/**
+ * Multipart, so it bypasses `api()` — that helper hardcodes a JSON content
+ * type. Includes credentials explicitly: the sibling profile uploader omits
+ * them and only works because the request happens to be same-origin.
+ */
+export async function uploadWorkspaceAvatar(file: File) {
+  const body = new FormData()
+  body.append("avatar", file)
+  const res = await fetch("/api/workspace/avatar", {
+    method: "POST",
+    body,
+    credentials: "include",
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error((data as { error?: string }).error ?? res.statusText)
+  }
+  return res.json() as Promise<WorkspaceIdentity>
+}
+
+export function removeWorkspaceAvatar() {
+  return api<WorkspaceIdentity>("/api/workspace/avatar", { method: "DELETE" })
+}
+
 export function runTask(slug: string, taskId: string) {
   return api<Task>(`/api/boards/${slug}/tasks/${taskId}/run`, { method: "POST" })
 }

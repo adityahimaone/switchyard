@@ -53,7 +53,23 @@ export default function NotificationCenter() {
             </button>
           )}
         </div>
-        <div className="max-h-72 overflow-y-auto border-t border-[var(--color-line)]">
+        {/* Viewport-relative cap, not a flat `max-h-72`.
+
+            This was the actual clipping cause, and it is not an ancestor
+            problem: the popover portals to `document.body` and no `overflow` on
+            the app shell can reach it. The panel has a fixed 288px list plus a
+            header and footer, giving it a ~324px floor that Radix's collision
+            detection cannot shrink. Below that the content runs past the
+            bottom of the viewport — and because `html, body, #root` are
+            `height: 100%` with `overflow: visible`, the page has nothing to
+            scroll, so the overflow is simply unreachable. Measured: at
+            1280x340 38px is cut off with 3 of 32 rows unreachable; at 1024x300
+            78px is cut off and `scrollTop = 9999` does not recover it.
+
+            `min(18rem, 100dvh - 6rem)` keeps the original 288px on any normal
+            window and only yields on short ones, so the panel stays fully on
+            screen and its own list scrolls. */}
+        <div className="max-h-[min(18rem,calc(100dvh-6rem))] overflow-y-auto border-t border-[var(--color-line)]">
           {all.length === 0 && <p className="p-3 text-xs text-ink-3">No notifications</p>}
           {all.slice(0, 20).map((item) => (
             <button

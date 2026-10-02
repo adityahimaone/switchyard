@@ -140,8 +140,15 @@
   --color-card-foreground: var(--c-ink);
   --color-popover: var(--c-raised);
   --color-popover-foreground: var(--c-ink);
-  --color-primary: var(--c-ink);
-  --color-primary-foreground: var(--c-canvas);
+  /* `primary` is the ACCENT here, not ink — this must match the `@theme inline`
+     block below. The two disagreed: this legacy `:root` copy resolved
+     `--color-primary` to `--c-ink`, and since it is declared at `:root` (higher
+     specificity than the emitted `:root` from `@theme inline`) it won, so every
+     `bg-primary` in the app rendered as body ink. Measured: the chat composer's
+     send button resolved to `rgb(232, 237, 245)` in light and `rgb(47, 87, 196)`
+     in dark — wrong in both, and inverted between themes. */
+  --color-primary: var(--c-accent);
+  --color-primary-foreground: var(--c-accent-ink);
   --color-secondary: var(--c-raised);
   --color-secondary-foreground: var(--c-ink);
   --color-muted: var(--c-raised);
@@ -774,6 +781,20 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Hides a scrollbar without disabling scrolling.
+
+   Needed by the chat composer's auto-growing textarea: it grows to fit the
+   prompt and only scrolls past `maxRows`, and a scrollbar appearing mid-typing
+   shifts the text under the caret. Unlike `display: none` this keeps the element
+   scrollable and keeps the wheel and keyboard working. */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* ==========================================================================

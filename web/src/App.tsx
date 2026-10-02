@@ -42,7 +42,14 @@ export default function App() {
   const [detail, setDetail] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
+  /* Defaults closed below `lg`. The chat rail overlays the transcript at narrow
+     widths, so opening it by default put a 280px panel over a viewport that
+     cannot spare it — and, measured at 768px, left the "Show chat list" toggle
+     in the top bar unclickable because the rail covered it. Opening it stays an
+     explicit choice. */
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(
+    typeof window === "undefined" ? true : window.innerWidth >= 1024,
+  )
   const [paletteOpen, setPaletteOpen] = useState(false)
   const qc = useQueryClient()
 
@@ -203,7 +210,7 @@ export default function App() {
           {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
-          {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
+          {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onToggleSidebar={() => setChatSidebarOpen((v) => !v)} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
           {page === "board" && detailId && detailPage && (
             <TaskDetailPage
               slug={slug}

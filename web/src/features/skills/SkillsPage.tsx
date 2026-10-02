@@ -12,6 +12,9 @@ import LoadingState from "@/components/feedback/loading-state"
 
 export type SkillOrigin = "npx" | "hermes"
 
+/** Provenance values the `npx skills` lockfile writes into origin_source. */
+export type SkillSource = "official" | "skills.sh" | "github" | "local" | "untracked"
+
 interface SkillMeta {
   name: string
   description: string
@@ -27,6 +30,24 @@ const ORIGIN_FILTERS: { value: SkillOrigin | "all"; label: string; hint: string 
   { value: "hermes", label: "Hermes", hint: "Built in, or managed from this UI" },
 ]
 
+/* Listed in that order regardless of what is installed, so the chip does not
+   reshuffle itself as skills come and go. Anything the lockfile reports that is
+   not on this list is appended, so an unknown installer still shows up rather
+   than being unreachable behind "All". */
+const KNOWN_SOURCES: SkillSource[] = ["official", "skills.sh", "github", "local", "untracked"]
+
+const SOURCE_LABEL: Record<string, string> = {
+  official: "Official",
+  "skills.sh": "skills.sh",
+  github: "GitHub",
+  local: "Local",
+  untracked: "Untracked",
+}
+
+function sourceLabel(source: string): string {
+  return SOURCE_LABEL[source] ?? source
+}
+
 export function skillOriginLabel(skill: SkillMeta): string {
   if (skill.origin === "npx") return "npx"
   return skill.origin_source === "official" ? "builtin" : "hermes"
@@ -36,6 +57,7 @@ export default function SkillsPage() {
   const [q, setQ] = useState("")
   const [active, setActive] = useState<string | null>(null)
   const [origin, setOrigin] = useState<SkillOrigin | "all">("all")
+  const [source, setSource] = useState<string>("all")
 
   const skills = useQuery({
     queryKey: ["skills"],
@@ -59,10 +81,32 @@ export default function SkillsPage() {
     return counts
   }, [all])
 
-  // Origin is applied before the search short-circuit: a filtered list must not
-  // reappear just because the search box is empty.
+  // Known sources first in a fixed order, then anything else the lockfile
+  // reports, so an installer we don't know about is still selectable.
+  const sourceOptions = useMemo(() => {
+    const present = new Set(all.map((s) => s.origin_source || "untracked"))
+    const ordered = KNOWN_SOURCES.filter((s) => present.has(s))
+    for (const s of present) if (!KNOWN_SOURCES.includes(s as SkillSource)) ordered.push(s as SkillSource)
+    return ordered
+  }, [all])
+
+  const sourceCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const s of all) {
+      const key = s.origin_source || "untracked"
+      counts[key] = (counts[key] ?? 0) + 1
+    }
+    return counts
+  }, [all])
+
+  // Both facet filters are applied before the search short-circuit: a filtered
+  // list must not reappear just because the search box is empty.
   const filtered = useMemo(() => {
-    const list = all.filter((s) => (origin === "all" ? true : s.origin === origin))
+    const list = all.filter((s) => {
+      if (origin !== "all" && s.origin !== origin) return false
+      if (source !== "all" && (s.origin_source || "untracked") !== source) return false
+      return true
+    })
     const needle = q.trim().toLowerCase()
     if (!needle) return list
     return list.filter(
@@ -71,7 +115,7 @@ export default function SkillsPage() {
         s.description.toLowerCase().includes(needle) ||
         (s.category ?? "").toLowerCase().includes(needle),
     )
-  }, [all, q, origin])
+  }, [all, q, origin, source])
 
   const grouped = useMemo(() => {
     const groups = new Map<string, SkillMeta[]>()
@@ -104,6 +148,21 @@ export default function SkillsPage() {
               label: `${f.label} (${f.value === "all" ? all.length : (originCounts[f.value] ?? 0)})`,
             }))}
           />
+          {/* Provenance from ~/.hermes/skills/.hub/lock.json. Narrows the npx
+              bucket into where each skill actually came from — skills.sh, a
+              direct GitHub install, a local dir — which origin cannot express. */}
+          <FilterChip
+            label="Source"
+            value={source}
+            onChange={setSource}
+            options={[
+              { value: "all", label: `All (${all.length})` },
+              ...sourceOptions.map((s) => ({
+                value: s,
+                label: `${sourceLabel(s)} (${sourceCounts[s] ?? 0})`,
+              })),
+            ]}
+          />
         </FilterBar>
       </PageHeader>
 
@@ -121,9 +180,11 @@ export default function SkillsPage() {
             title={
               q.trim()
                 ? `No skills match "${q.trim()}"`
-                : origin === "all"
-                  ? "No skills installed"
-                  : `No skills from ${origin}`
+                : origin !== "all"
+                  ? `No skills from ${origin}`
+                  : source !== "all"
+                    ? `No skills from ${sourceLabel(source)}`
+                    : "No skills installed"
             }
             hint={
               q.trim()
@@ -192,6 +253,10 @@ function SkillCard({
   onOpen: () => void
 }) {
   const label = skillOriginLabel(skill)
+  // Shown alongside the origin badge: the origin says how the skill was
+  // installed, the source says where it came from. They differ for every npx
+  // install — skills.sh, GitHub, a local dir — so the card carries both.
+  const source = skill.origin_source || "untracked"
   return (
     <EntryCard
       // Hundreds of skills per profile. `flat` keeps the tint and the elevation
@@ -202,15 +267,22 @@ function SkillCard({
       selected={selected}
       title={skill.name}
       state={
-        <span
-          className={
-            label === "npx"
-              ? "inline-flex shrink-0 items-center gap-1 rounded-control border border-success/30 bg-success-tint px-1.5 py-0.5 text-2xs leading-none text-success-text"
-              : "inline-flex shrink-0 items-center gap-1 rounded-control border border-line bg-well px-1.5 py-0.5 text-2xs leading-none text-ink-3"
-          }
-        >
-          {label === "npx" && <Download className="size-2.5" aria-hidden />}
-          {label}
+        <span className="flex shrink-0 items-center gap-1">
+          <span
+            className={
+              label === "npx"
+                ? "inline-flex items-center gap-1 rounded-control border border-success/30 bg-success-tint px-1.5 py-0.5 text-2xs leading-none text-success-text"
+                : "inline-flex items-center gap-1 rounded-control border border-line bg-well px-1.5 py-0.5 text-2xs leading-none text-ink-3"
+            }
+          >
+            {label === "npx" && <Download className="size-2.5" aria-hidden />}
+            {label}
+          </span>
+          {label === "npx" && (
+            <span className="rounded-control border border-line bg-well px-1.5 py-0.5 text-2xs leading-none text-ink-3">
+              {sourceLabel(source)}
+            </span>
+          )}
         </span>
       }
       // Two lines, clamped, so the grid keeps a stable rhythm.

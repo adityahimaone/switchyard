@@ -182,10 +182,23 @@ function MemoryCard({
 export default function MemoryPage() {
   const memory = useQuery({ queryKey: ["memory"], queryFn: () => api<MemorySnapshot>("/api/memory") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
-  const [activeProfile, setActiveProfile] = useState("default")
+  const [activeProfile, setActiveProfile] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [dirty, setDirty] = useState<Record<MemoryScope, boolean>>({ memory: false, user: false })
 
+  /* The picker opens on the active profile rather than "default". Only seeded
+     once: re-seeding on every profiles refetch would yank the selection back
+     if the user had moved to a different profile by hand. */
+  const seededProfile = useRef(false)
+  useEffect(() => {
+    if (seededProfile.current || !profiles.data?.length) return
+    const active = profiles.data.find((p) => p.active)
+    setActiveProfile(active?.name ?? profiles.data[0].name)
+    seededProfile.current = true
+  }, [profiles.data])
+
+  // A profile can disappear under us (deleted from the Profiles page); fall back
+  // rather than leaving the editors pointed at nothing.
   useEffect(() => {
     if (profiles.data?.length && !profiles.data.some((profile) => profile.name === activeProfile)) {
       setActiveProfile(profiles.data[0].name)

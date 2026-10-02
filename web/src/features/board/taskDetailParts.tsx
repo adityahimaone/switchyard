@@ -140,7 +140,7 @@ export function AgentPicker({ task, profiles, onReassign, onError, className = "
         <SelectTrigger id={id} className="h-8 w-full text-body disabled:opacity-50">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="max-h-72">
+        <SelectContent className="max-h-[min(18rem,var(--radix-select-content-available-height))]">
           <SelectItem value="unassigned" className="text-body">unassigned</SelectItem>
           {profiles.map((p) => (
             <SelectItem key={p.name} value={p.name} disabled={!p.valid} className="text-body">

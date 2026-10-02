@@ -137,7 +137,7 @@ func CreateChatSession(title, agent, profile, workspace, model string) (*ChatSes
 		return nil, fmt.Errorf("invalid agent %q", agent)
 	}
 	if strings.TrimSpace(profile) == "" {
-		profile = "default"
+		profile = ActiveProfile()
 	}
 	db, err := ensureChatDB()
 	if err != nil {

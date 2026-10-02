@@ -326,7 +326,7 @@ func ImportChatSession(in ChatExport) (*ChatSession, error) {
 		s.Agent = "hermes"
 	}
 	if s.Profile == "" {
-		s.Profile = "default"
+		s.Profile = ActiveProfile()
 	}
 	if _, err = tx.Exec(`INSERT INTO chat_sessions(id,title,agent,profile,workspace,model,created_at,updated_at,archived,pinned,project_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, s.ID, s.Title, s.Agent, s.Profile, s.Workspace, s.Model, now, now, 0, 0, s.ProjectID); err != nil {
 		return nil, err

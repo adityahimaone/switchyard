@@ -60,6 +60,13 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
+          // Viewport-relative max-height rather than a flat 300px. A select is
+          // usually opened near the bottom of a window, where a 300px panel plus
+          // the trigger runs past the viewport edge — and since the app root is
+          // `height: 100%` with `overflow: visible` there is nothing to scroll
+          // to recover it. Radix shrinks the panel to fit, but only if it is
+          // allowed to shrink below this floor.
+          //
           // Origin-aware: scales from the trigger. The exit mirrors the entry per
           // side, so the menu leaves toward the control that opened it instead
           // of fading in place.
@@ -67,7 +74,7 @@ function SelectContent({
           // 200ms on --ease-out-expo. A select opens dozens of times a day, so
           // this is deliberately near-imperceptible — enough to say where it came
           // from, not enough to be waited on.
-          "glass-strong relative z-50 max-h-[300px] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-control text-popover-foreground",
+          "glass-strong relative z-50 max-h-[min(300px,calc(100dvh-4rem))] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-control text-popover-foreground",
           "transition-[transform,opacity] duration-200 ease-[var(--ease-out-expo)]",
           "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
           "data-[side=bottom]:data-[state=closed]:translate-y-[-4px] data-[side=bottom]:data-[state=open]:translate-y-0",
@@ -86,7 +93,20 @@ function SelectContent({
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(
-            "min-h-0 max-h-[300px] overflow-y-auto p-1",
+            /* The inner viewport had its own flat `max-h-[300px]` floor,
+               independent of the Content cap above. That floor is what actually
+               bound the list, and it is why `position="popper"` panels still
+               overflowed: Radix positions that variant against the trigger, so a
+               320px panel on a 300px-tall window runs off the top edge and the
+               Content's own `100dvh` cap could not rescue it — Radix will not
+               push a popper past the trigger.
+
+               `--radix-select-content-available-height` is the space Radix has
+               actually computed for this panel given the side it picked. Deriving
+               the floor from that lets the panel shrink to whatever fits on
+               whichever side it opened, with the `min()` tail preserving the
+               original 300px whenever there is room. */
+            "min-h-0 max-h-[min(300px,var(--radix-select-content-available-height))] overflow-y-auto p-1",
             position === "popper" &&
               "w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
           )}

@@ -35,9 +35,7 @@ func RecordNotification(kind string, data map[string]any) error {
 		return fmt.Errorf("notification kind required")
 	}
 	profile, _ := data["profile"].(string)
-	if profile == "" {
-		profile = "default"
-	}
+	profile = DefaultProfile(profile)
 	id := notificationID(kind, data)
 	notificationStore.Lock()
 	defer notificationStore.Unlock()
@@ -54,9 +52,7 @@ func RecordNotification(kind string, data map[string]any) error {
 }
 
 func ListNotifications(profile string, unreadOnly bool, limit int) ([]Notification, error) {
-	if profile == "" {
-		profile = "default"
-	}
+	profile = DefaultProfile(profile)
 	if limit <= 0 || limit > notificationLimit {
 		limit = notificationLimit
 	}
@@ -86,9 +82,7 @@ func MarkNotificationRead(id string) error {
 }
 
 func MarkAllNotificationsRead(profile string) error {
-	if profile == "" {
-		profile = "default"
-	}
+	profile = DefaultProfile(profile)
 	notificationStore.Lock()
 	defer notificationStore.Unlock()
 	for i := range notificationStore.items {

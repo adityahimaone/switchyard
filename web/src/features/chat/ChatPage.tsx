@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Activity, Archive, Check, FileImage, MoreHorizontal, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
+import { Activity, Archive, Check, FileImage, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { StatusLamp } from "@/components/ui/status-lamp"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -18,7 +21,7 @@ import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 
 /** Sentence case, and a name that matches what the user would say. */
@@ -114,7 +117,14 @@ function activityLabel(event: ChatRunEvent) {
   if (event.kind === "error") return payload.message ?? "Agent reported an error"
   if (event.kind === "cancelled") return "Run cancelled"
   if (event.kind === "tool") return payload.name ? `Tool: ${payload.name}` : "Tool call"
-  return payload.label ?? payload.description ?? event.kind.replaceAll("_", " ")
+  /* `kind` is typed as required, but it arrives over SSE and from the run-events
+     endpoint, so a malformed or partially-hydrated event reaches here with it
+     undefined. The old `event.kind.replaceAll` then threw, and because this runs
+     inside the transcript's render it took the whole page down to the error
+     boundary rather than skipping one row. An unlabelled activity row is a
+     cosmetic problem; a blank chat is a total loss. */
+  const kind = typeof event.kind === "string" ? event.kind : ""
+  return payload.label ?? payload.description ?? (kind.replaceAll("_", " ") || "Activity")
 }
 
 function isActivityEvent(event: ChatRunEvent) {
@@ -138,8 +148,12 @@ function LiveWorkerLog({ text, active }: { text: string; active: boolean }) {
 }
 
 function mergeActivityEvents(events: ChatRunEvent[], liveEvents: ChatRunEvent[]) {
-  const seen = new Set(events.map((event) => `${event.kind}:${event.payload}`))
-  return [...events, ...liveEvents.filter((event) => !seen.has(`${event.kind}:${event.payload}`))]
+  /* Drop non-objects. These two arrays are combined from an SSE payload and a
+     REST response, and one malformed entry otherwise poisons the dedupe key
+     (`undefined:undefined`) and every label derived from it downstream. */
+  const ok = (list: ChatRunEvent[]) => list.filter((e) => e && typeof e === "object");
+  const seen = new Set(ok(events).map((event) => `${event.kind}:${event.payload}`))
+  return [...ok(events), ...ok(liveEvents).filter((event) => !seen.has(`${event.kind}:${event.payload}`))]
 }
 
 function ActivityContext({ run, events }: { run?: ChatRun; events: ChatRunEvent[] }) {
@@ -244,21 +258,24 @@ function SessionNotice({ text }: { text: string }) {
   </div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
-  const [profile, setProfile] = useState("default")
+  const [profile, setProfile] = useState(() => profiles.find((p) => p.active)?.name ?? "default")
   const [workspace, setWorkspace] = useState("")
   const [model, setModel] = useState("")
   const [modelSearch, setModelSearch] = useState("")
+  /* The header shows which agent is answering, so it needs the same avatar the
+     composer's profile list renders. Resolved once here rather than searching
+     `profiles` inline in the header. */
+  const avatarForProfile = profiles.find((p) => p.name === profile)?.avatar_url
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
   const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
   const [answerBuffer, setAnswerBuffer] = useState<Record<string, string>>({})
   const [liveEvents, setLiveEvents] = useState<ChatRunEvent[]>([])
   const shouldFollowChatRef = useRef(true)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [sessionAction, setSessionAction] = useState<{ kind: SessionAction; session: ChatSession } | null>(null)
@@ -276,7 +293,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [uploadErr, setUploadErr] = useState("")
   const [analyzeBusy, setAnalyzeBusy] = useState<string | null>(null)
   const [analyzeResult, setAnalyzeResult] = useState<string | null>(null)
-  const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const skills = useQuery({ queryKey: ["chat-skills"], queryFn: () => listSkills() })
   const commandQuery = prompt.match(/(?:^|\s)(\/[^\s]*)$/)?.[1] ?? ""
   const skillQuery = prompt.match(/(?:^|\s)(\$[^\s]*)$/)?.[1].slice(1) ?? ""
@@ -389,14 +405,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   useEffect(() => {
     if (sessions.isSuccess && sessions.data?.length === 0 && !initialCreate.current) {
       initialCreate.current = true
-      void createChatSession({ title: "New chat", agent: "hermes", profile: "default", workspace: "", model: "" }).then((created) => {
+      void createChatSession({ title: "New chat", agent: "hermes", profile, workspace: "", model: "" }).then((created) => {
         setActive(created.id)
         void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
       }).catch(() => { initialCreate.current = false })
       return
     }
     if (!sessionID && sessions.data?.[0]) setActive(sessions.data[0].id)
-  }, [qc, sessionID, sessions.data, sessions.isSuccess])
+  }, [qc, sessionID, sessions.data, sessions.isSuccess, profile])
 
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
@@ -457,11 +473,15 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   }, [filteredSessions])
 
   const send = useMutation({
+    /* No manual scroll here any more. MessageScroller follows the live edge on
+       its own — via a ResizeObserver on the content and the scroll distance —
+       so the old `bottomRef.scrollIntoView` calls were fighting it: they
+       yanked the reader back to the bottom even after they had scrolled up to
+       read something, which is exactly what the follow-threshold exists to
+       prevent. Sending only has to re-arm following. */
     onMutate: () => {
       shouldFollowChatRef.current = true
       setShowJumpToLatest(false)
-      window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }))
-      window.setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 80)
     },
     mutationFn: () => {
       if (uploading) throw new Error("Wait for attachment upload to finish")
@@ -470,7 +490,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
       return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model, attachment_ids: ids })
     },
-    onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); window.setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 120) },
+    onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
   async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
@@ -509,12 +529,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   async function forkSession(item: ChatSession, messageId: string) { const fork = await forkChatSession(item.id, messageId); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }); setActive(fork.id); toastGlobal("Fork created") }
   const activeMessages: ChatMessage[] = messages.data ?? []
   const isRunning = run?.state === "loading" || run?.state === "running"
-  useEffect(() => {
-    if (!activeMessages.length && !isRunning) return
-    if (!shouldFollowChatRef.current) return
-    const frame = window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }))
-    return () => window.cancelAnimationFrame(frame)
-  }, [activeMessages.length, events.data?.length, isRunning, run?.id, run?.state, run?.output, run?.id ? streamBuffer[run.id] : ""])
+  /* The effect that used to live here — scroll-to-bottom on every message,
+     event and stream delta, gated on shouldFollowChatRef — is gone. It is
+     MessageScroller's job now: its ResizeObserver already re-pins the viewport
+     whenever the content grows, and it already stops the moment the reader
+     leaves the live edge. Keeping a second scroller here meant the two could
+     disagree, and the page's version won because it fired on every delta. */
 
   // ponytail: fetch historical runs per-message so footer shows original model/time, not current selector state. add batch endpoint when >50 messages.
   const messageRunIds = useMemo(() => {
@@ -548,87 +568,311 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   })
   const runEventsMap = messageRunEvents.data ?? {}
 
-  return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--c-canvas)]">
-    {sidebarOpen && <aside className="flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-[var(--c-line)] bg-[var(--c-surface)]">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] px-2">
-        <h1 className="px-1 text-sm font-semibold tracking-tight">{showArchived ? "Archived chats" : "Chats"}</h1>
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className={`size-7 ${showArchived ? "text-[var(--c-accent)]" : ""}`} onClick={() => setShowArchived((value) => !value)} aria-label={showArchived ? "Show active chats" : "Show archived chats"} title={showArchived ? "Show active chats" : "Show archived chats"}><Archive className="size-3.5" /></Button>
-          {!showArchived && <Button size="icon" variant="ghost" className="size-7" onClick={() => void newChat()} aria-label="New chat" title="New chat"><Plus className="size-4" /></Button>}
+  /* The sidebar reads as one material with the top bar rather than two
+     surfaces stacked on the canvas: `bg-surface` on both, with a single hairline
+     between. The old `bg-canvas` body put a 4%-darker wash behind the list,
+     which made the panel read as inset and put a second, unrelated edge
+     against the transcript. */
+  return <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
+    {/* Below `lg` this rail is an overlay rather than a column. Measured at
+        768px, the app rail (240) plus this rail (280) left the transcript 224px
+        and the composer 192px — a 15-character measure, with the composer selects
+        rendering at 29-47px each. So under `lg` it floats above the transcript
+        with a scrim, matching how the app sidebar behaves on mobile, instead of
+        taking permanent space the viewport cannot spare. */}
+    {sidebarOpen && (
+      <>
+        {/* Scrim: only below `lg`, where the rail actually overlays. */}
+        <button
+          type="button"
+          aria-label="Close chat list"
+          onClick={() => onToggleSidebar?.()}
+          className="absolute inset-0 z-20 bg-canvas/60 backdrop-blur-[2px] lg:hidden"
+        />
+        <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-line bg-surface shadow-float lg:static lg:z-auto lg:w-[min(280px,85vw)] lg:shadow-none">
+      {/* h-14, matching the app header and the chat top bar, so all three
+          horizontals align. The page h1 lives here — it is the panel's own
+          label, and repeating it in the top bar would be noise. */}
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : "Chats"}</h1>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className={cn("text-ink-3", showArchived && "text-accent-text")}
+                onClick={() => setShowArchived((value) => !value)}
+                aria-label={showArchived ? "Show active chats" : "Show archived chats"}
+                aria-pressed={showArchived}
+              >
+                <Archive className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{showArchived ? "Show active chats" : "Show archived chats"}</TooltipContent>
+          </Tooltip>
+          {!showArchived && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => void newChat()} aria-label="New chat">
+                  <Plus className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">New chat</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
-      <div className="border-b border-[var(--c-line)] p-2">
-        <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--c-ink-3)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search chats" className="h-8 pl-7 text-xs" /></div>
+
+      {/* Search sits on the panel with its own padding rather than in a bordered
+          strip, which put two hairlines 32px apart around one control. */}
+      <div className="shrink-0 px-3 py-2">
+        <div className="relative">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search chats"
+            aria-label="Search chats"
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
       </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {filteredSessions.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[var(--c-line)] p-4 text-center text-xs text-ink-3">No chat for this filter</div>
+          <div className="rounded-card border border-dashed border-line p-4 text-center text-xs text-ink-3">No chat for this filter</div>
         ) : (
           GROUP_ORDER.map((key) => {
             const items = grouped[key]
             if (items.length === 0) return null
             return (
-              <div key={key} className="mb-3">
-                <div className="px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">{GROUP_LABEL[key]} <span className="font-normal tracking-normal text-ink-3 normal-case">· {items.length}</span></div>
-                <div className="space-y-1">
-                  {items.map((item) => (
-                    <div key={item.id} className={`group flex w-full items-stretch rounded-lg border transition-colors ${item.id === sessionID ? "border-[var(--c-accent)]/30 bg-[var(--c-accent)]/10" : "border-transparent bg-transparent hover:bg-raised"}`}>
-                      <button type="button" onClick={() => void selectSession(item)} title={item.title} className="min-w-0 flex-1 px-2.5 py-2 text-left">
-                        <div className="max-w-full truncate text-xs font-medium leading-none">{item.title}</div>
-                        <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
-                          <span className="truncate">{item.workspace || "local"}</span>
-                          {item.model && <><span className="text-ink-3">·</span><span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span></>}
-                          {/* A lamp, not a spinner: the row already says the
-                              session is busy, and the lamp matches the rest
-                              of the app's running state. */}
-                          {activeRunBySession.has(item.id) && (
-                            <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />
-                          )}
-                        </div>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button type="button" aria-label={`Actions for ${item.title}`} className="mr-1 self-center rounded-md p-1.5 text-[var(--c-ink-3)] opacity-0 transition-opacity hover:bg-[var(--c-well)] hover:text-[var(--c-ink)] focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[var(--c-accent)] group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="border-[var(--c-line)] bg-[var(--c-raised)]">
-                          <DropdownMenuItem onSelect={() => openSessionAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => openSessionAction(showArchived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {showArchived ? "Restore" : "Archive"}</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onSelect={() => openSessionAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
+              <div key={key} className="mb-3 last:mb-0">
+                {/* Section label: the app's group-label treatment — 12px muted,
+                    uppercase, with the count as a quiet suffix. */}
+                <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
+                  {GROUP_LABEL[key]}
+                  <span className="tabular font-normal tracking-normal normal-case">{items.length}</span>
+                </div>
+                <div className="space-y-0.5">
+                  {items.map((item) => {
+                    const active = item.id === sessionID
+                    /* Selection signal, corrected after measurement.
+
+                       The first attempt used `border-line bg-surface
+                       shadow-active` to match a "hairline row" reading.
+                       Measured, that was *weaker* than both the app's own active
+                       nav row (`bg-accent/10`) and this row's previous state:
+                       `border-line` on `surface` is 1.26:1 in light and 1.23:1 in
+                       dark, and the 4%-black shadow is a no-op on a near-black
+                       ground — in dark the selection was carried by a 1.23:1
+                       hairline alone, and a hovered row actually measured *more*
+                       selected than the selected one.
+
+                       So the accent tint is back, and it is the app's own
+                       treatment: `accent-tint` with `accent-text` type, the
+                       text-safe pairing the palette already defines. That is what
+                       makes this row read as the same control as the nav rows in
+                       the sidebar beside it.
+
+                       Idle rows carry `border-line` on hover rather than a fill,
+                       because `--c-raised` is `#ffffff` — identical to
+                       `--c-surface` — so `hover:bg-raised` measured as a literal
+                       no-op in light mode with no visible hover state at all. */
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "group flex w-full items-stretch rounded-lg border transition-colors",
+                          active
+                            ? "border-line bg-accent-tint"
+                            : "border-transparent hover:border-line hover:bg-well",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => void selectSession(item)}
+                          title={item.title}
+                          aria-current={active ? "page" : undefined}
+                          className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                        >
+                          <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
+                            {item.title}
+                          </div>
+                          <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
+                            <span className="truncate">{item.workspace || "local"}</span>
+                            {item.model && (
+                              <>
+                                <span aria-hidden>·</span>
+                                <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
+                              </>
+                            )}
+                            {/* A lamp, not a spinner: the row already says the
+                                session is busy, and the lamp matches the rest
+                                of the app's running state. */}
+                            {activeRunBySession.has(item.id) && (
+                              <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Actions for ${item.title}`}
+                              className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="border-line bg-raised">
+                            <DropdownMenuItem onSelect={() => openSessionAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openSessionAction(showArchived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {showArchived ? "Restore" : "Archive"}</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onSelect={() => openSessionAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
           })
         )}
       </div>
-      <div className="border-t border-[var(--c-line)] px-2 py-2 text-2xs text-[var(--c-ink-3)]">{filteredSessions.length} {showArchived ? "archived" : "active"} chats</div>
-    </aside>}
+
+      {/* Footer count: a badge rather than a bare number, matching the count
+          treatment used beside every search field elsewhere in the app. */}
+      <div className="shrink-0 border-t border-line px-3 py-2">
+        <Badge
+          variant="outline"
+          className="tabular h-6 w-auto flex-none gap-0 border-line bg-well px-1.5 text-[11px] font-normal text-ink-3"
+        >
+          {filteredSessions.length} {showArchived ? "archived" : "active"}
+        </Badge>
+      </div>
+    </aside>
+      </>
+    )}
       <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--c-line)] bg-[var(--c-surface)] px-4">
-        <div className="min-w-0">
-          {/* The session title is the content, so it is an h2. The page h1 is
-              "Chat" and lives on the session rail, which is the page's own
-              label rather than a string the user retypes on every navigation. */}
-          <h2 className="truncate text-sm font-semibold">{current.data?.title ?? "New chat"}</h2>
+      {/* h-14, the same surface as the app header directly above it, so the two
+          bars read as one stack.
+
+          The right side carries what the transcript footer only shows after the
+          fact: which agent is answering, on what workspace and model.
+
+          The priority here matters more than the breakpoint. Measured, a
+          439px cluster at a 1024px viewport left the session title **0px**
+          wide — the page's actual content vanished entirely, because the
+          cluster was `shrink-0` and the title was the only shrinkable thing.
+          So the title now holds its width first (`shrink-0`), and the cluster
+          is the part that yields: `min-w-0` plus `truncate` on each term, on a
+          breakpoint that accounts for the 280px session rail rather than
+          assuming the full viewport is available to the bar. */}
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4 md:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* Rail toggle. Below `lg` this is the only way to reach the session
+              list, since the rail overlays there instead of taking a column. */}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="shrink-0 text-ink-3 lg:hidden"
+            onClick={() => onToggleSidebar?.()}
+            aria-label="Show chat list"
+            aria-expanded={sidebarOpen}
+          >
+            <PanelLeft className="size-4" />
+          </Button>
+          {/* The title is the page's content, so it takes the leftover width (`flex-1`
+            with `min-w-0`) and the metadata cluster is the part that yields.
+            Measured, a `shrink` cluster plus a `shrink` title left the title
+            only 59px — enough for two characters — because both sides were
+            shrinkable and the cluster's intrinsic width won. */}
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+            {current.data?.title ?? "New chat"}
+          </h2>
         </div>
-        {current.data && <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />}
+
+        {/* `xl` rather than `lg`, and capped at `max-w-[40%]` on top of that: at
+            1024-1280 the chat rail already takes 280px, so the bar's usable
+            width is well under the viewport and the cluster is widest exactly
+            where there is least room for it. The cap is what actually protects
+            the title — the breakpoint alone only hid it at small widths. */}
+        <div className="hidden min-w-0 max-w-[40%] shrink items-center gap-1.5 text-2xs text-ink-3 xl:flex">
+          {profile && (
+            <span className="flex min-w-0 items-center gap-1">
+              <Avatar className="size-4 shrink-0">
+                {avatarForProfile && <AvatarImage src={avatarForProfile} alt="" />}
+                <AvatarFallback className="shrink-0 bg-well text-[7px] text-ink-2">
+                  {profile.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{profile}</span>
+            </span>
+          )}
+          {workspace && (
+            <>
+              {profile && <span aria-hidden className="shrink-0">·</span>}
+              {/* Basename only: a workspace path is long enough to dominate the
+                  bar, and the path is what the composer select shows on demand. */}
+              <span className="truncate" title={workspace}>{workspace.split("/").filter(Boolean).pop()}</span>
+            </>
+          )}
+          {model && (
+            <>
+              {(profile || workspace) && <span aria-hidden className="shrink-0">·</span>}
+              <span className="truncate font-mono" title={model}>{model.split("/").pop()}</span>
+            </>
+          )}
+        </div>
+        {current.data && (
+          <div className="shrink-0">
+            <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />
+          </div>
+        )}
       </header>
-      <MessageScroller busy={isRunning} showJump={showJumpToLatest} onFollowChange={(following) => { shouldFollowChatRef.current = following; setShowJumpToLatest(!following) }} onJump={() => { shouldFollowChatRef.current = true; setShowJumpToLatest(false); bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }) }}>
-        <div className="mx-auto max-w-3xl space-y-6">
+      {/* The rail's gutter: the scroller pads the viewport for it, but the caller's
+          own `px-4 sm:px-6` is merged onto that same element and nets the result
+          down to 24px — measured 16px between the ticks and the message text at
+          every width below 1440, which puts a 1px rule against body copy. The
+          content column carries the right-hand inset instead, where nothing
+          overrides it. */}
+      <MessageScroller
+        className="min-h-0 flex-1"
+        busy={isRunning}
+        navigation="rail"
+        showJump={showJumpToLatest}
+        onFollowChange={(following) => {
+          shouldFollowChatRef.current = following
+          setShowJumpToLatest(!following)
+        }}
+        viewportClassName="px-4 py-4 sm:px-6"
+        contentClassName="mx-auto max-w-3xl space-y-6 pr-12"
+      >
         {activeMessages.length === 0 && !run ? (
-          <div className="rounded-card border border-dashed border-[var(--c-line)] bg-[var(--c-surface)] p-6">
-            <div className="text-sm font-medium">Start a conversation</div>
-            <div className="mt-1 text-sm leading-6 text-[var(--c-ink-3)]">Pick a prompt or type your own. Agent runs show live context activity.</div>
-            <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-[var(--c-line)] bg-[var(--c-canvas)] px-3 py-1.5 text-xs hover:border-[var(--c-line-strong)]">{example}</button>)}</div>
+          <div className="rounded-card border border-dashed border-line bg-surface p-6">
+            <div className="text-sm font-medium text-ink">Start a conversation</div>
+            <div className="mt-1 text-sm leading-6 text-ink-3">Pick a prompt or type your own. Agent runs show live context activity.</div>
+            <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40">{example}</button>)}</div>
           </div>
         ) : activeMessages.map((message) => (
-          <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
+          /* `data-slot="message"` and `data-from` are what MessageScroller's
+             navigation rail queries to build its list, and it reads the row's
+             text to compose each hover preview. Without them the rail silently
+             renders nothing. */
+          <div
+            key={message.id}
+            data-slot="message"
+            data-from={message.role === "user" ? "user" : "assistant"}
+            className={message.role === "user" ? "flex justify-end" : "flex justify-start"}
+          >
             {message.role === "user" ? (
-              <div className="max-w-[80%] rounded-card bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+              /* The user's own message is the only solid-accent surface in the
+                 transcript. Assistant output stays unframed on the page
+                 surface, which is what lets a long answer read as a document
+                 rather than a stack of cards. */
+              <div className="max-w-[80%] rounded-card bg-accent px-4 py-2.5 text-sm text-accent-ink">
                 <div>{message.content}</div>
                 {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
               </div>
@@ -648,8 +892,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           </div>
         ))}
         {run && isRunning && <ActivityContext run={run} events={mergeActivityEvents(events.data ?? [], liveEvents)} />}
-        <div ref={bottomRef} aria-hidden="true" />
-        </div>
       </MessageScroller>
       <Composer
         value={prompt}
@@ -660,6 +902,27 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         phase={run?.state === "error" ? "Failed" : run?.state === "done" ? "Finished" : "Working"}
         placeholder={profile ? `Message ${profile}` : "Message the agent"}
         disabled={!sessionID || send.isPending || uploading}
+        /* PromptInput owns the Plus menu, so the existing dropdown becomes its
+           action list and the three selects move to the leading slot. Same
+           behaviour and same handlers, one implementation. */
+        actions={[
+          {
+            value: "image",
+            label: "Attach image",
+            description: "Add a screenshot or visual reference.",
+            icon: <FileImage />,
+          },
+          {
+            value: "skill",
+            label: "Use skill",
+            description: "Give the agent a specialized workflow.",
+            icon: <Puzzle />,
+          },
+        ]}
+        onAction={(action) => {
+          if (action === "image") fileRef.current?.click()
+          if (action === "skill") setPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}$`)
+        }}
         autocomplete={
           autocompleteOpen && (commandMatches.length > 0 || skillMatches.length > 0) ? (
             <>
@@ -703,22 +966,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         }
         controls={
           <>
-            <DropdownMenu open={composerMenuOpen} onOpenChange={setComposerMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" size="icon-sm" variant="outline" aria-label="Add to message">
-                  <Plus className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
-                  <FileImage className="size-4" /> Attach image
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}$`)}>
-                  <Puzzle className="size-4" /> Use skill
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
             <Select value={profile || "default"} onValueChange={setProfile}>
               <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
@@ -772,7 +1019,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Model">
                 <SelectValue placeholder="Default model" />
               </SelectTrigger>
-              <SelectContent position="popper" align="start" className="h-80 w-72">
+              {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
+                    past the viewport top on short windows: Radix anchors a
+                    `position="popper"` panel to the trigger and will not push it
+                    above, so the panel has to be willing to shrink. The sticky
+                    search row above still pins inside it. */}
+              <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
                 <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
                   <Input
                     value={modelSearch}

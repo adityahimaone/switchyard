@@ -610,7 +610,7 @@ export default function TaskDetailPage({
                     <SelectTrigger size="sm" className="w-32 text-body" aria-label="Pick a task to depend on">
                       <SelectValue placeholder="Pick" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-64">
+                    <SelectContent className="max-h-[min(16rem,var(--radix-select-content-available-height))]">
                       {dependencyChoices.map((t) => (
                         <SelectItem key={t.id} value={t.id} className="font-mono text-body">
                           {t.id} · {t.title.slice(0, 28)}

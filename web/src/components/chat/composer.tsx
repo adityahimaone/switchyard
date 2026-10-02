@@ -1,13 +1,21 @@
 import { useRef, type ReactNode } from "react"
-import { ArrowUp, Square } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { PromptInput, type PromptAction } from "@/components/agents/prompt-input"
 import { StatusLamp } from "@/components/ui/status-lamp"
 
 /**
- * One surface, 1px line-strong, radius-panel. No border beam and no glow: the
- * composer is a control, not a feature. Send is the page's only accent
- * element, and it becomes a destructive Stop while a run is active.
+ * The composer, rebuilt on the registry's `PromptInput`.
+ *
+ * The auto-growing textarea, the send/stop state swap and Enter-to-submit all
+ * come from the component. What stays app-specific is everything around it: the
+ * slash-command and skill autocomplete (which needs to sit *above* the box and
+ * intercept clicks without stealing focus), the running-state status lamp, the
+ * attachment tray, and the existing profile/workspace/model toolbar.
+ *
+ * `PromptInput` takes its own model list and its own action popover. This app
+ * already has working equivalents for both — a searchable model dropdown and an
+ * "Add to message" menu wired to the attachment and skill flows — so they are
+ * passed in as `models` and `actions` rather than rebuilt, which keeps one
+ * source of truth for what is selected.
  */
 export function Composer({
   value,
@@ -18,6 +26,10 @@ export function Composer({
   phase,
   elapsed,
   placeholder,
+  /** The existing Plus menu, rendered by PromptInput's action popover. */
+  actions,
+  onAction,
+  /** Profile, workspace and model selects, rendered in the toolbar row. */
   controls,
   attachments,
   autocomplete,
@@ -31,18 +43,20 @@ export function Composer({
   phase?: string
   elapsed?: string
   placeholder: string
-  /** Attach button plus the profile, workspace and model dropdowns. */
-  controls: ReactNode
+  /** Entries for the component's built-in action popover. */
+  actions?: PromptAction[]
+  onAction?: (action: string) => void
+  /** Toolbar controls for the leading action slot. */
+  controls?: ReactNode
   attachments?: ReactNode
   /** Slash-command and skill suggestions, rendered above the box. */
   autocomplete?: ReactNode
   disabled?: boolean
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const canSend = value.trim().length > 0 && !disabled && !running
+  const ref = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+    <div ref={ref} className="mx-auto w-full max-w-3xl px-4 pb-4">
       {running && (
         <div className="mb-2 flex items-center gap-2 px-1 text-xs text-ink-3" role="status">
           <StatusLamp status="running" label={phase ?? "Working"} size="sm" />
@@ -60,37 +74,27 @@ export function Composer({
           </div>
         )}
 
-        <div className="rounded-panel border border-line-strong bg-surface focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
-          {attachments && <div className="flex flex-wrap gap-1.5 px-3 pt-3">{attachments}</div>}
+        {attachments && <div className="mb-2 flex flex-wrap gap-1.5">{attachments}</div>}
 
-          <Textarea
-            ref={ref}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                if (canSend) onSend()
-              }
-            }}
-            className="max-h-52 min-h-11 resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:outline-0"
-          />
-
-          <div className="flex items-center justify-between gap-2 px-2 pb-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">{controls}</div>
-            {running ? (
-              <Button variant="destructive" size="sm" onClick={onStop}>
-                <Square className="size-3 fill-current" /> Stop
-              </Button>
-            ) : (
-              <Button variant="signal" size="sm" onClick={onSend} disabled={!canSend}>
-                Send <ArrowUp className="size-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
+        {/* The form carries the box's own border and radius, so the shell below
+            is only there to host the app's focus treatment and the toolbar's
+            overflow. */}
+        <PromptInput
+          value={value}
+          onValueChange={onChange}
+          onSubmit={() => onSend()}
+          onStop={onStop}
+          loading={running}
+          disabled={disabled}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          actions={actions}
+          onAction={onAction}
+          leadingAction={controls}
+          minRows={2}
+          maxRows={8}
+          className="rounded-panel border border-line-strong bg-surface focus-within:border-accent/60 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
+        />
       </div>
 
       <p className="mt-1.5 flex items-center justify-between px-1 text-xs text-ink-3">

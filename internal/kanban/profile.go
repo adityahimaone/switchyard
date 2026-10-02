@@ -174,9 +174,7 @@ func GetProfile(name string) (*AgentProfile, error) {
 	}
 	dir := profileDir(name)
 	p := &AgentProfile{Name: name, Skills: []string{}}
-	if name == "default" {
-		p.Active = true
-	}
+	p.Active = name == ActiveProfile()
 	if raw, err := os.ReadFile(filepath.Join(dir, "config.yaml")); err == nil {
 		p.Model, p.Provider, p.BaseURL = parseModelYAML(string(raw))
 	}
