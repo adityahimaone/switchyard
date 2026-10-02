@@ -151,7 +151,18 @@ export function ComboboxContent({
         } as CSSProperties
       }
       className={cn(
-        "fixed z-[9999] w-(--combobox-trigger-width) overflow-hidden rounded-md border border-border bg-background text-popover-foreground outline-none will-change-[height,transform]",
+        /* Was stock shadcn: `z-[9999]` with `border-border bg-background`. The
+           9999 was solving a real problem (a portalled list has to clear the
+           chart tooltips and sticky headers) but it also sat above the toaster,
+           so an open combobox covered notifications. `z-overlay` is the same
+           layer every other portalled overlay uses, and the list already wins
+           against those because they are all at the same layer and it is last in
+           the DOM.
+
+           `bg-background`/`border-border` came off with it: this is a portalled
+           overlay like any other, so it takes the overlay tier rather than the
+           opaque stock one. */
+        "glass-strong glass-sheen fixed z-overlay w-(--combobox-trigger-width) overflow-hidden rounded-control text-popover-foreground outline-none will-change-[height,transform]",
         className,
       )}
     >

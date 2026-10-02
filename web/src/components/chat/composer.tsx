@@ -93,7 +93,16 @@ export function Composer({
           leadingAction={controls}
           minRows={2}
           maxRows={8}
-          className="rounded-panel border border-line-strong bg-surface focus-within:border-accent/60 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
+          /* The strongest tier, because the composer sits at the bottom of a
+             scrolling transcript and is the one surface whose content behind it
+             is guaranteed to be moving text. A weaker fill let the last line of
+             a reply show through the field you were typing the reply to.
+
+             No blur budget is spent on the field itself — the tier's blur is on
+             the container. `focus-within` puts the accent ring on the whole box
+             rather than the textarea inside it, which is what makes the field
+             read as one object. */
+          className="glass-strong rounded-panel focus-within:shadow-[inset_0_1px_0_0_rgb(255_255_255_/_0.12),var(--glow-ring)]"
         />
       </div>
 

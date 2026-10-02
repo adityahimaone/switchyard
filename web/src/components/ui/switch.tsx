@@ -32,7 +32,11 @@ function Switch({
           "pointer-events-none block rounded-full bg-ink ring-0",
           "transition-transform duration-100 ease-[var(--ease-out-quint)]",
           "group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3",
-          "data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=checked]:bg-accent-ink",
+          /* The thumb turns white when checked, not `--c-accent-ink`. That token
+             is near-black in dark, which is correct for accent text on the
+             canvas but wrong on top of a filled accent track — a dark thumb on
+             a mid-blue track reads as a hole rather than a switch. */
+          "data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=checked]:bg-on-accent",
           "data-[state=unchecked]:translate-x-0"
         )}
       />

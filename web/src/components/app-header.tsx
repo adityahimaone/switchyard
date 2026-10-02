@@ -34,20 +34,27 @@ export function AppHeader({
 	   navigation. */
 	const activeItem = activeNavItem(page);
 
-	/* `glass-flat` rather than a bare `backdrop-blur-sm`: it gives the same tint
-	   and elevation without `backdrop-filter`. That matters because this header
-	   contains overlay triggers — the notification bell, the theme switch, the
-	   account menu — and a `backdrop-filter` ancestor becomes the containing
-	   block for any `position: fixed` descendant. Radix portals those overlays to
-	   `document.body` today so they escape it, but the guarantee should not rest
-	   on every future overlay remembering to portal: one that forgets would be
-	   positioned *and* clipped to the header. Dropping the filter removes the
-	   failure mode entirely, and this bar sits on the opaque `bg-surface` inset,
-	   so there was never a meaningful backdrop to diffuse anyway. */
+	/* Frosted, and rounded — the block's `floating` sidebar changed the header's
+	   job. Under the `inset` variant the header was a full-bleed band pinned to
+	   the top edge, so it had to run square to the viewport to avoid a seam.
+	   With a floating rail it is now a panel floating over the glow field like
+	   every other surface, and it gets the radius and the shadow that says so.
+
+	   That is the block's structure carried over: header as a sibling of the
+	   content, not a border drawn on it. Its own header used `pxx-4 mb-6`, a typo
+	   for `px-4`; corrected here, and the `mb-6` is dropped because Switchyard's
+	   pages own their own gutters and a margin here would gap every page.
+
+	   The portalling hazard: every overlay trigger here (⌘K tooltip, notification
+	   bell, theme switch, account menu) is a Radix primitive whose content
+	   portals to document.body, so a portalled descendant is not a descendant and
+	   cannot be captured by this filter. `CommandPalette` — the one non-portalled
+	   fixed overlay — is a sibling, not a child. The rule that keeps it working:
+	   neither this element nor `sidebar-inset` may ever carry a filter. */
 	return (
 		<header
 			className={cn(
-				"glass-flat sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 md:px-6"
+				"glass sticky top-0 z-panel mx-2 mt-2 flex h-14 shrink-0 items-center justify-between gap-2 rounded-lg px-4 md:mx-3 md:mt-3"
 			)}
 		>
 			<div className="flex min-w-0 items-center gap-3">

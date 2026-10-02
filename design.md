@@ -1,60 +1,163 @@
-# Switchyard UI Redesign 2026, Revision 4: "Signal Blue, Softened, Glass"
+# Switchyard UI Redesign 2026, Revision 5: "Signal Blue, Softened, Glass + Glow"
 
-Supersedes Revision 3 in one area: **surface material**. Shape, palette, type,
-the accent and the board layout all carry forward unchanged.
+Supersedes Revision 4 in one area: **where the light comes from**. The palette,
+shape, type, the accent, the board layout and the glass tiers themselves all
+carry forward unchanged.
 
 Extends `design-surfaces.md` for per-page layout where it does not conflict.
 
 Scope: `web/` (React 19, Vite, Tailwind v4, shadcn/Radix, `motion`). No API,
 routing, query or data-model changes.
 
-## 0. What Revision 4 changes
+## 0. What Revision 5 changes
 
-Frosted glass, as a material with tokens rather than scattered blur values. Two
-strengths: `glass` for panels and cards, `glass-strong` for the topmost floating
-layers where content behind would otherwise be readable through the text.
+Revision 4 built the material. Revision 5 supplies something for it to act on,
+fixes the one rule that was costing more than it returned, and adds the
+"Reduce effects" budget.
 
-| Before (Revision 3) | Now | Why |
+| Before (Revision 4) | Now | Why |
 |---|---|---|
-| opaque `bg-surface` cards | `glass-card` | The contemporary look the references use |
-| opaque dialogs, sheets, popovers | `glass-strong` | These float over content, so there is something to diffuse |
-| opaque sidebar | `glass` | Stands directly on the textured canvas |
-| no material system | 6 tokens, 4 utilities | "How frosted is this" is a token choice, not a per-component decision |
+| glow defined (`glow-ground`) but **mounted nowhere** | `<GlowField />`, a fixed element behind the shell | Glass diffuses its backdrop. Over a flat canvas it is a rectangle, whatever the tint. This was the whole reason it looked flat. |
+| `glass-card` blurred, so a board of 100 cards carried 100 `backdrop-filter`s | `glass-card` does **not** blur | A card's backdrop is already a blurred panel. Blurring again diffuses nothing and doubles the layer cost. |
+| sidebar opaque, top bar opaque, content opaque | **glass on the top bar and content; sidebar stays opaque** | The rail is the frame's edge and has nothing behind it. The bar and the panels do — the board scrolls under both. |
+| orbs would drift forever | drift gated on the motion preference | §8 still says nothing loops forever. |
+| no way to trade quality for frame rate | `kb-effects` → "Reduce effects" | Low-end GPUs and battery. |
+| five ad-hoc dim values (`bg-black/20`, `bg-black/55`, `bg-black/60`, `bg-canvas/60`) | one `--scrim` | The palette scrim was nearly 3× a dialog's, so one action read as more violent than another. |
+| `text-success-text-text` in three places | `text-success-text` | Not a token. Resolved to nothing; the text silently fell back to inherited ink. |
 
-### The rule that makes it work
+### The rule this revision is really about
 
-**Glass only where there is variation behind it.** This is not a preference; it
-is what `backdrop-filter` is for. A translucent panel over a near-uniform ground
-has nothing to diffuse, so it renders as a flat grey wash — which is exactly
-what happened on the first pass, when the page `<main>` was made glass and the
-whole app turned hazy.
+**Blur once per visual stack, at the panel.** Not "use glass where it looks
+good" — the tier is decided by depth, and `glass-card` losing its
+`backdrop-filter` is the same rule as the board having one blurred column rather
+than one per card.
 
-So the layering is explicit:
+### Three decisions taken deliberately against the incoming spec
 
-- the **canvas** carries the glow (`glow-ground`) — the material to diffuse
-- the **sidebar** stands directly on it, so it is glass
-- **cards, popovers, sheets, dialogs** sit on top and diffuse what is behind them
-- the **page `<main>` stays opaque** (`bg-surface`), because a full-bleed
-  translucent panel buys nothing and hazes the whole page
+The spec this implements treats dark as the primary theme, drifting orbs as
+always-on, and a per-element spotlight on every card. All three were decided
+otherwise, and the reasons are part of the design:
 
-### Verified, not eyeballed
+1. **Light stays the default.** `kb-theme` defaults to `system` and `:root` is
+   the light block. Every token is authored for both themes, but flipping the
+   default would change the first paint for every existing user.
+2. **Orbs paint always; they drift only on request.** Under reduced motion the
+   glow field is still there — removing the motion must not remove the backdrop
+   the entire material depends on. See §8.
+3. **Spotlight is delegated.** One `pointermove` listener on the board root
+   lights whichever card is under the pointer, rather than one handler per card.
 
-Text on glass was measured by compositing the tint over its backdrop in sRGB
-space and running WCAG relative luminance — the same method as the palette work,
-including the sRGB linearisation that the first pass got wrong.
+### What did not change
 
-| | ink | ink-2 | ink-3 | accent-text | success-text | danger-text |
-|---|---|---|---|---|---|---|
-| **Light** glass | 17.40 | 8.09 | 6.15 | 6.24 | 5.17 | **4.96** |
-| **Dark** glass | 13.80 | 9.75 | 6.19 | 7.89 | 11.52 | 8.22 |
+The `--c-*` palette was **not** renamed to the spec's `--sy-*`, and the
+`oklch()` values were not adopted wholesale. Eight status hues across two themes
+carry measured contrast numbers in §0 of Revision 4; replacing the colour layer
+would invalidate every one of them for a vocabulary change. The spec's
+*structure* — five ingredients, a layer model, tier-by-depth — is adopted in
+full. Its numbers are reconciled against the existing palette instead.
 
-Bar is 4.5:1. The tightest case is `danger-text` on light glass at 4.96.
+## 0b. Layer model
 
-### One deliberate non-glass surface
+| Layer | Name | Contents | Material |
+|---|---|---|---|
+| L0 | Canvas | App background | Solid `--c-canvas` |
+| L1 | Glow field | Three orbs + grid + grain | Decorative, `pointer-events:none`, `z-glow` |
+| L2 | Panel | **Sidebar rail**, **top bar**, kanban column, chat rail, empty state | `glass` |
+| L3 | Raised | Cards, tiles, chat bubbles, inputs, select trigger | `glass-card` / `glass-flat` — **no blur** |
+| L4 | Overlay | Dialogs, popovers, dropdowns, palette | `glass-strong` |
+| L5 | Toast | Transient | `glass-strong` + tone glow |
 
-The `signal` button stays solid. A translucent accent fill muddies its own label
-and loses the "this is the forward action" signal that a solid fill carries — and
-§7 allows exactly one of those per screen, so it has to be unmistakable.
+`--z-canvas 0 · --z-glow 1 · --z-panel 10 · --z-raised 20 · --z-overlay 50 ·
+--z-toast 60`, exposed to Tailwind as `z-canvas` … `z-toast`.
+
+**The whole shell is glass.** That reverses Revision 5's boundary, where the
+rail stayed opaque, and it only works because of the shell structure it came
+with — see §0c.
+
+The content `<main>` is **transparent, not frosted**: it carries no filter of
+its own, so it adds no compositing layer for the whole viewport and does not
+become the containing block for the non-portalled `CommandPalette`. It just
+stops painting over the glow field, which is what the columns and cards
+underneath it need in order to be glass rather than flat translucent fill.
+
+## 0c. The shell: `@efferd/app-shell-4`
+
+The shell structure is the `@efferd/app-shell-4` registry block. What was
+adopted, and what was not:
+
+| From the block | Kept | Why |
+|---|---|---|
+| composition order: provider → sidebar → inset → header → content | yes | |
+| `variant="floating"` sidebar | yes | **This is what makes the frosted shell work.** `inset` walls the rail off from the canvas with an opaque gutter; `floating` gives it a margin, so the glow field shows on all sides and the rail reads as a panel floating over light rather than a box cut into the page. |
+| header as a sibling of the content, not a border on it | yes | and with it, a *rounded floating* header instead of a full-bleed band |
+| `--sidebar-*` stock shadcn hsl tokens | **no** | It injected them into the `.dark` block, where they would have resolved `--sidebar` to a neutral slate and quietly de-Signal-Blued the rail while every other token still looked right. Stripped; `--sidebar-*` keeps resolving to `--c-*`. |
+| `logo.tsx` (Efferd's own mark) | **no** | The Switchyard mark stays. Same principle as the palette: the block's structure is the deliverable, its identity is not. |
+| demo destinations — "Add product", "Search store", `#link` | **no** | Replaced by the app's real pages via `buildNavGroups` / `buildFooterLinks`. |
+| `pxx-4` in the block's header | corrected | Typo for `px-4`. |
+| `mb-6` on the header, `gap-4` on content | dropped | Switchyard's pages are full-bleed and own their own gutters. |
+
+**The install itself did not work, exactly as it has before in this repo.**
+`npx shadcn@latest add @efferd/app-shell-4` exited **0** and wrote all 23 files
+into a literal `web/@/` tree plus a duplicate `web/components/` — the CLI did
+not resolve the `@/*` alias, so the real `src/` tree received nothing. Both
+directories are unreachable (the Vite alias `@` → `src`) and were deleted after
+their contents were read. **Treat exit 0 as "the files landed somewhere", not
+as "the block is installed".**
+
+### The overlay rule that this structure must not break
+
+A `backdrop-filter` element becomes the containing block for any
+`position: fixed` descendant. The shell now has blur on the rail and the
+header, so:
+
+- Every overlay trigger inside them (nav tooltips, account menu, notification
+  bell, theme switch, ⌘K) is a Radix primitive that **portals to
+  document.body**, so it escapes.
+- `CommandPalette` is a `fixed inset-0` overlay that is **not** portalled. It
+  renders as a *sibling* of `<AppHeader>`, not a descendant.
+
+**The invariant:** neither `SidebarInset` nor the `SidebarProvider` wrapper may
+ever gain a `backdrop-filter`. Putting one there captures the command palette
+and clips its scrim to the shell's `overflow-hidden`.
+
+## 0d. Type on a filled accent surface
+
+The primary button is the one place in the app where the accent is a **fill**
+rather than a tint, so its label colour is not a matter of taste — it is the
+only text in the system whose contrast flips with the theme, in the opposite
+direction from everything else.
+
+| label on the accent fill | light | dark |
+|---|---|---|
+| **`--c-on-accent`** (used) | **6.40** | **7.98** |
+| the other way round | 3.02 | **2.42** — fails |
+
+The reason is the accent itself. Light's accent is `#2f57c4`, a *dark* blue, so
+white clears 6.40:1. Dark's accent is `#7aa7f5`, a **light** blue — it has to
+be, or accent text on the near-black canvas would fail — and you cannot put
+white type on a light blue: 2.42:1.
+
+So the rule is: **type on accent is theme-dependent, and the token carries that
+flip.** Never hard-code `#fff` or `#000` on an accent-filled control. Use
+`text-on-accent` (type) and `bg-on-accent` (a thumb or mark that sits *on* the
+fill, e.g. the checked switch).
+
+`scripts/contrast-glass.py` prints both directions, precisely so that "force it
+white everywhere" is caught as a number instead of shipping.
+
+### Two silent bugs this material hides, both found by measuring
+
+1. **`to-accent-lo` did not exist.** `--color-accent-lo` is not in this palette,
+   so the Tailwind class generated *nothing* and the primary button rendered
+   **flat** — the one variant whose whole job is to look lit. Both stops are now
+   `accent` at two opacities.
+2. **A bare `/* … */` in a JSX children position is a text node.** A comment
+   written while re-theming the chat header rendered as literal prose at the top
+   of the transcript. Neither `tsc`, the build, nor the 98 tests caught it — only
+   a screenshot did.
+
+Both are the same shape as the `-webkit-backdrop-filter` problem above: valid
+code, clean gate, wrong picture. **Render it.**
 
 ## 1. What changed in Revision 3, and why
 
@@ -300,59 +403,199 @@ never sits under text that matters.
 
 ### Glass
 
-Six tokens, four utilities. Tokens on the light block, overridden on `.dark`:
+The tier is chosen by **depth**, not taste. Three strengths:
+
+| Utility | Blur | Layer | Consumers |
+|---|---|---|---|
+| `glass` | 20px | L2 | **sidebar rail**, **top bar**, kanban column, chat rail, empty state |
+| `glass-card` | **none** | L3 | `ui/card.tsx`, `entry-card`, flow node cards, overview/knowledge grids, **select trigger** |
+| `glass-flat` / `-strong` | none | dense | buttons, segmented tracks, dense rows |
+| `glass-strong` | 32px | L4/L5 | dialog, sheet, popover, dropdown, **select panel**, palette, toast, composer, review gate |
+
+The shell is glass from the rail inward; see §0c for why the `floating`
+sidebar variant is what makes that hold up rather than reading as a plate over
+the page.
+
+### Rows inside a frosted panel carry no elevation
+
+The single easiest way to break this material is to put a tier on a list item.
+`glass-flat` carries a `box-shadow`, so on a 12-item list that is a dozen boxes
+each casting its own shadow onto the panel above them — the list stops reading
+as frosted and starts reading as striped.
+
+So: **the panel is the surface, the rows are content.** A row gets a hover or
+keyboard-highlight fill and nothing else. Measured on the profile select:
+
+| | background | shadow | backdrop-filter |
+|---|---|---|---|
+| panel | `rgb(30 38 55 / .78)` | glass elevation | `blur(32px) saturate(1.8)` |
+| row (highlighted) | accent @ 14% | **none** | **none** |
+| trigger | `rgb(46 56 78 / .42)` | glass elevation | **none** |
+
+The trigger takes `glass-card` rather than `glass-flat`: it needs the 1px
+hairline and the radius to read as something you press, and a closed select was
+otherwise a tint with no edge. It carries no blur, because a trigger sits on a
+panel that is already glass — that blur would be paid on every select on the
+page rather than only while one is open.
+
+Tokens (light block, overridden on `.dark`):
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `glass-tint` | `rgb(255 255 255 / .55)` | `rgb(46 56 78 / .40)` | panel fill |
-| `glass-tint-strong` | `rgb(255 255 255 / .72)` | `rgb(40 49 68 / .62)` | topmost layer fill |
-| `glass-blur` | 24px | 24px | `backdrop-filter` radius |
-| `glass-blur-strong` | 44px | 44px | `backdrop-filter` radius, topmost layers |
+| `glass-tint` | `rgb(255 255 255 / .74)` | `rgb(46 56 78 / .42)` | panel + card fill |
+| `glass-tint-strong` | `rgb(255 255 255 / .84)` | `rgb(30 38 55 / .78)` | overlay fill |
+| `glass-blur` | 20px | 20px | `backdrop-filter` radius |
+| `glass-blur-strong` | 32px | 32px | overlays |
 | `glass-saturate` | 1.6 | 1.6 | keeps the blur from going grey |
-| `glass-edge` | `rgb(255 255 255 / .9)` | `rgb(255 255 255 / .14)` | reserved for inset wells |
-| `glass-lift` | soft wide + inset | dark contact + wide ambient | the elevation, per theme |
+| `glass-edge` | `rgb(21 34 66 / .16)` | `rgb(255 255 255 / .14)` | the 1px hairline |
+| `glass-lift` / `-card` / `-strong` | soft wide + inset | dark contact + wide ambient | elevation, per theme |
 
-Utilities: `glass`, `glass-strong`, `glass-card`, `glass-flat`,
-`glass-flat-strong`, `glass-hairline`.
+Five ingredients: **translucent fill → backdrop blur + saturate → 1px hairline →
+inset top highlight → layered shadow.** Two optional ones: `glass-sheen` (a
+gradient rim for overlays) and `glass-spotlight` (a pointer-tracked radial).
 
-`glass-card` bundles radius and the elevation shadow together, so a card cannot
-end up frosted and unrounded.
+### Verified, not eyeballed — and measured against the orbs
 
-**Glass is defined by elevation, not by an outline.** The earlier version drew a
-0.8px light rim and almost no shadow. Measured, that left the panel only
-**1.16:1** against its own ground in dark and **1.05:1** in light — the rim was
-doing essentially all the work, and the result read as an *outlined box* rather
-than a sheet of glass. A shadow is the honest signal, because glass is a surface
-*above* something and that is exactly what a shadow says. Compared side by side
-in both themes, dropping the rim and adding elevation was unmistakably more
-glass-like; a rim *and* a shadow muddied both, and a dark hairline in place of
-the rim fought the shadow.
+`scripts/contrast-glass.py` composites each glass fill over its **worst-case
+backdrop — an orb directly behind the panel**, not the flat canvas — and runs
+WCAG relative luminance. Re-run it after any tint or orb change.
 
-The inset top highlight stays, at low strength. It is the one cue that reads as
-a lit surface rather than a drawn edge.
+| | ink | ink-2 | ink-3 | accent-text | success-text | danger-text | review-text |
+|---|---|---|---|---|---|---|---|
+| **Light** panel | 15.88 | 7.39 | 5.62 | 5.69 | 4.72 | **4.52** | 5.71 |
+| **Dark** panel | 10.10 | 7.14 | 4.53 | 5.78 | 8.44 | 6.02 | 5.95 |
+| **Light** overlay | 16.62 | 7.73 | 5.88 | 5.96 | 4.94 | 4.73 | 5.97 |
+| **Dark** overlay | 12.27 | 8.67 | 5.51 | 7.02 | 10.25 | 7.31 | 7.23 |
+
+Bar is 4.5:1. The tightest cases are `danger-text` on light panel glass at
+**4.52** and `ink-3` on dark panel glass at **4.53** — both clearing, and both
+close enough that a future orb brighter than `--glow-a` would break them.
+
+**These alphas are the measured result, not a preference.** The first pass
+carried light panel at `0.62` and dark at `0.32`, which put `danger-text` at
+4.28, `success-text` at 4.46 and dark `ink-3` at 4.14 — three real failures
+that a glance at a screenshot would not have caught. Raising the tints and
+pulling `--glow-a` back from `0.40` to `0.32` is what closed them.
+
+**The hairline is a dark line on light and a light line on dark.** At
+`white/0.9` on light it was invisible against a bright ground — which is the
+same class of error as a white border on white.
+
+**Glass is defined by elevation, not by an outline.** A version that drew a rim
+and almost no shadow measured the panel at 1.16:1 against its own ground. A
+shadow is the honest signal: glass is a surface *above* something.
 
 ### Glass is capped by depth, not spread
 
-`backdrop-filter` is not free. Every element carrying one becomes its own
-compositing layer and the browser cannot batch them. Measured on `/skills`, a
-normal-sized page:
+`backdrop-filter` is not free: every element carrying one becomes its own
+compositing layer and the browser cannot batch them. Measured on `/skills`
+before Revision 5, a normal-sized page carried **463** of them — because
+`ui/card.tsx` put blurred glass on *every* card root.
 
-| | backdrop-filter layers |
+So the material is chosen by depth:
+
+- **L2 panels blur.** One layer per visual stack.
+- **L3 cards do not.** A card's backdrop is already a blurred panel.
+- **Inputs do not.** Small, and always sitting on a panel that is already glass.
+- **`glass-flat`** covers dense rows, where 400 identical blurred panels buy
+  nothing because they sit edge to edge on the same ground.
+
+Budget: **≤ 3 stacked blur layers per viewport region.** Measured on the board
+in Chromium: **10 blurred elements — the top bar and the nine columns. 0 on the
+sidebar, 0 on cards.** Counted with `getComputedStyle`, not assumed.
+
+### `-webkit-backdrop-filter` must come first, or the blur silently vanishes
+
+This is the single most dangerous rule in the material, because getting it
+wrong produces **no error at all** — the CSS is valid, the build is clean, the
+tests pass, and the glass silently renders as flat translucent fill.
+
+Lightning CSS (Tailwind v4's transform) treats the prefixed and standard
+`backdrop-filter` as one declaration. Written in the conventional order —
+
+```css
+backdrop-filter: blur(20px) saturate(1.6);
+-webkit-backdrop-filter: blur(20px) saturate(1.6);
+```
+
+— it dedupes the rule down to the **prefixed form only**:
+
+```css
+.glass{background-color:var(--glass-tint);
+       -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+       …}   /* no unprefixed property — and Chromium ignores the prefixed one */
+```
+
+Measured directly: `style="-webkit-backdrop-filter:blur(5px)"` computes to
+`none`; `style="backdrop-filter:blur(5px)"` computes to `blur(5px)`. So the
+order decides whether the effect exists at all.
+
+**Always write the prefixed declaration first, then the standard one.** Verified
+in the built CSS:
+
+```css
+.glass{-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+       backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate)); …}
+```
+
+**Check this after any change to the glass utilities**, with:
+`grep -o '\.glass{[^}]*}' web/dist/assets/index-*.css | grep -c 'backdrop-filter'`
+— it must be `2`, not `1`.
+
+### The glow field
+
+`components/app/glow-field.tsx`, mounted once in `AppShell`. Three orbs
+(`--glow-a/b/c`, `blur(90px)`) positioned so the sidebar, the column strip and
+the composer each have coloured light behind them, plus a masked `--glow-grid`
+and a grain overlay on `body::after` that kills the banding a 90px blur of a
+low-alpha gradient would otherwise produce.
+
+Dark blends the orbs with `screen` — an additive blend clipped the cyan orb to
+a flat pale disc and the panels behind it lost their edge entirely.
+
+Measured on the board, dark theme: field 1440×900, orbs 669 / 581 / 529 px,
+`blur(90px)`, `screen` blend, all three on `orb-drift`, grid at 48px, grain at
+0.035.
+
+`glow-ground` and `smoke-wash` are removed. Both were painted gradients on the
+element itself, which meant they sat *behind* an opaque fill and did nothing
+once the surfaces became real glass panels.
+
+### Glow means state
+
+`glow-focus · glow-running · glow-success · glow-danger · glow-review`, each a
+ring plus a bloom. Never used on a static element: a glow on something with no
+state is decoration pretending to be a signal. Every one is paired with a
+non-colour cue — a `StatusLamp`, a chip, a label — because colour alone never
+conveys state.
+
+| Switchyard state | Glow |
 |---|---|
-| before | **463** |
-| registry cards flattened | 232 |
-| glass Buttons flattened | **1** |
+| Card running on a node | `glow-running` + `glow-pulse` |
+| Awaiting the review gate | `glow-review` |
+| Blocked / failed | `glow-danger` |
+| Dragging | `glow-focus`-style lift + `scale(1.02)` + `rotate(1.5deg)` |
+| Keyboard focus | `glow-focus` |
 
-So the material is chosen by depth rather than spread:
+### The effects budget
 
-| Utility | Backdrop | Use |
+`kb-effects` → `data-effects` on `<html>`, set pre-paint by the same inline
+script that applies the theme. **"Reduce effects"** in Settings:
+
+| | Full | Lite |
 |---|---|---|
-| `glass` / `glass-strong` / `glass-card` | yes | cards, floating panels, dialogs, sheets, popovers, the sidebar |
-| `glass-flat` / `glass-flat-strong` | no | dense rows and list items, and every Button |
+| blur | 20 / 32px | 8 / 12px |
+| orb drift | on (if motion allowed) | off |
+| grain | on | off |
+| glass fill, shadows, every colour | — | **unchanged** |
 
-`glass-flat` keeps the tint and the elevation shadow — the two things that make
-a surface legible — and drops only the blur. On `/skills` the remaining single
-layer is the sidebar, which is the one place the blur earns its keep.
+It is a performance setting, not a visual style: it trades what is expensive and
+leaves what is cheap. `prefers-reduced-transparency` does the same thing at the
+OS level. Under both, the focus **ring** survives and only the bloom drops —
+the ring is what focus actually is.
+
+`@media (forced-colors: active)` drops fills and blur entirely and draws real
+borders in `CanvasText`.
 
 ### Density
 
@@ -582,6 +825,22 @@ with `ink-3` sentence-case labels. Numbers right-aligned and tabular.
 | Task enters running | lamp starts pulsing | 2s loop, ends when status changes |
 | Approve at review gate | check mark draws, card exits | 300ms |
 | Hover, focus, press | colour and scale only | 100 to 150ms |
+| Glow orb drift | three orbs, alternate | 28 / 34 / 40s — **only when motion is not reduced** |
+
+### The one ambient loop, and why it is opt-in
+
+Revision 5 adds three drifting orbs, and this section's standing rule — no
+loop the user cannot stop — is why they are gated on the motion preference
+rather than on by default.
+
+The orbs are the only thing in the app whose animation carries no meaning: they
+are ambience. Every other repeating animation in this list means something is
+actually happening. So they run only under `motion: system`, and they are
+**removed entirely** by "Reduce effects", which is a performance setting.
+
+What is *not* removed under reduced motion is the orbs themselves. They are the
+backdrop the entire material diffuses; turning off the drift must not turn off
+the light. The user asked for less movement, not for a different app.
 
 Easing curves, from the reference and stronger where the UI needs it:
 
@@ -657,6 +916,38 @@ This section covers what changes from that state.
 - [ ] Keyboard: every interactive element shows the focus outline; sheets and
       dialogs trap and restore focus.
 - [ ] Reduced motion disables track draw, lamp pulse, layout springs and dots.
+- [ ] Reduced motion **stops orb drift but keeps the orbs painted**.
+- [ ] `data-effects="lite"` drops blur to 8px and kills drift and grain, with
+      no change to any colour or to the glass fill.
+- [ ] `prefers-reduced-transparency: reduce` flattens the glass and drops the
+      grain; `forced-colors: active` drops fills and blur for system borders.
+- [ ] Glow is never the only cue: every `glow-*` element also has a lamp, a
+      chip or a label.
+- [ ] Blur layers per viewport region ≤ 3, measured with
+      `getComputedStyle`, not assumed. Board baseline: top bar + rail + nine
+      columns. **0 on cards, 0 on list rows.**
+- [ ] The shell is frosted from the rail inward, on the **`floating`** sidebar
+      variant — `inset` re-walls the rail off and the glass stops reading.
+- [ ] `SidebarInset` and the `SidebarProvider` wrapper carry **no**
+      `backdrop-filter`. Either one captures the non-portalled `CommandPalette`.
+- [ ] No `glass*` tier on a list row. Rows inside a frosted panel carry a
+      highlight fill and **no** `box-shadow` and **no** `backdrop-filter`.
+- [ ] Type on a filled accent surface uses `text-on-accent` / `bg-on-accent`.
+      Never a hard-coded `#fff` or `#000` — dark's accent is a light blue and
+      white on it measures 2.42:1.
+- [ ] No Tailwind class referencing a token that does not exist. A class with no
+      matching `--color-*` generates nothing and fails open:
+      `grep -o '\.to-accent-lo{' web/dist/assets/index-*.css` must be empty.
+- [ ] A rendered screenshot of any surface whose JSX children you touched. A
+      bare `/* */` among JSX children renders as visible text, and no gate
+      catches it.
+- [ ] **Every glass utility emits BOTH `-webkit-backdrop-filter` and
+      `backdrop-filter`**:
+      `grep -o '\.glass{[^}]*}' web/dist/assets/index-*.css | grep -c 'backdrop-filter'`
+      must be `2`. This is the one failure that produces no error anywhere.
+- [ ] Every portalled overlay escapes its `backdrop-filter` ancestor. In
+      particular: `CommandPalette` is **not** portalled, so neither
+      `SidebarInset` nor the `SidebarProvider` wrapper may ever carry a filter.
 - [ ] Both themes meet 4.5:1 for text.
 - [ ] All copy is one language, sentence case.
 - [ ] `pnpm build` and `pnpm test` pass from `web/`.

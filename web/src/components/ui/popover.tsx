@@ -34,10 +34,17 @@ function PopoverContent({
            Letting the panel shrink is what keeps it on screen; callers can
            still override via className. */
         className={cn(
-          "z-50 max-h-[calc(100dvh-2rem)] w-72 origin-(--radix-popover-content-transform-origin) rounded-control p-1 text-ink shadow-xl outline-none",
+          /* `shadow-xl` came off: `glass-strong` carries `--glass-lift-strong`
+             now, and the two were fighting — the float shadow won, which is how
+             the popover ended up with a harsher, closer shadow than the dialog
+             it floats above. */
+          "z-overlay max-h-[calc(100dvh-2rem)] w-72 origin-(--radix-popover-content-transform-origin) rounded-control p-1 text-ink outline-none",
           "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-          "glass-strong",
+          /* The sheen, not the dialog bloom: a popover sits beside its trigger
+             and has no "top" to be lit from, so the gradient rim reads as an
+             edge catching light while the bloom would read as a halo. */
+          "glass-strong glass-sheen",
           className
         )}
         {...props}

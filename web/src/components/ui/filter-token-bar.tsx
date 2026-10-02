@@ -196,13 +196,16 @@ function Popover({ anchorKey, onClose, children, labelledBy }: PopoverProps) {
           position: "fixed",
           top: pos?.top ?? -9999,
           left: pos?.left ?? -9999,
+          /* 60 was a second toast-tier number living outside the scale. It is
+             the same layer as every other portalled overlay. */
           zIndex: 60,
         }}
         // Design-system surfaces, not shadcn's zinc scale: the project has its
         // own tokens and a hard rule that a component must not invent colours
-        // outside them. shadow-float is the token this system uses for a raised
-        // overlay; there is no shadow-card.
-        className="min-w-[13rem] max-w-[18rem] overflow-hidden rounded-control border border-line bg-raised shadow-float"
+        // outside them. Now `glass-strong` like every other portalled overlay —
+        // it was the last one still on an opaque `bg-raised`, which is why the
+        // board's filter popover looked pasted on next to the menus beside it.
+        className="glass-strong min-w-[13rem] max-w-[18rem] overflow-hidden rounded-control"
       >
         {children}
       </motion.div>
@@ -379,7 +382,7 @@ function SearchList({
                     className={[
                       "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
                       item.selected
-                        ? "border-accent bg-accent text-canvas"
+                        ? "border-accent bg-accent text-on-accent"
                         : "border-line-strong",
                     ].join(" ")}
                   >

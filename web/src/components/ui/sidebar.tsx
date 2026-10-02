@@ -137,7 +137,10 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+            /* Transparent, not a fill: the wrapper sits behind the glass rail and
+               an opaque `bg-sidebar` here would hide the glow field from the one
+               place that most needs it. */
+            "group/sidebar-wrapper flex min-h-svh w-full",
             className
           )}
           {...props}
@@ -185,6 +188,9 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
+          /* The mobile sidebar is the same chrome as the desktop rail, so it
+             takes the same opaque treatment rather than the overlay tier — the
+             fact that it happens to be portalled does not change what it is. */
           className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
@@ -242,7 +248,24 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+          /* Frosted, on the inner box only — and specifically NOT on
+             `SidebarInset` or the `SidebarProvider` wrapper above it.
+             A `backdrop-filter` element becomes the containing block for any
+             `position: fixed` descendant, and `CommandPalette` is a
+             `fixed inset-0` overlay that is *not* portalled (it renders
+             inline as a sibling of `<AppHeader>`). Put the filter on a shared
+             ancestor and the palette's scrim anchors to that box instead of the
+             viewport and gets clipped by the shell's own `overflow-hidden`.
+             Scoping it to the inner rail keeps every overlay trigger in here —
+             nav tooltips, the account menu, the mobile sheet — escaping to
+             document.body as they already do.
+
+             `rounded-none` because the rail runs the full height of the window:
+             the glass utility's hairline on the top and bottom edges drew a
+             visible line across the viewport corners. The floating variant's own
+             radius comes from `group-data-[variant=floating]:rounded-lg`, which
+             is what this passes through to. */
+          className="glass flex h-full w-full flex-col rounded-none text-sidebar-foreground group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-float"
         >
           {children}
         </div>
@@ -306,8 +329,19 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
+      /* Transparent, and this is the one place glass earns the chrome rule's
+         exception. The sidebar rail and the top bar stay opaque, but the *content
+         area* has to show the glow field — the kanban columns and cards sitting
+         on it are glass, and glass over a flat `bg-background` diffuses nothing
+         and renders as a plain rectangle. That was the whole original failure.
+
+         Transparent rather than translucent, deliberately: no blur (which would
+         add a compositing layer for the entire viewport and make this the
+         containing block for the non-portalled CommandPalette), just the canvas
+         and the glow field showing through. The rail on the left and the header
+         above stay opaque, so this still reads as framed content. */
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background",
+        "relative flex w-full flex-1 flex-col",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}

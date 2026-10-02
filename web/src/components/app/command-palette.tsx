@@ -163,7 +163,7 @@ export default function CommandPalette({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.14 }}
-        className="fixed inset-0 z-[90] flex items-start justify-center bg-black/55 p-4 pt-[12vh] backdrop-blur-[2px]"
+        className="scrim fixed inset-0 z-overlay flex items-start justify-center p-4 pt-[12vh]"
         onClick={() => setOpen(false)}
       >
         {/* No entrance on the panel itself. This is keyboard-initiated and used
@@ -171,7 +171,13 @@ export default function CommandPalette({
             simply be there. The scrim above still fades, because a backdrop
             appearing with no transition is a genuine jolt. Raycast does the same. */}
         <div
-          className="glass-strong w-full max-w-[640px] overflow-hidden rounded-panel shadow-float"
+          /* `bg-black/55` was the palette's own scrim and it was nearly three
+             times heavier than a dialog's, so opening the palette felt like a
+             different, more violent action than opening a dialog. `scrim` now
+             decides. The `rounded-panel`/`shadow-float` pair also came off —
+             `glass-strong` carries both the radius and the elevation, and
+             listing a shadow as well meant the float won. */
+          className="glass-strong glass-sheen w-full max-w-[640px] overflow-hidden rounded-xl"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"

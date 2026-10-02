@@ -6,6 +6,7 @@ import {
   type Profile, type Status, type Task, type Workspace,
 } from "@/api"
 import { Button } from "@/components/ui/button"
+import { useDelegatedSpotlight } from "@/components/app/use-spotlight"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -56,11 +57,18 @@ function BoardScroller({ children, enter }: { children: ReactNode; enter: boolea
     return () => ro.disconnect()
   }, [measure])
 
+  const spotlight = useDelegatedSpotlight()
+
   return (
     <div className="relative min-h-0 min-w-0 flex-1">
       <div
         ref={ref}
         onScroll={measure}
+        /* One delegated pointer handler for the whole board. Every card carries
+           `data-spotlight`; this sets `--mx`/`--my` on whichever one the
+           pointer is over. A hundred cards cost one listener, not a hundred. */
+        onPointerMove={spotlight.onPointerMove}
+        onPointerLeave={spotlight.onPointerLeave}
         className={cn(
           "flex h-full min-h-0 gap-3 overflow-x-auto overflow-y-hidden p-3",
           "[scrollbar-width:thin] [&::-webkit-scrollbar]:h-8",
@@ -499,6 +507,12 @@ export function BoardPage({
                       health={healthMap.data?.[t.id]}
                       workspaces={workspaces.data ?? []}
                       selected={selectedTasks.has(t.id)}
+                      /* `draggingId` has been tracked all along, but the card
+                         never received it — so its `data-[dragging=true]`
+                         styles (which existed since before the Q4 token work)
+                         could never apply. Passing it down is what makes the
+                         lift-and-rotate feedback real. */
+                      dragging={draggingId === t.id}
                       onToggleSelect={bulkMode ? toggleTask : undefined}
                     />
                   </li>

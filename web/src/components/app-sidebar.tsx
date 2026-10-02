@@ -20,8 +20,18 @@ export function AppSidebar({
 	page: Page;
 	onSelectPage: (p: Page) => void;
 }) {
-	return (
-		<Sidebar collapsible="icon" variant="inset">
+		return (
+			/* `variant="floating"` — the block's choice, and it is what makes the
+			   frosted treatment work. `inset` walls the rail off from the canvas
+			   with an opaque gutter; `floating` gives it a visible margin, so the
+			   glow field shows on every side of the glass and the rail reads as a
+			   panel floating over light rather than a box cut into the page.
+
+			   The rest of this component is unchanged from the Switchyard version:
+			   the real mark, the real wordmark, `buildNavGroups` / `buildFooterLinks`
+			   rather than the block's demo `navGroups`, and the `p-1!` fix on the
+			   logo button that stops the collapsed rail clipping the mark flat. */
+			<Sidebar collapsible="icon" variant="floating">
 			<SidebarHeader className="h-14 justify-center">
 				{/* The real Switchyard mark and wordmark, rather than the block's
 				    Efferd logo.

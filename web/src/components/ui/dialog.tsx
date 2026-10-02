@@ -27,7 +27,11 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px]",
+        /* `scrim`, not `bg-black/20 backdrop-blur-[2px]`. Four overlays had
+           picked their own dim and the palette's was more than twice the
+           dialog's, so the same action felt like two different weights. One
+           token now decides how far the page recedes. */
+        "scrim fixed inset-0 z-overlay",
         "transition-opacity duration-200",
         "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
         className
@@ -51,8 +55,13 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col",
-          "glass-strong rounded-panel shadow-float outline-none",
+          "fixed left-1/2 top-1/2 z-overlay flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col",
+          /* `dialog-bloom` instead of `glass-sheen`: both are `::before`, so
+             they cannot share an element, and the bloom is the stronger cue —
+             a soft accent glow behind the top of the panel is what makes a
+             dialog read as lit from above rather than as a grey rectangle.
+             The sheen stays on dropdowns and popovers, which have no bloom. */
+          "glass-strong dialog-bloom rounded-xl outline-none",
           "max-h-[calc(100dvh-2rem)]",
           // Modals keep transform-origin centre; only popovers are origin-aware.
           // Closed state sits at 98% rather than 0, so nothing appears from nothing.

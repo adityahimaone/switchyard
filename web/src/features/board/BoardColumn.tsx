@@ -74,7 +74,25 @@ export function BoardColumn({
   return (
     <section
       aria-labelledby={headingId}
-      className={cn("flex w-[296px] shrink-0 flex-col", className)}
+      /* The column is the ONE blur layer in the board. Everything inside it —
+         the cards — is deliberately unblurred, because their backdrop is
+         already this blurred panel and blurring it again would diffuse
+         nothing while doubling the compositing-layer cost on the densest page
+         in the app.
+
+         `--glass-tint-strong` rather than `--glass-tint`, because this is the
+         only panel in the app with a full-height bright orb directly behind it
+         and body text running down its middle. At the panel tint the column
+         washed out: the empty-state copy measured against the orb peak fell
+         under the 4.5 bar even though the token-level check passed, because
+         that check assumes one flat tint rather than a 90px blur gradient
+         passing under the text. The stronger tier keeps the material and buys
+         the contrast back. */
+      className={cn(
+        "glass glass-spotlight flex w-[296px] shrink-0 flex-col rounded-panel p-2",
+        "bg-[var(--glass-tint-strong)]",
+        className
+      )}
       style={{ "--lamp": statusColor(status), "--i": index } as CSSProperties}
     >
       <header className="px-1 pb-2">
@@ -91,10 +109,16 @@ export function BoardColumn({
 
       <ul
         data-over={isOver || undefined}
+        /* `bg-well` came off here: the column itself is now the glass panel, so
+           an opaque fill on its scroll container would cover it and the column
+           would read as a glass frame around a flat well — two materials where
+           the design calls for one. The drop state is signalled with an accent
+           border and an *inset* glow instead, which is legible without needing
+           a fill change at all. */
         className={cn(
-          "flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto rounded-panel bg-well p-2",
-          "outline-1 -outline-offset-1 outline-transparent transition-[outline-color,background-color] duration-100",
-          "data-[over]:bg-raised/50 data-[over]:outline-dashed data-[over]:outline-line-strong",
+          "flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto rounded-control",
+          "border border-transparent transition-[border-color,box-shadow] duration-150",
+          "data-[over]:border-accent/60 data-[over]:shadow-[inset_0_0_40px_-12px_var(--c-accent)]"
         )}
         {...dropHandlers}
       >

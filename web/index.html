@@ -14,6 +14,11 @@
       // wrong surface. Light is the default in Signal Blue, so `dark` is the
       // class that gets added. Must stay in sync with applyTheme() in
       // src/hooks/useSettings.ts, which re-applies it on boot.
+      //
+      // The effects budget is applied here too, for the same reason: a user on
+      // "lite" would otherwise get a frame or two of 20px blur and drifting
+      // orbs before React mounted and pulled it back to 8px — which on a slow
+      // GPU is exactly the stutter they turned the setting off to avoid.
       (() => {
         try {
           const preference = localStorage.getItem("kb-theme") || "system"
@@ -22,6 +27,9 @@
             (preference === "system" && !matchMedia("(prefers-color-scheme: light)").matches)
           document.documentElement.classList.toggle("dark", dark)
           document.documentElement.dataset.theme = preference
+
+          const effects = localStorage.getItem("kb-effects") === "lite" ? "lite" : "system"
+          document.documentElement.dataset.effects = effects
         } catch {}
       })()
     </script>

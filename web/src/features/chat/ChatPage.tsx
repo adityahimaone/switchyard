@@ -568,12 +568,16 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   })
   const runEventsMap = messageRunEvents.data ?? {}
 
-  /* The sidebar reads as one material with the top bar rather than two
-     surfaces stacked on the canvas: `bg-surface` on both, with a single hairline
-     between. The old `bg-canvas` body put a 4%-darker wash behind the list,
-     which made the panel read as inset and put a second, unrelated edge
-     against the transcript. */
-  return <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
+  /* Transparent, so the glass panels inside this page (the composer, the
+     session rail at `lg`, the mobile drawer) have the glow field to diffuse.
+     An opaque root here was covering the field for the entire chat surface and
+     leaving every panel below it rendering as flat translucent fill.
+
+     The transcript itself is still the calmest thing on screen: assistant
+     output is unframed on this ground, and the reading guarantee comes from the
+     palette's measured ink contrast, verified against the most saturated canvas
+     the orbs can produce rather than a flat one. */
+  return <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
     {/* Below `lg` this rail is an overlay rather than a column. Measured at
         768px, the app rail (240) plus this rail (280) left the transcript 224px
         and the composer 192px — a 15-character measure, with the composer selects
@@ -587,9 +591,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           type="button"
           aria-label="Close chat list"
           onClick={() => onToggleSidebar?.()}
-          className="absolute inset-0 z-20 bg-canvas/60 backdrop-blur-[2px] lg:hidden"
+          className="scrim absolute inset-0 z-raised lg:hidden"
         />
-        <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-line bg-surface shadow-float lg:static lg:z-auto lg:w-[min(280px,85vw)] lg:shadow-none">
+        <aside className="glass absolute inset-y-2 left-2 z-overlay flex w-[min(280px,85vw)] shrink-0 flex-col rounded-lg lg:static lg:z-auto lg:my-2 lg:ml-3 lg:w-[min(280px,85vw)] lg:self-stretch">
       {/* h-14, matching the app header and the chat top bar, so all three
           horizontals align. The page h1 lives here — it is the panel's own
           label, and repeating it in the top bar would be noise. */}
@@ -763,14 +767,26 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           fact: which agent is answering, on what workspace and model.
 
           The priority here matters more than the breakpoint. Measured, a
-          439px cluster at a 1024px viewport left the session title **0px**
-          wide — the page's actual content vanished entirely, because the
+          439px cluster at a 1024px viewport left the session title at zero
+          pixels wide — the page's actual content vanished entirely, because the
           cluster was `shrink-0` and the title was the only shrinkable thing.
           So the title now holds its width first (`shrink-0`), and the cluster
           is the part that yields: `min-w-0` plus `truncate` on each term, on a
           breakpoint that accounts for the 280px session rail rather than
-          assuming the full viewport is available to the bar. */}
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4 md:px-6">
+          assuming the full viewport is available to the bar.
+
+          Frosted and rounded, matching the app header it aligns with. It was
+          `bg-surface border-b` — the last opaque band on the page, and it read
+          as a different app from the shell above it: same height, same content,
+          opposite material. It carries the panel/search controls, so it gets the
+          same `glass` treatment and the same floating margin rhythm.
+
+          NB: this has to be a brace-wrapped JSX comment. A bare C-style
+          comment in this position is a text node, not a comment — it rendered
+          as literal prose at the top of the transcript. Caught in a screenshot,
+          not by any gate. Note also that the sequence "star-slash" ends a JSX
+          comment early, so it cannot appear inside one. */}
+      <header className="glass sticky top-0 z-panel mx-2 mt-2 flex h-14 shrink-0 items-center justify-between gap-3 rounded-lg px-4 md:mx-3 md:mt-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {/* Rail toggle. Below `lg` this is the only way to reach the session
               list, since the rail overlays there instead of taking a column. */}
@@ -868,11 +884,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             className={message.role === "user" ? "flex justify-end" : "flex justify-start"}
           >
             {message.role === "user" ? (
-              /* The user's own message is the only solid-accent surface in the
-                 transcript. Assistant output stays unframed on the page
-                 surface, which is what lets a long answer read as a document
-                 rather than a stack of cards. */
-              <div className="max-w-[80%] rounded-card bg-accent px-4 py-2.5 text-sm text-accent-ink">
+              /* The user's own message is the only accented surface in the
+                 transcript, and it is tinted rather than solid: 22% accent over
+                 the page with an accent hairline at 45%. A solid accent block
+                 was the heaviest element on a page whose entire job is reading
+                 long assistant output — it pulled the eye to the one message the
+                 user already knew they sent.
+
+                 It keeps the strongest tint of anything at chat level because it
+                 is the only thing here that must be findable at a glance when
+                 scanning back through a long transcript. */
+              <div className="max-w-[80%] rounded-card border border-accent/45 bg-accent/22 px-4 py-2.5 text-sm text-ink">
                 <div>{message.content}</div>
                 {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
               </div>

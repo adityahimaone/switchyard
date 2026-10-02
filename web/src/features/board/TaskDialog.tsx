@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { ExecutorSettings, Profile, Workspace } from "../../api"
 import { api, getExecutorSettings, startTask, validateTask } from "../../api"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -333,16 +334,17 @@ export default function TaskDialog({
   const submitReady = canSubmit(issues, { title, body, paths, gateCommand })
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-dialog-title"
-        className="glass-strong max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-panel p-4"
-        onClick={(e) => e.stopPropagation()}
+    /* Moved onto the shared `Dialog` primitive. This was a hand-rolled
+       `fixed inset-0` + `role="dialog"` pair with its own `bg-black/60` scrim,
+       which cost it three things the primitive gives for free: Escape to
+       close, focus trapping (a text field outside the trap was reachable with
+       the keyboard while the modal was open), and scroll locking. It was also
+       the only dialog in the app not dimming by `--scrim`, so it read as a
+       heavier modal than the identical ones next to it. */
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        className="max-h-[90dvh] overflow-y-auto p-4"
+        showClose={false}
       >
         <h2 id="task-dialog-title" className="text-sm font-semibold">
           New Task
@@ -833,8 +835,8 @@ export default function TaskDialog({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

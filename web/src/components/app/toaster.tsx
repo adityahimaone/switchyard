@@ -52,15 +52,30 @@ export function Toaster() {
     window.setTimeout(() => setItems((x) => x.filter((t) => t.id !== id)), 240)
   }
 
+  /* Tone drives the left status bar, not the text colour alone — the bar is the
+     non-colour cue that makes a toast readable for someone who cannot separate
+     the red from the green. The matching entry glow lives in CSS keyed off
+     `data-tone`, so it cannot drift from this map. */
+  const BAR: Record<string, string> = {
+    success: "bg-success",
+    error: "bg-danger",
+    info: "bg-accent",
+  }
+
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-80 flex-col gap-2">
+    <div className="pointer-events-none fixed right-4 top-4 z-toast flex w-80 flex-col gap-2">
       {items.map((t) => (
         <div
           key={t.id}
           role="status"
           data-leaving={t.leaving || undefined}
-          className={`glass-flat-strong toast-item pointer-events-auto flex items-start gap-2 rounded-card p-3 text-xs ${TONE_CLASS[t.tone]}`}
+          data-tone={t.tone}
+          className={`glass-strong toast-item pointer-events-auto flex items-start gap-2 rounded-card p-3 pl-4 text-xs ${TONE_CLASS[t.tone]}`}
         >
+          <span
+            aria-hidden
+            className={`absolute inset-y-2 left-1.5 w-0.5 rounded-full ${BAR[t.tone] ?? "bg-line-strong"}`}
+          />
           <span className="min-w-0 flex-1">{t.message}</span>
           <button
             aria-label="Dismiss"

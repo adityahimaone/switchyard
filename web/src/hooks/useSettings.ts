@@ -65,6 +65,38 @@ export function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
+/**
+ * The effects budget, which is a *performance* setting rather than a visual
+ * style — so it is shaped like `kb-motion` and nothing else.
+ *
+ * "system" is full quality: 20px/32px blur, drifting orbs, grain on.
+ * "lite" is the low-end-GPU path: blur drops to 8px, the orbs stop moving,
+ * and the grain overlay is removed. It deliberately does NOT strip the glass
+ * fill or the shadows — those cost nothing and are what keep the surfaces
+ * legible — so the app still looks like itself, just cheaper.
+ *
+ * Separate from `kb-motion` because the two answer different questions:
+ * "does this move?" and "is this expensive to draw?".
+ */
+export type EffectsPreference = "system" | "lite"
+export const EFFECTS_KEY = "kb-effects"
+
+export function readEffects(): EffectsPreference {
+  try {
+    return localStorage.getItem(EFFECTS_KEY) === "lite" ? "lite" : "system"
+  } catch { return "system" }
+}
+
+export function applyEffects(preference: EffectsPreference) {
+  document.documentElement.dataset.effects = preference
+}
+
+/** True when the effects budget is reduced, by either the setting or the OS. */
+export function prefersReducedEffects(): boolean {
+  if (document.documentElement.dataset.effects === "lite") return true
+  return window.matchMedia("(prefers-reduced-transparency: reduce)").matches
+}
+
 export function saveTheme(preference: ThemePreference) {
   try { localStorage.setItem(THEME_KEY, preference) } catch {}
   applyTheme(preference)
