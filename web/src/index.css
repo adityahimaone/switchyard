@@ -847,6 +847,65 @@
   }
 }
 
+/* The workspace ping monitor.
+ *
+ * Restored from before the Q4 token rewrite, when this chart was a dark screen
+ * with a faint grid rather than a flat card. The grid is the point: it gives the
+ * eye a scale to measure the trace against, and a fixed dark ground is what lets
+ * the green line read as a glow rather than a stroke.
+ *
+ * The tint is 8%, which is enough to see the cells and not enough to compete
+ * with the trace. `--color-success`/`--color-danger` rather than the raw
+ * `--c-*` tokens so the theme decides the hue in both modes. */
+.ekg-monitor {
+  background-color: #06110d;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-success) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-success) 8%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+.ekg-monitor-offline {
+  background-color: color-mix(in srgb, var(--color-danger) 6%, var(--color-bg));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-danger) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-danger) 8%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+/* The workspace ping dot's travel.
+ *
+ * It rides the trace via `offset-path`, so the motion is along the real path
+ * rather than a straight line that would cut across it — on a flatlined or
+ * spiking trace those are visibly different lines.
+ *
+ * This keyframe was referenced by WorkspacesPage but never defined, so the dot
+ * had been sitting at the start of the path with no animation applied at all.
+ * `offset-distance` is the animatable property here: the element's own
+ * `offsetPath` comes from an inline style, so animating `left` would fight the
+ * path placement rather than move along it. */
+@keyframes ekg-sweep {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/* With reduced motion the dot still needs to be visible and to say which end of
+ * the trace is "now", so it parks at the head rather than disappearing. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ekg-sweep {
+    from {
+      offset-distance: 100%;
+    }
+    to {
+      offset-distance: 100%;
+    }
+  }
+}
+
 @layer base {
   * {
     scrollbar-width: thin;
