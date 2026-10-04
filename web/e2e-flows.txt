@@ -1,0 +1,38 @@
+# Flow-owning paths.
+#
+# A change to any of these escalates the Switchyard verify gate from `ui` to
+# `e2e`, because the file owns a user-visible flow rather than a single surface.
+# Everything else under web/src/ is routed on the `ui` ladder alone.
+#
+# This list exists because a path prefix cannot see every way a flow breaks. A
+# shared hook can change click behaviour, a provider can change routing, a lib
+# can change what a role resolves to — none of that touches a flow directory.
+# When a flow breaks without a path change, add the owning path here.
+#
+# One path per line. Blank lines and lines starting with # are ignored.
+# Consumed by the verify router in Switchyard (docs/specs/2026-10-04-design-quality-loop.md §3.3).
+
+# --- auth: the gate everything else sits behind --------------------------------
+web/src/AuthGate.tsx
+web/src/components/auth/
+cmd/server/auth*.go
+
+# --- board: the primary surface, and the one the review gate acts on -----------
+web/src/features/board/
+web/src/components/app-shell.tsx
+web/src/components/app-header.tsx
+web/src/components/app-sidebar.tsx
+web/src/lib/routes.ts
+web/src/App.tsx
+
+# --- chat: send, stream, and run continuity ------------------------------------
+web/src/features/chat/
+web/src/components/chat/
+
+# --- task detail: open a task, read the diff, approve --------------------------
+web/src/components/board/
+web/src/features/flow/
+
+# --- routing shared by every page ----------------------------------------------
+web/src/hooks/
+web/src/lib/

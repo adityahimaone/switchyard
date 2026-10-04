@@ -98,7 +98,17 @@ export default function TaskDetail({
         className="task-detail-drawer glass flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-y-0 border-l-0 pb-[env(safe-area-inset-bottom)] sm:rounded-xl sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 border-b border-[var(--c-line)] bg-[var(--c-surface)]/95 px-4 py-3 backdrop-blur-xl">
+        {/* No backdrop-filter, and that is not a downgrade. The drawer itself is
+           `glass`; these bars sit inside it with a `shrink-0` header and footer
+           around a `flex-1 overflow-y-auto` body, so the transcript never scrolls
+           under them and the region behind each bar is static. `composer.tsx`
+           spells out the rule: a varying backdrop is the one condition
+           backdrop-filter is for, and a bar with solid surface behind it has
+           nothing to diffuse. At /95 the tint was doing the work anyway. Each
+           filter is its own compositing layer that cannot be batched, which is
+           the cost design.md 5.2 measures. The drawer keeps the frost; these
+           keep the tint. */}
+        <div className="shrink-0 border-b border-[var(--c-line)] bg-[var(--c-surface)]/95 px-4 py-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2 id="task-detail-title" className="line-clamp-2 text-base font-semibold leading-snug text-ink" title={task.title}>
@@ -235,7 +245,9 @@ export default function TaskDetail({
           )}
         </div>
 
-        <div className="shrink-0 border-t border-[var(--c-line)] bg-[var(--c-surface)]/95 p-3 backdrop-blur-xl">
+        {/* Same reasoning as the header above: shrink-0 footer over a body that scrolls
+           inside itself, so nothing moves behind it. */}
+        <div className="shrink-0 border-t border-[var(--c-line)] bg-[var(--c-surface)]/95 p-3">
           <Button onClick={onOpenPage} size="sm" className="w-full gap-1.5">
             <ExternalLink className="size-3.5" /> Open full detail page
           </Button>

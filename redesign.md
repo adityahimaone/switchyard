@@ -1,3 +1,50 @@
+# redesign.md — superseded
+
+**This file is superseded by [`design.md`](./design.md) (Revision 4) and must not
+be used as a design brief.**
+
+It disagrees with Revision 4 — and with `web/src/index.css`, which is what the app
+actually renders — on three points that matter:
+
+| | this file | `design.md` Rev 4 / `index.css` |
+|---|---|---|
+| Default theme | dark (§Core tokens) | **light**, dark is a tuned first-class theme |
+| Backdrop blur | 10–14px | **24px** (`glass-blur`), 44px strong |
+| Corner radius | 8–10px | **8 / 12 / 16px** (`radius-control` / `-card` / `-panel`) |
+
+The original text is kept below as a record of the earlier dark-first direction.
+Nothing in it is current guidance, and an agent that follows it will build the
+wrong surface.
+
+## Where the rules actually are
+
+1. [`design.md`](./design.md) — Revision 4, the authoritative spec. Colour,
+   typography, glass, motion, layout, and a §12 acceptance checklist with
+   runnable criteria.
+2. `web/src/index.css` — the tokens themselves (`--c-*` primitives, the radius
+   scale, the glass utilities). `web/src/themes.css` holds the alternate palettes.
+3. [`docs/redesign-q4-2026/`](./docs/redesign-q4-2026/) — the per-surface
+   application of Rev 4 (design.md Part 2, `tokens.css`, skeleton surfaces).
+4. [`docs/screenshots/`](./docs/screenshots/) — reference captures at 1600×1000
+   @2×, which are also the seed set for the visual baselines.
+
+## Checking your work against it
+
+```sh
+cd web && pnpm verify:fast   # tsc -b + vitest + token-lint
+cd web && pnpm verify:ui     # the above + Playwright light/dark + axe
+```
+
+`scripts/token-lint.mjs` encodes the mechanical rules — raw colours, stray
+`backdrop-filter`, off-scale radii, the legacy `--color-*` countdown — and fails
+the build on drift. See also
+[`.agents/skills/ui-verification/SKILL.md`](./.agents/skills/ui-verification/SKILL.md).
+
+---
+
+<details>
+<summary>Original text (superseded — dark-first Blue Glass System, ~2026-06)</summary>
+
 # Switchyard UI Redesign — Blue Glass System
 
 ## Direction
@@ -84,3 +131,5 @@ Use opacity, transform and SVG stroke only: hover 140ms, panels 180ms, dialogs 1
 - [ ] Glass effects improve hierarchy without reducing text/table readability.
 - [ ] Light and dark themes are token-driven and persistent.
 - [ ] Kanban and Agent Flow remain familiar and functionally unchanged.
+
+</details>

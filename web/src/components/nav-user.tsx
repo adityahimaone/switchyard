@@ -46,13 +46,25 @@ export function NavUser({ onSelectPage }: { onSelectPage: (p: Page) => void }) {
 
 	return (
 		<DropdownMenu>
+			{/* A real <button>, not the Avatar itself. Radix's Avatar.Root renders
+			    role="img", and `DropdownMenuTrigger asChild` merges aria-haspopup and
+			    aria-expanded onto whatever it wraps — neither is supported on role
+			    "img", so axe reports a critical aria-allowed-attr on every render.
+			    A button also gives this the keyboard affordance it never had: an
+			    avatar-as-menu-trigger was not focusable and not tabbable. */}
 			<DropdownMenuTrigger asChild>
-				<Avatar className="size-8">
-					{avatar ? <AvatarImage src={avatar} alt="" /> : null}
-					<AvatarFallback className="bg-accent-tint text-xs font-medium text-accent-text">
-						{initials}
-					</AvatarFallback>
-				</Avatar>
+				<button
+					type="button"
+					aria-label={`${label} — workspace menu`}
+					className="rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+				>
+					<Avatar className="size-8">
+						{avatar ? <AvatarImage src={avatar} alt="" /> : null}
+						<AvatarFallback className="bg-accent-tint text-xs font-medium text-accent-text">
+							{initials}
+						</AvatarFallback>
+					</Avatar>
+				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-60">
 				<DropdownMenuItem className="flex items-center justify-start gap-2">

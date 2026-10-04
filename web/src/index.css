@@ -49,7 +49,14 @@
   --c-danger-tint: rgb(217 79 79 / 0.1);
   --c-warning: #b45309;
   --c-success: #2b8f5c;
-  --c-success-text: #217a4e;
+  /* Darkened from #217a4e. That value was measured against `surface` (5.31:1) and
+     `canvas` (4.83:1), which is where design.md 3.5 recorded it — but success text
+     is used ON its own 10% tint, and compositing the tint over canvas puts the
+     ground at rgb(222 234 237), where #217a4e measures 4.32:1 and fails WCAG AA.
+     axe caught it on Overview's 10px live chip. #1e7047 clears 4.5 on every
+     ground the token can land on: tint 4.94, well 5.23, canvas 5.52, surface
+     6.06. Still comfortably green rather than a different hue. */
+  --c-success-text: #1e7047;
   --c-success-tint: rgb(43 143 92 / 0.1);
   --c-warning-tint: rgb(180 83 9 / 0.1);
   --c-warning-text: #92400e;

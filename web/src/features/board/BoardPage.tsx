@@ -360,10 +360,25 @@ export function BoardPage({
             where a pill reading "12 of 63" said nothing about what was counted.
 
             `tabular` keeps the digits from shifting the toolbar as the count
-            changes while typing in the search field. */}
+            changes while typing in the search field.
+
+            This count INCLUDES archived tasks, so it grows every time anything is
+            archived anywhere on the board — which is most runs. Masked in visual
+            baselines: it was the entire run-to-run noise floor (0.018%), the same
+            magnitude as a real radius regression, which made the pixel threshold
+            impossible to set honestly.
+
+            The fixed width is what makes the MASK stable. Playwright masks by
+            painting over the element's bounding box, so a count that changes digit
+            count ("9 tasks" → "224 tasks") produces a different box every run —
+            which showed up as 784 differing pixels and made the noise floor larger
+            than a real regression. Pinning the box means the mask lands on the same
+            pixels each time; `tabular` keeps the digits aligned inside it. */}
         <span
           aria-live="polite"
-          className="tabular shrink-0 self-center text-xs text-ink-3"
+          data-volatile="task-count"
+          style={{ minWidth: "6.5ch" }}
+          className="tabular shrink-0 self-center text-right text-xs text-ink-3"
         >
           {filtered.length === total
             ? `${total} ${total === 1 ? "task" : "tasks"}`

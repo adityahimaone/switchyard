@@ -157,7 +157,7 @@ selected, this is the forward action. Every status has its own hue, so
 |---|---|---|---|
 | `danger` / `danger-text` | `#d94f4f` / `#c43f3f` | `#fb8f8f` / `#ff9e9e` | destructive, failures |
 | `warning` | `#b45309` | `#fbbf24` | silent or stuck health only |
-| `success` / `success-text` | `#2b8f5c` / `#217a4e` | `#6ee7a0` / `#7cf0ac` | confirmations |
+| `success` / `success-text` | `#2b8f5c` / `#1e7047` | `#6ee7a0` / `#7cf0ac` | confirmations |
 | `review` / `review-text` | `#8b5cd6` / `#7440c4` | `#bb9bf5` / `#c7aaf7` | awaiting the review gate |
 
 ### Status lamps
@@ -199,7 +199,7 @@ separate ramp. Measured against their own surface:
 | running | `#5b4bc9` | 6.37 | `#ab9dfc` | 7.27 |
 | blocked | `#c43f3f` | **5.08** | `#ff9e9e` | 8.63 |
 | review | `#7440c4` | 6.42 | `#c7aaf7` | 8.53 |
-| done | `#217a4e` | 5.31 | `#7cf0ac` | 12.10 |
+| done | `#1e7047` | 6.06 | `#7cf0ac` | 12.10 |
 
 Blocked is the tightest at 5.08 — still passing, but it is the value to re-check
 first if the palette ever moves again. Lamps measure 3.20 minimum against

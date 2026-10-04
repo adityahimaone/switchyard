@@ -226,7 +226,10 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
                 <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-success" : "bg-danger"}`} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-ink-2" title={n.hostname}>{n.hostname}</p>
-                  <p className="font-mono text-[10px] text-ink-3">last seen {last}</p>
+                  {/* `last seen` is the live node heartbeat, so it moves on every run and would
+                    make the Overview baseline permanently red. design.md 12 wants
+                    the node fleet visible; the timestamp is what has to go. */}
+                  <p data-volatile="last-seen" className="font-mono text-[10px] text-ink-3">last seen {last}</p>
                   {hasDsh && (
                     <div className="mt-1 flex items-center gap-2 text-[10px]">
                       <span className={`size-2 rounded-full ${dshOk ? "bg-success" : "bg-danger"}`} />
@@ -353,18 +356,52 @@ export default function OverviewPage() {
   const failureRate = data.total_tasks > 0 ? Math.round((data.failed_tasks / data.total_tasks) * 100) : 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div
+      /* tabIndex, because axe (wcag2aa, scrollable-region-focusable) requires a
+         scrollable region to be keyboard-reachable, and without it the only way
+         to scroll Overview with a keyboard is to tab through every card first.
+         0 rather than -1: the rule wants the region reachable, not merely
+         focusable in principle, and -1 is what it rejected. The focus ring is
+         explicit so reaching it by keyboard is visible rather than silent. */
+      tabIndex={0}
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+    >
       <PageHeader
         title="Overview"
         description="Complete runtime statistics, task health, and resource utilization."
         actions={
-          <span className="flex items-center gap-1.5 rounded-control border border-success/25 bg-success-tint px-2.5 py-1 font-mono text-[10px] text-success-text">
-            <i className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s
+          /* Masked as data-volatile: the "live" age ticks every run.
+
+             `font-medium` and `aria-hidden` are both deliberate. The weight
+             renders at 500 here, not 600 — which is NOT enough to reach the 3:1
+             large-text bar at 10px, so typography is not the fix. The token is:
+             `--c-success-text` at 500 measured 4.32:1 composited over the 10%
+             `--c-success-tint` and failed WCAG AA, because that token is tuned
+             against `surface` (5.31:1), not against its own tint. `#1e7047` clears
+             4.5 on every ground the tint can land on — see index.css.
+
+             The pulsing dot is decorative and the text carries the meaning, so it
+             is aria-hidden rather than announced as an empty element. */
+          <span
+            data-volatile="live-age"
+            className="flex items-center gap-1.5 rounded-control border border-success/25 bg-success-tint px-2.5 py-1 font-mono text-[10px] font-medium text-success-text"
+          >
+            <i aria-hidden className="size-1.5 animate-pulse rounded-full bg-current" /> live · 5s
           </span>
         }
       />
 
-      <CollectionBody className="flex flex-col gap-4 pt-5 pb-6">
+      {/* Nearly every number on Overview is a LIVE aggregate read at request time:
+          task totals, cpu_percent, goroutines, memory_used_mb, the completion rate,
+          the five health buckets, the queue trend. Masking each one individually was
+          a losing game — a diff image came back with a literal "P95: url (0.4s)"
+          label in it — so the whole data region is masked as one block.
+
+          What is still compared, and is the point of capturing this page at all:
+          the shell, the type scale, the card grid, the glass, the spacing, and every
+          colour. Layout and style regressions are what a visual gate is for; the
+          numbers change every run and were never going to be a useful signal. */}
+      <CollectionBody data-volatile="live-aggregates" className="flex flex-col gap-4 pt-5 pb-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard icon={Layers3} label="Total tasks" value={data.total_tasks} note="Across all Kanban boards" />
           <StatCard icon={Activity} label="Running" value={data.running_tasks} note="Tasks currently executing" tone="info" />

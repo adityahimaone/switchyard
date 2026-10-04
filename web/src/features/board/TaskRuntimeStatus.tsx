@@ -100,11 +100,14 @@ export default function TaskRuntimeStatus({ task, profile, workspace, events, ru
         {chip(`${task.assignee || "unassigned"} · ${profileState}`, profileTone)}
         {chip(`node · ${nodeState}`, nodeTone)}
         {chip(`CodeGraph · ${graphState}`, graphTone)}
-        {hasUsage && chip(`tokens · ${usage.totalTokens.toLocaleString()}`, "good")}
+        {/* Token totals and the live running/queued counts move on every poll, so the
+            runtime block is masked in visual baselines — the chip shapes still
+            get checked, the numbers do not. */}
+        {hasUsage && <span data-volatile="usage">{chip(`tokens · ${usage.totalTokens.toLocaleString()}`, "good")}</span>}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-ink-3">
         <span>phase: <strong className="font-medium text-ink-2">{currentPhase}</strong></span>
-        {profile && tasks.length > 0 && <span>{running} running · {queued} queued</span>}
+        {profile && tasks.length > 0 && <span data-volatile="queue-counts">{running} running · {queued} queued</span>}
       </div>
     </section>
   )

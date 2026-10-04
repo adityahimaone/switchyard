@@ -47,14 +47,16 @@ export function CollectionBody({
   children,
   className,
   wide,
+  ...props
 }: {
   children: ReactNode
   className?: string
   /** Opt out of the cap, for a full-bleed scroll area such as the board. */
   wide?: boolean
-}) {
+} & React.ComponentProps<"div">) {
   return (
     <div
+      {...props}
       className={cn(
         "mx-auto w-full px-4 md:px-6",
         !wide && "max-w-[1680px]",

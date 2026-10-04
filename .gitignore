@@ -3,6 +3,14 @@ web/node_modules/
 web/dist/
 web/*.tsbuildinfo
 .scratch/
+
+# Playwright run output. Traces and failure screenshots are per-run debug
+# artefacts, several MB each — the committed baselines live in
+# web/e2e/__screenshots__/ and those ARE tracked.
+web/e2e/.artifacts/
+web/test-results/
+web/playwright-report/
+
 # Local secrets
 .env
 .env.*
