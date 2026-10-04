@@ -120,6 +120,28 @@ header, so:
 ever gain a `backdrop-filter`. Putting one there captures the command palette
 and clips its scrim to the shell's `overflow-hidden`.
 
+### Controls inside a glass surface
+
+The header is the clearest case: a frosted bar carrying five controls. Two rules
+came out of building it.
+
+**A transparent control on glass is a hole, not a control.** The `outline`
+variant was `bg-transparent` + a hairline. Over a blurred panel a transparent
+fill shows the *backdrop* but none of the bar's own tint, so each button
+rendered **darker than the surface it sat on** and the whole cluster read as
+cut-outs. `outline` is now `glass-flat`: same tint as the bar, plus the lift,
+so the button reads as a small panel standing on it.
+
+**A recessed track with a raised active pill.** The theme switch was
+`bg-well` track + `bg-surface` pill — the one control on the bar still using
+opaque fills, so it read as a dark slab pasted onto glass. It now matches
+`Segmented`: `glass-flat` + an inset shadow for the track (recessed), and
+`glass-flat-strong` + an outward lift for the active pill (standing proud). The
+direction of the two shadows is what tells you which one is selected.
+
+The header also carries `glass-spotlight`, wired through `useSpotlight` — one
+listener on the bar, not on each control inside it.
+
 ## 0d. Type on a filled accent surface
 
 The primary button is the one place in the app where the accent is a **fill**
@@ -932,6 +954,11 @@ This section covers what changes from that state.
       `backdrop-filter`. Either one captures the non-portalled `CommandPalette`.
 - [ ] No `glass*` tier on a list row. Rows inside a frosted panel carry a
       highlight fill and **no** `box-shadow` and **no** `backdrop-filter`.
+- [ ] No control inside a glass surface uses `bg-transparent`. On a blurred
+      panel a transparent fill renders *darker* than the surface beneath it and
+      reads as a hole punched through the glass.
+- [ ] Every segmented track on a glass surface is a recessed well (inset
+      shadow) with a raised active pill (outward lift), matching `Segmented`.
 - [ ] Type on a filled accent surface uses `text-on-accent` / `bg-on-accent`.
       Never a hard-coded `#fff` or `#000` — dark's accent is a light blue and
       white on it measures 2.42:1.

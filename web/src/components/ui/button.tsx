@@ -59,8 +59,16 @@ export const buttonVariants = cva(
           "rounded-control border border-accent/50 bg-linear-to-b from-accent/85 to-accent text-on-accent",
         secondary:
           "glass-flat rounded-control text-ink",
+        /* Was `border border-line-strong bg-transparent`, which on the frosted
+           header read as a hole punched through the glass: a transparent fill
+           over a blurred panel shows the *backdrop* but none of the header's own
+           tint, so each button looked darker than the bar it sat on rather than
+           raised off it.
+           `glass-flat` gives it the header's tint plus the lift, so it reads as
+           a small panel standing on the bar. It stays a *flat* tier — a control
+           inside another glass surface has nothing behind it left to diffuse. */
         outline:
-          "rounded-control border-[0.8px] border-line-strong bg-transparent text-ink hover:bg-raised",
+          "glass-flat rounded-control text-ink hover:border-line-strong",
         ghost: "rounded-control text-ink-2 hover:bg-raised hover:text-ink",
         destructive:
           "rounded-control border border-danger/30 bg-danger-tint text-danger-text hover:bg-danger/20",

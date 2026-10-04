@@ -15,6 +15,7 @@ import { activeNavItem } from "@/components/app-shared";
 import { NavUser } from "@/components/nav-user";
 import NotificationCenter from "@/features/notifications/NotificationCenter";
 import { ThemeSwitch } from "@/components/app/theme-switch";
+import { useSpotlight } from "@/components/app/use-spotlight";
 import { SearchIcon, SendIcon } from "lucide-react";
 import type { Page } from "@/lib/sidebar-preferences";
 
@@ -51,16 +52,27 @@ export function AppHeader({
 	   cannot be captured by this filter. `CommandPalette` — the one non-portalled
 	   fixed overlay — is a sibling, not a child. The rule that keeps it working:
 	   neither this element nor `sidebar-inset` may ever carry a filter. */
+	const move = useSpotlight<HTMLElement>();
+
 	return (
 		<header
 			className={cn(
-				"glass sticky top-0 z-panel mx-2 mt-2 flex h-14 shrink-0 items-center justify-between gap-2 rounded-lg px-4 md:mx-3 md:mt-3"
+				"glass glass-spotlight sticky top-0 z-panel mx-2 mt-2 flex h-14 shrink-0 items-center justify-between gap-2 rounded-lg px-3 md:mx-3 md:mt-3 md:px-4"
 			)}
+			/* The spotlight writes `--mx`/`--my` for the radial highlight, so the
+			   class needs the handler as well as the name — one listener on the
+			   bar, not on any of the controls inside it. */
+			onPointerMove={move}
 		>
-			<div className="flex min-w-0 items-center gap-3">
+			<div className="flex min-w-0 items-center gap-2">
 				<CustomSidebarTrigger />
 				<Separator
-					className="mr-2 h-4 data-[orientation=vertical]:self-center"
+					/* `bg-line-strong` rather than the default `bg-border`: on the
+					   frosted bar the token's own contrast was carrying almost
+					   nothing, and the rule between the toggle and the page title
+					   had to stay findable. This is a divider on a lit surface,
+					   not a hairline — it wants the stronger of the two. */
+					className="mr-1 h-4 bg-line-strong data-[orientation=vertical]:self-center"
 					orientation="vertical"
 				/>
 				<AppBreadcrumbs page={activeItem} />
