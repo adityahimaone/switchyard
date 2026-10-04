@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
-import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Workspace, type WorkspaceFile } from "@/api"
+import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Task, type Workspace, type WorkspaceFile } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -107,19 +107,24 @@ export function groupWorkspacesByPlatform(workspaces: Workspace[]): [PlatformKey
 // EkgTrace: heart-rate monitor fed by REAL ping history. The trace scrolls
 // left like a live monitor: latest point slides in at the right edge via
 // transform transition when a new ping lands, older points shift left.
-// Failing pings flatline at the baseline. A glowing accent dot rides the
-// full path via CSS offset-path, 2.4s linear infinite sweep (ekg-sweep
-// keyframes in index.css).
+// Failing pings flatline at the baseline. A glowing dot rides the full path
+// via CSS offset-path; ekg-sweep is defined in index.css.
 const EKG_W = 220 // fixed virtual width; scaled to container via viewBox
 
-function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | undefined; live: boolean; ok: boolean; height?: number }) {
+// The dot is always red. Red means live activity — a ping in flight or a task
+// running — and the sweep's pace (1.4s vs 2.4s) is what tells those two apart,
+// so the colour only ever has to carry one meaning.
+const EKG_DOT = "var(--c-danger)"
+
+function EkgTrace({ points, live, ok, running = false, height = 64 }: { points: PingPoint[] | undefined; live: boolean; ok: boolean; running?: boolean; height?: number }) {
   const pts = (points ?? []).slice(-30)
   const last = pts[pts.length - 1]
-  // A live workspace traces in ink; a failed one traces flat in danger. Green
-  // is reserved for the confirmed `done` status, not for "the chart drew".
   const offline = !ok && pts.length > 0
-  const line = offline ? "var(--c-danger)" : "var(--c-ink-3)"
-  const dot = "var(--c-danger)"
+  // Green trace on a dark monitor, red only when unreachable. This is the
+  // pre-Q4 reading and it is the one the design called for: a live workspace
+  // traces green, a dead one flatlines red, and the two cannot be confused
+  // because the frame changes with them.
+  const line = offline ? "var(--color-danger)" : "var(--color-success)"
   const BASE = height - 6, TOP = 6
   const [w, setW] = useState(EKG_W)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -148,8 +153,8 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
     const y = BASE - ((p.ms - min) / (max - min)) * (BASE - TOP)
     return Math.min(BASE - 2, Math.max(TOP + 2, y))
   }
-  // drift left smoothly over the 30s window but clamp so the trace never
-  // runs past the right edge (line cut off) — last point stays at x <= w.
+  // 30 samples share the width; slot divides by 29 because the first and last
+  // sit on the edges.
   const slot = w / 29
   const [frac, setFrac] = useState(0)
   const lastAt = last?.at ?? 0
@@ -166,20 +171,41 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
   const xOf = (i: number) => Math.min(w, i * slot + (1 - frac) * slot)
   // flat line when there's nothing interesting to draw (empty/quiet/failed)
   const allFlat = !good.length || (max - min < 1 && pts.every((p) => !p.ok))
+  /*
+   * The trace is one continuous polyline. Two things used to put holes in it:
+   *
+   * 1. `preserveAspectRatio="none"` scales x and y by different factors, so a
+   *    sample pair that shares a coordinate in the data can still render with a
+   *    visible step, and a rounded cap on a 1.2px stroke leaves a hairline.
+   * 2. The drift offset `(1 - frac) * slot` pushes the last two samples past
+   *    `w`, where the old `Math.min(w, …)` clamp stacked them at the same x —
+   *    a zero-width spike. Drawing only the x values that actually advance
+   *    fixes it at the source instead of hiding it.
+   */
+  const trace = padded
+    .map((p, i) => ({ x: xOf(i), y: yOf(p) }))
+    .filter((pt, i, arr) => i === 0 || pt.x > arr[i - 1].x + 0.01)
+
   const d = allFlat
     ? `M0 ${MID.toFixed(1)} H${w.toFixed(1)}`
-    : padded
-        .map((p, i) => `${i ? "L" : "M"}${xOf(i).toFixed(1)} ${yOf(p).toFixed(1)}`)
+    : trace
+        .map((pt, i) => `${i ? "L" : "M"}${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`)
         .join(" ")
 
   return (
     <div
       ref={boxRef}
       className={cn(
-        "relative overflow-hidden rounded-control border bg-well",
+        "relative overflow-hidden rounded-control border",
+        // The pre-Q4 monitor: a dark ground with a faint 12px grid, tinted
+        // green while live and red when unreachable. Restored because the flat
+        // `bg-well` card lost what made this read as a monitor — a grid gives
+        // the eye a scale to measure the trace against, and a fixed dark ground
+        // is what lets the green line glow.
         offline
-          ? "border-danger/30 bg-danger-tint"
-          : "border-line",
+          ? "ekg-monitor-offline border-danger/25"
+          : "ekg-monitor border-success/20",
+        live && "shadow-[inset_0_0_12px_var(--c-success-tint)]",
       )}
       style={{ height }}
       title={last
@@ -187,17 +213,19 @@ function EkgTrace({ points, live, ok, height = 64 }: { points: PingPoint[] | und
         : "no pings yet"}
     >
       <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
-        <path d={d} fill="none" stroke={line} strokeOpacity="0.82" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+        <path d={d} fill="none" stroke={line} strokeOpacity="0.82" strokeWidth="1.2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
       </svg>
-      {live && (
+      {(live || running) && (
         <span
           className="absolute left-0 top-0 size-[7px] rounded-full"
           style={{
             offsetPath: `path("${d}")`,
             offsetRotate: "0deg",
-            background: dot,
-            boxShadow: `0 0 6px 2px ${dot}99, 0 0 12px 4px ${dot}44`,
-            animation: "ekg-sweep 2.4s linear infinite",
+            background: EKG_DOT,
+            boxShadow: `0 0 6px 2px ${EKG_DOT}99, 0 0 12px 4px ${EKG_DOT}44`,
+            // A running task sweeps faster: this is live work rather than a
+            // 30s heartbeat, and the pace is what says so.
+            animation: running ? "ekg-sweep 1.4s linear infinite" : "ekg-sweep 2.4s linear infinite",
           }}
         />
       )}
@@ -661,6 +689,33 @@ export default function WorkspacesPage() {
     refetchInterval: 5_000,
   })
 
+  /*
+   * Which workspaces currently have a task running on them.
+   *
+   * The card needs this to decide the dot's colour, and the workspace record
+   * cannot carry it: "connected" says nothing about whether an agent is working
+   * there right now. Only a board knows, so running tasks are read from it.
+   *
+   * Only the running slice is collected, and only the two fields the card
+   * needs, so a busy board does not pull its whole task list to light up a dot.
+   */
+  const runningWorkspaces = useQuery({
+    queryKey: ["ws-running"],
+    queryFn: async () => {
+      const boards = await api<{ slug: string }[]>("/api/boards")
+      const out = new Set<string>()
+      for (const b of boards) {
+        const tasks = await api<Task[]>(`/api/boards/${b.slug}/tasks?status=running`)
+        for (const t of tasks) {
+          if (t.workspace_path) out.add(t.workspace_path)
+          out.add(t.id)
+        }
+      }
+      return out
+    },
+    refetchInterval: 5_000,
+  })
+
   const save = useMutation({
     mutationFn: (ws: Workspace) =>
       form.edit
@@ -793,6 +848,7 @@ export default function WorkspacesPage() {
                         pingPoints={pingHistories.data?.[ws.id]}
                         pinging={pinging === ws.id}
                         anyPinging={pinging != null}
+                        running={runningWorkspaces.data?.has(ws.path) || runningWorkspaces.data?.has(ws.id) || false}
                         codeGraphOpen={!!codeGraphOpen[ws.id]}
                         onToggleCodeGraph={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))}
                         onPing={() => void pingOne(ws)}
@@ -847,6 +903,7 @@ function WorkspaceCard({
   pingPoints,
   pinging,
   anyPinging,
+  running,
   codeGraphOpen,
   onToggleCodeGraph,
   onPing,
@@ -858,6 +915,8 @@ function WorkspaceCard({
   pingPoints?: PingPoint[]
   pinging: boolean
   anyPinging: boolean
+  /** A task is running on this workspace right now. */
+  running: boolean
   codeGraphOpen: boolean
   onToggleCodeGraph: () => void
   onPing: () => void
@@ -895,7 +954,7 @@ function WorkspaceCard({
         </p>
       )}
 
-      <EkgTrace points={pingPoints} live={live} ok={live} height={64} />
+      <EkgTrace points={pingPoints} live={live} ok={live} running={running} height={64} />
 
       <CodeGraphPanel ws={ws} open={codeGraphOpen} onToggle={onToggleCodeGraph} />
       <FileBrowser ws={ws} />

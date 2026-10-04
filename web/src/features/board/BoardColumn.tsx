@@ -86,13 +86,26 @@ export function BoardColumn({
           <span className="tabular text-xs text-ink-3">{count}</span>
           {actions && <div className="ml-auto flex items-center gap-1">{actions}</div>}
         </div>
-        <div className="track-line" aria-hidden />
+        {/* No `.track-line` underline. The lamp beside the title already encodes
+            status by colour *and* by shape — filled for a live state, hollow for
+            a parked one — so the 2px bar under every column header was a second
+            statement of the same fact, drawn in the same colour, four pixels
+            wider than the lamp that already said it. Two marks per column also
+            meant two things to read before the column's name.
+
+            The draw-on animation went with it. `board-enter` and `--i` remain on
+            the section: `auth-page.tsx` still uses `.track-line` for its own
+            loading bar, so the keyframes stay in the stylesheet. */}
       </header>
 
       <ul
         data-over={isOver || undefined}
         className={cn(
-          "flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto rounded-panel bg-well p-2",
+          // `rounded-card` (12px) rather than `rounded-panel` (16px). At 296px
+          // wide and full-height, 16px read as a toy-like tub; the cards inside
+          // are already 12px with 8px of padding, so matching them also keeps the
+          // nesting concentric instead of stepping outward twice.
+          "flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto rounded-card bg-well p-2",
           "outline-1 -outline-offset-1 outline-transparent transition-[outline-color,background-color] duration-100",
           "data-[over]:bg-raised/50 data-[over]:outline-dashed data-[over]:outline-line-strong",
         )}
@@ -106,9 +119,12 @@ export function BoardColumn({
         {React.Children.toArray(children).length > 0 ? (
           children
         ) : (
-          <li className="px-2 py-6 text-sm">
+          // Centred, not left-aligned. A column with no cards is a tall empty
+          // well; text pinned to its top-left reads as a mis-rendered panel,
+          // while the same two lines centred read as a deliberate empty state.
+          <li className="flex flex-1 flex-col items-center justify-center gap-1.5 px-4 py-8 text-center text-sm">
             <p className="font-medium text-ink-2">{copy?.title ?? "No tasks"}</p>
-            <p className="mt-1 max-w-[32ch] text-xs text-ink-3">
+            <p className="max-w-[32ch] text-xs text-ink-3">
               {copy?.hint ?? "Drag a card here or create a task."}
             </p>
           </li>

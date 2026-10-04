@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Archive, CheckSquare, Plus, Search, X } from "lucide-react"
+import { Archive, CheckSquare, ChevronDown, Plus, Search, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   api, boardHealth, bulkTasks, COLUMNS, reorderTasks, toastGlobal,
   type Profile, type Status, type Task, type Workspace,
 } from "@/api"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -353,18 +352,23 @@ export function BoardPage({
           ]}
         />
 
-        {/* Matches FilterBar's count badge: the board hand-rolled the same bare
-            number, so it had the same stray-data look. `h-7` here rather than
-            FilterBar's `h-8`, because the board's toolbar is built from
-            `size="sm"` controls (h-7) and an h-8 badge would stand taller than
-            every other thing in its row. */}
-        <Badge
-          variant="outline"
+        {/* Plain text, not a badge. This number used to sit in a bordered pill
+            on its own background, which made it read as a control or a status
+            chip rather than as a sentence fragment — and a bare number with no
+            noun is the version nobody can interpret. Naming it also makes the
+            filtered case legible: "12 of 63 tasks" says what the filters did,
+            where a pill reading "12 of 63" said nothing about what was counted.
+
+            `tabular` keeps the digits from shifting the toolbar as the count
+            changes while typing in the search field. */}
+        <span
           aria-live="polite"
-          className="tabular h-7 w-auto flex-none gap-0 self-center border-line bg-well px-2 text-xs font-normal text-ink-3"
+          className="tabular shrink-0 self-center text-xs text-ink-3"
         >
-          {filtered.length === total ? total : `${filtered.length} of ${total}`}
-        </Badge>
+          {filtered.length === total
+            ? `${total} ${total === 1 ? "task" : "tasks"}`
+            : `${filtered.length} of ${total} tasks`}
+        </span>
 
         {filtersActive && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="text-ink-3">
@@ -373,20 +377,21 @@ export function BoardPage({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <Input
-            value={viewName}
-            onChange={(e) => setViewName(e.target.value)}
-            placeholder="View name"
-            aria-label="Saved view name"
-            className="h-8 w-32"
-          />
-          <Button variant="outline" size="sm" disabled={!viewName.trim()} onClick={saveView}>
-            Save view
-          </Button>
+          {/* "Save view" appears only while there is something to save. Left
+              always visible, it sat permanently disabled whenever the name field
+              was empty, which is most of the time — a dead control that still
+              occupies the row and pulls the eye to it. A user who has named a
+              view and typed into the filters gets the button; one who has not,
+              does not. */}
+          {viewName.trim() && (
+            <Button variant="outline" size="sm" onClick={saveView}>
+              Save view
+            </Button>
+          )}
           {savedViews.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">Views</Button>
+                <Button variant="outline" size="sm">Views <ChevronDown className="size-3.5" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {savedViews.map((v) => (
@@ -395,9 +400,14 @@ export function BoardPage({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {/* Toggle rather than a `variant` swap. `secondary` and `outline` look
+              similar enough that the pressed state was not obvious; the accent
+              tint makes "I am in bulk mode" readable at a glance, which matters
+              because it silently changes what a click on a card does. */}
           <Button
             size="sm"
-            variant={bulkMode ? "secondary" : "outline"}
+            variant="ghost"
+            className={bulkMode ? "bg-accent-tint text-ink" : undefined}
             onClick={() => { setBulkMode((v) => !v); if (bulkMode) setSelectedTasks(new Set()) }}
             aria-pressed={bulkMode}
           >

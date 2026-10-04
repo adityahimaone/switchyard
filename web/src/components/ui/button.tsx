@@ -36,7 +36,13 @@ export const buttonVariants = cva(
             accent fill would muddy the label and lose the "this is the action"
             signal that a solid fill carries. */
         signal:
-          "rounded-control border border-accent bg-accent text-accent-ink hover:brightness-95",
+          /* Flat accent fill, plus a single inset highlight along the top edge.
+             That 1px is the whole trick: on a solid fill a control reads as flat
+             paint, and the highlight is what makes it read as a lit surface — the
+             same cue `glass-highlight` provides on every frosted panel. A
+             gradient used to do this job and made the primary action glow like a
+             game UI, which is what this pass set out to remove. */
+          "rounded-control border border-accent bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18),0_1px_2px_rgb(0_0_0_/_0.25)] hover:brightness-95",
         secondary:
           "glass-flat rounded-control text-ink",
         outline:

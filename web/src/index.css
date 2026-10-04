@@ -157,7 +157,7 @@
   --color-border-app: var(--c-line);
   --color-ring: var(--c-focus);
   --color-destructive: var(--c-danger);
-  --color-destructive-foreground: var(--c-canvas);
+  --color-destructive-foreground: var(--c-accent-ink);
   --color-success-tint: var(--c-success-tint);
   --color-warning-tint: var(--c-warning-tint);
   --color-danger-tint: var(--c-danger-tint);
@@ -225,21 +225,39 @@
      browser, the card and its background resolved to within a couple of levels
      of each other.
 
-     Two fixes, both needed. The tint is now much more transparent (0.4), so
-     whatever is behind the panel actually comes through. And it is tinted
+     Two fixes, both needed. The tint is more transparent than the surface fill,
+     so whatever is behind the panel actually comes through. And it is tinted
      *lighter and bluer* than the surface rather than equal to it, so the panel
      separates from its ground by its own colour as well as by its backdrop.
 
-     0.4 rather than 0.72 is still readable: measured over the worst backdrop,
-     ink-3 sits at 6.19:1 and danger-text at 8.22:1, both well clear of 4.5. */
-  --glass-tint: rgb(46 56 78 / 0.4);
-  --glass-tint-strong: rgb(40 49 68 / 0.62);
-  --glass-blur: 24px;
-  --glass-blur-strong: 44px;
-  /* The rim is what sells it. At 0.09 it was invisible; the reference has a
-     clearly readable 1px light edge. */
-  --glass-edge: rgb(255 255 255 / 0.14);
-  --glass-edge-inner: rgb(255 255 255 / 0.1);
+     Raised from 0.40 to 0.52 in the calm-glass pass, together with the drop in
+     blur radius. Lowering the blur on its own made panels look like plain dark
+     rectangles; a heavier tint is what makes a shallower blur read as calm
+     rather than as an effect that has been switched off. The two move together
+     because alpha and blur are both fighting the same problem — how much the
+     panel separates from its ground without either a hard rim or a heavy blur
+     doing the work.
+
+     Raising the alpha is also free, where lowering it would not have been: it
+     only ever raises the luminance floor under text sitting on the panel, so
+     every measured margin improves. Re-measured at 0.52 composited over the
+     worst backdrop in the app (the 14% accent bloom on `--c-canvas`) — sidebar
+     group labels, the tightest case, since they are ink-3 at 11px on the glass
+     itself: ink 11.18:1, ink-2 7.89:1, ink-3 5.01:1. Over plain `--c-surface`
+     (the composer) ink-3 sits at 5.50:1. */
+  --glass-tint: rgb(46 56 78 / 0.52);
+  --glass-tint-strong: rgb(40 49 68 / 0.72);
+  --glass-blur: 18px;
+  --glass-blur-strong: 30px;
+  /* Closed an asymmetry: this was declared only in `:root`, so dark glass was
+     resolving it by inheritance from the light block instead of declaring its
+     own. Behaviourally identical today, but it meant a future light-only edit
+     would silently retune dark glass too. */
+  --glass-saturate: 1.6;
+  /* The rim was doing too much work. At 0.14 it read as a drawn outline on top
+     of the shadow, and outline-plus-shadow muddies both (see the note above
+     `glass`). Lowered to 0.08 so elevation alone carries the edge. */
+  --glass-edge: rgb(255 255 255 / 0.08);
 
   /* Dark mode needs a far stronger shadow than light. On a near-black ground a
      soft light shadow is invisible, so the panel has to cast a real one: a tight
@@ -251,11 +269,11 @@
      1.16:1 against its ground, which is why it read flat. The shadow does not
      change that number — it is not a luminance cue — but it supplies the depth
      signal the luminance difference physically cannot at this tint. */
-  --glass-lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -8px rgb(0 0 0 / 0.55),
+  --glass-lift: 0 1px 2px rgb(0 0 0 / 0.28), 0 10px 24px -8px rgb(0 0 0 / 0.32),
     inset 0 1px 0 0 rgb(255 255 255 / 0.07);
-  --glass-lift-strong: 0 2px 6px rgb(0 0 0 / 0.45), 0 20px 44px -12px rgb(0 0 0 / 0.65),
+  --glass-lift-strong: 0 2px 6px rgb(0 0 0 / 0.3), 0 20px 44px -12px rgb(0 0 0 / 0.4),
     inset 0 1px 0 0 rgb(255 255 255 / 0.09);
-  --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.36), 0 8px 20px -8px rgb(0 0 0 / 0.5),
+  --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 8px 20px -8px rgb(0 0 0 / 0.3),
     inset 0 1px 0 0 rgb(255 255 255 / 0.06);
 
   --c-heat-0: #1e293b;
@@ -356,7 +374,10 @@
   --color-ring: var(--c-focus);
   --color-destructive: var(--c-danger);
   --color-destructive-foreground: var(--c-accent-ink);
-  --color-sidebar: var(--c-surface);
+  /* The sidebar is glass: it stands directly on the shell's glow-ground, so it is
+     the one large surface where there is genuinely something to diffuse. It was
+     `--c-surface`, which made it opaque and left the bloom invisible behind it. */
+  --color-sidebar: var(--glass-tint);
   --color-sidebar-foreground: var(--c-ink);
   --color-sidebar-primary: var(--c-accent);
   --color-sidebar-primary-foreground: var(--c-accent-ink);
@@ -436,13 +457,12 @@
      there is something behind it to diffuse: the tinted canvas, the smoke wash,
      the sidebar. Over a flat fill it would cost a compositing layer for nothing,
      so opaque surfaces stay opaque. */
-  --glass-tint: rgb(255 255 255 / 0.55);
-  --glass-tint-strong: rgb(255 255 255 / 0.72);
-  --glass-blur: 24px;
-  --glass-blur-strong: 44px;
+  --glass-tint: rgb(255 255 255 / 0.66);
+  --glass-tint-strong: rgb(255 255 255 / 0.82);
+  --glass-blur: 18px;
+  --glass-blur-strong: 30px;
   --glass-saturate: 1.6;
-  --glass-edge: rgb(255 255 255 / 0.9);
-  --glass-edge-inner: rgb(255 255 255 / 0.7);
+  --glass-edge: rgb(255 255 255 / 0.7);
   /* Elevation instead of an outline. Light mode needs almost no shadow to read
      as lifted — the ground is already bright, so a soft wide shadow plus the
      inset highlight carries it. */
@@ -503,11 +523,21 @@
 
 /* Glass that is also a card: radius comes with it, so a panel cannot end up
  * frosted and unrounded. The lift is `glass-lift` plus a touch more spread,
- * because a card sits among its peers rather than floating alone. */
+ * because a card sits among its peers rather than floating alone.
+ *
+ * No backdrop-filter here, which is a deliberate reversal of this utility's
+ * original form. The reason is the one spelled out below `glass-flat`: cards
+ * are exactly the dense case, and Knowledge/Overview alone rendered ~35 of them,
+ * each its own compositing layer. A card frosted at 18px looks no different
+ * from one frosted at 24px — the difference only shows once you have 35 of them
+ * stacked edge to edge and the page stops being cheap to scroll.
+ *
+ * The tint and the elevation stay, so the material still reads as glass; only
+ * the blur is gone. It is now `glass-flat` plus a radius, and keeps its name
+ * purely because ~35 call sites reference it and renaming would churn the diff
+ * for no visual gain. */
 @utility glass-card {
   background-color: var(--glass-tint);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border-radius: var(--radius-card);
   box-shadow: var(--glass-lift-card);
 }
@@ -545,6 +575,69 @@
 @utility glass-flat-strong {
   background-color: var(--glass-tint-strong);
   box-shadow: var(--glass-lift);
+}
+
+/* Degradation for the two cases where frost cannot work.
+ *
+ * Without these, a browser with no `backdrop-filter` renders `glass` as a
+ * translucent tint over an opaque ground: the panel is visibly *lighter* than
+ * its surroundings but has diffused nothing, which is the grey-wash failure
+ * described above `glass`. Same for a user who has asked the OS for reduced
+ * transparency — that preference exists precisely so they do not have to read
+ * text through a translucent surface, and a tint-only panel does not honour it.
+ * Both land on the opaque surface token, which is what the panel would have
+ * been before it became glass.
+ *
+ * `glass-flat` needs no fallback: it has no filter to lose. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong {
+    background-color: var(--c-surface);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-strong {
+    background-color: var(--c-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Scroll-edge fades.
+ *
+ * Content that scrolls *under* a translucent bar should dissolve into it rather
+ * than collide with a hard edge — the first line of a transcript sliced by a
+ * solid header is the thing this is here to prevent.
+ *
+ * The fade is a mask on the scrolling element, not a gradient overlay on the
+ * bar, for two reasons: it needs no extra element, and it cannot cover
+ * interaction targets the way an absolutely positioned overlay would. It is
+ * also free to run — no per-frame work, unlike animating a blur radius.
+ *
+ * These live here rather than as per-component styles because they are a
+ * structural fact about "this container scrolls under something", not a look.
+ *
+ * Note the app shell itself never scrolls: it is `h-svh` with `overflow-hidden`
+ * and each page owns an inner scroll container. So these only apply where a
+ * page genuinely scrolls beneath a floating surface — the chat transcript is
+ * the case that needs it today. Applying `scroll-fade-top` to a container that
+ * does not scroll under anything just fades its first row for nothing. */
+@utility scroll-fade-top {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px);
+}
+
+/* The bottom fade is sized to clear the floating composer (20px radius, 12px
+ * padding, ~64px tall, plus 16px of inset) rather than to a round number. */
+@utility scroll-fade-both {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 28px,
+    #000 calc(100% - 140px),
+    transparent 100%
+  );
 }
 
 /* One orchestrated entrance, not a per-card scatter.
@@ -709,26 +802,42 @@
     );
 }
 
-/* Dark mode needs a stronger glow for the same reason as the wash — at the
-   light-mode strength it is invisible against a near-black canvas. 22% / 16%
-   peaks, verified: body ink 10.63:1, `ink-2` 7.51:1, `ink-3` 4.77:1. */
+/* Dark mode needs a stronger glow than light for the same reason as the wash —
+   at the light-mode strength the bloom is invisible against a near-black canvas.
+
+   Was 22% / 16%. Cut to 14% / 9%, which brings it level with the light theme.
+
+   The earlier comment here justified 22% by saying the weaker bloom left glass
+   diffusing a flat field. That reasoning was correct, but the fix was the wrong
+   one: the field was flat because **nothing was applying this utility at all**,
+   not because the bloom was too weak. Raising the peak had been compensating
+   for a missing ground layer. Now that the shell actually paints it, the light
+   theme's strength reads correctly in dark too, and the heavier value was only
+   adding colour to the top-left corner where the sidebar labels sit.
+
+   The measured margins at 22% were body ink 10.63:1, ink-2 7.51:1, ink-3
+   4.77:1 — ink-3 being the narrowest in the file. Re-measured at the new 14%
+   peak, over the same composite (accent over `--c-canvas`, sRGB source-over,
+   WCAG relative luminance): body ink 12.54:1, ink-2 8.86:1, ink-3 5.63:1. All
+   three improve, as expected — a lower bloom means a lighter worst-case
+   backdrop in dark. */
 .dark .glow-ground {
   background-image:
     radial-gradient(
       ellipse 70% 55% at 12% 0%,
-      color-mix(in srgb, var(--c-accent) 22%, transparent) 0%,
-      color-mix(in srgb, var(--c-accent) 8%, transparent) 38%,
+      color-mix(in srgb, var(--c-accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 5%, transparent) 38%,
       transparent 72%
     ),
     radial-gradient(
       ellipse 55% 45% at 88% 92%,
-      color-mix(in srgb, var(--c-review) 16%, transparent) 0%,
-      color-mix(in srgb, var(--c-review) 6%, transparent) 34%,
+      color-mix(in srgb, var(--c-review) 9%, transparent) 0%,
+      color-mix(in srgb, var(--c-review) 4%, transparent) 34%,
       transparent 68%
     ),
     radial-gradient(
       ellipse 120% 70% at 50% 45%,
-      color-mix(in srgb, var(--c-accent) 7%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 4%, transparent) 0%,
       transparent 65%
     );
 }
@@ -843,6 +952,67 @@
     @media (prefers-reduced-motion: reduce) {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+/* The workspace ping monitor.
+ *
+ * Restored from before the Q4 token rewrite, when this chart was a dark screen
+ * with a faint grid rather than a flat card. The grid is the point: it gives the
+ * eye a scale to measure the trace against, and a fixed dark ground is what lets
+ * the green line read as a glow rather than a stroke. Flattening it to `bg-well`
+ * with an ink line is what made the monitor look wrong — the chart kept its
+ * behaviour and lost its design.
+ *
+ * The tint is 8%, which is enough to see the cells and not enough to compete
+ * with the trace. `--color-success`/`--color-danger` rather than the raw
+ * `--c-*` tokens so the theme decides the hue in both modes. */
+.ekg-monitor {
+  background-color: #06110d;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-success) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-success) 8%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+.ekg-monitor-offline {
+  background-color: color-mix(in srgb, var(--color-danger) 6%, var(--color-bg));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-danger) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-danger) 8%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+/* The workspace ping dot's travel.
+ *
+ * It rides the trace via `offset-path`, so the motion is along the real path
+ * rather than a straight line that would cut across it — on a flatlined or
+ * spiking trace those are visibly different lines.
+ *
+ * This keyframe was referenced by WorkspacesPage but never defined, so the dot
+ * had been sitting at the start of the path with no animation applied at all.
+ * `offset-distance` is the animatable property here: the element's own
+ * `offsetPath` comes from an inline style, so animating `left` would fight the
+ * path placement rather than move along it. */
+@keyframes ekg-sweep {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/* With reduced motion the dot still needs to be visible and to say which end of
+ * the trace is "now", so it parks at the head rather than disappearing. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ekg-sweep {
+    from {
+      offset-distance: 100%;
+    }
+    to {
+      offset-distance: 100%;
     }
   }
 }

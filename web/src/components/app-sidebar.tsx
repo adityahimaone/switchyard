@@ -22,7 +22,11 @@ export function AppSidebar({
 }) {
 	return (
 		<Sidebar collapsible="icon" variant="inset">
-			<SidebarHeader className="h-14 justify-center">
+			{/* `h-13` to match the shell header exactly. The two are aligned by
+			    construction rather than by eye — they sit side by side across the
+			    gutter — so when the header moved to 52px this had to follow, or the
+			    logo row would sit 4px low against it. */}
+			<SidebarHeader className="h-13 justify-center">
 				{/* The real Switchyard mark and wordmark, rather than the block's
 				    Efferd logo.
 

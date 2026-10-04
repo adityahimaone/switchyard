@@ -104,6 +104,15 @@ export interface MessageScrollerProps extends ComponentPropsWithRef<"div"> {
   showJump?: boolean;
   /** Scrolls back to the live edge and resumes following. */
   onJump?: () => void;
+  /**
+   * Extra clearance above the jump button, in px.
+   *
+   * The button is pinned to the bottom of this component, so anything that
+   * floats over the scroller — chat's glass composer — sits on top of it unless
+   * this offsets it. 12px is the composer's own bottom inset; without it the
+   * button and the composer occupy the same pixels and the button is unreachable.
+   */
+  jumpOffset?: number;
   viewportClassName?: string;
   contentClassName?: string;
   railClassName?: string;
@@ -129,6 +138,7 @@ export function MessageScroller({
   navigationLabel = "Message navigation",
   showJump,
   onJump,
+  jumpOffset = 0,
   viewportClassName,
   contentClassName,
   railClassName,
@@ -492,8 +502,9 @@ export function MessageScroller({
         <button
           type="button"
           onClick={jumpToLatest}
+          style={{ bottom: jumpOffset + 12 }}
           className={cn(
-            "absolute bottom-3 left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1.5",
+            "absolute left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1.5",
             "rounded-full border border-line-strong bg-raised px-3 text-xs text-ink-2 shadow-float",
             "transition-colors hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40",
           )}

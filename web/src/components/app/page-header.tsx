@@ -38,14 +38,20 @@ export function PageHeader({
   const full = typeof description === "string" ? description : undefined
 
   return (
-    <header className={cn("flex flex-col gap-3 border-b border-line px-4 pt-4 pb-3 md:px-6", className)}>
+    <header className={cn("flex flex-col gap-2 border-b border-line px-4 pt-4 pb-3 md:px-6", className)}>
       {breadcrumb && (
         <nav aria-label="Breadcrumb" className="text-xs text-ink-3">
           {breadcrumb}
         </nav>
       )}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
+        {/* Alignment is per-branch, not fixed. The inline form wants the title and
+            description optically centred on one line; the stacked form wants the
+            description hung under the title. It used to be `items-center` for
+            both, which made the stacked branch's `mt-1` inert — a top margin on
+            a flex child is absorbed by centring, so the sentence rendered beside
+            the title at a slightly arbitrary offset rather than below it. */}
+        <div className={cn("flex min-w-0", inline ? "items-center gap-2.5" : "flex-col")}>
           <h1 className="truncate text-xl font-semibold text-ink">{title}</h1>
           {description &&
             (inline ? (
