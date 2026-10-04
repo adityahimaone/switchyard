@@ -4,6 +4,7 @@ import {
 } from "lucide-react"
 import { parseTaskExecutionMeta, type Profile, type Status, type Task, type TaskHealth, type Workspace } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -65,10 +66,12 @@ export interface TaskCardProps {
   onToggleSelect?: (taskId: string, next: boolean) => void
   onDragStart?: (taskId: string) => void
   onDragEnd?: () => void
+  /** True while this card is the one being dragged. Drives the lift treatment. */
+  dragging?: boolean
 }
 
 export default function TaskCard({
-  task, profiles, workspaces, health, selected,
+  task, profiles, workspaces, health, selected, dragging,
   onOpen, onOpenPage, onMove, onStop, onReassign, onToggleSelect, onDragStart, onDragEnd,
 }: TaskCardProps) {
   const targets = STATUS_TARGETS[task.status] ?? []
@@ -83,6 +86,13 @@ export default function TaskCard({
       draggable={!running}
       data-status={task.status}
       data-selected={selected || undefined}
+      data-dragging={dragging || undefined}
+      /* Spotlight is delegated: this board can hold a hundred cards, and a
+         per-card `onPointerMove` would mean a hundred handlers and a hundred
+         style writes on every mouse move across the scroller. The board root
+         sets `--mx`/`--my` on whichever card is actually under the pointer (see
+         `useDelegatedSpotlight`), so the cost here is one CSS variable pair. */
+      data-spotlight=""
       onDragStart={(e) => {
         if (running) { e.preventDefault(); return }
         e.dataTransfer.effectAllowed = "move"
@@ -92,15 +102,36 @@ export default function TaskCard({
       onDragEnd={onDragEnd}
       style={{ "--lamp": statusColor(task.status) } as CSSProperties}
       className={cn(
-        "group relative rounded-card border border-line bg-surface p-[var(--card-pad)] pl-4",
-        "transition-[border-color,background-color] duration-100",
+        /* `glass-card`, not `glass`: a card sits inside a glass column, so its
+           backdrop is already blurred. A second backdrop-filter here would
+           diffuse nothing and add a compositing layer per card — the exact
+           cost the tier rule exists to avoid. `data-spotlight` is what the
+           delegated handler looks for. */
+        "glass-card glass-spotlight group relative p-[var(--card-pad)] pl-4",
+        "transition-[border-color,background-color,box-shadow,transform] duration-150 ease-out",
         "hover:border-line-strong focus-within:border-line-strong",
         "data-[selected]:border-accent data-[selected]:bg-accent-tint",
-        "data-[dragging=true]:opacity-40 active:cursor-grabbing",
+        /* Dragging: lifted off the column rather than dimmed. The old rule set
+           `opacity-40` on a `data-dragging` attribute that nothing ever set, so
+           the feedback was dead — the card looked identical while being dragged
+           and the drop target was the only cue. A slight scale and rotation
+           reads as "picked up" and pairs with the column's inset glow. */
+        "data-[dragging=true]:scale-[1.02] data-[dragging=true]:rotate-[1.5deg] data-[dragging=true]:cursor-grabbing",
+        "data-[dragging=true]:border-accent/70 data-[dragging=true]:shadow-float",
+        /* State glows. Glow is information, never ornament — and it is never
+           the only cue. The running card also shows a StatusLamp and a
+           spinner, the review card shows its gate chip, so each of these is a
+           "look here" on top of a state that is already legible in text. */
+        running && "glow-running glow-pulse",
+        task.status === "review" && "glow-review",
+        task.status === "blocked" && "glow-danger",
       )}
     >
-      {/* coupler tick: the card's link to its track */}
-      <span aria-hidden className="absolute top-3 left-0 h-5 w-[3px] rounded-r-full bg-[var(--lamp)]" />
+      {/* coupler tick: the card's link to its track. `z-raised` because the
+          spotlight paints into an `::after` on this same element — without a
+          z-index the tick loses to it and the card's status link disappears on
+          hover, which is the one moment the user is already looking at it. */}
+      <span aria-hidden className="absolute top-3 left-0 z-raised h-5 w-[3px] rounded-r-full bg-[var(--lamp)]" />
 
       <div className="flex items-start gap-2">
         {onToggleSelect && (
@@ -173,6 +204,55 @@ export default function TaskCard({
           {task.priority > 0 && (
             <span className="shrink-0 text-xs text-ink-3" title={`Priority ${task.priority}`}>
               P{task.priority}
+            </span>
+          )}
+          {task.paths && task.paths.length > 0 && (
+            <span
+              className="shrink-0 text-2xs text-ink-3"
+              title={`Declared scope: ${task.paths.join(", ")}`}
+            >
+              {task.paths.length} path{task.paths.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {task.isolation === "worktree" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-line bg-well px-1.5 py-0 text-2xs leading-none text-ink-3"
+              title={
+                task.branch
+                  ? `Isolated in its own git worktree on branch ${task.branch}`
+                  : "Isolated in its own git worktree"
+              }
+            >
+              worktree
+            </Badge>
+          )}
+          {/* The gate verdict. A failed gate blocks approval until a reviewer
+              overrides it, so it has to be visible on the card rather than only
+              inside the detail drawer. */}
+          {task.gate_status === "passed" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-success/30 bg-success-tint px-1.5 py-0 text-2xs leading-none text-success-text"
+            >
+              gate ✓
+            </Badge>
+          )}
+          {task.gate_status === "failed" && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-danger/30 bg-danger-tint px-1.5 py-0 text-2xs leading-none text-danger-text"
+              title={task.gate_output ? `Gate failed: ${task.gate_output.slice(0, 300)}` : "Gate failed"}
+            >
+              gate ✗
+            </Badge>
+          )}
+          {task.gate_status === "running" && (
+            <span className="shrink-0 text-2xs text-ink-3">gate running…</span>
+          )}
+          {task.attempt && task.attempt > 1 && (
+            <span className="shrink-0 text-2xs text-ink-3" title="Retry attempt number">
+              attempt {task.attempt}
             </span>
           )}
           {task.consecutive_failures > 0 && (

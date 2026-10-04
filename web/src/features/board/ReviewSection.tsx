@@ -98,7 +98,7 @@ function DiffDisclosure({
             {/* The gutter glyph repeats this, so colour is never the only signal.
                 -text tokens: this row sits on `well`, where the solid success
                 value measures 2.5:1. */}
-            <span className="text-success-text-text">+{added}</span>
+            <span className="text-success-text">+{added}</span>
             <span className="text-danger-text">−{removed}</span>
           </span>
         </button>
@@ -224,7 +224,17 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
   if (task.status !== "review") return null
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-panel border border-line">
+    /* `glass-strong`, not `glass`/`glass-card`. This is the one surface in the
+       app that holds dense text — a diff, at 13px mono, where a line of code has
+       to stay exactly as legible as it would be on an opaque panel. Principle 2
+       in the design system: legibility beats effect, and text-dense surfaces
+       take the strongest tier because there is the most to read *through* it.
+
+       The diff rows inside keep their solid `--success-tint` / `--danger-tint`
+       gutters — no transparency stacking inside the code area, which is what
+       the spec calls for and what stops a red row on a red card from going
+       muddy. */
+    <section className="glass-strong flex flex-col overflow-hidden rounded-panel">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <button
           type="button"
@@ -246,7 +256,7 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         <div className="flex shrink-0 items-center gap-2 text-2xs text-ink-3 tabular">
           {diff.isLoading && <Loader2 className="size-3 animate-spin" aria-label="Loading" />}
           <span>{files.length} files</span>
-          <span className="text-success-text-text">+{additions}</span>
+          <span className="text-success-text">+{additions}</span>
           <span className="text-danger-text">−{removals}</span>
         </div>
       </div>

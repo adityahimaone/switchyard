@@ -215,6 +215,165 @@ func ensureDependencies(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS task_dependencies (task_id TEXT NOT NULL, depends_on_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(task_id, depends_on_id))`)
 	return err
 }
+
+// ensureDependenciesTx is the transactional form, for the create path that
+// applies dependencies inside the same transaction as the task row.
+func ensureDependenciesTx(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS task_dependencies (task_id TEXT NOT NULL, depends_on_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(task_id, depends_on_id))`)
+	return err
+}
+
+// AddTaskDependenciesDB links several dependencies inside the caller's
+// transaction.
+//
+// The *sql.DB variants exist because the slug-based functions open their own
+// connection, which cannot participate in the claim transaction. Adding a
+// dependency from inside that transaction is the only way to keep "task queued
+// with its dependencies" a single atomic step.
+//
+// It also enforces the cycle check, which the single-dependency path predates:
+// A -> B -> A would make both tasks permanently unclaimable, with nothing in
+// the UI to explain why.
+func AddTaskDependenciesDB(tx *sql.Tx, taskID string, dependsOn []string) error {
+	if len(dependsOn) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, id := range dependsOn {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if id == taskID {
+			return &DependencyIssue{Code: CodeBadRequest, Message: "a task cannot depend on itself"}
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM tasks WHERE id=?`, id).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			return &DependencyIssue{Code: CodeBadRequest, Message: fmt.Sprintf("task not found: %s", id)}
+		}
+		// Cycle check, which the original single-dependency path lacked: A -> B -> A
+		// would leave both tasks permanently unclaimable with nothing to explain it.
+		cyclic, err := wouldCreateCycle(tx, taskID, id)
+		if err != nil {
+			return err
+		}
+		if cyclic {
+			return &DependencyIssue{
+				Code:    CodeBadRequest,
+				Message: fmt.Sprintf("%s already depends on %s, directly or indirectly", id, taskID),
+			}
+		}
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO task_dependencies(task_id,depends_on_id,created_at) VALUES(?,?,?)`,
+			taskID, id, time.Now().Unix()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wouldCreateCycle reports whether adding taskID -> dependsOnID would close a
+// loop, by walking the new dependency's own dependency chain and looking for
+// taskID.
+//
+// The walk is depth-bounded and cycle-guarded: the stored graph should be acyclic
+// by construction, but a database edited by hand or imported from elsewhere may
+// already contain a loop, and this must terminate on it rather than hang.
+func wouldCreateCycle(q queryer, taskID, dependsOnID string) (bool, error) {
+	const maxDepth = 64
+	visited := map[string]bool{taskID: true}
+	frontier := []string{dependsOnID}
+	for depth := 0; depth < maxDepth && len(frontier) > 0; depth++ {
+		var next []string
+		for _, cur := range frontier {
+			if cur == taskID {
+				return true, nil
+			}
+			if visited[cur] {
+				continue
+			}
+			visited[cur] = true
+			rows, err := q.Query(`SELECT depends_on_id FROM task_dependencies WHERE task_id=?`, cur)
+			if err != nil {
+				return false, err
+			}
+			for rows.Next() {
+				var dep string
+				if err := rows.Scan(&dep); err != nil {
+					rows.Close()
+					return false, err
+				}
+				next = append(next, dep)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return false, err
+			}
+		}
+		frontier = next
+	}
+	// A chain deeper than the bound is treated as cyclic rather than allowed:
+	// refusing to add the edge is safe, and accepting one that loops would wedge
+	// the tasks involved.
+	return len(frontier) > 0, nil
+}
+
+// queryer is the part of *sql.DB and *sql.Tx the cycle walk needs, so the same
+// traversal serves both the transactional and the standalone add path.
+type queryer interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// DependencyIssue is a dependency problem the caller can surface to a client.
+type DependencyIssue struct {
+	Code    string
+	Message string
+}
+
+func (e *DependencyIssue) Error() string { return e.Code + ": " + e.Message }
+
+// UnmetDependencies returns the dependencies of a task that are not yet done,
+// with their titles so the UI can say "waits for OAuth module" rather than
+// "waits for t_a1b2c3".
+func UnmetDependencies(db *sql.DB, taskID string) ([]DependencyRef, error) {
+	rows, err := db.Query(`SELECT d.depends_on_id, COALESCE(t.title,''), COALESCE(t.status,'')
+		FROM task_dependencies d
+		LEFT JOIN tasks t ON t.id = d.depends_on_id
+		WHERE d.task_id = ? AND COALESCE(t.status,'') <> 'done'
+		ORDER BY d.created_at, d.depends_on_id`, taskID)
+	if err != nil {
+		if isNoSuchTable(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DependencyRef{}
+	for rows.Next() {
+		var ref DependencyRef
+		if err := rows.Scan(&ref.ID, &ref.Title, &ref.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, ref)
+	}
+	return out, rows.Err()
+}
+
+// DependencyRef identifies a dependency for display.
+type DependencyRef struct {
+	ID     string `json:"id"`
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
 func AddTaskDependency(slug, taskID, dependsOnID string) error {
 	if taskID == dependsOnID {
 		return fmt.Errorf("task cannot depend on itself")
@@ -236,10 +395,21 @@ func AddTaskDependency(slug, taskID, dependsOnID string) error {
 			return fmt.Errorf("task not found: %s", id)
 		}
 	}
-	_, err = db.Exec(`INSERT INTO task_dependencies(task_id,depends_on_id,created_at) VALUES(?,?,?)`, taskID, dependsOnID, time.Now().Unix())
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "constraint") {
-		return fmt.Errorf("dependency already exists")
+	// Cycle check, which this path originally lacked: A -> B -> A leaves both
+	// tasks permanently unclaimable with nothing in the UI to explain it.
+	cyclic, err := wouldCreateCycle(db, taskID, dependsOnID)
+	if err != nil {
+		return err
 	}
+	if cyclic {
+		return &DependencyIssue{
+			Code:    CodeBadRequest,
+			Message: fmt.Sprintf("%s already depends on %s, directly or indirectly", dependsOnID, taskID),
+		}
+	}
+	// INSERT OR IGNORE, so re-adding an existing edge is a no-op rather than a
+	// constraint error the caller has to interpret.
+	_, err = db.Exec(`INSERT OR IGNORE INTO task_dependencies(task_id,depends_on_id,created_at) VALUES(?,?,?)`, taskID, dependsOnID, time.Now().Unix())
 	return err
 }
 func ListTaskDependencies(slug, taskID string) ([]TaskDependency, error) {

@@ -38,7 +38,6 @@ share one omp session, so round N sees rounds 1..N-1.
 | Schema | `internal/kanban/kanban.go:184` | `harness_bindings.harness_kind`, `tasks.omp_session_id` |
 | Task column | `internal/kanban/kanban.go:184` | `tasks.omp_session_id` |
 | Dispatch | `cmd/server/remote_dispatch.go:189` | node-agent lane, builds the continuation request |
-| Legacy dispatcher | `cmd/server/ssh_dispatch.go:319` | same binding logic on the SSH lane |
 | Result validation | `internal/kanban/nodeagent.go:275` | `resolveDSHResultIdentity`, `finalizeRemoteResult` |
 | Executor settings | `internal/kanban/executor_settings.go:29` | order, disabled list, default mode |
 | UI picker | `web/src/features/board/TaskDialog.tsx` | executor dropdown |
@@ -225,7 +224,7 @@ Approving a `review` card moves it to `done`. A plain `PATCH .../status` with
 
 ## 7. Retry policy
 
-`cmd/server/ssh_dispatch.go:375` retries transient failures up to 3 times, but
+The dispatcher retries transient failures up to 3 times, but
 skips retry for these deterministic signals:
 
 - `dispatch_wait_timeout:`

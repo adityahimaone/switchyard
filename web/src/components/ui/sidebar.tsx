@@ -137,7 +137,10 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+            /* Transparent, not a fill: the wrapper sits behind the glass rail and
+               an opaque `bg-sidebar` here would hide the glow field from the one
+               place that most needs it. */
+            "group/sidebar-wrapper flex min-h-svh w-full",
             className
           )}
           {...props}
@@ -185,6 +188,9 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
+          /* The mobile sidebar is the same chrome as the desktop rail, so it
+             takes the same opaque treatment rather than the overlay tier — the
+             fact that it happens to be portalled does not change what it is. */
           className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
@@ -242,22 +248,24 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className={cn(
-            // `glass` rather than `bg-sidebar`. Both resolve to the same tint now
-            // (`--color-sidebar` is `--glass-tint`), but only `glass` carries the
-            // blur, and the blur is the whole point: the panel stands on the
-            // shell's glow-ground, so the bloom behind it is what it diffuses.
-            "glass flex h-full w-full flex-col",
-            // Inset and floating are both "a panel that does not reach the window
-            // edge" (the container carries `p-2`), so both get the rounded,
-            // bordered, lifted treatment. Inset previously got none, which is why
-            // the sidebar read as a hard rectangle with a shadow behind it rather
-            // than a floating sheet of glass.
-            "group-data-[variant=floating]:rounded-lg group-data-[variant=inset]:rounded-xl",
-            "group-data-[variant=floating]:border group-data-[variant=inset]:border",
-            "group-data-[variant=floating]:border-sidebar-border group-data-[variant=inset]:border-sidebar-border",
-            "group-data-[variant=floating]:shadow-sm group-data-[variant=inset]:shadow-sm"
-          )}
+          /* Frosted, on the inner box only — and specifically NOT on
+             `SidebarInset` or the `SidebarProvider` wrapper above it.
+             A `backdrop-filter` element becomes the containing block for any
+             `position: fixed` descendant, and `CommandPalette` is a
+             `fixed inset-0` overlay that is *not* portalled (it renders
+             inline as a sibling of `<AppHeader>`). Put the filter on a shared
+             ancestor and the palette's scrim anchors to that box instead of the
+             viewport and gets clipped by the shell's own `overflow-hidden`.
+             Scoping it to the inner rail keeps every overlay trigger in here —
+             nav tooltips, the account menu, the mobile sheet — escaping to
+             document.body as they already do.
+
+             `rounded-none` because the rail runs the full height of the window:
+             the glass utility's hairline on the top and bottom edges drew a
+             visible line across the viewport corners. The floating variant's own
+             radius comes from `group-data-[variant=floating]:rounded-lg`, which
+             is what this passes through to. */
+          className="glass flex h-full w-full flex-col rounded-none text-sidebar-foreground group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-float"
         >
           {children}
         </div>
@@ -321,21 +329,20 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
+      /* Transparent, and this is the one place glass earns the chrome rule's
+         exception. The sidebar rail and the top bar stay opaque, but the *content
+         area* has to show the glow field — the kanban columns and cards sitting
+         on it are glass, and glass over a flat `bg-background` diffuses nothing
+         and renders as a plain rectangle. That was the whole original failure.
+
+         Transparent rather than translucent, deliberately: no blur (which would
+         add a compositing layer for the entire viewport and make this the
+         containing block for the non-portalled CommandPalette), just the canvas
+         and the glow field showing through. The rail on the left and the header
+         above stay opaque, so this still reads as framed content. */
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background",
-        // No shadow on the inset. It is the one element in the shell that should
-        // read as flat content rather than a panel floating above something: it
-        // carries every page, and a drop shadow around the entire application
-        // was what made the shell look like a rounded card sitting on a
-        // background instead of a window. The rounded corners stay — they are
-        // load-bearing, because `overflow-hidden` in `app-shell.tsx` clips page
-        // content to them, and the header's top corners depend on that.
-        //
-        // `bg-background` is deliberately opaque. The glow sits behind this box,
-        // so the ambient layer is visible only where the sidebar's glass stands
-        // on it, which is the intended reading: lit at the edges, calm in the
-        // middle where the work happens.
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex w-full flex-1 flex-col",
+        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
@@ -499,7 +506,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:[&>svg]:text-accent",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {

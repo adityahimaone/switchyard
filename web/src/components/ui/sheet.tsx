@@ -28,7 +28,7 @@ function SheetOverlay({
       data-slot="sheet-overlay"
       className={cn(
         // 4px blur on the scrim is the only blur the system allows.
-        "fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px]",
+        "scrim fixed inset-0 z-overlay",
         "transition-opacity duration-200",
         "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
         className
@@ -55,17 +55,24 @@ function SheetContent({
         data-slot="sheet-content"
         className={cn(
           // 240ms on --ease-out-expo, in and out. Nothing here exceeds 300ms.
-          "fixed z-50 flex flex-col glass-strong shadow-float outline-none",
+          /* No `shadow-float` any more: `glass-strong` already carries
+             `--glass-lift-strong`, and listing both meant the float's six-stop
+             shadow silently replaced the glass elevation — which is how the
+             dialog ended up with a softer shadow than the sheet. */
+          "fixed z-overlay flex flex-col glass-strong outline-none",
           "transition-transform duration-240 ease-[var(--ease-out-expo)]",
           "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
+          /* The side border comes off the sliding edges: `glass-strong` draws
+             a full 1px hairline now, and a second border on the same edge read
+             as a doubled rule at this width. */
           side === "right" &&
-            "inset-y-0 right-0 h-full w-3/4 border-l border-line data-[state=closed]:translate-x-full data-[state=open]:translate-x-0 sm:max-w-[480px]",
+            "inset-y-0 right-0 h-full w-3/4 data-[state=closed]:translate-x-full data-[state=open]:translate-x-0 sm:max-w-[480px]",
           side === "left" &&
-            "inset-y-0 left-0 h-full w-3/4 border-r border-line data-[state=closed]:-translate-x-full data-[state=open]:translate-x-0 sm:max-w-[480px]",
+            "inset-y-0 left-0 h-full w-3/4 data-[state=closed]:-translate-x-full data-[state=open]:translate-x-0 sm:max-w-[480px]",
           side === "top" &&
-            "inset-x-0 top-0 h-auto border-b border-line data-[state=closed]:-translate-y-full data-[state=open]:translate-y-0",
+            "inset-x-0 top-0 h-auto data-[state=closed]:-translate-y-full data-[state=open]:translate-y-0",
           side === "bottom" &&
-            "inset-x-0 bottom-0 h-auto border-t border-line data-[state=closed]:translate-y-full data-[state=open]:translate-y-0",
+            "inset-x-0 bottom-0 h-auto data-[state=closed]:translate-y-full data-[state=open]:translate-y-0",
           className
         )}
         {...props}

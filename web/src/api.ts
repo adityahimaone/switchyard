@@ -28,6 +28,22 @@ export interface Task {
   consecutive_failures: number
   last_failure_error: string
   execution_meta?: string
+  /** Declared edit scope, as globs relative to workspace_path. */
+  paths?: string[]
+  /** Quality gate run on the worker before a human may approve. */
+  gate_command?: string
+  /** "", "running", "passed" or "failed". */
+  gate_status?: string
+  gate_output?: string
+  /** "manual" waits for the dispatcher poll; "now" claims on create. */
+  start_mode?: "manual" | "now"
+  /** Retry counter. Attempt 1 is the original run. */
+  attempt?: number
+  /** "workspace" edits the shared checkout; "worktree" uses a per-task worktree. */
+  isolation?: "workspace" | "worktree"
+  /** Branch and worktree path, set at dispatch for a worktree-isolated task. */
+  branch?: string
+  worktree_path?: string
 }
 
 export interface TaskExecutionMeta {
@@ -86,6 +102,53 @@ export function taskRuns(slug: string, taskId: string) {
 export function taskDependencies(slug: string, taskId: string) {
   return api<TaskDependency[]>(`/api/boards/${slug}/tasks/${taskId}/dependencies`)
 }
+
+/** One held path claim, as shown in the board header. */
+export interface PathLease {
+  glob: string
+  task_id: string
+  project: string
+  acquired_at: number
+  title?: string
+  status?: string
+}
+
+/** A validation problem, mirroring the server's Issue type. */
+export interface ValidationIssue {
+  code: string
+  message: string
+  field?: string
+}
+
+/** validateTask runs the same checks as create, writing nothing. */
+export function validateTask(slug: string, draft: Record<string, unknown>) {
+  return api<{ ok: boolean; issues: ValidationIssue[] }>(
+    `/api/boards/${slug}/tasks/validate`,
+    { method: "POST", body: JSON.stringify(draft) },
+  )
+}
+
+/** boardLeases lists the path scopes currently held on a board. */
+export function boardLeases(slug: string) {
+  return api<PathLease[]>(`/api/boards/${slug}/leases`)
+}
+
+/** startTask claims a task now instead of waiting for the next poll. */
+export function startTask(slug: string, taskId: string) {
+  return api<{ task_id: string; status: string; started: boolean; code?: string; message?: string }>(
+    `/api/boards/${slug}/tasks/${taskId}/start`,
+    { method: "POST" },
+  )
+}
+
+/** rerunGate re-runs a task's quality gate without re-running the agent. */
+export function rerunGate(slug: string, taskId: string) {
+  return api<{ task_id: string; gate_status: string; gate_output: string }>(
+    `/api/boards/${slug}/tasks/${taskId}/gate`,
+    { method: "POST" },
+  )
+}
+
 
 export function addTaskDependency(slug: string, taskId: string, dependsOnId: string) {
   return api<{ ok: boolean }>(`/api/boards/${slug}/tasks/${taskId}/dependencies`, {

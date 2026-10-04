@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Archive, Check, FileImage, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -16,8 +17,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { SessionMenu } from "@/components/chat/SessionMenu"
 import { Composer } from "@/components/chat/composer"
-import { useHeaderTrail } from "@/components/header-trail-context"
-import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
@@ -197,25 +196,6 @@ function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
   return "Working"
 }
 const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task status", "Help me plan next step"]
-
-/* Agent / workspace / model triggers in the composer, reduced to text.
- *
- * `SelectTrigger` ships a `glass-flat` fill and a `shadow-xs`. In a page toolbar
- * that is right — it matches `Input` sitting beside it — but inside the composer
- * it would stack three more bounded surfaces inside a glass box, in a row only
- * 36px tall. Removed, they read as a single line of metadata.
- *
- * The overrides are `!`-prefixed because both the fill and the shadow come from
- * the utility class on the trigger's own base string, and `cn` does not resolve
- * that conflict on its own — without the important flag the tint wins and the
- * chips keep their boxes.
- *
- * `shadow-xs` is neutralised rather than removed so the open/close state still
- * has something to transition from; `max-w-40` is kept from before so a long
- * workspace path truncates rather than pushing the send button off the row. */
-const PROMPT_CHIP =
-  "max-w-40 !bg-transparent !shadow-xs hover:!bg-accent-tint focus-visible:!bg-accent-tint data-[state=open]:!bg-accent-tint text-ink-2 hover:text-ink"
-
 const CHAT_COMMANDS = [
   { command: "/clear", label: "Clear draft", description: "Remove the text in the composer." },
   { command: "/stop", label: "Stop run", description: "Stop the active agent run." },
@@ -242,28 +222,18 @@ function groupKeyFor(ts: number): GroupKey {
 
 function isLive(w: Workspace): boolean { return w.status === "connected" || w.status === "local" }
 
-/* Markdown rendering is `AgentMarkdown`, imported from the board feature.
-
-   This page used to carry its own ~10-line regex renderer: split on fenced
-   blocks, then on inline backticks and double-asterisks, and render the rest as
-   `<span>`. That handled bold, inline code and fenced code and nothing else —
-   no lists, headings, links, tables or blockquotes, which is most of what an
-   assistant actually replies with. Worse, the pieces it did handle were styled
-   with literal `border-white/10` and `bg-black/30`, so code blocks rendered as
-   near-black boxes in light mode.
-
-   `AgentMarkdown` is a full react-markdown renderer already in this codebase,
-   already used by the board, with the same XSS stance this page needs
-   (`skipHtml`, no `rehype-raw`, an explicit `disallowedElements` list). It adds
-   a language label, copy and wrap controls on code blocks, which is the thing
-   most wanted from a transcript full of them.
-
-   Two notes on reuse. It lives under `features/board/` and this is a chat page,
-   so the honest fix is promoting it to a shared location; it is imported across
-   for now because moving it means touching the board's task renderer too, and
-   that is a larger diff than this pass should carry. And `AgentMarkdown` is
-   memoized on `text`, which is the common case here — every streaming tick
-   changes only the in-flight message's text. */
+function Markdown({ text }: { text: string }) {
+  const blocks = text.split(/(```[\s\S]*?```)/g)
+  return <div className="space-y-2 whitespace-pre-wrap break-words">{blocks.map((part, index) => {
+    if (part.startsWith("```")) return <pre key={index} className="overflow-auto rounded-lg border border-white/10 bg-black/30 p-3 text-xs">{part.replace(/^```[a-z]*\n?/, "").replace(/```$/, "")}</pre>
+    const inline = part.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((chunk, j) => {
+      if (chunk.startsWith("`") && chunk.endsWith("`")) return <code key={j} className="rounded bg-white/10 px-1 py-0.5 text-xs">{chunk.slice(1, -1)}</code>
+      if (chunk.startsWith("**") && chunk.endsWith("**")) return <strong key={j}>{chunk.slice(2, -2)}</strong>
+      return <span key={j}>{chunk}</span>
+    })
+    return <div key={index}>{inline}</div>
+  })}</div>
+}
 
 function splitResponseText(text: string) {
   const notices: string[] = []
@@ -296,6 +266,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [workspace, setWorkspace] = useState("")
   const [model, setModel] = useState("")
   const [modelSearch, setModelSearch] = useState("")
+  /* The header shows which agent is answering, so it needs the same avatar the
+     composer's profile list renders. Resolved once here rather than searching
+     `profiles` inline in the header. */
+  const avatarForProfile = profiles.find((p) => p.name === profile)?.avatar_url
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
   const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
@@ -420,12 +394,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   useEffect(() => {
     if (initialSessionID && initialSessionID !== sessionID) setSessionID(initialSessionID)
   }, [initialSessionID])
-
-  /* Publishes the session title to the shell header's breadcrumb, which is
-     where it lives now that this page has no title bar of its own. Only when
-     there is a session: an empty chat's header should read "Chat", not
-     "Chat / New chat" for something that has no name yet. */
-  useHeaderTrail(current.data?.title)
 
   useEffect(() => {
     if (!current.data || current.data.id !== sessionID) return
@@ -600,12 +568,16 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   })
   const runEventsMap = messageRunEvents.data ?? {}
 
-  /* The sidebar reads as one material with the top bar rather than two
-     surfaces stacked on the canvas: `bg-surface` on both, with a single hairline
-     between. The old `bg-canvas` body put a 4%-darker wash behind the list,
-     which made the panel read as inset and put a second, unrelated edge
-     against the transcript. */
-  return <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
+  /* Transparent, so the glass panels inside this page (the composer, the
+     session rail at `lg`, the mobile drawer) have the glow field to diffuse.
+     An opaque root here was covering the field for the entire chat surface and
+     leaving every panel below it rendering as flat translucent fill.
+
+     The transcript itself is still the calmest thing on screen: assistant
+     output is unframed on this ground, and the reading guarantee comes from the
+     palette's measured ink contrast, verified against the most saturated canvas
+     the orbs can produce rather than a flat one. */
+  return <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
     {/* Below `lg` this rail is an overlay rather than a column. Measured at
         768px, the app rail (240) plus this rail (280) left the transcript 224px
         and the composer 192px — a 15-character measure, with the composer selects
@@ -619,20 +591,13 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           type="button"
           aria-label="Close chat list"
           onClick={() => onToggleSidebar?.()}
-          className="absolute inset-0 z-20 bg-canvas/60 backdrop-blur-[2px] lg:hidden"
+          className="scrim absolute inset-0 z-raised lg:hidden"
         />
-        <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-line bg-surface shadow-float lg:static lg:z-auto lg:w-[min(280px,85vw)] lg:shadow-none">
-      {/* No `border-b`. The rail is one solid surface with a single rule on its
-          right edge, and a line under its header meant two rules framing the
-          same column. `h-13` matches the shell header, so the two rows stay
-          aligned across the gutter.
-
-          The session menu moved here from the title bar that used to sit beside
-          this one. It acts on the *current* session — rename, duplicate, delete,
-          archive — and this rail is the list those sessions live in, so the
-          control now sits on the thing it operates rather than in a bar about to
-          be deleted. */}
-      <div className="flex h-13 shrink-0 items-center justify-between gap-2 px-3">
+        <aside className="glass absolute inset-y-2 left-2 z-overlay flex w-[min(280px,85vw)] shrink-0 flex-col rounded-lg lg:static lg:z-auto lg:my-2 lg:ml-3 lg:w-[min(280px,85vw)] lg:self-stretch">
+      {/* h-14, matching the app header and the chat top bar, so all three
+          horizontals align. The page h1 lives here — it is the panel's own
+          label, and repeating it in the top bar would be noise. */}
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
         <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : "Chats"}</h1>
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
@@ -659,13 +624,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </TooltipTrigger>
               <TooltipContent side="bottom">New chat</TooltipContent>
             </Tooltip>
-          )}
-          {current.data && !showArchived && (
-            <SessionMenu
-              session={current.data}
-              onDuplicate={() => duplicateSession(current.data!)}
-              onDelete={() => openSessionAction("delete", current.data!)}
-            />
           )}
         </div>
       </div>
@@ -745,20 +703,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                           <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
                             {item.title}
                           </div>
-                          {/* The meta line only carries what varies. Every row
-                              used to open with its workspace, and `local` is
-                              the default — so most rows rendered the same word,
-                              which is not information but noise, and it is the
-                              widest thing on the line, squeezing the model and
-                              the time out. A row now shows the workspace only
-                              when it is a real one. */}
                           <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
-                            {item.workspace && item.workspace !== "local" && (
-                              <span className="truncate">{item.workspace.split("/").filter(Boolean).pop()}</span>
-                            )}
+                            <span className="truncate">{item.workspace || "local"}</span>
                             {item.model && (
                               <>
-                                {item.workspace && item.workspace !== "local" && <span aria-hidden>·</span>}
+                                <span aria-hidden>·</span>
                                 <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
                               </>
                             )}
@@ -797,82 +746,125 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         )}
       </div>
 
-      {/* No footer count. Each group label above already carries its own tally
-          ("PREVIOUS 30 DAYS · 12"), so this badge was restating the same total a
-          third time in a bordered pill at the opposite end of the panel — and the
-          number it showed was the count *after* the search field filtered it,
-          which is not what any of the group labels were summing. When the list is
-          filtered, nothing here now explains why it is shorter. */}
+      {/* Footer count: a badge rather than a bare number, matching the count
+          treatment used beside every search field elsewhere in the app. */}
+      <div className="shrink-0 border-t border-line px-3 py-2">
+        <Badge
+          variant="outline"
+          className="tabular h-6 w-auto flex-none gap-0 border-line bg-well px-1.5 text-[11px] font-normal text-ink-3"
+        >
+          {filteredSessions.length} {showArchived ? "archived" : "active"}
+        </Badge>
+      </div>
     </aside>
       </>
     )}
-      {/* `relative` anchors the composer's absolute float. It is a sibling of the
-          scroller rather than a child of it, so it can sit over the transcript
-          instead of below it — which is both what makes the glass worth having
-          and what lets the scroll fade dissolve text into it. */}
-      <div className="relative flex min-w-0 flex-1 flex-col">
-      {/* No title bar. This row used to carry the session title and a metadata
-          cluster, and it cost a third 56px bar of chrome above the transcript —
-          stacked on the app header and the rail header, roughly 112px before any
-          conversation was visible.
+      <div className="flex min-w-0 flex-1 flex-col">
+      {/* h-14, the same surface as the app header directly above it, so the two
+          bars read as one stack.
 
-          The title now lives in the shell header's breadcrumb, where every other
-          page's context does, and the metadata is gone entirely: the composer
-          already owns agent, workspace and model as editable selects, so the bar
-          was showing read-only copies of three choices the user was looking at
-          fifteen pixels lower. The session menu moved to the rail header for the
-          same reason — it acts on the current session, which is what that rail
-          lists.
+          The right side carries what the transcript footer only shows after the
+          fact: which agent is answering, on what workspace and model.
 
-          What remains is the rail toggle, which still has to live here: below `lg`
-          the rail overlays the transcript instead of taking a column, so without
-          a toggle in this row there is no way to reach the session list. */}
-      <div className="flex h-13 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6 lg:hidden">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="shrink-0 text-ink-3"
-          onClick={() => onToggleSidebar?.()}
-          aria-label="Show chat list"
-          aria-expanded={sidebarOpen}
-        >
-          <PanelLeft className="size-4" />
-        </Button>
-      </div>
+          The priority here matters more than the breakpoint. Measured, a
+          439px cluster at a 1024px viewport left the session title at zero
+          pixels wide — the page's actual content vanished entirely, because the
+          cluster was `shrink-0` and the title was the only shrinkable thing.
+          So the title now holds its width first (`shrink-0`), and the cluster
+          is the part that yields: `min-w-0` plus `truncate` on each term, on a
+          breakpoint that accounts for the 280px session rail rather than
+          assuming the full viewport is available to the bar.
+
+          Frosted and rounded, matching the app header it aligns with. It was
+          `bg-surface border-b` — the last opaque band on the page, and it read
+          as a different app from the shell above it: same height, same content,
+          opposite material. It carries the panel/search controls, so it gets the
+          same `glass` treatment and the same floating margin rhythm.
+
+          NB: this has to be a brace-wrapped JSX comment. A bare C-style
+          comment in this position is a text node, not a comment — it rendered
+          as literal prose at the top of the transcript. Caught in a screenshot,
+          not by any gate. Note also that the sequence "star-slash" ends a JSX
+          comment early, so it cannot appear inside one. */}
+      <header className="glass sticky top-0 z-panel mx-2 mt-2 flex h-14 shrink-0 items-center justify-between gap-3 rounded-lg px-4 md:mx-3 md:mt-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* Rail toggle. Below `lg` this is the only way to reach the session
+              list, since the rail overlays there instead of taking a column. */}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="shrink-0 text-ink-3 lg:hidden"
+            onClick={() => onToggleSidebar?.()}
+            aria-label="Show chat list"
+            aria-expanded={sidebarOpen}
+          >
+            <PanelLeft className="size-4" />
+          </Button>
+          {/* The title is the page's content, so it takes the leftover width (`flex-1`
+            with `min-w-0`) and the metadata cluster is the part that yields.
+            Measured, a `shrink` cluster plus a `shrink` title left the title
+            only 59px — enough for two characters — because both sides were
+            shrinkable and the cluster's intrinsic width won. */}
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+            {current.data?.title ?? "New chat"}
+          </h2>
+        </div>
+
+        {/* `xl` rather than `lg`, and capped at `max-w-[40%]` on top of that: at
+            1024-1280 the chat rail already takes 280px, so the bar's usable
+            width is well under the viewport and the cluster is widest exactly
+            where there is least room for it. The cap is what actually protects
+            the title — the breakpoint alone only hid it at small widths. */}
+        <div className="hidden min-w-0 max-w-[40%] shrink items-center gap-1.5 text-2xs text-ink-3 xl:flex">
+          {profile && (
+            <span className="flex min-w-0 items-center gap-1">
+              <Avatar className="size-4 shrink-0">
+                {avatarForProfile && <AvatarImage src={avatarForProfile} alt="" />}
+                <AvatarFallback className="shrink-0 bg-well text-[7px] text-ink-2">
+                  {profile.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{profile}</span>
+            </span>
+          )}
+          {workspace && (
+            <>
+              {profile && <span aria-hidden className="shrink-0">·</span>}
+              {/* Basename only: a workspace path is long enough to dominate the
+                  bar, and the path is what the composer select shows on demand. */}
+              <span className="truncate" title={workspace}>{workspace.split("/").filter(Boolean).pop()}</span>
+            </>
+          )}
+          {model && (
+            <>
+              {(profile || workspace) && <span aria-hidden className="shrink-0">·</span>}
+              <span className="truncate font-mono" title={model}>{model.split("/").pop()}</span>
+            </>
+          )}
+        </div>
+        {current.data && (
+          <div className="shrink-0">
+            <SessionMenu session={current.data} onDuplicate={() => duplicateSession(current.data!)} onDelete={() => openSessionAction("delete", current.data!)} />
+          </div>
+        )}
+      </header>
       {/* The rail's gutter: the scroller pads the viewport for it, but the caller's
           own `px-4 sm:px-6` is merged onto that same element and nets the result
           down to 24px — measured 16px between the ticks and the message text at
           every width below 1440, which puts a 1px rule against body copy. The
           content column carries the right-hand inset instead, where nothing
-          overrides it.
-
-          `scroll-fade-both` dissolves the transcript into the header above it
-          and into the floating composer below, instead of letting either one cut
-          a line of text off mid-sentence. The bottom fade is sized to clear the
-          composer; `pb-40` below keeps the last message from resting inside it.
-
-          `max-w-[44rem]` rather than `max-w-3xl`. At 768px on a 1440px screen the
-          assistant's prose ran to well over 130 characters a line — past the
-          point where the eye can find the start of the next one on the return
-          sweep. 44rem lands near 70 characters at the transcript's type size. */}
+          overrides it. */}
       <MessageScroller
         className="min-h-0 flex-1"
         busy={isRunning}
         navigation="rail"
         showJump={showJumpToLatest}
-        /* Clears the floating composer: 16px bottom inset + ~78px minimum box
-           (two text rows, the control row and its padding) + 24px of gap. The
-           composer auto-grows to 8 rows, so at its tallest this is not quite
-           enough — but the button tracks the bottom of the *scroll* area, and
-           the transcript's own `pb-40` keeps it above the composer for most of
-           its range. Chat is the only consumer; other scrollers pass nothing. */
-        jumpOffset={118}
         onFollowChange={(following) => {
           shouldFollowChatRef.current = following
           setShowJumpToLatest(!following)
         }}
-        viewportClassName="scroll-fade-both px-4 py-4 pb-40 sm:px-6"
-        contentClassName="mx-auto max-w-[44rem] space-y-6 pr-12"
+        viewportClassName="px-4 py-4 sm:px-6"
+        contentClassName="mx-auto max-w-3xl space-y-6 pr-12"
       >
         {activeMessages.length === 0 && !run ? (
           <div className="rounded-card border border-dashed border-line bg-surface p-6">
@@ -892,11 +884,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             className={message.role === "user" ? "flex justify-end" : "flex justify-start"}
           >
             {message.role === "user" ? (
-              /* The user's own message is the only solid-accent surface in the
-                 transcript. Assistant output stays unframed on the page
-                 surface, which is what lets a long answer read as a document
-                 rather than a stack of cards. */
-              <div className="max-w-[80%] rounded-card bg-accent px-4 py-2.5 text-sm text-accent-ink">
+              /* The user's own message is the only accented surface in the
+                 transcript, and it is tinted rather than solid: 22% accent over
+                 the page with an accent hairline at 45%. A solid accent block
+                 was the heaviest element on a page whose entire job is reading
+                 long assistant output — it pulled the eye to the one message the
+                 user already knew they sent.
+
+                 It keeps the strongest tint of anything at chat level because it
+                 is the only thing here that must be findable at a glance when
+                 scanning back through a long transcript. */
+              <div className="max-w-[80%] rounded-card border border-accent/45 bg-accent/22 px-4 py-2.5 text-sm text-ink">
                 <div>{message.content}</div>
                 {message.attachments?.length ? <div className="mt-2 flex flex-wrap gap-2">{message.attachments.map((att) => <AttachmentChip key={att.id} att={att} />)}</div> : null}
               </div>
@@ -908,7 +906,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = isLiveRunMessage ? mergeActivityEvents(events.data ?? [], liveEvents) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const response = splitResponseText(messageStreaming ? (run?.id ? (answerBuffer[run.id] ?? "") : "") : (message.content || msgRun?.output || ""))
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} />{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><Markdown text={response.text} />{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
@@ -990,23 +988,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         }
         controls={
           <>
-            {/* These three are chips, not fields.
-                `SelectTrigger` carries a `glass-flat` fill and a `shadow-xs`,
-                which is right for a select sitting in a page toolbar next to an
-                input — but here it would be a second bounded surface inside the
-                composer's own glass, three boxes stacked in one 36px row.
-
-                Stripped back to text and a chevron, they read as one metadata
-                line and the composer keeps a single edge. This is the only
-                metadata surface on the page now: the chat title bar that used to
-                repeat agent/workspace/model is gone.
-
-                They stay real `<button>`s with the trigger's own focus ring, so
-                the dropdowns are unchanged for keyboard and pointer users — only
-                the box is removed. `PROMPT_CHIP` is shared by all three because
-                they must not drift apart. */}
             <Select value={profile || "default"} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Agent profile">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1032,7 +1015,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Workspace">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1055,7 +1038,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
+              <SelectTrigger size="sm" className="max-w-40 truncate" aria-label="Model">
                 <SelectValue placeholder="Default model" />
               </SelectTrigger>
               {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
@@ -1063,8 +1046,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                     `position="popper"` panel to the trigger and will not push it
                     above, so the panel has to be willing to shrink. The sticky
                     search row above still pins inside it. */}
-              <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+              <SelectContent position="popper" align="start" className="max-h-[min(26rem,var(--radix-select-content-available-height))] w-72">
+                <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                   <Input
                     value={modelSearch}
                     onChange={(event) => setModelSearch(event.target.value)}

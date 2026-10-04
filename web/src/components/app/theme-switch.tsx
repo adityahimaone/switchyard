@@ -38,7 +38,14 @@ export function ThemeSwitch({ className }: { className?: string }) {
       role="radiogroup"
       aria-label="Colour theme"
       className={cn(
-        "flex h-7 shrink-0 items-center gap-0.5 rounded-control border border-line bg-well p-0.5",
+        /* Was `border-line bg-well` with an active pill of `bg-surface` — the
+           one control on the frosted header that still used opaque fills, so it
+           read as a dark slab pasted onto a glass bar. Both ends now take the
+           material: the track is a recessed well (`glass-flat` plus an inset
+           shadow) and the active pill stands proud of it (`glass-flat-strong`
+           plus an outward lift), which is the same pairing Segmented uses. */
+        "glass-flat flex h-7 shrink-0 items-center gap-0.5 rounded-control p-0.5",
+        "shadow-[inset_0_1px_2px_rgb(0_0_0_/_0.14)]",
         className,
       )}
     >
@@ -54,10 +61,14 @@ export function ThemeSwitch({ className }: { className?: string }) {
                 aria-label={label}
                 onClick={() => setTheme(value)}
                 className={cn(
-                  "flex size-6 items-center justify-center rounded-[6px] outline-none transition-colors duration-150",
+                  "flex size-6 items-center justify-center rounded-[6px] outline-none transition-[color,background-color,box-shadow] duration-150",
                   "focus-visible:ring-[3px] focus-visible:ring-focus/40",
+                  /* The active pill is raised, not filled — same as the active
+                     segment in `Segmented`, so the two controls in the header
+                     read as one system. The accent bloom under it is a
+                     non-colour cue that the choice is registered. */
                   active
-                    ? "bg-surface text-ink shadow-lift"
+                    ? "glass-flat-strong text-ink shadow-[0_1px_2px_rgb(0_0_0_/_0.2),0_0_12px_-4px_color-mix(in_srgb,var(--c-accent)_55%,transparent)]"
                     : "text-ink-3 hover:text-ink",
                 )}
               >

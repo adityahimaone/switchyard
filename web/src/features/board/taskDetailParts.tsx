@@ -16,11 +16,17 @@ import { COLUMNS, type Profile, type Status, type Task, type Workspace } from ".
 
 /* Status uses the nine lamp colours, not hand-mixed Tailwind hues. */
 export const STATUS_CHIP: Record<string, string> = {
-  done: "border-success/30 bg-success-tint text-success-text-text",
+  /* Was `text-success-text-text`, which is not a token — the token is
+     `--color-success-text`, so `text-success-text-text` resolved to nothing and
+     the "done" chip fell back to inherited body ink. It read as slightly too
+     dark against the green tint, which is the kind of defect that looks like a
+     deliberate choice rather than a typo. Caught while re-tiering this surface
+     to the glass recipe. */
+  done: "border-success/30 bg-success-tint text-success-text",
   running: "border-accent/30 bg-accent-tint text-accent-text",
   blocked: "border-danger/30 bg-danger-tint text-danger-text",
   review: "border-review/30 bg-review-tint text-review-text",
-  archived: "border-line bg-well text-ink-3",
+  archived: "border-line bg-raised/70 text-ink-3",
 }
 
 export const STATUS_FALLBACK_CHIP = "border-line bg-well text-ink-2"

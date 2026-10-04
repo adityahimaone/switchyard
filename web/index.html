@@ -12,12 +12,13 @@
     <script>
       // Applies the stored theme before first paint, so there is no flash of the
       // wrong surface. Light is the default in Signal Blue, so `dark` is the
-      // class that gets added. Must stay in sync with applyTheme() and
-      // applyPalette() in src/hooks/useSettings.ts, which re-apply them on boot.
+      // class that gets added. Must stay in sync with applyTheme() in
+      // src/hooks/useSettings.ts, which re-applies it on boot.
       //
-      // The palette has to be set here too, and for the same reason: a reload
-      // would otherwise paint one full frame of Signal Blue before React
-      // mounted and switched to the stored palette.
+      // The effects budget is applied here too, for the same reason: a user on
+      // "lite" would otherwise get a frame or two of 20px blur and drifting
+      // orbs before React mounted and pulled it back to 8px — which on a slow
+      // GPU is exactly the stutter they turned the setting off to avoid.
       (() => {
         try {
           const preference = localStorage.getItem("kb-theme") || "system"
@@ -26,13 +27,9 @@
             (preference === "system" && !matchMedia("(prefers-color-scheme: light)").matches)
           document.documentElement.classList.toggle("dark", dark)
           document.documentElement.dataset.theme = preference
-          // "signal" is the base stylesheet and is expressed as *no* attribute,
-          // so a user who returns to the default has it removed.
-          const palette = localStorage.getItem("kb-palette")
-          if (palette && palette !== "signal")
-            document.documentElement.dataset.themePalette = palette
-          else
-            delete document.documentElement.dataset.themePalette
+
+          const effects = localStorage.getItem("kb-effects") === "lite" ? "lite" : "system"
+          document.documentElement.dataset.effects = effects
         } catch {}
       })()
     </script>

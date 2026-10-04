@@ -1,10 +1,18 @@
 # plan.md — kanban-board (Vite FE + Go BE, opsi A)
 
+> **Status: implemented.** This file is the original build plan, kept for
+> history. Two details below are stale and are annotated where they appear;
+> everything else still describes the shipped system. For the current security
+> model see [docs/security.md](docs/security.md).
+>
+> - The HTTP layer is `net/http` with the stdlib `ServeMux`, **not chi**.
+> - Auth is **enabled**, not "none" — see the annotated line in §1.
+
 Repo: `~/apps/kanban-board`, deploy VPS :8790, share `~/.hermes/kanban/boards/<slug>/kanban.db`.
 
 ## Scope (simple dulu)
 
-1. **BE Go** (`cmd/server`) — chi, `modernc.org/sqlite` (pure Go, no cgo), port 8790
+1. **BE Go** (`cmd/server`) — `net/http` (stdlib `ServeMux`, **not chi**), `modernc.org/sqlite` (pure Go, no cgo), port 8790
    - `GET /api/boards` — list dari `~/.hermes/kanban/boards/*/board.json`
    - `GET /api/boards/{slug}/tasks` — read tasks (id, title, body, status, priority, workspace_path, assignee, created_at, completed_at, result, consecutive_failures)
    - `POST /api/boards/{slug}/tasks` — create (title, body, workspace_path, priority, status=todo|triage)
@@ -13,7 +21,12 @@ Repo: `~/apps/kanban-board`, deploy VPS :8790, share `~/.hermes/kanban/boards/<s
    - `GET /api/workspaces` — dari `~/.hermes/workspaces.json` (dropdown)
    - `GET /api/nodes` — proxy `:8788/health` (node-agent status)
    - `GET /api/boards/{slug}/tasks/{id}/events` — task_events tail (history card)
-   - Auth: none (localhost + tailscale only). nginx subpath `/kanban/` proxy.
+   - Auth: **enabled** (this line is stale — the plan originally shipped with no auth).
+     A shared password guards every `/api/*` route except `/api/auth/*`, enforced
+     by `authHandler` in `cmd/server/main.go`. Passwords are argon2id; login is
+     rate limited; the session cookie is `HttpOnly`/`SameSite=Lax`/`Secure` over
+     HTTPS. nginx proxies TLS in front of this server. See
+     [docs/security.md](docs/security.md).
 
 2. **FE Vite** (`web/`) — React 19, TS, Vite 7, Tailwind v4, shadcn/ui (button/card/badge/select/dialog/dropdown), TanStack Query v5
    - `BoardView` — columns per status (triage/todo/ready/running/blocked/review/done), card = title + badge priority + workspace chip + assignee + result excerpt

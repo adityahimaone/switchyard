@@ -276,7 +276,7 @@ export function PromptInput({
                keeps the primary action at a clickable size on narrow windows. */
             className="min-w-0 shrink"
           >
-            <SelectTrigger className="h-8 w-auto max-w-52 rounded-xl border-0 bg-transparent px-2 py-0 text-xs hover:bg-muted focus-visible:ring-2">
+            <SelectTrigger className="glass-flat h-8 w-auto max-w-52 rounded-xl px-2 text-xs hover:bg-muted focus-visible:ring-2">
               <span className="flex min-w-0 items-center gap-1.5">
                 {currentModel?.icon ? (
                   <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3.5">
@@ -288,7 +288,10 @@ export function PromptInput({
                 </span>
               </span>
             </SelectTrigger>
-            <SelectContent className="right-auto w-52 shadow-none">
+            {/* No shadow override: the shared panel lift is what separates a
+                floating menu from the page, and cancelling it left this one
+                reading as a flat block. */}
+            <SelectContent className="w-52">
               {models.map((option) => (
                 <SelectItem
                   key={option.value}

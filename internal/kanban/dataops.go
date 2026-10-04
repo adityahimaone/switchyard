@@ -43,6 +43,44 @@ func ensureImportSchema(db *sql.DB) error {
 	return err
 }
 
+// EnsureImportSchemaPublic creates the base tables for a board that does not
+// exist yet. Exported so tests and the import path share one definition of
+// "a new board", rather than each restating the DDL and letting the two drift.
+//
+// The base tables are created FIRST: openDB's migrations are all ALTER TABLE
+// statements, and running those against a file with no tasks table fails with
+// "no such table". ImportBoard already orders it this way for the same reason.
+func EnsureImportSchemaPublic(slug string) error {
+	// Seed an empty file so openDB's os.Stat check passes.
+	if err := os.MkdirAll(filepath.Dir(BoardDBPath(slug)), 0o755); err != nil {
+		return err
+	}
+	if f, err := os.Create(BoardDBPath(slug)); err != nil {
+		return err
+	} else if err := f.Close(); err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", BoardDBPath(slug)))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := ensureImportSchema(db); err != nil {
+		return err
+	}
+	// Now that tasks exists, the additive migrations are safe.
+	if err := ensureTaskExecutionColumns(db); err != nil {
+		return err
+	}
+	if err := ensurePositionColumn(db); err != nil {
+		return err
+	}
+	if err := ensureHarnessBindingsSchema(db); err != nil {
+		return err
+	}
+	return ensurePathLeasesSchema(db)
+}
+
 func ensurePositionColumn(db *sql.DB) error {
 	if _, err := db.Exec(`ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return err
@@ -56,17 +94,26 @@ func taskSelectCols() string {
 	        COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1),
 	        workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''),
 	        COALESCE(created_by,''), created_at, started_at, completed_at,
-	        consecutive_failures, COALESCE(last_failure_error,''), COALESCE(execution_meta,'')`
+	        consecutive_failures, COALESCE(last_failure_error,''), COALESCE(execution_meta,''),
+	        COALESCE(paths,'[]'), COALESCE(gate_command,''), COALESCE(gate_status,''),
+	        COALESCE(gate_output,''), COALESCE(start_mode,'manual'), COALESCE(attempt,1),
+	        COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,'')`
 }
 
 func scanTask(rows *sql.Rows) (Task, error) {
 	var t Task
 	var started, completed sql.NullInt64
+	// paths is read as raw text and decoded here: the column holds a JSON array,
+	// and a corrupt value must not fail the whole board listing.
+	var pathsJSON string
 	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command, &t.ExecutionMode, &t.MaxIterations,
 		&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt,
-		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta); err != nil {
+		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta,
+		&pathsJSON, &t.GateCommand, &t.GateStatus, &t.GateOutput, &t.StartMode, &t.Attempt,
+		&t.Isolation, &t.Branch, &t.WorktreePath); err != nil {
 		return t, err
 	}
+	t.Paths = PathsParse(pathsJSON)
 	if started.Valid {
 		v := started.Int64
 		t.StartedAt = &v

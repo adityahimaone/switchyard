@@ -198,16 +198,38 @@ func (e *RunControlError) Error() string { return e.Err.Error() }
 
 // RetryTask resets a failed/blocked/settled task back to todo so the
 // dispatcher respawns it. running is rejected — stop it first.
+//
+// A retry is a new attempt, not a reset. The previous attempt's outcome is
+// archived into task_events and the counter is incremented, so "attempt 3" is
+// visible in the history rather than inferred. Nothing is deleted: the previous
+// result, the error and any branch are left in place, because they are the
+// evidence for why the retry was needed.
+//
+// The whole thing is one transaction, so a task can never be left requeued with
+// its attempt history unwritten, and its path leases are released so the
+// requeued card can claim them again.
 func RetryTask(slug, taskID string) (Task, error) {
 	db, err := openDB(slug)
 	if err != nil {
 		return Task{}, err
 	}
 	defer db.Close()
-	var status string
-	if err := db.QueryRow(`SELECT status FROM tasks WHERE id=?`, taskID).Scan(&status); err == sql.ErrNoRows {
+
+	tx, err := db.Begin()
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+
+	var status, result, lastError string
+	var attempt int
+	err = tx.QueryRow(`SELECT status, COALESCE(result,''), COALESCE(last_failure_error,''),
+		COALESCE(attempt,1) FROM tasks WHERE id=?`, taskID).
+		Scan(&status, &result, &lastError, &attempt)
+	if err == sql.ErrNoRows {
 		return Task{}, &RunControlError{Code: 404, Err: fmt.Errorf("task not found: %s", taskID)}
-	} else if err != nil {
+	}
+	if err != nil {
 		return Task{}, err
 	}
 	if status == "running" {
@@ -216,17 +238,113 @@ func RetryTask(slug, taskID string) (Task, error) {
 	if status == "archived" {
 		return Task{}, &RunControlError{Code: 409, Err: fmt.Errorf("task is archived; clone instead")}
 	}
-	if _, err := db.Exec(`UPDATE tasks SET status='todo', completed_at=NULL, consecutive_failures=0 WHERE id=?`, taskID); err != nil {
+
+	// A dependent that already started was built on the attempt being replaced.
+	// Re-running it would invalidate whatever that dependent produced.
+	started, err := hasStartedDependentsTx(tx, taskID)
+	if err != nil {
 		return Task{}, err
 	}
-	if err := insertEvent(db, taskID, "retry_requested", map[string]any{"source": "run-control", "from": status, "to": "todo"}); err != nil {
+	if started {
+		return Task{}, &RunControlError{
+			Code: 409,
+			Err:  fmt.Errorf("%s: a dependent task has already started from this attempt", CodeDependentStarted),
+		}
+	}
+
+	nextAttempt := attempt + 1
+	if _, err := tx.Exec(`UPDATE tasks SET status='todo', completed_at=NULL, consecutive_failures=0,
+		started_at=NULL, current_run_id=NULL, attempt=?
+		WHERE id=?`, nextAttempt, taskID); err != nil {
 		return Task{}, err
 	}
-	if err := insertEvent(db, taskID, "status_changed", map[string]any{"source": "run-control", "from": status, "to": "todo"}); err != nil {
+	// The previous verdict is cleared, not kept: a stale "gate failed" would
+	// block the new attempt's approve. The history below is what preserves it.
+	if _, err := tx.Exec(`UPDATE tasks SET gate_status='', gate_output='', gate_run_id=NULL WHERE id=?`, taskID); err != nil {
 		return Task{}, err
 	}
-	broadcastEvent("status_changed", map[string]any{"board": slug, "task_id": taskID, "from": status, "to": "todo"})
+	// Leases are released so the requeued card can take them again; the claim
+	// re-acquires them atomically with the next claim.
+	if err := ReleaseLeases(tx, taskID); err != nil {
+		return Task{}, err
+	}
+
+	summary := map[string]any{
+		"source":         "run-control",
+		"from":           status,
+		"to":             "todo",
+		"attempt":        nextAttempt,
+		"previous":       attempt,
+		"previous_state": status,
+	}
+	if result != "" {
+		summary["previous_result"] = truncateForEvent(result, 4000)
+	}
+	if lastError != "" {
+		summary["previous_error"] = truncateForEvent(lastError, 1000)
+	}
+	if err := insertEventTx(tx, taskID, "attempt_archived", summary); err != nil {
+		return Task{}, err
+	}
+	if err := insertEventTx(tx, taskID, "retry_requested", map[string]any{
+		"source": "run-control", "from": status, "to": "todo", "attempt": nextAttempt,
+	}); err != nil {
+		return Task{}, err
+	}
+	if err := insertEventTx(tx, taskID, "status_changed", map[string]any{
+		"source": "run-control", "from": status, "to": "todo", "attempt": nextAttempt,
+	}); err != nil {
+		return Task{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Task{}, err
+	}
+
+	broadcastEvent("status_changed", map[string]any{
+		"board": slug, "task_id": taskID, "from": status, "to": "todo", "attempt": nextAttempt,
+	})
+	broadcastEvent("task_retried", map[string]any{
+		"board": slug, "task_id": taskID, "attempt": nextAttempt,
+	})
 	return taskByID(db, taskID)
+}
+
+// hasStartedDependentsTx reports whether any task that depends on taskID has
+// already left the queue, which would mean it consumed the attempt being
+// replaced.
+func hasStartedDependentsTx(tx *sql.Tx, taskID string) (bool, error) {
+	rows, err := tx.Query(`SELECT t.status FROM tasks t
+		JOIN task_dependencies d ON d.task_id = t.id
+		WHERE d.depends_on_id = ?`, taskID)
+	if err != nil {
+		if isNoSuchTable(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			return false, err
+		}
+		// Anything past the queue consumed the result this attempt produced.
+		switch status {
+		case "running", "review", "done", "archived":
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// truncateForEvent bounds an archived attempt summary so a long agent log
+// cannot bloat the event table.
+func truncateForEvent(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > max {
+		return s[:max] + "... [truncated]"
+	}
+	return s
 }
 
 // ReleaseStaleTask force-releases a running task whose log has gone silent
@@ -362,14 +480,20 @@ func CloneTask(slug, taskID string) (Task, error) {
 func taskByID(db *sql.DB, taskID string) (Task, error) {
 	var t Task
 	var started, completed sql.NullInt64
+	var pathsJSON string
 	err := db.QueryRow(`SELECT id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''),
-		COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''), COALESCE(created_by,''), created_at, started_at, completed_at, consecutive_failures, COALESCE(last_failure_error,'')
+		COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''), COALESCE(created_by,''), created_at, started_at, completed_at, consecutive_failures, COALESCE(last_failure_error,''),
+		COALESCE(paths,'[]'), COALESCE(gate_command,''), COALESCE(gate_status,''), COALESCE(gate_output,''), COALESCE(start_mode,'manual'), COALESCE(attempt,1),
+		COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,'')
 		FROM tasks WHERE id=?`, taskID).
 		Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command,
-			&t.ExecutionMode, &t.MaxIterations, &t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt, &started, &completed, &t.Failures, &t.LastError)
+			&t.ExecutionMode, &t.MaxIterations, &t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt, &started, &completed, &t.Failures, &t.LastError,
+			&pathsJSON, &t.GateCommand, &t.GateStatus, &t.GateOutput, &t.StartMode, &t.Attempt,
+			&t.Isolation, &t.Branch, &t.WorktreePath)
 	if err != nil {
-		return Task{}, err
+		return t, err
 	}
+	t.Paths = PathsParse(pathsJSON)
 	if started.Valid {
 		v := started.Int64
 		t.StartedAt = &v

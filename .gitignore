@@ -4,12 +4,15 @@ web/dist/
 web/*.tsbuildinfo
 .scratch/
 
-# Playwright run output. Traces and failure screenshots are per-run debug
-# artefacts, several MB each — the committed baselines live in
-# web/e2e/__screenshots__/ and those ARE tracked.
-web/e2e/.artifacts/
-web/test-results/
-web/playwright-report/
+# Compiled server binary. `go build -o switchyard` at the repo root is the
+# documented local build, so the name collides with the tracked source dir.
+/switchyard
+/switchyard.exe
+
+# Agent tool state: local indexes, logs and scratch renders.
+/.codegraph/
+.superpowers/
+.commandcode/
 
 # Local secrets
 .env

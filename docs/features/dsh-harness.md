@@ -28,7 +28,6 @@ DeepSeek Harness session, so round N sees rounds 1..N-1.
 | Binding model | `internal/kanban/nodeagent.go` | `HarnessBinding`, deterministic ID, resolve/update |
 | Schema | `internal/kanban/kanban.go` | `harness_bindings` table, `tasks.dsh_session_id`, `current_run_id` |
 | Dispatch | `cmd/server/remote_dispatch.go` | Builds the continuation request from the binding |
-| Legacy dispatcher | `cmd/server/ssh_dispatch.go` | Same binding logic on the SSH lane |
 | Result validation | `internal/kanban/nodeagent.go` | `resolveDSHResultIdentity`, `finalizeRemoteResult` |
 | Worker | node-agent `cmd/agent/main.go` | Runs `dsh`, preserves session, isolated home |
 | Worker contract | node-agent `docs/dsh-harness.md` | Machine-level detail for the worker side |
@@ -344,7 +343,6 @@ Tests covering this feature: `TestResolveHarnessBindingCreatesThenReusesDetermin
 | `internal/kanban/dataops.go` | Binding preservation on board export/import |
 | `internal/kanban/comments.go` | `TaskCommentsAfter`, `RenderReviewComments` |
 | `cmd/server/remote_dispatch.go` | node-agent lane dispatch |
-| `cmd/server/ssh_dispatch.go` | SSH lane dispatch, `remoteTransportForPath` |
 | `web/src/features/board/OutputPanels.tsx` | `DshResultPanel` |
 | `web/src/features/board/TaskDialog.tsx` | Executor picker |
 | node-agent `docs/dsh-harness.md` | Worker-side contract |

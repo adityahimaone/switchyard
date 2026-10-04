@@ -102,6 +102,9 @@ $env:NODE_AGENT_TRANSPORT = 'http'
 $t = (Get-Content .hermes-local\node-agent.env -Raw) -replace '^NODE_AGENT_TOKEN=',''
 $env:NODE_AGENT_TOKEN = $t.Trim()
 $env:HERMES_HOME      = 'C:\Development\switchyard\.hermes-local'
+# Dev-only: seeds the known password 123456. Omit it and the server generates
+# a random one and prints it once.
+$env:SWITCHYARD_DEV   = '1'
 & C:\Development\switchyard\bin\kanban-board.exe
 ```
 
@@ -111,9 +114,24 @@ $env:HERMES_HOME      = 'C:\Development\switchyard\.hermes-local'
 cd web && pnpm install && pnpm dev
 ```
 
-Open <http://localhost:5173> and sign in with the seeded password `123456`
-(`internal/kanban/auth.go`). Change it via `POST /api/auth/password` if the
-port is ever exposed beyond loopback.
+Open <http://localhost:5173> and sign in with the seeded password `123456`.
+
+That password only exists when `SWITCHYARD_DEV=1` is set, which is what the
+launch command above does. Without the flag the server generates a random
+24-character password and prints it to the console exactly once:
+
+```
+switchyard: ─────────────────────────────────────────────
+switchyard:   password: k3PqR7xWn2VbYc8ZdFtLmHsJ
+switchyard:   This is shown ONCE. Save it now.
+switchyard: ─────────────────────────────────────────────
+```
+
+A generated password is flagged `must_change`, so the UI withholds the app
+until a new one is chosen. The dev password is below the 12-character minimum
+on purpose — it never reaches a real deployment. To choose a password
+explicitly, set `SWITCHYARD_ADMIN_PASSWORD` (12+ characters) instead of using
+the dev flag.
 
 `web/vite.config.ts` already proxies `/api` to `127.0.0.1:8790`, so no proxy
 configuration is needed.
@@ -278,7 +296,7 @@ passes on a real Linux host — so they are environment-specific, not regression
 | Test | Cause | Passes on Linux |
 |---|---|---|
 | `TestCodeGraphScan*` (3 tests) | `exec: "sh": executable file not found` — shells out to `sh`, which Windows lacks | yes |
-| `TestStartWorkspaceTerminalLocalReturnsSessionID` | same `sh` dependency | yes |
+| `TestSSHScriptQuotesWorkdir` | needs a POSIX `sh` to interpret the generated remote command | yes |
 | `TestValidRelativeCodeGraphPath` | `a\b` is a valid relative path on Windows, rejected by a POSIX-only check | yes |
 | `TestLocalWorkspaceExpandsTildeAndMissingPathIsNotHealthy` | `~` expansion resolves differently; no `~/apps/kanban-board` here | yes |
 | `TestChatWorkspacePortabilityAndFork` | hardlink behavior differs | yes |

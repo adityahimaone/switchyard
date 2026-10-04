@@ -111,7 +111,7 @@ export default function AttachmentAnalysisSettings() {
             <SelectValue placeholder={selectedLabel} />
           </SelectTrigger>
           <SelectContent className="w-[min(32rem,calc(100vw-1rem))]">
-            <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(e) => e.stopPropagation()}>
+            <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(e) => e.stopPropagation()}>
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

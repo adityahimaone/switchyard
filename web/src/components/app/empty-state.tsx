@@ -19,9 +19,12 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-start gap-1 rounded-panel px-6 py-10",
-        // Decorative texture is allowed here because an empty state holds no
-        // data to read against it.
+        /* Glass, because an empty state *is* a content panel — it sits in the
+           content area on the glow field, and frosting it keeps the material
+           consistent with every other surface that appears there. It is also the
+           one place the effect costs nothing: there is no data to obscure, which
+           is why the dot grid and the wash are still allowed underneath. */
+        "glass flex flex-col items-start gap-1 rounded-panel px-6 py-10",
         "smoke-wash dot-grid",
         className,
       )}

@@ -449,6 +449,18 @@ func finalizeRemoteResult(db *sql.DB, req NodeDispatchRequest, taskID, eventKind
 	if err := insertEventTx(tx, taskID, eventKind, payload); err != nil {
 		return false, err
 	}
+	// Leases survive this transition on purpose: a task moving to review keeps
+	// its declared scope, because the uncommitted diff is what a human is about
+	// to read and an overlapping task would corrupt it. A task moving to todo or
+	// blocked has no work in progress, so its paths are released. Only the
+	// approve path (review -> done) frees them.
+	var nextStatus string
+	_ = tx.QueryRow(`SELECT status FROM tasks WHERE id=?`, taskID).Scan(&nextStatus)
+	if nextStatus != "review" {
+		if err := ReleaseLeases(tx, taskID); err != nil {
+			return false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}

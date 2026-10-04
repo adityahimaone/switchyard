@@ -1,46 +1,23 @@
 import { useEffect, useState } from "react"
-import { SettingRow, SettingsSection, Segmented, PalettePicker } from "../settings-parts"
+import { SettingRow, SettingsSection, Segmented } from "../settings-parts"
 import {
-  applyDensity, applyMotion, readDensity, readMotion,
-  type Density, type MotionPreference, type ThemePalette, type ThemePreference,
+  applyDensity, applyEffects, applyMotion, readDensity, readEffects, readMotion,
+  type Density, type EffectsPreference, type MotionPreference, type ThemePreference,
 } from "@/hooks/useSettings"
-import { usePalette, useTheme } from "@/hooks/useSettings"
+import { useTheme } from "@/hooks/useSettings"
 
 /**
- * The swatches are literal hex values, not `var(--c-*)`.
- *
- * A swatch has to show the palette it represents, but the live document is
- * painted in whichever palette is currently active — so a swatch reading
- * `var(--c-canvas)` would render Signal Blue on all three cards and the control
- * would show nothing at all. The values are therefore hardcoded here, and they
- * are the *light* mode of each palette for that reason: the label beside them is
- * ink-coloured in both modes, and a dark swatch against a dark card in dark mode
- * would be the one option that disappears.
- *
- * They must be kept in step with `themes.css`. Nothing enforces that, which is
- * why each entry repeats the palette name in its hint.
- */
-const PALETTE_OPTIONS: { value: ThemePalette; label: string; hint: string; swatch: [string, string, string] }[] = [
-  { value: "signal", label: "Signal Blue", hint: "Default · cool blue", swatch: ["#f2f4fd", "#ffffff", "#2f57c4"] },
-  { value: "lime", label: "Lime forest", hint: "Near-white · lime accent", swatch: ["#fbfcf8", "#ffffff", "#aff33e"] },
-  { value: "zen", label: "Zen linen", hint: "Warm paper · charcoal", swatch: ["#e9e4d8", "#f4efe4", "#2e2e2e"] },
-]
-
-/**
- * Appearance writes four things: the palette attribute, the theme class,
- * `data-density` and `data-motion` on <html>. Each is persisted under its own key
- * so the values survive a reload, and applied on mount so the first paint matches.
- *
- * Palette and theme are separate axes on purpose — a palette supplies both a
- * light and a dark variant, so there is one picker for colour and another for
- * mode. Collapsing them into one control would force "Lime forest dark" to be a
- * separate option from "Lime forest light" and would double the list for no gain.
+ * Appearance writes four things to <html>: the theme class, `data-density`,
+ * `data-motion` and `data-effects`. Each is persisted under its own key so the
+ * values survive a reload, and applied on mount so the first paint matches —
+ * the theme and effects keys are also read by the pre-paint script in
+ * index.html, which is why those two must stay in sync with it.
  */
 export default function AppearanceTab() {
   const { theme, setTheme } = useTheme()
-  const { palette, setPalette } = usePalette()
   const [density, setDensityState] = useState<Density>(readDensity)
   const [motion, setMotionState] = useState<MotionPreference>(readMotion)
+  const [effects, setEffectsState] = useState<EffectsPreference>(readEffects)
 
   useEffect(() => {
     try { localStorage.setItem("kb-density", density) } catch {}
@@ -52,19 +29,13 @@ export default function AppearanceTab() {
     applyMotion(motion)
   }, [motion])
 
+  useEffect(() => {
+    try { localStorage.setItem("kb-effects", effects) } catch {}
+    applyEffects(effects)
+  }, [effects])
+
   return (
     <SettingsSection title="Appearance" description="How Switchyard looks on this device.">
-      <div className="py-3">
-        <p className="text-sm font-medium text-ink">Palette</p>
-        <p className="mt-0.5 max-w-[56ch] text-xs text-ink-3">
-          Colour theme. Each palette has its own light and dark variant, so this is
-          separate from the mode below.
-        </p>
-        <div className="mt-3">
-          <PalettePicker<ThemePalette> value={palette} onChange={setPalette} options={PALETTE_OPTIONS} />
-        </div>
-      </div>
-
       <SettingRow label="Theme" help="Choose light, dark, or match your system.">
         <Segmented<ThemePreference>
           label="Theme"
@@ -104,6 +75,26 @@ export default function AppearanceTab() {
           options={[
             { value: "system", label: "System" },
             { value: "reduce", label: "On" },
+          ]}
+        />
+      </SettingRow>
+
+      {/* Deliberately worded as a performance setting rather than an aesthetic
+          one, because that is what it is: the glass, its shadows and every
+          colour stay exactly as they are, and only the blur radius, the drifting
+          orbs and the grain are traded away. Someone on a slow GPU or a laptop
+          on battery should be able to predict what turning this on does. */}
+      <SettingRow
+        label="Reduce effects"
+        help="Lowers blur and stops background motion to help on slower GPUs and battery. Colours and glass surfaces are unchanged."
+      >
+        <Segmented<EffectsPreference>
+          label="Reduce effects"
+          value={effects}
+          onChange={setEffectsState}
+          options={[
+            { value: "system", label: "System" },
+            { value: "lite", label: "On" },
           ]}
         />
       </SettingRow>
