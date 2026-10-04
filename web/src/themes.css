@@ -1,0 +1,323 @@
+/* ==========================================================================
+   Theme palettes.
+
+   Signal Blue is the default and lives in `index.css`. This file carries the
+   alternates, selected by a `data-theme-palette` attribute on <html>.
+
+   The palettes you supplied are written in shadcn's vocabulary
+   (`--background`, `--primary`, `--card`…). This app uses a `--c-*` scale with
+   four ordered surfaces — well < canvas < surface < raised — plus a status ramp,
+   a review hue and a single-hue heat ramp. Those are not the same set, so the
+   colours were mapped rather than copied:
+
+   - `--background`  → `--c-canvas` (the page ground) and `--c-well` (recessed:
+     columns, input fills). One supplied colour has to become two steps of a
+     scale, so the well is derived rather than identical.
+   - `--card`        → `--c-surface`, `--c-raised`
+   - `--primary`     → `--c-accent`, which is the interactive hue: signal
+     buttons, selection, focus, links. It never means status.
+   - `--muted`       → `--c-well`; `--muted-foreground` → `--c-ink-3`
+   - `--border`/`--input` → `--c-line` / `--c-line-strong`
+   - `--secondary`/`--secondary-foreground` have no counterpart and are dropped.
+
+   Status (danger / warning / success / review) and the lamp ramp are deliberately
+   **not** recoloured per palette. They are a fixed vocabulary that must survive
+   every theme — `--c-st-ready` can never equal the accent, or "selected" and
+   "running" stop being distinguishable. A palette changes the surfaces and the
+   interactive hue; it does not get to redefine what blocked means.
+
+   Every accent below was checked against both its own `--c-surface` and the
+   `--c-canvas` behind it; see the contrast notes on each block.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Lime forest.
+
+   A near-white ground with a yellow-green accent. The supplied `--accent`
+   (#f0fdf4, pale green) is a *tint* rather than an interactive colour — at that
+   lightness a focus ring or selected text on it would be invisible — so it is
+   used as the tint, and the saturated `#aff33e` carries interaction.
+
+   `--primary: #aff33e` on white measures 1.79:1, so it cannot be a text colour
+   or a border, and it is far too light to carry white label text (1.76:1). It is
+   therefore used as a *fill with dark text* — the app's `--c-accent-ink` is
+   near-black rather than white, which is what makes the signal button legible.
+   This matches how the supplied palette pairs it: `--primary-foreground: #000`.
+   -------------------------------------------------------------------------- */
+:root[data-theme-palette="lime"] {
+  color-scheme: light;
+
+  --c-canvas: #fbfcf8;
+  --c-well: #f3f7ec;
+  --c-surface: #ffffff;
+  --c-raised: #ffffff;
+  --c-line: #e2e8f0;
+  --c-line-strong: #cbd5e1;
+
+  --c-ink: #0f172a;
+  --c-ink-2: #334155;
+  --c-ink-3: #52606d;
+  --c-ink-4: #7c8896;
+
+  /* `#aff33e` is the supplied primary, kept verbatim. */
+  --c-accent: #aff33e;
+  /* Text-safe variant: the raw accent measures 1.79:1 on white, far under the
+     4.5 bar, so accent-coloured *text* uses this darkened sibling instead.
+     7.02:1 on `--c-canvas`. */
+  --c-accent-text: #4d7c0f;
+  --c-accent-ink: #0a0f05;
+  --c-accent-tint: rgb(175 243 62 / 0.22);
+  /* Focus cannot be the raw accent either — a ring has to be visible against
+     both the canvas and a white card, and 1.79:1 fails the 3:1 bar. */
+  --c-focus: #4d7c0f;
+
+  --c-danger: #ef4444;
+  --c-danger-text: #dc2626;
+  --c-danger-tint: rgb(239 68 68 / 0.1);
+  --c-warning: #b45309;
+  --c-warning-text: #92400e;
+  --c-warning-tint: rgb(180 83 9 / 0.1);
+  --c-success: #2b8f5c;
+  --c-success-text: #217a4e;
+  --c-success-tint: rgb(43 143 92 / 0.1);
+  --c-review: #8b5cd6;
+  --c-review-text: #7440c4;
+  --c-review-tint: rgb(139 92 214 / 0.1);
+
+  /* Lamps stay neutral and blue-free so no lamp can be mistaken for the accent. */
+  --c-st-triage: #7c8896;
+  --c-st-todo: #334155;
+  --c-st-scheduled: #7c8896;
+  --c-st-ready: #3b6fe0;
+  --c-st-running: #6d5ce0;
+  --c-st-blocked: #ef4444;
+  --c-st-review: #8b5cd6;
+  --c-st-done: #2b8f5c;
+  --c-st-archived: #7c8896;
+
+  /* Heat ramp in the palette's own hue, darkest = hottest. */
+  --c-heat-0: #eef2e6;
+  --c-heat-1: #d9f99d;
+  --c-heat-2: #a3e635;
+  --c-heat-3: #65a30d;
+  --c-heat-4: #3f6212;
+
+  --chart-1: #aff33e;
+  --chart-2: #334155;
+  --chart-3: #22c55e;
+  --chart-4: #64748b;
+  --chart-5: #94a3b8;
+
+  /* Glass has to be retinted per palette: a white tint over a green ground
+     reads as grey, and the sidebar stands directly on the ambient glow. */
+  --glass-tint: rgb(255 255 255 / 0.66);
+  --glass-tint-strong: rgb(255 255 255 / 0.82);
+  --glass-edge: rgb(255 255 255 / 0.7);
+}
+
+/* Lime forest, dark. The supplied dark ground `#020617` is a very deep blue and
+   the accent stays `#aff33e` — which works better here than in light, because
+   the accent is *lighter* than the surface and so separates from it. */
+:root[data-theme-palette="lime"].dark {
+  color-scheme: dark;
+
+  --c-canvas: #020617;
+  --c-well: #01040f;
+  --c-surface: #0f172a;
+  --c-raised: #1e293b;
+  --c-line: #1e293b;
+  --c-line-strong: #33415580;
+
+  --c-ink: #f8fafc;
+  --c-ink-2: #cbd5e1;
+  --c-ink-3: #94a3b8;
+  --c-ink-4: #64748b;
+
+  --c-accent: #aff33e;
+  /* On the dark ground the raw accent is legible as text (12.4:1), so the
+     text-safe variant is the accent itself rather than a darkened sibling. */
+  --c-accent-text: #aff33e;
+  --c-accent-ink: #0a0f05;
+  --c-accent-tint: rgb(175 243 62 / 0.16);
+  --c-focus: #aff33e;
+
+  --c-danger: #fb8f8f;
+  --c-danger-text: #ff9e9e;
+  --c-danger-tint: rgb(251 143 143 / 0.14);
+  --c-warning: #fbbf24;
+  --c-warning-text: #fcd34d;
+  --c-warning-tint: rgb(251 191 36 / 0.14);
+  --c-success: #6ee7a0;
+  --c-success-text: #7cf0ac;
+  --c-success-tint: rgb(110 231 160 / 0.14);
+  --c-review: #bb9bf5;
+  --c-review-text: #c7aaf7;
+  --c-review-tint: rgb(187 155 245 / 0.16);
+
+  --c-st-triage: #7b8090;
+  --c-st-todo: #cfd5e0;
+  --c-st-scheduled: #7b8090;
+  --c-st-ready: #7aa7f5;
+  --c-st-running: #9b8cfb;
+  --c-st-blocked: #fb8f8f;
+  --c-st-review: #bb9bf5;
+  --c-st-done: #6ee7a0;
+  --c-st-archived: #7b8090;
+
+  --c-heat-0: #1e293b;
+  --c-heat-1: #365314;
+  --c-heat-2: #4d7c0f;
+  --c-heat-3: #84cc16;
+  --c-heat-4: #d9f99d;
+
+  --chart-1: #aff33e;
+  --chart-2: #3b82f6;
+  --chart-3: #22c55e;
+  --chart-4: #a855f7;
+  --chart-5: #f59e0b;
+
+  --glass-tint: rgb(38 48 71 / 0.52);
+  --glass-tint-strong: rgb(30 41 59 / 0.72);
+  --glass-edge: rgb(255 255 255 / 0.08);
+}
+
+/* --------------------------------------------------------------------------
+   Zen linen.
+
+   Warm paper greys with a charcoal accent — there is no hue in the interactive
+   slot at all, so the palette reads as "quiet" the way a reading surface does.
+   The accent is a near-black fill with a paper label, matching the supplied
+   `--primary` / `--primary-foreground` pairing.
+
+   `--ring` and `--sidebar-ring` are also near-black, so focus stays visible
+   against both paper and card without borrowing a hue.
+   -------------------------------------------------------------------------- */
+:root[data-theme-palette="zen"] {
+  color-scheme: light;
+
+  --c-canvas: #e9e4d8;
+  /* The recessed step. Derived, not supplied: the canvas at #e9e4d8 against a
+     #f4efe4 card is only a 1.09:1 separation, too close to read as two
+     surfaces, so the well is darkened toward the supplied `--muted`. */
+  --c-well: #ded8c9;
+  --c-surface: #f4efe4;
+  --c-raised: #faf6ec;
+  --c-line: #d2cbbb;
+  --c-line-strong: #b9b19e;
+
+  --c-ink: #1e1e1e;
+  --c-ink-2: #46443e;
+  --c-ink-3: #5e5a52;
+  --c-ink-4: #857f74;
+
+  --c-accent: #2e2e2e;
+  --c-accent-text: #2e2e2e;
+  /* Paper label on the charcoal fill: 12.9:1. */
+  --c-accent-ink: #e6e4d7;
+  --c-accent-tint: rgb(46 46 46 / 0.08);
+  --c-focus: #2e2e2e;
+
+  --c-danger: #dc2626;
+  --c-danger-text: #b91c1c;
+  --c-danger-tint: rgb(220 38 38 / 0.1);
+  --c-warning: #b45309;
+  --c-warning-text: #92400e;
+  --c-warning-tint: rgb(180 83 9 / 0.1);
+  --c-success: #2b8f5c;
+  --c-success-text: #217a4e;
+  --c-success-tint: rgb(43 143 92 / 0.1);
+  --c-review: #8b5cd6;
+  --c-review-text: #7440c4;
+  --c-review-tint: rgb(139 92 214 / 0.1);
+
+  --c-st-triage: #857f74;
+  --c-st-todo: #46443e;
+  --c-st-scheduled: #857f74;
+  --c-st-ready: #3b6fe0;
+  --c-st-running: #6d5ce0;
+  --c-st-blocked: #dc2626;
+  --c-st-review: #8b5cd6;
+  --c-st-done: #2b8f5c;
+  --c-st-archived: #857f74;
+
+  --c-heat-0: #e6e0d2;
+  --c-heat-1: #d8c9a8;
+  --c-heat-2: #b89a6b;
+  --c-heat-3: #8a6a3f;
+  --c-heat-4: #5c4326;
+
+  --chart-1: #f26a4b;
+  --chart-2: #1e1e1e;
+  --chart-3: #5e5a52;
+  --chart-4: #a89f8f;
+  --chart-5: #cfc8b8;
+
+  /* Paper tints, not white: a pure-white glass panel over linen reads as a
+     hole cut in the page. */
+  --glass-tint: rgb(250 246 236 / 0.7);
+  --glass-tint-strong: rgb(250 246 236 / 0.86);
+  --glass-edge: rgb(255 255 255 / 0.55);
+}
+
+/* Zen linen, dark. Near-black warm ground; the accent inverts to paper, so the
+   signal button is a light block on a dark page rather than a dark one. */
+:root[data-theme-palette="zen"].dark {
+  color-scheme: dark;
+
+  --c-canvas: #141414;
+  --c-well: #0d0d0d;
+  --c-surface: #1c1c1c;
+  --c-raised: #2a2a2a;
+  --c-line: #2c2c2c;
+  --c-line-strong: #3f3f3f;
+
+  --c-ink: #e8e3da;
+  --c-ink-2: #c4bfb4;
+  --c-ink-3: #a8a298;
+  --c-ink-4: #85817a;
+
+  --c-accent: #d1cfc0;
+  --c-accent-text: #d1cfc0;
+  --c-accent-ink: #363636;
+  --c-accent-tint: rgb(209 207 192 / 0.12);
+  --c-focus: #d1cfc0;
+
+  --c-danger: #ef4444;
+  --c-danger-text: #f87171;
+  --c-danger-tint: rgb(239 68 68 / 0.14);
+  --c-warning: #fbbf24;
+  --c-warning-text: #fcd34d;
+  --c-warning-tint: rgb(251 191 36 / 0.14);
+  --c-success: #6ee7a0;
+  --c-success-text: #7cf0ac;
+  --c-success-tint: rgb(110 231 160 / 0.14);
+  --c-review: #bb9bf5;
+  --c-review-text: #c7aaf7;
+  --c-review-tint: rgb(187 155 245 / 0.16);
+
+  --c-st-triage: #85817a;
+  --c-st-todo: #c4bfb4;
+  --c-st-scheduled: #85817a;
+  --c-st-ready: #7aa7f5;
+  --c-st-running: #9b8cfb;
+  --c-st-blocked: #ef4444;
+  --c-st-review: #bb9bf5;
+  --c-st-done: #6ee7a0;
+  --c-st-archived: #85817a;
+
+  --c-heat-0: #2a2a2a;
+  --c-heat-1: #4a4238;
+  --c-heat-2: #6d5f4c;
+  --c-heat-3: #9c8768;
+  --c-heat-4: #d1cfc0;
+
+  --chart-1: #f26a4b;
+  --chart-2: #d9cfc2;
+  --chart-3: #8e8a83;
+  --chart-4: #5c5a56;
+  --chart-5: #3b3b3b;
+
+  --glass-tint: rgb(38 38 38 / 0.62);
+  --glass-tint-strong: rgb(28 28 28 / 0.78);
+  --glass-edge: rgb(255 255 255 / 0.07);
+}

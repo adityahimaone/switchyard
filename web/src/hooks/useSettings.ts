@@ -23,6 +23,48 @@ export function applyTheme(preference: ThemePreference) {
   document.documentElement.dataset.theme = preference
 }
 
+/** Colour palettes. Signal Blue is the default and has no attribute value. */
+export const PALETTE_KEY = "kb-palette"
+export type ThemePalette = "signal" | "lime" | "zen"
+export const PALETTES: readonly ThemePalette[] = ["signal", "lime", "zen"]
+
+export function readPalette(): ThemePalette {
+  try {
+    const value = localStorage.getItem(PALETTE_KEY)
+    return PALETTES.includes(value as ThemePalette) ? (value as ThemePalette) : "signal"
+  } catch { return "signal" }
+}
+
+export function applyPalette(palette: ThemePalette) {
+  const root = document.documentElement
+  // `signal` is the base stylesheet, so it is expressed as *no attribute* rather
+  // than as `data-theme-palette="signal"`. That matters for specificity: the base
+  // tokens live on `:root`, and an attribute selector would outrank them, so
+  // leaving the attribute on for the default palette would let a stale value
+  // from a previous selection keep winning.
+  if (palette === "signal") delete root.dataset.themePalette
+  else root.dataset.themePalette = palette
+}
+
+export function savePalette(palette: ThemePalette) {
+  try { localStorage.setItem(PALETTE_KEY, palette) } catch {}
+  applyPalette(palette)
+  // `saveTheme` dispatches this so any other subscriber re-reads; the palette
+  // needs the same signal for its own cross-tab sync.
+  window.dispatchEvent(new StorageEvent("storage", { key: PALETTE_KEY, newValue: palette }))
+}
+
+export function usePalette() {
+  const [palette, setPalette] = useState<ThemePalette>(() => readPalette())
+  useEffect(() => {
+    const sync = () => setPalette(readPalette())
+    const onStorage = (event: StorageEvent) => { if (event.key === PALETTE_KEY) sync() }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
+  return { palette, setPalette: (value: ThemePalette) => { savePalette(value); setPalette(value) } }
+}
+
 export type Density = "comfortable" | "compact"
 export const DENSITY_KEY = "kb-density"
 
