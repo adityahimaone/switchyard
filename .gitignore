@@ -12,6 +12,7 @@ web/*.tsbuildinfo
 # Agent tool state: local indexes, logs and scratch renders.
 /.codegraph/
 .superpowers/
+.commandcode/
 
 # Local secrets
 .env
