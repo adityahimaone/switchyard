@@ -115,18 +115,39 @@ live cookie from a signed-in browser as `SWITCHYARD_SESSION`, or set
 **The fixture board.** `web/e2e/visual.spec.ts` seeds a `visual-fixture` board so
 the Board capture has real cards in it. Against a live board every column renders
 empty, so there is no card to catch a change — a green suite that photographs
-nothing. Create it once:
+nothing.
 
-```sh
-hermes kanban boards create visual-fixture --name "Visual fixture"
-```
+The suite **recreates** the board itself, once per run, via `hermes kanban boards
+rm --delete` + `create`. Do not set it up by hand and do not add another seeding
+path: the server's `POST /api/boards` writes `board.json` and an *empty* database
+file, and only the CLI creates the `tasks` schema.
 
-The CLI owns the schema. `POST /api/boards` writes `board.json` and an *empty*
-database file, so a board created that way can never be seeded.
+Why recreate rather than clear:
 
-Note `running` is dispatcher-owned: it can be neither created nor PATCHed through
-the API, so that column is left to render its empty state. `DELETE /tasks/{id}`
-*archives* rather than deletes, which is why the fixture re-archives each run.
+- `DELETE /tasks/{id}` **archives** (`ArchiveTask`), it does not delete. Clearing
+  per run left 1,165 archived rows after ~40 runs.
+- Archiving is O(rows), so the fixture got slower every run — Board alone went from
+  milliseconds to ~90s and pushed the suite past its own timeout. After the fix a
+  full run is ~2.6 minutes, down from 17.4.
+- `hermes kanban boards rm` without `--delete` moves the board to
+  `boards/_archived/`, which still leaves the rows on disk. `--delete` is required.
+
+**Reset and seed must both run exactly once per suite** (`beforeAll`). Seeding per
+test is a real bug I hit: the second Board test found the first one's five cards
+already present and added five more, so every card rendered twice.
+
+`running` is dispatcher-owned — it can be neither created nor PATCHed through the
+API — so that column is left to render its empty state, which is worth capturing.
+
+**Auth applies to fixtures too.** Every `/api/*` route is behind `authHandler`, and
+the `beforeAll` request context gets no cookie from `page.context().addCookies`. The
+session is sent via `extraHTTPHeaders` in `playwright.config.ts` instead. Without
+it the seed POSTs 401 and the board silently renders empty — which looks like a
+passing capture of nothing.
+
+Keep the session token in `.scratch/`, not `/tmp`: something on this host sweeps
+`/tmp`, and a vanishing token makes the suite fall back to the seed password and
+fail with a 401 that looks like a code problem.
 
 **Environment overrides:** `SWITCHYARD_URL` (default `http://127.0.0.1:8790`),
 `SWITCHYARD_SESSION`, `SWITCHYARD_PASSWORD`, `SWITCHYARD_BOARD` (use a board other

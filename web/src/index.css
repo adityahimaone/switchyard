@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
+/* Alternate palettes. Must come after `tailwindcss` so its `@theme inline`
+   block is registered, but the rules themselves only read custom properties,
+   so load order does not affect which wins. */
+@import "./themes.css";
 
 @custom-variant dark (&:is(.dark *));
 

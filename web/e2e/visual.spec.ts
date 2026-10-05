@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { spawnSync } from "node:child_process";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 /**
@@ -17,8 +18,11 @@ import AxeBuilder from "@axe-core/playwright";
  * (see `boardPath`) — a missing board renders an error card that would otherwise
  * pass a pixel diff forever.
  */
-const PAGES: { name: string; path: (page: Page) => string | Promise<string> }[] = [
-  { name: "Board", path: (page) => boardPath(page) },  // seeded fixture board, see seedFixtureBoard
+const PAGES: {
+  name: string
+  path: (page: Page, request: APIRequestContext) => string | Promise<string>
+}[] = [
+  { name: "Board", path: () => boardPath() },  // reset + seeded once per suite
   { name: "Overview", path: () => "/overview" },
   // `/chat` with no session opens the MOST RECENT transcript, so the page depends
   // on whatever was last used on this board — two runs a minute apart capture two
@@ -30,7 +34,7 @@ const PAGES: { name: string; path: (page: Page) => string | Promise<string> }[] 
   // resolves it the same way a human would. A transcript is user content, not
   // chrome, so this gate covers "the Chat shell renders correctly for a real
   // conversation"; the empty state is covered by the empty-state check below.
-  { name: "Chat", path: (page) => chatPath(page) },
+  { name: "Chat", path: (_page, request) => chatPath(request) },
   { name: "Skills", path: () => "/skills" },
 ];
 
@@ -47,8 +51,8 @@ const BASE_URL = process.env.SWITCHYARD_URL ?? "http://127.0.0.1:8790";
  * that conversation changes — which is the correct signal, but only if it is the
  * same conversation each run.
  */
-async function chatPath(page: Page): Promise<string> {
-  const res = await page.request.get("/api/chat/sessions");
+async function chatPath(request: APIRequestContext): Promise<string> {
+  const res = await request.get("/api/chat/sessions");
   expect(res.ok(), "GET /api/chat/sessions failed").toBeTruthy();
   const sessions = (await res.json()) as { id: string }[];
   const id = process.env.SWITCHYARD_CHAT_SESSION ?? sessions[0]?.id;
@@ -82,52 +86,49 @@ const FIXTURE_BOARD = "visual-fixture";
  */
 const UNREACHABLE_STATUSES = new Set(["running"]);
 
-async function seedFixtureBoard(page: Page): Promise<string> {
-  const boards = await page.request.get("/api/boards");
-  const existing = (await boards.json()) as { slug: string }[];
-  if (!Array.isArray(existing)) {
-    throw new Error(`GET /api/boards did not return a list: ${JSON.stringify(existing)} — is sign-in working?`);
+/**
+ * Drop and recreate the fixture board through the hermes CLI.
+ *
+ * The server has no board-delete route and `POST /api/boards` writes an EMPTY
+ * database file — the `tasks` schema is created by hermes. So the reset has to go
+ * through the CLI, which also makes this the one place that needs hermes on PATH.
+ *
+ */
+function runFixtureReset(slug: string): { ok: boolean; detail: string } {
+  // `--delete`, not the default. Plain `rm` moves the directory to
+  // `boards/_archived/`, which is recoverable but still leaves ~1,200 archived rows
+  // on disk — the exact unbounded growth this reset exists to remove. `--delete`
+  // hard-deletes the board directory.
+  const rm = spawnSync("hermes", ["kanban", "boards", "rm", slug, "--delete"], {
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  // `rm` fails harmlessly when the board is absent, which is the normal first run.
+  const create = spawnSync("hermes", ["kanban", "boards", "create", slug, "--name", "Visual fixture"], {
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  if (create.status !== 0) {
+    return { ok: false, detail: (create.stderr || create.stdout || "").trim() || `exit ${create.status}` };
   }
-  if (!existing.some((b) => b.slug === FIXTURE_BOARD)) {
-    throw new Error(
-      `the fixture board "${FIXTURE_BOARD}" does not exist. Create it once — the server's board ` +
-        `API writes an empty database file, and the schema comes from hermes:\n` +
-        `  hermes kanban boards create ${FIXTURE_BOARD} --name "Visual fixture"`,
-    );
-  }
+  return { ok: true, detail: rm.stderr || "" };
+}
 
-  // Start from an empty board every run.
-  //
-  // Two constraints, both learned the hard way:
-  //
-  //  - DELETE /tasks/{id} ARCHIVES (`ArchiveTask`), it does not delete. Clearing the
-  //    previous run's cards that way leaves them in the table forever — 28
-  //    archived rows after two runs. They do not render, so the screenshots stayed
-  //    correct, but the fixture grew without bound.
-  //  - The API has no board-delete route, and POST /api/boards only writes
-  //    board.json plus an EMPTY database file. The `tasks` schema is created by
-  //    hermes, so a board this fixture creates itself can never be seeded.
-  //
-  // So: the fixture expects a board created ONCE by the CLI, and re-archives the
-  // whole board each run. Archived cards never render, so the captured board looks
-  // identical to a fresh one — and the header's task count stays put, which is
-  // what keeps the run-to-run noise floor near zero. Set SWITCHYARD_BOARD to point
-  // the suite at a different board instead.
-  const listed = await page.request.get(`/api/boards/${FIXTURE_BOARD}/tasks`);
-  if (listed.ok()) {
-    for (const t of (await listed.json()) as { id: string; status: string }[]) {
-      // The counter is archived too, so this keeps the "N tasks" figure — which IS
-      // rendered in the page header, so it IS in the screenshot — from drifting
-      // upward on every run. That drift was the entire run-to-run noise floor:
-      // 0.018%, the same magnitude as a real 12px→17px radius change, which is
-      // what made the threshold un-settable. Archived cards never render, so
-      // archiving is enough to keep the pixels stable.
-      await page.request.delete(`/api/boards/${FIXTURE_BOARD}/tasks/${t.id}`);
-    }
-  }
-
-  // One card per column that renders, with fixed copy. Statuses match
-  // ValidStatuses in internal/kanban/kanban.go.
+/**
+ * Seed the fixture board: one card in every column that renders, with fixed copy.
+ *
+ * Statuses match ValidStatuses in internal/kanban/kanban.go. `running` is
+ * deliberately absent — it is dispatcher-owned end to end and the server refuses
+ * both creating and moving to it, so that column renders its own empty state,
+ * which is itself worth capturing.
+ *
+ * Runs ONCE per suite, from `beforeAll`, immediately after the board is recreated.
+ * Seeding per test was a bug: the second Board test found the first one's five
+ * cards already present and added five more, so every card rendered twice and the
+ * diff image showed both copies. A once-per-suite reset has to be paired with a
+ * once-per-suite seed.
+ */
+async function seedFixtureCards(request: APIRequestContext): Promise<void> {
   const cards: [string, string, number][] = [
     ["todo", "Fixture: tighten the retry backoff", 1],
     ["scheduled", "Fixture: re-measure status lamp contrast", 2],
@@ -136,26 +137,23 @@ async function seedFixtureBoard(page: Page): Promise<string> {
     ["done", "Fixture: completed work, kept for layout", 3],
   ];
   for (const [status, title, priority] of cards) {
-    const created = await page.request.post(`/api/boards/${FIXTURE_BOARD}/tasks`, {
+    const created = await request.post(`/api/boards/${FIXTURE_BOARD}/tasks`, {
       data: { title, body: "Seeded by the visual fixture so the board is not empty.", status, priority },
     });
     if (!created.ok()) {
-      const body = await created.text();
       throw new Error(
-        `could not seed the ${status} card: ${created.status()} ${body}\n\n` +
-          "If this says 'no such table: tasks', the board exists but its schema does not. " +
-          "The server's POST /api/boards only writes board.json and an empty file — the schema " +
-          "is created by the hermes CLI. Create it once with:\n" +
-          `  hermes kanban boards create ${FIXTURE_BOARD} --name "Visual fixture"`,
+        `could not seed the ${status} card: ${created.status()} ${await created.text()}\n\n` +
+          "If this says 'no such table: tasks', the board exists but has no schema — the " +
+          "server's POST /api/boards writes board.json and an empty file, and the schema " +
+          "comes from hermes.",
       );
     }
   }
-
-  return FIXTURE_BOARD;
 }
 
-async function boardPath(page: Page): Promise<string> {
-  const slug = process.env.SWITCHYARD_BOARD ?? (await seedFixtureBoard(page));
+/** The fixture board's path. Reset and seeded once per suite, so this only names it. */
+function boardPath(): string {
+  const slug = process.env.SWITCHYARD_BOARD ?? FIXTURE_BOARD;
   return `/board/${encodeURIComponent(slug)}`;
 }
 
@@ -264,12 +262,35 @@ async function setTheme(page: Page, theme: (typeof THEMES)[number]) {
   await page.waitForTimeout(150);
 }
 
+// Reset the fixture board ONCE per suite.
+//
+// It used to reset per test, by listing every task and archiving it one request at a
+// time. DELETE archives rather than deletes (`ArchiveTask`), so the rows were never
+// removed and the table reached 1,165 archived rows over ~40 runs — which made the
+// fixture O(rows) and the suite slower every run, until Board alone was taking ~90s
+// and pushing the run past its own timeout.
+//
+// `hermes kanban boards` owns the schema: the server's POST /api/boards writes an
+// empty database file with no `tasks` table, so recreate-and-seed is the only clean
+// reset available.
+test.beforeAll(async ({ request }) => {
+  const recreate = runFixtureReset(FIXTURE_BOARD);
+  if (!recreate.ok) {
+    throw new Error(
+      `could not reset the fixture board: ${recreate.detail}\n\n` +
+        `It must be recreatable through the hermes CLI, which owns the schema:\n` +
+        `  hermes kanban boards create ${FIXTURE_BOARD} --name "Visual fixture"`,
+    );
+  }
+  await seedFixtureCards(request);
+});
+
 for (const theme of THEMES) {
   test.describe(`visual · ${theme}`, () => {
     for (const target of PAGES) {
-      test(`${target.name}`, async ({ page }) => {
+      test(`${target.name}`, async ({ page, request }) => {
         await signIn(page);
-        await page.goto(await target.path(page));
+        await page.goto(await target.path(page, request));
         await waitForShell(page);
         await setTheme(page, theme);
 
@@ -430,6 +451,106 @@ test.describe("tokens", () => {
       for (const s of stray.slice(0, 5)) console.log(`  ${s}`);
     }
   });
+
+  /**
+   * Every palette resolves, in both themes.
+   *
+   * This exists because the palettes went missing in a merge and nothing failed.
+   * `themes.css` and the `useSettings` helpers both survived untouched — what was
+   * dropped was the four things that CONNECT them: the `@import` in index.css, the
+   * pre-paint block in index.html, the `applyPalette(readPalette())` call in
+   * main.tsx, and the picker in AppearanceTab. The result was a picker that saved
+   * a preference nothing read, over a stylesheet nothing loaded — which looks
+   * exactly like "no feature" and passes every other check.
+   *
+   * So assert the wiring, not the presence of the files. The expected values are
+   * each palette's own ground and accent from themes.css.
+   */
+  // Every palette supplies BOTH a light and a dark variant, so all six
+  // combinations are asserted — a palette whose dark block went missing would
+  // still pass a light-only check by rendering the Signal Blue dark values.
+  // Values are each palette's own, from themes.css and index.css's `.dark`.
+  const PALETTES = {
+    signal: {
+      light: { canvas: "#f2f4fd", accent: "#2f57c4" },
+      dark: { canvas: "#0f1320", accent: "#7aa7f5" },
+    },
+    lime: {
+      light: { canvas: "#fbfcf8", accent: "#aff33e" },
+      dark: { canvas: "#020617", accent: "#aff33e" },
+    },
+    zen: {
+      light: { canvas: "#e9e4d8", accent: "#2e2e2e" },
+      dark: { canvas: "#141414", accent: "#d1cfc0" },
+    },
+  } as const;
+
+  for (const theme of THEMES) {
+    test(`every palette resolves · ${theme}`, async ({ page }) => {
+      await signIn(page);
+      await page.goto("/skills");
+      await waitForShell(page);
+      await setTheme(page, theme);
+
+      for (const name of Object.keys(PALETTES) as (keyof typeof PALETTES)[]) {
+        const actual = await page.evaluate((paletteName) => {
+          // "signal" is expressed as NO attribute — themes.css layers the alternates
+          // over `:root[data-theme-palette=…]`, so leaving a stale attribute on the
+          // default would outrank the base stylesheet and silently override it.
+          if (paletteName === "signal") delete document.documentElement.dataset.themePalette;
+          else document.documentElement.dataset.themePalette = paletteName;
+          const cs = getComputedStyle(document.documentElement);
+          return {
+            canvas: cs.getPropertyValue("--c-canvas").trim().toLowerCase(),
+            accent: cs.getPropertyValue("--c-accent").trim().toLowerCase(),
+          };
+        }, name);
+
+        expect(
+          actual,
+          `palette "${name}" did not resolve in ${theme}. If themes.css lost its ` +
+            `@import in index.css, the alternates are defined but never loaded — the picker ` +
+            `still saves a preference and nothing reads it.`,
+        ).toEqual(PALETTES[name][theme]);
+      }
+    });
+  }
+
+  /** The picker applies and persists, and a reload restores it before first paint. */
+  test("palette picker applies and survives a reload", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/settings");
+    await waitForShell(page);
+    await page.getByText("Appearance", { exact: true }).first().click();
+
+    const group = page.getByRole("radiogroup", { name: "Colour palette" });
+    await expect(group).toBeVisible();
+
+    const before = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--c-accent").trim().toLowerCase(),
+    );
+
+    await group.getByRole("radio", { name: /Lime forest/ }).click();
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("kb-palette")))
+      .toBe("lime");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue("--c-accent").trim().toLowerCase(),
+        ),
+      )
+      .toBe("#aff33e");
+    expect(before).not.toBe("#aff33e");
+
+    // The pre-paint script in index.html is what makes a reload correct on the
+    // FIRST frame. Without it there is a flash of Signal Blue before React mounts,
+    // which no assertion after the fact would catch.
+    await page.reload();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.themePalette))
+      .toBe("lime");
+  });
 });
 
 test.describe("layout", () => {
@@ -438,7 +559,7 @@ test.describe("layout", () => {
     test(`no horizontal overflow at ${width}px`, async ({ page }) => {
       await signIn(page);
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto(await boardPath(page));
+      await page.goto(boardPath());
       await waitForShell(page);
 
       const overflow = await page.evaluate(

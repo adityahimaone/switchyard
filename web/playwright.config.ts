@@ -62,6 +62,17 @@ export default defineConfig({
     // honours `prefers-reduced-motion` (`animateCells = animate && !reducedMotion`),
     // so this takes the app's own supported path to a stable frame.
     reducedMotion: "reduce",
+
+    // Send the session cookie on EVERY request, not just page navigations.
+    //
+    // `page.request` and the `beforeAll` request context both go through here, and
+    // every /api/* route is behind authHandler. Setting a cookie on the context is
+    // not enough for those — they use this header set instead. Without it the
+    // fixture's seed POSTs come back 401 and the board silently renders empty,
+    // which looks like a passing capture of nothing.
+    ...(process.env.SWITCHYARD_SESSION
+      ? { extraHTTPHeaders: { Cookie: `kanban_session=${process.env.SWITCHYARD_SESSION}` } }
+      : {}),
   },
 
   projects: [

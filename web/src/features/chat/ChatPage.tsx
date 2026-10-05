@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { SessionMenu } from "@/components/chat/SessionMenu"
 import { Composer } from "@/components/chat/composer"
+import { useHeaderTrail } from "@/components/header-trail-context"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
@@ -394,6 +395,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   useEffect(() => {
     if (initialSessionID && initialSessionID !== sessionID) setSessionID(initialSessionID)
   }, [initialSessionID])
+
+  /* Publishes the session title to the shell header's breadcrumb, which is
+     where it lives now that this page has no title bar of its own. Only when
+     there is a session: an empty chat's header should read "Chat", not
+     "Chat / New chat" for something that has no name yet. */
+  useHeaderTrail(current.data?.title)
 
   useEffect(() => {
     if (!current.data || current.data.id !== sessionID) return

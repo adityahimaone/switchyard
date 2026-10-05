@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { AppSidebar } from "@/components/app-sidebar";
 import { GlowField } from "@/components/app/glow-field";
+import { HeaderTrailProvider } from "@/components/header-trail-context";
 import type { Page } from "@/lib/sidebar-preferences";
 
 /**
@@ -46,6 +48,11 @@ export function AppShell({
 	onOpenPalette: () => void;
 	children: React.ReactNode;
 }) {
+	/* The header owns the trail string; pages publish into it through the context
+	   below. Holding it here rather than in `App` keeps a page's own query state
+	   from re-rendering the shell — see `header-trail-context.tsx`. */
+	const [trail, setTrail] = useState<string | undefined>(undefined);
+
 	return (
 		<div className="overflow-hidden">
 			{/* The glow field goes first and sits behind everything. With the
@@ -70,12 +77,14 @@ export function AppShell({
 				    depends on. The rail above and the header are glass; this is
 				    simply the light coming through. */}
 				<SidebarInset className="min-w-0 overflow-transparent md:peer-data-[variant=floating]:m-0 md:peer-data-[variant=floating]:ml-0 md:peer-data-[variant=floating]:rounded-none md:peer-data-[variant=floating]:shadow-none">
-					<AppHeader
-						page={page}
-						onNewChat={onNewChat}
-						onOpenPalette={onOpenPalette}
-						onSelectPage={onSelectPage}
-					/>
+					<HeaderTrailProvider value={setTrail}>
+						<AppHeader
+							page={page}
+							trail={trail}
+							onNewChat={onNewChat}
+							onOpenPalette={onOpenPalette}
+							onSelectPage={onSelectPage}
+						/>
 					{/* No padding here: every page in this app owns its own gutters, and
 					    the full-bleed pages (board, chat, flow map) must reach the edge.
 					    The block wrapped its content in `gap-4`; Switchyard's pages are
@@ -83,6 +92,7 @@ export function AppShell({
 					<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 						{children}
 					</div>
+					</HeaderTrailProvider>
 				</SidebarInset>
 			</SidebarProvider>
 		</div>

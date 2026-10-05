@@ -1,20 +1,38 @@
 import { useEffect, useState } from "react"
-import { SettingRow, SettingsSection, Segmented } from "../settings-parts"
+import { PalettePicker, SettingRow, SettingsSection, Segmented } from "../settings-parts"
 import {
   applyDensity, applyEffects, applyMotion, readDensity, readEffects, readMotion,
-  type Density, type EffectsPreference, type MotionPreference, type ThemePreference,
+  type Density, type EffectsPreference, type MotionPreference, type ThemePalette, type ThemePreference,
 } from "@/hooks/useSettings"
-import { useTheme } from "@/hooks/useSettings"
+import { usePalette, useTheme } from "@/hooks/useSettings"
 
 /**
- * Appearance writes four things to <html>: the theme class, `data-density`,
- * `data-motion` and `data-effects`. Each is persisted under its own key so the
- * values survive a reload, and applied on mount so the first paint matches —
- * the theme and effects keys are also read by the pre-paint script in
- * index.html, which is why those two must stay in sync with it.
+ * The three-band swatches below are the palettes' own literal values, on purpose:
+ * showing the resolved token would defeat the point of a swatch, which is to let
+ * you compare the ground, the surface and the accent side by side. They mirror
+ * `themes.css` by definition — if one changes, the other is stale.
+ */
+const PALETTE_OPTIONS: { value: ThemePalette; label: string; hint: string; swatch: [string, string, string] }[] = [
+  { value: "signal", label: "Signal Blue", hint: "Default · cool blue", swatch: ["#f2f4fd", "#ffffff", "#2f57c4"] },
+  { value: "lime", label: "Lime forest", hint: "Near-white · lime accent", swatch: ["#fbfcf8", "#ffffff", "#aff33e"] },
+  { value: "zen", label: "Zen linen", hint: "Warm paper · charcoal", swatch: ["#e9e4d8", "#f4efe4", "#2e2e2e"] },
+]
+
+/**
+ * Appearance writes five things to <html>: the palette attribute, the theme class,
+ * `data-density`, `data-motion` and `data-effects`. Each is persisted under its own
+ * key so the values survive a reload, and applied on mount so the first paint
+ * matches — the theme, palette and effects keys are also read by the pre-paint
+ * script in index.html, which is why those three must stay in sync with it.
+ *
+ * Palette and theme are separate axes on purpose — a palette supplies both a light
+ * and a dark variant, so there is one picker for colour and another for mode.
+ * Collapsing them into one control would force "Lime forest dark" to be a separate
+ * option from "Lime forest light" and would double the list for no gain.
  */
 export default function AppearanceTab() {
   const { theme, setTheme } = useTheme()
+  const { palette, setPalette } = usePalette()
   const [density, setDensityState] = useState<Density>(readDensity)
   const [motion, setMotionState] = useState<MotionPreference>(readMotion)
   const [effects, setEffectsState] = useState<EffectsPreference>(readEffects)
@@ -36,6 +54,8 @@ export default function AppearanceTab() {
 
   return (
     <SettingsSection title="Appearance" description="How Switchyard looks on this device.">
+      <PalettePicker<ThemePalette> value={palette} onChange={setPalette} options={PALETTE_OPTIONS} />
+
       <SettingRow label="Theme" help="Choose light, dark, or match your system.">
         <Segmented<ThemePreference>
           label="Theme"

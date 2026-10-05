@@ -6,12 +6,13 @@ import AppErrorBoundary from "@/components/app/app-error-boundary"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthGate from "./AuthGate"
 import "./index.css"
-import { applyDensity, applyEffects, applyMotion, applyTheme, readDensity, readEffects, readMotion, readTheme } from "./hooks/useSettings"
+import { applyDensity, applyEffects, applyMotion, applyPalette, applyTheme, readDensity, readEffects, readMotion, readPalette, readTheme } from "./hooks/useSettings"
 import { armChunkRecovery } from "./lib/chunk-recovery"
 import { syncSoundEngine, watchSoundPreferences } from "./lib/sound"
 
 bind()
 applyTheme(readTheme())
+applyPalette(readPalette())
 applyDensity(readDensity())
 applyMotion(readMotion())
 applyEffects(readEffects())

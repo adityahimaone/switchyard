@@ -30,6 +30,19 @@
 
           const effects = localStorage.getItem("kb-effects") === "lite" ? "lite" : "system"
           document.documentElement.dataset.effects = effects
+
+          // The palette is applied here for the same reason, and it matters more
+          // than it looks: `themes.css` overrides the whole colour layer through
+          // `:root[data-theme-palette="…"]`, so without the attribute before first
+          // paint a user on Lime forest or Zen linen gets a frame or two of Signal
+          // Blue. Removing it for the default is what keeps Signal winning on
+          // specificity — an attribute left behind would outrank the base
+          // stylesheet and silently override it.
+          const palette = localStorage.getItem("kb-palette")
+          if (palette && palette !== "signal")
+            document.documentElement.dataset.themePalette = palette
+          else
+            delete document.documentElement.dataset.themePalette
         } catch {}
       })()
     </script>

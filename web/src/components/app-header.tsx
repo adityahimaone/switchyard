@@ -21,11 +21,15 @@ import type { Page } from "@/lib/sidebar-preferences";
 
 export function AppHeader({
 	page,
+	trail,
 	onNewChat,
 	onOpenPalette,
 	onSelectPage,
 }: {
 	page: Page;
+	/** Sub-page label appended after the page name, published by the page itself
+	    through `header-trail-context`. Chat is the only consumer today. */
+	trail?: string;
 	onNewChat: () => void;
 	onOpenPalette: () => void;
 	onSelectPage: (p: Page) => void;
@@ -75,7 +79,7 @@ export function AppHeader({
 					className="mr-1 h-4 bg-line-strong data-[orientation=vertical]:self-center"
 					orientation="vertical"
 				/>
-				<AppBreadcrumbs page={activeItem} />
+				<AppBreadcrumbs page={activeItem} trail={trail} />
 			</div>
 			<div className="flex shrink-0 items-center gap-3">
 				<Tooltip>
