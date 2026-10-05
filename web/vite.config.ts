@@ -13,6 +13,9 @@ export default defineConfig({
   // "test.describe() in a configuration file" failure. `vitest run` is unit
   // scope only; `pnpm verify:ui` runs the Playwright suite.
   test: {
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // `*.spec.ts` under e2e/ belongs to Playwright; `*.test.ts`
+    // there is vitest-only helper coverage (the design-compare
+    // pixel math), so the two runners stay separated by suffix.
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "e2e/**/*.test.ts"],
   },
 })

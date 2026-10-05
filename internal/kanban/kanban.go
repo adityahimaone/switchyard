@@ -69,6 +69,21 @@ type Task struct {
 	GateCommand string `json:"gate_command,omitempty"`
 	GateStatus  string `json:"gate_status,omitempty"` // "", running, passed, failed
 	GateOutput  string `json:"gate_output,omitempty"`
+	// Verification profile: which ladder rung this task must pass before a
+	// human may approve it. "" means auto — routed from the diff the reviewer
+	// is about to see, and recorded in VerifyProfileEffective once decided.
+	// An explicit value always wins over routing.
+	VerifyProfile string `json:"verify_profile,omitempty"`
+	// VerifyProfileEffective is what routing actually chose. Kept separate from
+	// VerifyProfile so an unset card still shows its verdict in the UI, and so
+	// "the hook silently failed" stays distinguishable from "nothing ran".
+	VerifyProfileEffective string `json:"verify_profile_effective,omitempty"`
+	VerifyStatus           string `json:"verify_status,omitempty"` // "", skipped, running, passed, failed, unavailable
+	VerifyOutput           string `json:"verify_output,omitempty"`
+	// DesignSource names a committed .pen file the task must implement verbatim.
+	// Empty for the overwhelming majority of cards, and then pen is never
+	// invoked and no agent-day is spent.
+	DesignSource string `json:"design_source,omitempty"`
 	// manual: wait for the dispatcher poll. now: claim on create.
 	StartMode string `json:"start_mode,omitempty"`
 	// Retry counter. Attempt 1 is the original run.
@@ -267,6 +282,23 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN gate_status TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN gate_output TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN gate_run_id TEXT`,
+		// Verification gate: which quality ladder rung this task must pass,
+		// run on the worker after the executor succeeds, alongside the gate.
+		// verify_run_id fences a late result from a superseded run, exactly as
+		// gate_run_id does — the two are separate columns so a verify run and a
+		// gate run can be in flight on the same task without colliding.
+		//
+		// verify_profile is what was asked for ("" = auto). verify_profile_effective
+		// is what routing chose, kept apart so an auto-routed card still shows a
+		// verdict and "nothing ran" stays distinguishable from "the hook failed".
+		`ALTER TABLE tasks ADD COLUMN verify_profile TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN verify_profile_effective TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN verify_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN verify_output TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN verify_run_id TEXT`,
+		// A committed .pen design this task implements verbatim. Empty for
+		// every card that is not a design task.
+		`ALTER TABLE tasks ADD COLUMN design_source TEXT NOT NULL DEFAULT ''`,
 		// manual = wait for the dispatcher poll; now = claim on create.
 		`ALTER TABLE tasks ADD COLUMN start_mode TEXT NOT NULL DEFAULT 'manual'`,
 		// Incremented by retry. Attempt 1 is the original run.
@@ -451,9 +483,12 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation); err != nil {
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, verify_profile, design_source)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation,
+		// verify_profile_effective/verify_status are intentionally not inserted:
+		// they are decided by routing after the run, not by the author of the card.
+		t.VerifyProfile, t.DesignSource); err != nil {
 		return err
 	}
 	if len(t.DependsOn) > 0 {

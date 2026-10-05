@@ -17,6 +17,8 @@ export function ReviewGateBar({
   clean,
   busy,
   error,
+  overriding,
+  onOverride,
   onMarkDone,
   onCommit,
   onCommitPush,
@@ -29,6 +31,13 @@ export function ReviewGateBar({
   clean: boolean
   busy: boolean
   error?: string | null
+  /**
+   * True once the server has refused an approve because a check is red. The
+   * next action is then an explicit, recorded override rather than a plain
+   * approve.
+   */
+  overriding?: boolean
+  onOverride?: () => void
   onMarkDone: () => void
   onCommit: () => void
   onCommitPush: () => void
@@ -36,12 +45,23 @@ export function ReviewGateBar({
   const partial = selectedCount > 0 && selectedCount < files
   const fileLabel =
     selectedCount === files ? "all files" : `${selectedCount} of ${files} files`
+  const ApproveButton = overriding
+    ? "Approve anyway"
+    : partial
+      ? `Approve ${selectedCount} and push`
+      : "Approve and push"
 
   return (
     <div className="sticky bottom-0 z-10 border-t border-line bg-surface">
       {error && (
         <p role="alert" className="border-b border-danger/30 bg-danger-tint px-4 py-2 text-xs text-danger-text">
           {error}
+        </p>
+      )}
+      {overriding && (
+        <p className="border-b border-line px-4 py-1.5 text-2xs text-ink-3">
+          The next action approves despite a failing check. It is recorded in the
+          card&apos;s event history.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -84,14 +104,14 @@ export function ReviewGateBar({
                 Commit{partial ? ` ${selectedCount}` : ""}
               </Button>
               <Button
-                variant="signal"
+                variant={overriding ? "signal" : "secondary"}
                 size="sm"
                 loading={busy}
-                disabled={selectedCount === 0}
-                onClick={onCommitPush}
+                disabled={!overriding && selectedCount === 0}
+                onClick={() => (overriding ? onOverride?.() : onCommitPush())}
               >
                 <Upload className="size-3.5" />
-                {partial ? `Approve ${selectedCount} and push` : "Approve and push"}
+                {ApproveButton}
               </Button>
             </div>
           </>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { api, toastGlobal, type Task } from "../../api"
 import { Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus } from "lucide-react"
 import { ReviewGateBar } from "./ReviewGateBar"
+import { VerificationBlock } from "./VerificationBlock"
 
 type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
 type DiffFile = { name: string; lines: DiffLine[] }
@@ -162,6 +163,9 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Set only after a 409 from a failing check, so the override is always a
+  // response to a refusal rather than a way to skip a check silently.
+  const [overriding, setOverriding] = useState(false)
 
   const diff = useQuery({
     queryKey: ["diff", slug, task.id],
@@ -207,6 +211,10 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
       if (action !== "done" && selectedCount > 0 && selectedCount < files.length) {
         body.files = [...selected]
       }
+      // A red gate or a red verification is refused unless the reviewer says so
+      // explicitly. The override is recorded server-side, so "it shipped past a
+      // failing check" stays answerable after the fact.
+      if (overriding) body.force = true
       return api<{ status: string }>(`/api/boards/${slug}/tasks/${task.id}/approve`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -216,9 +224,15 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
       toastGlobal("Review action completed", "success")
       qc.invalidateQueries({ queryKey: ["tasks", slug] })
       qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
+      qc.invalidateQueries({ queryKey: ["verify", slug, task.id] })
       onDone()
     },
-    onError: (e: Error) => setErr(e.message),
+    // A 409 is the server refusing because a check is red. Offer the recorded
+    // override rather than leaving the card stuck.
+    onError: (e: Error) => {
+      setErr(e.message)
+      if ((e as Error & { status?: number }).status === 409) setOverriding(true)
+    },
   })
 
   if (task.status !== "review") return null
@@ -263,6 +277,11 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
 
       {open && (
         <div className="flex flex-col gap-2 p-3">
+          {/* Verification sits above the diff, not beside it: it is the answer
+              to "may I approve this", and a reviewer should meet it before
+              reading 8000 lines of patch. */}
+          <VerificationBlock slug={slug} taskId={task.id} />
+
           {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
             <details className="rounded-control border border-line bg-well px-3 py-2">
               <summary className="cursor-pointer text-xs font-medium text-ink-2">
@@ -344,7 +363,9 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         clean={!!diff.data?.clean}
         busy={approve.isPending}
         error={err}
-        onMarkDone={() => { setErr(null); approve.mutate("done") }}
+        overriding={overriding}
+        onOverride={() => { setErr(null); approve.mutate("commit_push") }}
+        onMarkDone={() => { setErr(null); setOverriding(false); approve.mutate("done") }}
         onCommit={() => { setErr(null); approve.mutate("commit") }}
         onCommitPush={() => { setErr(null); approve.mutate("commit_push") }}
       />

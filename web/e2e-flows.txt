@@ -22,6 +22,9 @@ web/src/features/board/
 web/src/components/app-shell.tsx
 web/src/components/app-header.tsx
 web/src/components/app-sidebar.tsx
+web/src/components/app-breadcrumbs.tsx
+web/src/components/header-trail-context.tsx
+web/src/components/app-shared.tsx
 web/src/lib/routes.ts
 web/src/App.tsx
 
@@ -30,6 +33,7 @@ web/src/features/chat/
 web/src/components/chat/
 
 # --- task detail: open a task, read the diff, approve --------------------------
+# The board dialogs live here rather than under features/board.
 web/src/components/board/
 web/src/features/flow/
 

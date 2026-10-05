@@ -263,6 +263,15 @@ func RetryTask(slug, taskID string) (Task, error) {
 	if _, err := tx.Exec(`UPDATE tasks SET gate_status='', gate_output='', gate_run_id=NULL WHERE id=?`, taskID); err != nil {
 		return Task{}, err
 	}
+	// The verify verdict is cleared for the same reason, and verify_profile is
+	// deliberately preserved alongside gate_command: both are declarations about
+	// what the new attempt must satisfy, not outcomes of the old one.
+	// verify_profile_effective is cleared because the new diff may route
+	// differently, and leaving the old decision on screen would misreport it.
+	if _, err := tx.Exec(`UPDATE tasks SET verify_status='', verify_output='', verify_run_id=NULL,
+		verify_profile_effective='' WHERE id=?`, taskID); err != nil {
+		return Task{}, err
+	}
 	// Leases are released so the requeued card can take them again; the claim
 	// re-acquires them atomically with the next claim.
 	if err := ReleaseLeases(tx, taskID); err != nil {

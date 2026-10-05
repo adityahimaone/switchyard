@@ -1,4 +1,4 @@
-import type { Task } from "../../api"
+import type { Task, VerifyProfile } from "../../api"
 
 /**
  * The fields the Create Task dialog collects, kept as a plain object so the
@@ -25,6 +25,17 @@ export interface CreateTaskDraft {
    * worktree and branch.
    */
   isolation: "workspace" | "worktree"
+  /**
+   * Which verification rung applies. "" means auto — routed from the diff — and
+   * is the right choice unless a human knows something the diff will not show.
+   */
+  verifyProfile: VerifyProfile | ""
+  /**
+   * A committed .pen design this task implements verbatim, repo-relative.
+   * Empty for everything that is not a design task, and then pen is never
+   * invoked and no agent-day is spent.
+   */
+  designSource: string
 }
 
 /** One validation problem, as returned by POST /tasks/validate. */
@@ -68,6 +79,14 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // Always sent: the server defaults to "workspace", but being explicit means
     // the stored value says what was chosen rather than what was assumed.
     isolation: draft.isolation,
+    // Always sent for the same reason as isolation: "" is a real choice — it is
+    // how a card asks to be routed from its diff — and the stored value should
+    // say the card asked, rather than leaving it indistinguishable from a card
+    // whose author never heard of verification.
+    verify_profile: draft.verifyProfile,
+    // Omitted when empty, unlike verify_profile: an empty design source is the
+    // absence of a requirement, not a declaration of "no design".
+    ...(draft.designSource.trim() ? { design_source: draft.designSource.trim() } : {}),
   }
 }
 

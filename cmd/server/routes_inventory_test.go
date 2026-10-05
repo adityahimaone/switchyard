@@ -120,6 +120,13 @@ func TestEveryRouteGroupIsWired(t *testing.T) {
 	}
 }
 
+// TestBuildMuxAssembles runs the real wiring. Every group registers
+// exactly once; a duplicate registration panics here, as a test
+// failure, instead of taking the server down at boot.
+func TestBuildMuxAssembles(t *testing.T) {
+	_ = buildMux("web/dist")
+}
+
 // TestMainGoIsSmall guards against the file regrowing into a monolith. The
 // point of the split was that main() only wires things together.
 func TestMainGoIsSmall(t *testing.T) {
@@ -175,6 +182,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/boards/{slug}/tasks/{id}/events":                        true,
 	"GET /api/boards/{slug}/tasks/{id}/health":                        true,
 	"GET /api/boards/{slug}/tasks/{id}/runs":                          true,
+	"GET /api/boards/{slug}/tasks/{id}/verify":                        true,
 	"GET /api/boards/{slug}/tasks/{id}/worker-log":                    true,
 	"GET /api/chat/active":                                            true,
 	"GET /api/chat/daemon-health":                                     true,
@@ -234,6 +242,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/workspaces/{id}/ping":                                   true,
 	"PATCH /api/boards/{slug}":                                        true,
 	"PATCH /api/boards/{slug}/tasks/{id}/assignee":                    true,
+	"PATCH /api/boards/{slug}/tasks/{id}/fields":                      true,
 	"PATCH /api/boards/{slug}/tasks/{id}/status":                      true,
 	"PATCH /api/chat/projects/{id}":                                   true,
 	"PATCH /api/chat/sessions/{id}":                                   true,
@@ -261,6 +270,7 @@ var expectedRoutes = map[string]bool{
 	"POST /api/boards/{slug}/tasks/{id}/run":                          true,
 	"POST /api/boards/{slug}/tasks/{id}/start":                        true,
 	"POST /api/boards/{slug}/tasks/{id}/stop":                         true,
+	"POST /api/boards/{slug}/tasks/{id}/verify":                       true,
 	"POST /api/chat/messages/{id}/attachments":                        true,
 	"POST /api/chat/projects":                                         true,
 	"POST /api/chat/runs/{id}/retry":                                  true,

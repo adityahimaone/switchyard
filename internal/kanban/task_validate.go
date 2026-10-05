@@ -39,7 +39,10 @@ const (
 	maxPathsPerTask = 64
 	maxPathBytes    = 1024
 	maxGateBytes    = 4 << 10
-	maxActiveLeases = 1024
+	// A design source is a repo-relative path, not a command, so it is capped
+	// like a path rather than like shell text.
+	maxDesignSourceBytes = 256
+	maxActiveLeases      = 1024
 )
 
 // Issue is one validation problem. Issues are returned as a list rather than
@@ -136,6 +139,26 @@ func ValidateNewTask(t *Task) []Issue {
 	if t.Isolation == "worktree" && strings.TrimSpace(t.WorkspacePath) == "" {
 		add(CodeBadRequest, "isolation",
 			"worktree isolation needs a workspace: there is no repository to make a worktree of")
+	}
+
+	// Verification profile. "" is the auto case, not a rung of its own: routing
+	// resolves it from the diff, and a non-UI diff resolves to none.
+	if t.VerifyProfile != "" && !ValidVerifyProfiles[t.VerifyProfile] {
+		add(CodeBadRequest, "verify_profile", "verify_profile %q is not one of %s",
+			t.VerifyProfile, strings.Join(VerifyProfileLadder, "/"))
+	}
+	// Design source. A path, not a command, so it gets a path-sized cap and a
+	// traversal check rather than the gate's shell treatment. It is passed to
+	// the worker as an argument, so a "../" here would read outside the repo.
+	if len(t.DesignSource) > maxDesignSourceBytes {
+		add(CodeBadRequest, "design_source", "design source is %d bytes, maximum is %d", len(t.DesignSource), maxDesignSourceBytes)
+	}
+	if hasControlChars(t.DesignSource) {
+		add(CodeBadRequest, "design_source", "design source contains control characters")
+	}
+	if t.DesignSource != "" && (strings.HasPrefix(t.DesignSource, "/") || strings.Contains(t.DesignSource, "..")) {
+		add(CodeBadRequest, "design_source",
+			"design source must be a repo-relative path like design/task-card.pen, not %q", t.DesignSource)
 	}
 
 	// Existing rules, restated so the dry run reports them with the same codes

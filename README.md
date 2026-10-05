@@ -315,7 +315,7 @@ The result must echo `dsh_workspace_id`, `dsh_session_id`, and the highest
 consumed `last_turn_seq`. Identity mismatches fail the result; they are never
 silently accepted.
 
-For internal shell dispatch the orchestrator sends `executor: "shell"` plus `command`. The dispatcher resolves the host from the workspace, uses node-agent as the primary route, and may fall back to SSH.
+For internal shell dispatch the orchestrator sends `executor: "shell"` plus `command`. The dispatcher resolves the host from the workspace and routes through node-agent — the only route. The former SSH lane was retired: `MigrateRetiredTransport` rewrites `workspace_transport=ssh` to `node-agent` at startup, so a workspace is always reachable through exactly one path.
 
 On register each node advertises capabilities:
 
@@ -328,7 +328,11 @@ On register each node advertises capabilities:
 }
 ```
 
-The server picks a node by workspace prefix + executor capability. If the requested executor is unavailable the dispatch is rejected with `executor unavailable`.
+Node selection happens at node-agent's dispatch endpoint, not in this server: the control plane posts once and node-agent routes by workspace prefix, preferring the longest match. Executor capability filters the candidates — a node only receives a dispatch for an executor it advertised. The rejections are:
+
+- `409 executor unavailable on node(s) owning workspace: <executor>` — the workspace has owners, but none advertises the requested executor;
+- `409 no node owns workspace "<ws>" (registered: ...)` — no node advertises that workspace prefix;
+- `503 no nodes available` — the registry is empty (or every node is offline).
 
 Dispatch ack returns `transport` and `delivery_id`. That metadata is forwarded to Kanban Flow diagnostics so operators can see the actual path (`grpc` or `http`) a task took.
 

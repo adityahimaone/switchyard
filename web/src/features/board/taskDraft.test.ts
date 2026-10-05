@@ -23,6 +23,8 @@ const base: CreateTaskDraft = {
   gateCommand: "",
   startMode: "manual",
   isolation: "workspace",
+  verifyProfile: "",
+  designSource: "",
 }
 
 describe("buildCreatePayload", () => {
@@ -99,6 +101,24 @@ describe("buildCreatePayload", () => {
     // than what the server happened to default to.
     expect(buildCreatePayload(base).isolation).toBe("workspace")
     expect(buildCreatePayload({ ...base, isolation: "worktree" }).isolation).toBe("worktree")
+  })
+
+  it("always sends the verify profile, including the auto default", () => {
+    // Empty is a real choice here, not an absent field: it is how a card asks
+    // to be routed from its diff. Omitting it would make a card that wants
+    // auto indistinguishable from one whose author never heard of verify.
+    expect(buildCreatePayload(base).verify_profile).toBe("")
+    expect(buildCreatePayload({ ...base, verifyProfile: "ui" }).verify_profile).toBe("ui")
+  })
+
+  it("omits an empty design source but sends a real one", () => {
+    // The opposite of verify_profile: an empty design source is the absence of
+    // a requirement, so it should not round-trip as "no design".
+    expect("design_source" in buildCreatePayload(base)).toBe(false)
+    expect(buildCreatePayload({ ...base, designSource: "  " }).design_source).toBeUndefined()
+    expect(buildCreatePayload({ ...base, designSource: " design/task-card.pen " }).design_source).toBe(
+      "design/task-card.pen",
+    )
   })
 })
 

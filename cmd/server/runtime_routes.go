@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -84,16 +83,4 @@ func registerRuntimeRoutes(mux *http.ServeMux) {
 			}
 		}
 	})
-
-	registerChatRoutes(mux)
-	registerWorkspaceFileRoutes(mux)
-
-	// attachments + vision (R2 when configured, local fallback)
-	if err := kanban.ConfigureAttachmentStore(); err != nil {
-		log.Fatalf("attachment storage configuration failed: %v", err)
-	}
-	if _, err := kanban.EnsureAttachmentsDBPublic(); err != nil {
-		log.Printf("warning: attachments db init: %v", err)
-	}
-	registerAttachmentRoutes(mux)
 }

@@ -24,6 +24,10 @@ export default defineConfig({
   testDir: "./e2e",
   outputDir: "./e2e/.artifacts",
   snapshotDir: "./e2e/__screenshots__",
+  // `*.test.ts` under e2e/ is vitest-only helper coverage
+  // (the design-compare pixel math); Playwright's default
+  // discovery matches it too and fails on the vitest import.
+  testIgnore: /\.test\.ts$/,
   fullyParallel: false,
   workers: 1,
   // 30s is Playwright's default and it is not enough here: each visual test

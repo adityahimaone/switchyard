@@ -131,27 +131,17 @@ func main() {
 		log.Printf("transport-migration: migrated %d task(s) to node-agent", n)
 	}
 
-	mux := http.NewServeMux()
-	registerAuthRoutes(mux)
-	registerBoardsRoutes(mux)
-	registerProfilesRoutes(mux)
-	registerWorkspaceIdentityRoutes(mux)
-	registerSettingsRoutes(mux)
-	registerRuntimeRoutes(mux)
-	registerOverviewRoutes(mux)
-	registerCronRoutes(mux)
-	registerKnowledgeRoutes(mux)
-	registerEcosystemRoutes(mux)
-	registerChatRoutes(mux)
-	registerWorkspaceFileRoutes(mux)
-	registerAttachmentRoutes(mux)
+	mux := buildMux(dist)
 
-	// The SPA catch-all is registered last: ServeMux matches the most specific
-	// pattern, but a "/" registered before the API routes would still be
-	// shadowed by them only if they were more specific — which they are. Order
-	// here documents that the API surface is complete before the shell is
-	// mounted.
-	mux.Handle("/", spa(dist))
+	// attachments + vision (R2 when configured, local fallback). The
+	// store is configured at boot, before the first request can reach
+	// the routes that serve from it.
+	if err := kanban.ConfigureAttachmentStore(); err != nil {
+		log.Fatal(err)
+	}
+	if _, err := kanban.EnsureAttachmentsDBPublic(); err != nil {
+		log.Printf("warning: attachments db init: %v", err)
+	}
 
 	// Reclaim worktrees belonging to tasks that finished long ago. This runs at
 	// startup rather than on a timer because the worktrees live on workers, not
@@ -204,6 +194,34 @@ func main() {
 		}
 		log.Println("kanban-board: stopped")
 	}
+}
+
+// buildMux assembles the API surface. It is a function of its own so
+// the wiring runs in a test: a group registered twice panics there,
+// as a test failure, instead of taking the whole server down at boot.
+func buildMux(dist string) *http.ServeMux {
+	mux := http.NewServeMux()
+	registerAuthRoutes(mux)
+	registerBoardsRoutes(mux)
+	registerProfilesRoutes(mux)
+	registerWorkspaceIdentityRoutes(mux)
+	registerSettingsRoutes(mux)
+	registerRuntimeRoutes(mux)
+	registerOverviewRoutes(mux)
+	registerCronRoutes(mux)
+	registerKnowledgeRoutes(mux)
+	registerEcosystemRoutes(mux)
+	registerChatRoutes(mux)
+	registerWorkspaceFileRoutes(mux)
+	registerAttachmentRoutes(mux)
+
+	// The SPA catch-all is registered last: ServeMux matches the most specific
+	// pattern, but a "/" registered before the API routes would still be
+	// shadowed by them only if they were more specific — which they are. Order
+	// here documents that the API surface is complete before the shell is
+	// mounted.
+	mux.Handle("/", spa(dist))
+	return mux
 }
 
 // ensureAdminCredential creates the admin credential on first run.

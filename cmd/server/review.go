@@ -307,6 +307,20 @@ func (e *GateFailedError) Error() string {
 	return msg
 }
 
+// VerifyFailedError reports that a task's verification failed, carrying the
+// output so the reviewer can see which check failed without a second request.
+type VerifyFailedError struct {
+	Output string
+}
+
+func (e *VerifyFailedError) Error() string {
+	msg := "verification failed; review the output and approve anyway to override"
+	if trimmed := strings.TrimSpace(e.Output); trimmed != "" {
+		msg += ": " + truncate(trimmed, 500)
+	}
+	return msg
+}
+
 // approveLocks serialises approve operations per task.
 //
 // The gate is deliberately wider than the git command: two approvals racing on
@@ -384,6 +398,23 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := kanban.RecordGateOverride(slug, id); err != nil {
 			log.Printf("approve: %s: could not record gate override: %v", id, err)
+		}
+	}
+	// Verification holds the same line, for the same reason and with the same
+	// override: a UI change that failed its own visual or accessibility suite
+	// must not pass by accident, and "we shipped past a red suite" must stay
+	// answerable later.
+	//
+	// Only "failed" is vetoed. "unavailable" and "skipped" are honest degraded
+	// states that the reviewer can see on the card, and vetoing them would
+	// make a node without a browser unable to approve anything at all.
+	if vStatus, vOut, vErr := kanban.VerifyResult(slug, id); vErr == nil && vStatus == "failed" {
+		if !req.Force {
+			fail(w, &VerifyFailedError{Output: vOut}, http.StatusConflict)
+			return
+		}
+		if err := kanban.RecordVerifyOverride(slug, id); err != nil {
+			log.Printf("approve: %s: could not record verify override: %v", id, err)
 		}
 	}
 	if req.Action == "done" {

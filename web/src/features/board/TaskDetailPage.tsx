@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskComment, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
+import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, patchTaskFields, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskComment, type TaskEvent, type VerifyProfile, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
+import { VerifySettings } from "./VerifySettings"
 import { ArrowLeft, Check, ChevronDown, ChevronRight, GitBranch, History, Loader2, MessageSquare, Send, Trash2 } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import type { Attachment } from "../../api"
@@ -452,6 +453,16 @@ export default function TaskDetailPage({
     },
   })
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
+  const fields = useMutation({
+    mutationFn: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string }) =>
+      patchTaskFields(slug, task.id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks", slug] })
+      qc.invalidateQueries({ queryKey: ["verify", slug, task.id] })
+      toastGlobal("Verification settings saved", "success")
+    },
+    onError: (e: Error) => toastGlobal(e.message, "error"),
+  })
   const groups = events.data ? parseEventCards(events.data) : []
   const resultSplit = task.result ? splitAgentResult(task.result) : null
   const jev = parseTaskExecutionMeta(task.execution_meta)
@@ -533,6 +544,13 @@ export default function TaskDetailPage({
                   </FieldList>
                 </Section>
               )}
+
+              <VerifySettings
+                slug={slug}
+                task={task}
+                saving={fields.isPending}
+                onSave={fields.mutate}
+              />
 
               {task.body && (
                 <Section title="Description" className="mt-2.5">

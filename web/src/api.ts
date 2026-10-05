@@ -44,6 +44,45 @@ export interface Task {
   /** Branch and worktree path, set at dispatch for a worktree-isolated task. */
   branch?: string
   worktree_path?: string
+  /**
+   * Which verification rung applies before approval: "none" | "fast" | "ui" |
+   * "e2e". Undefined means auto — routed from the diff, and recorded in
+   * verify_profile_effective once decided.
+   */
+  verify_profile?: VerifyProfile
+  /** What routing actually chose. Shown when verify_profile is unset. */
+  verify_profile_effective?: string
+  /** "", "skipped", "running", "passed", "failed" or "unavailable". */
+  verify_status?: string
+  verify_output?: string
+  /** A committed .pen design this task implements verbatim. */
+  design_source?: string
+}
+
+/** The verification ladder, weakest first. */
+export type VerifyProfile = "none" | "fast" | "ui" | "e2e"
+
+/** One file a verification run produced, stored as a task attachment. */
+export interface VerifyAttachment {
+  id: string
+  filename: string
+  mime: string
+  size: number
+  sha256: string
+  created_at: number
+}
+
+/** What the review UI needs to render the Verification block. */
+export interface TaskVerify {
+  task_id: string
+  /** What the card asked for; "" when it is auto-routed. */
+  profile: string
+  /** What routing chose, or what the re-run used. */
+  profile_effective: string
+  status: string
+  output: string
+  ladder: string[]
+  attachments: VerifyAttachment[]
 }
 
 export interface TaskExecutionMeta {
@@ -147,6 +186,40 @@ export function rerunGate(slug: string, taskId: string) {
     `/api/boards/${slug}/tasks/${taskId}/gate`,
     { method: "POST" },
   )
+}
+
+/** taskVerify reads a task's verification verdict and its evidence. */
+export function taskVerify(slug: string, taskId: string) {
+  return api<TaskVerify>(`/api/boards/${slug}/tasks/${taskId}/verify`)
+}
+
+/**
+ * rerunVerify re-runs verification without re-running the agent. Useful after a
+ * flaky visual suite, or when the rung itself was wrong.
+ */
+export function rerunVerify(slug: string, taskId: string) {
+  return api<{ task_id: string; verify_status?: string; verify_output?: string; error?: string }>(
+    `/api/boards/${slug}/tasks/${taskId}/verify`,
+    { method: "POST" },
+  )
+}
+
+/**
+ * patchTaskFields edits the post-create verification fields.
+ *
+ * Only these two fields are editable after create — there is no generic task
+ * PATCH, because that would be a way to rewrite dispatcher-owned columns such
+ * as gate_run_id or attempt.
+ */
+export function patchTaskFields(
+  slug: string,
+  taskId: string,
+  fields: { verify_profile?: VerifyProfile | ""; design_source?: string },
+) {
+  return api<Task>(`/api/boards/${slug}/tasks/${taskId}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify(fields),
+  })
 }
 
 

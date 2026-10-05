@@ -250,6 +250,197 @@ function checkRadius(rel, text) {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 5 — glass count per file.
+//
+// "Blur once per visual stack, at the panel" (design.md 5.2). The whole
+// shell has five L2 surfaces (§0b: rail, top bar, column, chat rail,
+// empty state), so a single file accumulating the BLURRED tiers — `glass`
+// and `glass-strong` — is the competing-panels problem the tier model
+// exists to prevent. `glass-card` does not count: it deliberately carries
+// no backdrop-filter (design.md:21), which is why the match is anchored
+// on both sides — the prefix of `glass-card` must not read as `glass`.
+//
+// A variant primitive (dropdown, sheet, popover) legitimately repeats the
+// class string across its cva variants while rendering one panel at a
+// time, so this warns rather than fails.
+// ---------------------------------------------------------------------------
+
+const GLASS_BLURRED =
+  /(^|[^a-zA-Z0-9_-])glass($|[^a-zA-Z0-9_-])|(^|[^a-zA-Z0-9_-])glass-strong($|[^a-zA-Z0-9_-])/g;
+const GLASS_COUNT_BUDGET = 8;
+
+function checkGlassCount(rel, text) {
+  if (TOKEN_FILES.includes(rel)) return;
+  const count = [...stripComments(text).matchAll(GLASS_BLURRED)].length;
+  if (count > GLASS_COUNT_BUDGET) {
+    findings.warn.push({
+      rule: "glass-count",
+      file: rel,
+      line: 0,
+      text: `${count} blurred glass panels`,
+      detail: `over the ${GLASS_COUNT_BUDGET}-panel budget — blur once per visual stack (design.md 5.2); the entire shell has five L2 surfaces (§0b)`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rule 6 — contrast on the glass tokens, sRGB-linearised.
+//
+// The static twin of the axe pass: it measures the palette the way
+// contrast-glass.py does — each glass fill composited over its
+// worst-case backdrop (an orb directly behind the panel, not the
+// flat canvas), composited in sRGB and THEN linearised — and fails
+// the gate when a text token drops below WCAG AA. Compositing in
+// linear light gives different and wrong numbers; that is the trap
+// the first palette pass fell into.
+//
+// Values are read from index.css at run time, so a token edit that
+// breaks contrast fails here instead of only in a hand-run script.
+// The orb worst case is a measured constant (contrast-glass.py):
+// the accent orb at 26% in light, 32% in dark, over the canvas.
+// The alternate palettes in themes.css carry their own per-block
+// contrast notes and are deliberately not measured here.
+// ---------------------------------------------------------------------------
+
+const CONTRAST_BAR = 4.5;
+const ORB_WORST_CASE = {
+  light: { alpha: 0.26, rgb: [0x2f, 0x57, 0xc4] },
+  dark: { alpha: 0.32, rgb: [0x5a, 0x7f, 0xd6] },
+};
+
+// The theme blocks are flat: ":root {" is light, ".dark {" is dark.
+// Brace depth is counted so a nested block inside one of them cannot
+// end the scan early.
+function themeBlock(text, selector) {
+  const re = new RegExp("^" + selector.replace(/[.]/, "\\.") + "\\s*\\{", "m");
+  const m = re.exec(text);
+  if (!m) return null;
+  let depth = 1;
+  let j = m.index + m[0].length;
+  while (j < text.length && depth > 0) {
+    if (text[j] === "{") depth += 1;
+    else if (text[j] === "}") depth -= 1;
+    j += 1;
+  }
+  return text.slice(m.index + m[0].length, j - 1);
+}
+
+function parseColour(value) {
+  let m = /^#([0-9a-f]{3,8})$/i.exec(value.trim());
+  if (m) {
+    let h = m[1];
+    if (h.length === 3 || h.length === 4) {
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2] + (h.length === 4 ? h[3] + h[3] : "");
+    }
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+      a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
+    };
+  }
+  m = /rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)/.exec(value);
+  if (m) {
+    let a = m[4] === undefined ? 1 : parseFloat(m[4]);
+    if (m[4] !== undefined && m[4].endsWith("%")) a /= 100;
+    return { r: +m[1], g: +m[2], b: +m[3], a };
+  }
+  return null;
+}
+
+function cssVar(block, name) {
+  // The trailing \s*: anchors the name, so --c-ink never matches
+  // --c-ink-2 and --c-accent never matches --c-accent-text.
+  const m = new RegExp("--" + name + "\\s*:\\s*([^;]+);").exec(block);
+  return m ? parseColour(m[1]) : null;
+}
+
+function compositeOver(fg, bg) {
+  return {
+    r: fg.a * fg.r + (1 - fg.a) * bg.r,
+    g: fg.a * fg.g + (1 - fg.a) * bg.g,
+    b: fg.a * fg.b + (1 - fg.a) * bg.b,
+    a: 1,
+  };
+}
+
+function relativeLuminance(c) {
+  const ch = (v) => {
+    v = v / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+}
+
+function contrastRatio(a, b) {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+function checkGlassContrast(files) {
+  const css = files.find((f) => f.rel === "index.css");
+  if (!css) {
+    findings.error.push({
+      rule: "contrast",
+      file: "web/src/index.css",
+      line: 0,
+      text: "index.css not found",
+      detail: "the contrast rule reads the live palette from index.css",
+    });
+    return;
+  }
+  const themes = { light: themeBlock(css.text, ":root"), dark: themeBlock(css.text, ".dark") };
+  const textTokens = ["c-ink", "c-ink-2", "c-ink-3", "c-accent-text", "c-success-text", "c-danger-text", "c-review-text"];
+  for (const [theme, block] of Object.entries(themes)) {
+    if (!block) continue;
+    const canvas = cssVar(block, "c-canvas");
+    const orb = ORB_WORST_CASE[theme];
+    const ground = compositeOver({ r: orb.rgb[0], g: orb.rgb[1], b: orb.rgb[2], a: orb.alpha }, canvas);
+    const panels = {};
+    for (const tint of ["glass-tint", "glass-tint-strong"]) {
+      const fill = cssVar(block, tint);
+      if (fill) panels[tint] = compositeOver(fill, ground);
+    }
+    for (const name of textTokens) {
+      const token = cssVar(block, name);
+      if (!token) continue;
+      for (const [tint, panel] of Object.entries(panels)) {
+        const ratio = contrastRatio(token, panel);
+        if (ratio < CONTRAST_BAR) {
+          findings.error.push({
+            rule: "contrast",
+            file: "index.css",
+            line: 0,
+            text: `--${name} on ${theme} ${tint}`,
+            detail: `${ratio.toFixed(2)}:1 against the worst-case panel (orb behind glass) — bar is ${CONTRAST_BAR}:1`,
+          });
+        }
+      }
+    }
+    // Type on the filled accent surface (the primary button): the
+    // label must clear the bar against the accent itself, in both
+    // themes. The label colour is theme-dependent by measurement —
+    // white in light, near-black in dark — which is why the pair is
+    // checked, not assumed.
+    const accent = cssVar(block, "c-accent");
+    const accentInk = cssVar(block, "c-accent-ink");
+    if (accent && accentInk) {
+      const ratio = contrastRatio(accentInk, accent);
+      if (ratio < CONTRAST_BAR) {
+        findings.error.push({
+          rule: "contrast",
+          file: "index.css",
+          line: 0,
+          text: `--c-accent-ink on ${theme} --c-accent`,
+          detail: `${ratio.toFixed(2)}:1 on the filled accent surface — bar is ${CONTRAST_BAR}:1`,
+        });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rule 4 — legacy --color-* aliases. Warn only; they must still resolve until
 // phase 5 removes them, so this is a countdown, not a gate.
 // ---------------------------------------------------------------------------
@@ -305,9 +496,11 @@ for (const { rel, text } of files) {
   checkRawColours(rel, text);
   checkBackdropFilter(rel, text);
   checkRadius(rel, text);
+  checkGlassCount(rel, text);
 }
 checkLegacyAliases(files);
 checkLantern(files);
+checkGlassContrast(files);
 
 const order = { error: 0, warn: 1 };
 const all = [...findings.error, ...findings.warn].sort(
@@ -317,7 +510,7 @@ const all = [...findings.error, ...findings.warn].sort(
 
 if (all.length === 0) {
   console.log("OK: token-lint found no design-token drift in web/src");
-  console.log("    raw colours, backdrop-filter and radius all conform to design.md Rev 4");
+  console.log("    raw colours, backdrop-filter, radius and glass count conform to design.md Rev 4");
   process.exit(0);
 }
 

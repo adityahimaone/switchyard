@@ -181,6 +181,28 @@ export default function TaskDetail({
                 </FieldList>
               </Section>
 
+              <Section title="Verification">
+                <FieldList>
+                  <Field label="Profile">
+                    {task.verify_profile ? (
+                      task.verify_profile
+                    ) : (
+                      <span className="text-ink-3">
+                        auto{task.verify_profile_effective ? ` → ${task.verify_profile_effective}` : ""}
+                      </span>
+                    )}
+                  </Field>
+                  {task.verify_status && <Field label="Result">{task.verify_status}</Field>}
+                  {task.design_source && (
+                    <Field label="Design">
+                      <span className="truncate" title={task.design_source}>
+                        {task.design_source}
+                      </span>
+                    </Field>
+                  )}
+                </FieldList>
+              </Section>
+
               {jev && (
                 <Section title={<span className="text-review-text">JEV routing</span>}>
                   <div className="flex flex-wrap items-center gap-1.5">

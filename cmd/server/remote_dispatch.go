@@ -80,20 +80,20 @@ func dispatchPendingRemoteTasks() {
 			db.Close()
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
 		if err != nil {
 			log.Printf("remote-dispatcher: board %s: query failed: %v", b.Slug, err)
 			db.Close()
 			continue
 		}
 		type row struct {
-			id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation string
-			maxIterations                                                                                                         int
+			id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource string
+			maxIterations                                                                                                                                      int
 		}
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -175,6 +175,11 @@ func dispatchPendingRemoteTasks() {
 					msg += "\n\n--- Recent Comments ---\n" + strings.Join(recent, "\n")
 				}
 			}
+			// The committed design mock rides along in the prompt, so the
+			// coding agent implements from the file rather than inventing a
+			// look. A card without design_source never gets the block — pen
+			// is invoked only when a design was committed for the card.
+			msg = appendDesignReference(msg, r.designSource)
 			command := r.command
 			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
 				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
@@ -274,6 +279,12 @@ func dispatchPendingRemoteTasks() {
 				// than a reason to withhold it. It runs in the worktree, so it
 				// verifies the code the agent actually produced.
 				runQualityGate(b.Slug, r.id, workWorkspace, r.title, r.gateCommand)
+				// Verification runs beside the gate, in the same worktree, for the
+				// same reason: it grades the code the agent actually produced. It
+				// runs after the gate rather than before because the gate is the
+				// project's own command and a broken build should surface as the
+				// gate's verdict, not as a pile of failures from both.
+				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile)
 			}
 		}
 		db.Close()
@@ -292,5 +303,36 @@ func runQualityGate(slug, taskID, workspace, title, command string) {
 	}
 	if err := kanban.RunGateCommand(slug, taskID, workspace, title, command); err != nil {
 		log.Printf("gate: %s: %v", taskID, err)
+	}
+}
+
+// appendDesignReference adds the committed design mock to a task's
+// dispatch prompt. The path is repository-relative — the worker's
+// workspace is a checkout, so the .pen and its export resolve there.
+// Empty (or blank) design_source returns the prompt untouched, which
+// is the no-design-source card: pen is never mentioned, never invoked.
+func appendDesignReference(msg, designSource string) string {
+	if strings.TrimSpace(designSource) == "" {
+		return msg
+	}
+	return msg + "\n\n--- Design Reference ---\n" +
+		"A design mock for this card is committed at " + designSource + " in the repository.\n" +
+		"Read the .pen file (plain JSON) and the PNG exported beside it, then implement to match the design.\n" +
+		"The design is the reference this card is graded against — do not regenerate or move it.\n" +
+		"--- End Design Reference ---"
+}
+
+// runTaskVerify resolves a task's verification rung from its diff and runs it.
+//
+// A no-op when the hook is disabled (KANBAN_VERIFY_ENABLED=0), which restores
+// today's dispatcher exactly. Every other outcome is recorded rather than fatal:
+// like the gate, a failed or skipped verify leaves the card in review with its
+// diff, and the verdict is what the approve button refuses.
+func runTaskVerify(slug, taskID, workspace, title, declaredProfile string) {
+	if !kanban.VerifyEnabled() {
+		return
+	}
+	if err := kanban.RunVerify(slug, taskID, workspace, title, declaredProfile); err != nil {
+		log.Printf("verify: %s: %v", taskID, err)
 	}
 }

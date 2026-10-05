@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import type { ExecutorSettings, Profile, Workspace } from "../../api"
+import type { ExecutorSettings, Profile, VerifyProfile, Workspace } from "../../api"
 import { api, getExecutorSettings, startTask, validateTask } from "../../api"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -141,6 +141,8 @@ export default function TaskDialog({
   const [gateCommand, setGateCommand] = useState("")
   const [startMode, setStartMode] = useState<"manual" | "now">("manual")
   const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
+  const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "">("")
+  const [designSource, setDesignSource] = useState("")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMode, setAiMode] = useState<"fast" | "deep" | null>(null)
@@ -183,6 +185,8 @@ export default function TaskDialog({
     gateCommand,
     startMode,
     isolation,
+    verifyProfile,
+    designSource,
   }
 
   // Dry-run validation, debounced so typing a title does not fire a request per
@@ -209,7 +213,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, verifyProfile, designSource, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -773,6 +777,69 @@ export default function TaskDialog({
                 />
               </div>
             )}
+
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-xs text-ink-3" htmlFor="task-verify-profile">
+                  Verify profile
+                </Label>
+                <span className="text-[11px] text-ink-3">before you can approve</span>
+              </div>
+              <Select
+                value={verifyProfile}
+                onValueChange={(v) => setVerifyProfile(v as VerifyProfile | "")}
+              >
+                <SelectTrigger id="task-verify-profile" className={`mt-1 ${selCls}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="">
+                  <SelectItem value="" className="text-sm">
+                    Auto — route from the diff
+                  </SelectItem>
+                  <SelectItem value="none" className="text-sm">
+                    None — no verification
+                  </SelectItem>
+                  <SelectItem value="fast" className="text-sm">
+                    Fast — types, tests, tokens
+                  </SelectItem>
+                  <SelectItem value="ui" className="text-sm">
+                    UI — plus screenshots and accessibility
+                  </SelectItem>
+                  <SelectItem value="e2e" className="text-sm">
+                    E2E — plus flow tests
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px] text-ink-3">
+                {verifyProfile === ""
+                  ? "Nothing needed setting. Auto escalates from the files the agent changed: a web/src change needs the UI rung, and a flow-owning path needs E2E. It never picks a weaker rung than a diff requires."
+                  : "An explicit choice always wins over routing — use it to force a check Auto would skip, or to switch one off for a card you already know is safe."}
+              </p>
+              {issuesForField(issues, "verify_profile").map((i) => (
+                <FieldIssue key={i.code + i.message} issue={i} />
+              ))}
+            </div>
+
+            <div>
+              <Label className="block text-xs text-ink-3" htmlFor="task-design-source">
+                Design source
+              </Label>
+              <Input
+                id="task-design-source"
+                value={designSource}
+                onChange={(e) => setDesignSource(e.target.value)}
+                placeholder="design/task-card.pen"
+                className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-xs"
+              />
+              <p className="mt-1 text-[11px] text-ink-3">
+                A committed pen.dev design this task must implement verbatim,
+                repo-relative. Leave empty for everything else — a card with no
+                design source never invokes pen and never spends an agent-day.
+              </p>
+              {issuesForField(issues, "design_source").map((i) => (
+                <FieldIssue key={i.code + i.message} issue={i} />
+              ))}
+            </div>
 
             <div>
               <Label className="block text-xs text-ink-3">Attachments (image / PDF)</Label>

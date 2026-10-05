@@ -52,6 +52,16 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 			"task_id": id, "gate_status": status, "gate_output": output,
 		})
 	})
+	// Read a task's verification verdict, the rung that produced it, and the
+	// artifacts that came back with it.
+	mux.HandleFunc("GET /api/boards/{slug}/tasks/{id}/verify", handleTaskVerify)
+	// Edit the post-create fields: which verification rung applies, and which
+	// committed design the task must implement. Narrow on purpose — see
+	// kanban.UpdateTaskFields for why this is not a generic PATCH.
+	mux.HandleFunc("PATCH /api/boards/{slug}/tasks/{id}/fields", handleTaskFields)
+	// Re-run verification without re-running the agent. Useful after a flaky
+	// visual suite, or when the rung itself was wrong.
+	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/verify", handleTaskVerifyRun)
 	// Start a task now instead of waiting for the next dispatcher poll. The
 	// claim happens here; execution still belongs to the dispatch loop, so this
 	// wakes it rather than starting a second one.
