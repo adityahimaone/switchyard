@@ -13,6 +13,7 @@ export const buttonVariants = cva(
   [
     "relative inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium leading-none outline-none",
     "transition-[background-color,border-color,box-shadow,transform,color] duration-150 ease-out",
+    "active:scale-[0.97]",
     "focus-visible:ring-[3px] focus-visible:ring-focus/40",
     "disabled:pointer-events-none disabled:opacity-50",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -22,56 +23,33 @@ export const buttonVariants = cva(
       variant: {
         /** Frosted surface control. The page-level default.
          *
-         * Flat rather than blurred, deliberately, and this is now a tier rule
-         * rather than a per-component preference: a control sits on top of a
-         * card that is already glass, so there is nothing behind it left to
-         * diffuse. Measured on /skills before the glow field existed: 231 of
-         * these were each carrying a `backdrop-filter`, which is 231
-         * compositing layers the browser cannot batch. */
+         * Flat rather than blurred, deliberately. A control is small and sits on
+         * top of a card that is already glass, so there is nothing behind it
+         * left to diffuse — and on a list page these are the most repeated
+         * element in the app. Measured on /skills: 231 of them were carrying a
+         * `backdrop-filter`, which is 231 compositing layers the browser cannot
+         * batch. The tint and elevation shadow carry the surface; the blur was
+         * pure cost. */
         default:
-          "glass-flat rounded-control text-ink-2 hover:shadow-lift data-[state=open]:shadow-lift",
-        /** The one forward action per screen.
-         *
-         * A gradient rather than a flat fill, because a solid accent rectangle
-         * is the one shape in this UI that does not read as lit. Light comes
-         * from the top-left everywhere else in the system, so the gradient runs
-         * light-to-dark on the same axis and the top inner highlight sells it as
-         * a raised surface.
-         *
-         * `from-accent/85 to-accent` rather than a `to-accent-lo`: there is no
-         * `--color-accent-lo` in this palette, so that class silently generated
-         * nothing and the button rendered **flat** — the one variant that is
-         * supposed to look lit was the only one with no gradient. Both stops
-         * are `accent` at two opacities now, which is the same ramp without a
-         * token that does not exist.
-         *
-         * `text-on-accent`, not `text-accent-ink`. `--c-accent-ink` is near-black
-         * in dark, which is right for accent text *on the canvas* but wrong on a
-         * filled button: black type on this blue measures about 2.6:1 and is
-         * unreadable. `--c-on-accent` is the token for type on a filled accent
-         * surface, and it is white in both themes.
-         *
-         * Hover grows a bloom instead of brightening. That is the accent's own
-         * colour, not a focus glow: this is a pointer affordance on the primary
-         * action, and `--glow-ring` is reserved for keyboard focus, which is a
-         * different thing and must not be inferred from hover. */
+          "glass-flat rounded-control text-ink-2 hover:-translate-y-px hover:shadow-lift data-[state=open]:shadow-lift motion-reduce:transform-none",
+        /** The one forward action per screen. Solid, not glass: a translucent
+            accent fill would muddy the label and lose the "this is the action"
+            signal that a solid fill carries. */
         signal:
-          "rounded-control border border-accent/50 bg-linear-to-b from-accent/85 to-accent text-on-accent",
+          /* Flat accent fill, plus a single inset highlight along the top edge.
+             That 1px is the whole trick: on a solid fill a control reads as flat
+             paint, and the highlight is what makes it read as a lit surface — the
+             same cue `glass-highlight` provides on every frosted panel. A
+             gradient used to do this job and made the primary action glow like a
+             game UI, which is what this pass set out to remove. */
+          "rounded-control border border-accent bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18),0_1px_2px_rgb(0_0_0_/_0.25)] hover:brightness-95",
         secondary:
           "glass-flat rounded-control text-ink",
-        /* Was `border border-line-strong bg-transparent`, which on the frosted
-           header read as a hole punched through the glass: a transparent fill
-           over a blurred panel shows the *backdrop* but none of the header's own
-           tint, so each button looked darker than the bar it sat on rather than
-           raised off it.
-           `glass-flat` gives it the header's tint plus the lift, so it reads as
-           a small panel standing on the bar. It stays a *flat* tier — a control
-           inside another glass surface has nothing behind it left to diffuse. */
         outline:
-          "glass-flat rounded-control text-ink hover:border-line-strong",
+          "rounded-control border-[0.8px] border-line-strong bg-transparent text-ink hover:bg-raised",
         ghost: "rounded-control text-ink-2 hover:bg-raised hover:text-ink",
         destructive:
-          "rounded-control border border-danger/30 bg-danger-tint text-danger-text hover:bg-danger/20",
+          "rounded-control border-[0.8px] border-danger/30 bg-danger-tint text-danger-text hover:bg-danger/20",
         link: "h-auto px-0 text-accent underline-offset-4 hover:underline",
       },
       size: {
@@ -107,7 +85,6 @@ function Button({
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot.Root : "button"
-  const primary = variant === "signal"
   return (
     <Comp
       data-slot="button"
@@ -117,20 +94,7 @@ function Button({
       data-cuelume-release=""
       aria-busy={loading || undefined}
       disabled={disabled || loading}
-      className={cn(
-        buttonVariants({ variant, size }),
-        /* The two states that need a shadow rather than a colour change.
-           They live here rather than in the variant string because Tailwind
-           cannot put a multi-stop `box-shadow` in a cva string and still have
-           it merge — `twMerge` drops the second shadow, so a hover bloom added
-           in the variant would have been silently discarded. */
-        primary && [
-          "shadow-[inset_0_1px_0_0_rgb(255_255_255_/_0.35),0_6px_16px_-6px_color-mix(in_srgb,var(--c-accent)_60%,transparent)]",
-          "hover:shadow-[inset_0_1px_0_0_rgb(255_255_255_/_0.4),0_0_28px_-4px_color-mix(in_srgb,var(--c-accent)_65%,transparent)]",
-          "active:translate-y-px",
-        ],
-        className
-      )}
+      className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     >
       {asChild ? (

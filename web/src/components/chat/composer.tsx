@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react"
 import { PromptInput, type PromptAction } from "@/components/agents/prompt-input"
 import { StatusLamp } from "@/components/ui/status-lamp"
+import { cn } from "@/lib/utils"
 
 /**
  * The composer, rebuilt on the registry's `PromptInput`.
@@ -56,60 +57,96 @@ export function Composer({
   const ref = useRef<HTMLDivElement>(null)
 
   return (
-    <div ref={ref} className="mx-auto w-full max-w-3xl px-4 pb-4">
-      {running && (
-        <div className="mb-2 flex items-center gap-2 px-1 text-xs text-ink-3" role="status">
-          <StatusLamp status="running" label={phase ?? "Working"} size="sm" />
-          {elapsed && <span className="tabular">{elapsed}</span>}
-        </div>
-      )}
+    /* Absolutely positioned rather than in flow, so it floats over the transcript
+       instead of sitting below it. That is what earns it the glass: there is a
+       scrolling, varying backdrop behind it, which is the one condition
+       `backdrop-filter` is for. In flow it was a box at the end of a column with
+       the solid surface behind it, which is precisely where a translucent panel
+       has nothing to diffuse.
 
-      <div className="relative">
-        {autocomplete && (
-          <div
-            className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-full overflow-y-auto rounded-card border border-line bg-raised p-1 shadow-float"
-            role="listbox"
-          >
-            {autocomplete}
+       The 16px inset and the `pb-40` on the transcript viewport are two halves of
+       one decision — the fade under this box is sized to clear it, and the
+       padding keeps the last message out from underneath. */
+    <div
+      ref={ref}
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4"
+    >
+      <div className="pointer-events-auto relative mx-auto w-full max-w-[46rem]">
+        {running && (
+          <div className="mb-2 flex items-center gap-2 px-1 text-xs text-ink-3" role="status">
+            <StatusLamp status="running" label={phase ?? "Working"} size="sm" />
+            {elapsed && <span className="tabular">{elapsed}</span>}
           </div>
         )}
 
         {attachments && <div className="mb-2 flex flex-wrap gap-1.5">{attachments}</div>}
 
-        {/* The form carries the box's own border and radius, so the shell below
-            is only there to host the app's focus treatment and the toolbar's
-            overflow. */}
-        <PromptInput
-          value={value}
-          onValueChange={onChange}
-          onSubmit={() => onSend()}
-          onStop={onStop}
-          loading={running}
-          disabled={disabled}
-          placeholder={placeholder}
-          aria-label={placeholder}
-          actions={actions}
-          onAction={onAction}
-          leadingAction={controls}
-          minRows={2}
-          maxRows={8}
-          /* The strongest tier, because the composer sits at the bottom of a
-             scrolling transcript and is the one surface whose content behind it
-             is guaranteed to be moving text. A weaker fill let the last line of
-             a reply show through the field you were typing the reply to.
+        <div className="relative">
+          {autocomplete && (
+            <div
+              className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-full overflow-y-auto rounded-card border border-line bg-raised p-1 shadow-float"
+              role="listbox"
+            >
+              {autocomplete}
+            </div>
+          )}
 
-             No blur budget is spent on the field itself — the tier's blur is on
-             the container. `focus-within` puts the accent ring on the whole box
-             rather than the textarea inside it, which is what makes the field
-             read as one object. */
-          className="glass-strong rounded-panel focus-within:shadow-[inset_0_1px_0_0_rgb(255_255_255_/_0.12),var(--glow-ring)]"
-        />
+          {/* The frost is on this sibling layer, never on the form itself.
+              `app-header.tsx` documents why: a `backdrop-filter` ancestor becomes
+              the containing block for any `position: fixed` descendant, and this
+              component hosts the Plus popover and the slash menu. Keeping the
+              filter on an empty, childless layer removes the failure mode
+              outright rather than relying on those overlays all being `absolute`.
+
+              `rounded-panel` matches the form below exactly — a tint on a
+              different curve shows as a square behind a rounded box. `z-10`, not
+              `-z-10`: a negative z-index would drop this layer behind the
+              transcript's own background and it would be invisible. It is
+              `pointer-events-none` so it cannot intercept clicks meant for the
+              textarea underneath. */}
+          <div
+            aria-hidden
+            className="glass pointer-events-none absolute inset-0 z-10 rounded-panel"
+          />
+
+          {/* The form carries the box's own border and radius; the layer above is
+              only the material. One focus treatment, not two: this used to
+              combine a border change with `outline-2 outline-offset-2`, drawing a
+              hard outline *around* a border that had already moved, which read as
+              a double edge. */}
+          <PromptInput
+            value={value}
+            onValueChange={onChange}
+            onSubmit={() => onSend()}
+            onStop={onStop}
+            loading={running}
+            disabled={disabled}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            actions={actions}
+            onAction={onAction}
+            leadingAction={controls}
+            minRows={2}
+            maxRows={8}
+            className="relative rounded-panel border border-line-strong bg-transparent focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgb(from_var(--c-accent)_r_g_b_/_0.18)]"
+          />
+        </div>
+
+        {/* Fades out once there is a message to send. As a permanent line below
+            the box it was 28px of dead space carrying a keyboard hint nobody
+            reads after their first message; it only earns its space while the
+            field is still empty. The character count is unaffected — that one is
+            load-bearing and stays legible. */}
+        <p
+          className={cn(
+            "mt-1.5 px-1 text-2xs text-ink-3 transition-opacity duration-150",
+            value.length > 0 ? "opacity-0" : "opacity-100",
+          )}
+        >
+          <span>Enter to send, Shift+Enter for a new line</span>
+          {value.length > 500 && <span className="tabular">{value.length} characters</span>}
+        </p>
       </div>
-
-      <p className="mt-1.5 flex items-center justify-between px-1 text-xs text-ink-3">
-        <span>Enter to send, Shift+Enter for a new line</span>
-        {value.length > 500 && <span className="tabular">{value.length} characters</span>}
-      </p>
     </div>
   )
 }

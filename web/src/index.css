@@ -40,10 +40,7 @@
   /* Text-safe accent. Solid fills (buttons, the rail marker) use `accent`;
      accent text on a tinted fill uses this. */
   --c-accent-text: #2f57c4;
-  /* Type on a filled accent surface. White here because the light theme's accent
-     is a *dark* blue — 6.40:1. The dark theme needs the opposite, see `.dark`. */
   --c-accent-ink: #ffffff;
-  --c-on-accent: #ffffff;
   --c-accent-tint: rgb(47 87 196 / 0.1);
   --c-focus: #2f57c4;
 
@@ -112,21 +109,12 @@
   --chart-marker-border: oklch(0.85 0.01 260);
   --chart-marker-foreground: oklch(0.3 0.01 260);
   --chart-label: oklch(0.45 0.01 260);
-  /* Heatmap / chart scale. Alpha ramp on the accent rather than a set of solid
-     steps: the heatmap's job is to show *density*, and equal- lightness steps
-     quantise it into five buckets that look like categories. A ramp lets a
-     Tuesday with 9 events read as more than a Monday with 5, which is the whole
-     question the chart is answering.
-
-     Was hue 106 (green) — which also collided with `--c-success`, so "busy
-     cell" and "healthy node" were the same colour on the same screen. The
-     ramp is now the accent, matching the single-hue rule in design.md §3. */
-  --chart-scale-01: oklch(0.68 0.19 258 / 0.1);
-  --chart-scale-02: oklch(0.68 0.19 258 / 0.25);
-  --chart-scale-03: oklch(0.68 0.19 258 / 0.45);
-  --chart-scale-04: oklch(0.68 0.19 258 / 0.7);
-  --chart-scale-05: oklch(0.68 0.19 258 / 1);
-  --chart-scale-pattern-color: oklch(0.68 0.19 258 / 0.2);
+  --chart-scale-01: oklch(0.98 0.003 106);
+  --chart-scale-02: oklch(0.92 0.008 106);
+  --chart-scale-03: oklch(0.82 0.015 106);
+  --chart-scale-04: oklch(0.68 0.02 106);
+  --chart-scale-05: oklch(0.55 0.025 106);
+  --chart-scale-pattern-color: oklch(0.96 0.005 106);
 
   /* density: comfortable by default */
   --card-pad: 12px;
@@ -180,7 +168,7 @@
   --color-border-app: var(--c-line);
   --color-ring: var(--c-focus);
   --color-destructive: var(--c-danger);
-  --color-destructive-foreground: var(--c-canvas);
+  --color-destructive-foreground: var(--c-accent-ink);
   --color-success-tint: var(--c-success-tint);
   --color-warning-tint: var(--c-warning-tint);
   --color-danger-tint: var(--c-danger-tint);
@@ -213,26 +201,7 @@
 
   --c-accent: #7aa7f5;
   --c-accent-text: #8fb6f8;
-  /* Type on a filled accent surface.
-   *
-   * Dark, not white, and the reason is measured rather than assumed:
-   *
-   *   white on #7aa7f5           -> 2.42:1   unreadable
-   *   #0b0e14 on #7aa7f5        -> 7.98:1   passes with room
-   *
-   * The dark theme's accent is a *light* blue (it has to be, or accent text on
-   * the near-black canvas would fail), and you cannot put white type on a light
-   * blue. So the primary button carries dark type here and white type in light,
-   * which is what `--c-accent-ink` was doing all along.
-   *
-   * **This means the label colour is theme-dependent and must not be
-   * hard-coded.** The failure it prevents is real and was measured: a first
-   * pass forced white in both themes and the primary button's label measured
-   * 2.42:1 in dark. `scripts/contrast-glass.py` prints both.
-   *
-   * `--c-accent-ink` stays the name; it is the token for "type on accent". */
   --c-accent-ink: #0b0e14;
-  --c-on-accent: #0b0e14;
   --c-accent-tint: rgb(122 167 245 / 0.16);
   --c-focus: #7cb0ff;
 
@@ -267,26 +236,39 @@
      browser, the card and its background resolved to within a couple of levels
      of each other.
 
-     Two fixes, both needed. The tint is now much more transparent, so whatever
-     is behind the panel actually comes through. And it is tinted *lighter and
-     bluer* than the surface rather than equal to it, so the panel separates from
-     its ground by its own colour as well as by its backdrop.
+     Two fixes, both needed. The tint is more transparent than the surface fill,
+     so whatever is behind the panel actually comes through. And it is tinted
+     *lighter and bluer* than the surface rather than equal to it, so the panel
+     separates from its ground by its own colour as well as by its backdrop.
 
-     Lowered again from 0.40 to 0.32 now that the glow field supplies real
-     coloured light behind the panels rather than a near-flat canvas — at 0.40
-     over a live orb the bloom was washing the text. Measured over the worst
-     backdrop (an orb directly behind the panel): ink 13.30:1, ink-2 7.51:1,
-     ink-3 4.77:1, all clear of the 4.5 bar. */
-  --glass-tint: rgb(46 56 78 / 0.42);
-  --glass-tint-strong: rgb(30 38 55 / 0.78);
-  --glass-blur: 20px;
-  --glass-blur-strong: 32px;
-  --glass-blur-sm: 12px;
+     Raised from 0.40 to 0.52 in the calm-glass pass, together with the drop in
+     blur radius. Lowering the blur on its own made panels look like plain dark
+     rectangles; a heavier tint is what makes a shallower blur read as calm
+     rather than as an effect that has been switched off. The two move together
+     because alpha and blur are both fighting the same problem — how much the
+     panel separates from its ground without either a hard rim or a heavy blur
+     doing the work.
+
+     Raising the alpha is also free, where lowering it would not have been: it
+     only ever raises the luminance floor under text sitting on the panel, so
+     every measured margin improves. Re-measured at 0.52 composited over the
+     worst backdrop in the app (the 14% accent bloom on `--c-canvas`) — sidebar
+     group labels, the tightest case, since they are ink-3 at 11px on the glass
+     itself: ink 11.18:1, ink-2 7.89:1, ink-3 5.01:1. Over plain `--c-surface`
+     (the composer) ink-3 sits at 5.50:1. */
+  --glass-tint: rgb(46 56 78 / 0.52);
+  --glass-tint-strong: rgb(40 49 68 / 0.72);
+  --glass-blur: 18px;
+  --glass-blur-strong: 30px;
+  /* Closed an asymmetry: this was declared only in `:root`, so dark glass was
+     resolving it by inheritance from the light block instead of declaring its
+     own. Behaviourally identical today, but it meant a future light-only edit
+     would silently retune dark glass too. */
   --glass-saturate: 1.6;
-  /* The rim is what sells it. On dark it is a light line, and 0.09 was
-     invisible — 0.14 is the readable floor. */
-  --glass-edge: rgb(255 255 255 / 0.14);
-  --glass-edge-inner: rgb(255 255 255 / 0.1);
+  /* The rim was doing too much work. At 0.14 it read as a drawn outline on top
+     of the shadow, and outline-plus-shadow muddies both (see the note above
+     `glass`). Lowered to 0.08 so elevation alone carries the edge. */
+  --glass-edge: rgb(255 255 255 / 0.08);
 
   /* Dark mode needs a far stronger shadow than light. On a near-black ground a
      soft light shadow is invisible, so the panel has to cast a real one: a tight
@@ -298,11 +280,11 @@
      1.16:1 against its ground, which is why it read flat. The shadow does not
      change that number — it is not a luminance cue — but it supplies the depth
      signal the luminance difference physically cannot at this tint. */
-  --glass-lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.55),
+  --glass-lift: 0 1px 2px rgb(0 0 0 / 0.28), 0 10px 24px -8px rgb(0 0 0 / 0.32),
     inset 0 1px 0 0 rgb(255 255 255 / 0.07);
-  --glass-lift-strong: 0 2px 6px rgb(0 0 0 / 0.45), 0 24px 64px -16px rgb(0 0 0 / 0.65),
+  --glass-lift-strong: 0 2px 6px rgb(0 0 0 / 0.3), 0 20px 44px -12px rgb(0 0 0 / 0.4),
     inset 0 1px 0 0 rgb(255 255 255 / 0.09);
-  --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.36), 0 8px 20px -8px rgb(0 0 0 / 0.5),
+  --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 8px 20px -8px rgb(0 0 0 / 0.3),
     inset 0 1px 0 0 rgb(255 255 255 / 0.06);
 
   --c-heat-0: #1e293b;
@@ -310,22 +292,6 @@
   --c-heat-2: #1d4ed8;
   --c-heat-3: #3b82f6;
   --c-heat-4: #60a5fa;
-
-  /* The orbs are a screen blend over the canvas rather than an additive one, so
-     a bright one lightens the ground instead of clipping it. Without this the
-     cyan orb saturated to a flat pale disc and the panels behind it lost their
-     edge entirely.
-
-     `--glow-a` is 0.32 and that is a measured value, not a taste one: it is the
-     brightest orb in the field and it sits directly behind the sidebar, where
-     `ink-3` is the tightest text pair on the whole system. At 0.40 that pair
-     measured 4.14:1, under the 4.5 bar; 0.32 puts it at 4.53. See
-     `scripts/contrast-glass.py` and design.md §5. */
-  --glow-blend: screen;
-  --glow-a: oklch(0.62 0.19 258 / 0.32);
-  --glow-b: oklch(0.72 0.13 220 / 0.26);
-  --glow-c: oklch(0.58 0.2 290 / 0.2);
-  --noise-opacity: 0.035;
 
   --chart-1: oklch(1 0 none);
   --chart-2: oklch(0.73 0 none);
@@ -342,28 +308,12 @@
   --chart-marker-border: oklch(0.4 0.01 260);
   --chart-marker-foreground: oklch(0.9 0 0);
   --chart-label: oklch(0.75 0.01 260);
-  /* Same accent ramp as light, but stepped slightly brighter at every level:
-     over a near-black canvas the light ramp's low alphas (0.10, 0.25) were
-     indistinguishable from an empty cell, which made a quiet week look like a
-     dead one. */
-  --chart-scale-01: oklch(0.72 0.17 255 / 0.14);
-  --chart-scale-02: oklch(0.72 0.17 255 / 0.3);
-  --chart-scale-03: oklch(0.72 0.17 255 / 0.5);
-  --chart-scale-04: oklch(0.74 0.16 252 / 0.75);
-  --chart-scale-05: oklch(0.78 0.15 248 / 1);
+  --chart-scale-01: oklch(0.28 0.03 270);
+  --chart-scale-02: oklch(0.38 0.04 270);
+  --chart-scale-03: oklch(0.48 0.05 270);
+  --chart-scale-04: oklch(0.58 0.06 270);
+  --chart-scale-05: oklch(0.68 0.07 270);
   --chart-scale-pattern-color: oklch(0.145 0 0);
-
-  /* The `@efferd/app-shell-4` block injected its stock shadcn `--sidebar-*`
-     hsl values into this `.dark` block. They are gone, deliberately.
-
-     They sat at `.dark` specificity and would have resolved `--sidebar` to a
-     neutral slate instead of `--c-surface`, so the rail would have quietly
-     stopped being Signal Blue while every other token still looked correct.
-     `--sidebar-*` must keep resolving to the `--c-*` values declared in the
-     legacy alias block, which is what the whole palette hangs off.
-
-     Recorded in design.md §3: the block's token layer is not the deliverable,
-     the block's structure is. */
 }
 
 [data-density="compact"] {
@@ -386,7 +336,6 @@
   --color-accent: var(--c-accent);
   --color-accent-text: var(--c-accent-text);
   --color-accent-ink: var(--c-accent-ink);
-  --color-on-accent: var(--c-on-accent);
   --color-accent-tint: var(--c-accent-tint);
   --color-focus: var(--c-focus);
   --color-danger: var(--c-danger);
@@ -436,7 +385,10 @@
   --color-ring: var(--c-focus);
   --color-destructive: var(--c-danger);
   --color-destructive-foreground: var(--c-accent-ink);
-  --color-sidebar: var(--c-surface);
+  /* The sidebar is glass: it stands directly on the shell's glow-ground, so it is
+     the one large surface where there is genuinely something to diffuse. It was
+     `--c-surface`, which made it opaque and left the bloom invisible behind it. */
+  --color-sidebar: var(--glass-tint);
   --color-sidebar-foreground: var(--c-ink);
   --color-sidebar-primary: var(--c-accent);
   --color-sidebar-primary-foreground: var(--c-accent-ink);
@@ -498,40 +450,6 @@
   --radius-card: 12px;
   --radius-panel: 16px;
 
-  /* ---- layer scale ----
-     Five fixed layers, so a component never invents its own elevation. This
-     replaces the scattered `z-50` / `z-90` / `z-100` / `z-9999` that had
-     accumulated across the overlay primitives — the point is not that the
-     numbers changed, it is that there is now a reason for them. */
-  --z-canvas: 0;
-  --z-glow: 1;
-  --z-panel: 10;
-  --z-raised: 20;
-  --z-overlay: 50;
-  --z-toast: 60;
-
-  /* The scrim behind a modal overlay. One token, because the four overlays
-     that have one (dialog, sheet, command palette, flow-map dimmer) had all
-     picked their own — `bg-black/20` in two places and `bg-black/55` in a third,
-     which is why the palette scrim read as much heavier than a dialog's.
-     Blurred rather than flat so the scrim reads as depth, not as a grey lid. */
-  --scrim: oklch(0.1 0.03 255 / 0.5);
-  --scrim-blur: 6px;
-
-  /* The accent bloom behind a dialog. Sits on the dialog's own ::before, so it
-     is painted *behind* the panel and diffuses the scrim rather than the
-     content — which is the only place a bloom can help without hurting
-     legibility. */
-  --dialog-bloom: color-mix(in srgb, var(--c-accent) 18%, transparent);
-
-  /* Exposed as Tailwind values so `z-panel` / `z-overlay` work as classes. */
-  --z-index-canvas: 0;
-  --z-index-glow: 1;
-  --z-index-panel: 10;
-  --z-index-raised: 20;
-  --z-index-overlay: 50;
-  --z-index-toast: 60;
-
   /* ---- elevation: the reference's shadow set ---- */
   --shadow-float: 0 2.8px 2.2px rgb(0 0 0 / 0.034), 0 6.7px 5.3px rgb(0 0 0 / 0.048),
     0 12.5px 10px rgb(0 0 0 / 0.06), 0 22.3px 17.9px rgb(0 0 0 / 0.072),
@@ -542,72 +460,30 @@
   --shadow-active: 0 4px 7px 0 rgb(0 0 0 / 0.04);
 
   /* ---- frosted glass ----
-     Five ingredients, and the tier is chosen by depth rather than by taste:
+     One material, three strengths, so "how frosted is this" is a token choice
+     rather than a per-component decision.
 
-       translucent fill -> backdrop blur + saturate -> 1px hairline ->
-       inset top highlight -> layered shadow
-
-     The blur sits on the element's own `backdrop-filter` — never on content.
-     Glass works because there is something behind it to diffuse, which is why
-     the canvas carries the glow field (`GlowField`) and why a card inside a
-     glass column does NOT blur again: over a flat fill it would cost a
-     compositing layer for nothing.
-
-     Alphas are deliberately lower than a "premium frosted" reference would use,
-     because the ground behind them is now animated light rather than a static
-     image — a more opaque fill is what keeps text readable over a bright orb. */
-  --glass-tint: rgb(255 255 255 / 0.74);
-  --glass-tint-strong: rgb(255 255 255 / 0.84);
-  --glass-blur: 20px;
-  --glass-blur-strong: 32px;
-  --glass-blur-sm: 12px;
+     The tint is opaque enough to keep text readable, and the blur sits on the
+     element's own `backdrop-filter` — never on content. Glass works because
+     there is something behind it to diffuse: the tinted canvas, the smoke wash,
+     the sidebar. Over a flat fill it would cost a compositing layer for nothing,
+     so opaque surfaces stay opaque. */
+  --glass-tint: rgb(255 255 255 / 0.66);
+  --glass-tint-strong: rgb(255 255 255 / 0.82);
+  --glass-blur: 18px;
+  --glass-blur-strong: 30px;
   --glass-saturate: 1.6;
-  /* The rim is what sells glass, and on light it has to be a *dark* line: a
-     white edge against a bright ground is invisible. Tinted, not a drawn box —
-     0.16 is readable without starting to look like a border. */
-  --glass-edge: rgb(21 34 66 / 0.16);
-  --glass-edge-inner: rgb(21 34 66 / 0.1);
+  --glass-edge: rgb(255 255 255 / 0.7);
   /* Elevation instead of an outline. Light mode needs almost no shadow to read
      as lifted — the ground is already bright, so a soft wide shadow plus the
      inset highlight carries it. */
-  --glass-lift: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -8px rgb(16 24 40 / 0.1),
+  --glass-lift: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 20px -6px rgb(16 24 40 / 0.1),
     inset 0 1px 0 0 rgb(255 255 255 / 0.7);
-  --glass-lift-strong: 0 2px 4px rgb(16 24 40 / 0.07), 0 24px 64px -16px rgb(16 24 40 / 0.14),
+  --glass-lift-strong: 0 2px 4px rgb(16 24 40 / 0.07), 0 16px 36px -10px rgb(16 24 40 / 0.14),
     inset 0 1px 0 0 rgb(255 255 255 / 0.75);
-  --glass-lift-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -8px rgb(16 24 40 / 0.1),
+  --glass-lift-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 6px 16px -6px rgb(16 24 40 / 0.1),
     inset 0 1px 0 0 rgb(255 255 255 / 0.6);
   /* The dark-mode values live on `.dark` below. */
-
-  /* ---- state glow (spec 5.3) ----
-     Glow is information, never ornament: focus, running, awaiting review,
-     success, failure. Each is a ring plus a bloom, because a bloom alone reads
-     as a blur artefact and a ring alone reads as a selection border. */
-  --glow-ring: 0 0 0 1px var(--c-focus), 0 0 24px -2px color-mix(in srgb, var(--c-focus) 55%, transparent);
-  --glow-running: 0 0 0 1px color-mix(in srgb, var(--c-st-running) 60%, transparent),
-    0 0 28px -4px color-mix(in srgb, var(--c-st-running) 50%, transparent);
-  --glow-success: 0 0 0 1px color-mix(in srgb, var(--c-success) 50%, transparent),
-    0 0 22px -6px color-mix(in srgb, var(--c-success) 45%, transparent);
-  --glow-danger: 0 0 0 1px color-mix(in srgb, var(--c-danger) 55%, transparent),
-    0 0 22px -6px color-mix(in srgb, var(--c-danger) 50%, transparent);
-  --glow-review: 0 0 0 1px color-mix(in srgb, var(--c-review) 50%, transparent),
-    0 0 22px -6px color-mix(in srgb, var(--c-review) 40%, transparent);
-  /* Drops the bloom but keeps the ring: the ring is the accessibility-relevant
-     half (it is what focus actually is), the bloom is decoration. */
-  --glow-lite: 0 0 0 1px var(--c-focus);
-
-  /* ---- glow field (spec 5.1) ----
-     Three orbs so a glass panel always has coloured light behind it to
-     refract. Kept desaturated and slow: they are ambience, not decoration to
-     be looked at. Alpha is higher than the old `glow-ground` because they are
-     now real elements behind real blur rather than gradients on the same layer
-     as the panels. */
-  --glow-blend: normal;
-  --glow-a: color-mix(in srgb, var(--c-accent) 26%, transparent);
-  --glow-b: color-mix(in srgb, var(--c-st-ready) 15%, transparent);
-  --glow-c: color-mix(in srgb, var(--c-review) 12%, transparent);
-  --noise-opacity: 0.025;
-  /* The "Reduce effects" budget, when the setting is on. */
-  --blur-lite: 8px;
 
   /* ---- motion ---- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -623,75 +499,82 @@
   border-width: 0.8px;
 }
 
-/* Frosted glass, in three tiers.
+/* Frosted glass. Two strengths.
  *
- * The tier is chosen by DEPTH, not by taste:
+ * `glass` is the default for cards and floating panels. `glass-strong` is for
+ * the topmost layers — dialogs, sheets, popovers — where content behind would
+ * otherwise be legible enough to read through the text.
  *
- *   glass          L2 panel   sidebar, topbar, kanban column, chart panel
- *   glass-card     L3 raised  cards, tiles, chat bubbles — NO blur
- *   glass-strong   L4/L5      dialogs, sheets, popovers, palette, toast
+ * **Defined by elevation, not by an outline.** The earlier version drew a 0.8px
+ * light rim and almost no shadow, which was measured to leave the panel only
+ * 1.16:1 against its own ground in dark and 1.05:1 in light. In other words the
+ * rim was doing all the work, and the result read as an outlined box rather
+ * than a sheet of glass.
  *
- * **`glass-card` deliberately has no `backdrop-filter`.** This is the single
- * most important rule in the material, and it is a performance rule as much as
- * a design one. `backdrop-filter` is not free: every element carrying one
- * becomes its own compositing layer and the browser cannot batch them.
- * Measured on /skills before the glow field existed, a normal-sized page came
- * to **463** of them, because `ui/card.tsx` put blurred glass on every card
- * root. Cards sit *inside* a glass column, so their backdrop is already a
- * blurred panel — blurring it again diffuses nothing and doubles the layer
- * cost. The tier rule is: blur once per visual stack, at the panel.
+ * A shadow is the honest signal here: glass is a surface *above* something, and
+ * that is what a shadow says. Compared side by side in both themes, dropping
+ * the rim and adding elevation is unmistakably more glass-like; adding a rim
+ * *and* a shadow muddies both.
  *
- * **Defined by elevation, not by an outline.** An earlier version drew a
- * hairline rim and almost no shadow, which measured to leave the panel only
- * 1.16:1 against its own ground in dark. A shadow is the honest signal here:
- * glass is a surface *above* something, and that is what a shadow says. The
- * hairline is kept at low strength as the second cue — enough to find the
- * edge, not enough to read as a drawn box. */
+ * The inset top highlight stays, but only at low strength — it is the one cue
+ * that reads as a lit surface rather than a drawn edge. */
 @utility glass {
-  position: relative;
   background-color: var(--glass-tint);
-  /* Webkit FIRST. This is not style preference — it is load-bearing, and
-     getting it backwards silently deletes the effect.
-     Lightning CSS (Tailwind v4's transform) treats the prefixed and standard
-     `backdrop-filter` as the same declaration, so when it sees
-     `standard; -webkit-` in that order it dedupes down to the *prefixed* one
-     only. Chromium ignores `-webkit-backdrop-filter` entirely — measured, not
-     assumed — so the blur disappears with no error anywhere. Reversing the
-     order keeps both declarations and the effect survives. */
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   box-shadow: var(--glass-lift);
 }
 
-/* Topmost floating layers. Stronger because content behind would otherwise be
- * legible enough to read *through* the text, and blurrier because these sit
- * over the busiest part of the screen. */
 @utility glass-strong {
-  position: relative;
   background-color: var(--glass-tint-strong);
-  /* Prefixed first for the same reason as `glass` above — see the note there. */
-  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
-  backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
-  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
   box-shadow: var(--glass-lift-strong);
 }
 
-/* Glass that is also a card: radius comes with it, so a card cannot end up
- * frosted and unrounded. No blur — see the tier note above. */
+/* Glass that is also a card: radius comes with it, so a panel cannot end up
+ * frosted and unrounded. The lift is `glass-lift` plus a touch more spread,
+ * because a card sits among its peers rather than floating alone.
+ *
+ * No backdrop-filter here, which is a deliberate reversal of this utility's
+ * original form. The reason is the one spelled out below `glass-flat`: cards
+ * are exactly the dense case, and Knowledge/Overview alone rendered ~35 of them,
+ * each its own compositing layer. A card frosted at 18px looks no different
+ * from one frosted at 24px — the difference only shows once you have 35 of them
+ * stacked edge to edge and the page stops being cheap to scroll.
+ *
+ * The tint and the elevation stay, so the material still reads as glass; only
+ * the blur is gone. It is now `glass-flat` plus a radius, and keeps its name
+ * purely because ~35 call sites reference it and renaming would churn the diff
+ * for no visual gain. */
 @utility glass-card {
-  position: relative;
   background-color: var(--glass-tint);
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-card);
   box-shadow: var(--glass-lift-card);
 }
 
+/* Kept for the rare panel that genuinely needs a drawn edge — an inset well or
+ * a fieldset, where a shadow would read as a hole rather than a surface. */
+@utility glass-hairline {
+  border: 0.8px solid var(--glass-edge);
+}
+
 /* Glass without the backdrop-filter.
  *
- * The dense tier. `glass-card` already covers "a card inside a panel"; this
- * covers "400 rows sitting edge to edge on the same ground", where 400
- * identical blurred panels buy nothing at all.
+ * `backdrop-filter` is not free: every element carrying one becomes its own
+ * compositing layer, and the browser cannot batch them. Measured on /skills,
+ * which is a normal-sized page, glass-card plus glass plus glass-strong came to
+ * **463** of them. That is the real reason a dense page feels heavy, and it is
+ * why simply making the glass more transparent makes it worse rather than
+ * better — more transparency means more layers all reading the same backdrop.
+ *
+ * So glass is capped by depth, not spread:
+ *
+ *   glass         cards and floating panels, where the lift matters and the
+ *                 count is in the tens
+ *   glass-flat    dense rows and list items, where 400 identical blurred
+ *                 panels buy nothing because they sit edge to edge on an
+ *                 opaque ground anyway
  *
  * `glass-flat` keeps the tint and the elevation shadow — the two things that
  * make a surface legible — and drops only the blur. */
@@ -705,236 +588,67 @@
   box-shadow: var(--glass-lift);
 }
 
-/* ---- the optional sixth and seventh ingredients ----
+/* Degradation for the two cases where frost cannot work.
  *
- * `glass-sheen` is a gradient border. It is a *sheen*, not a border: the mask
- * trick means the gradient only occupies the 1px ring, so it reads as light
- * catching the top-left edge (light comes from the top-left everywhere in this
- * system) rather than as a second, louder outline.
+ * Without these, a browser with no `backdrop-filter` renders `glass` as a
+ * translucent tint over an opaque ground: the panel is visibly *lighter* than
+ * its surroundings but has diffused nothing, which is the grey-wash failure
+ * described above `glass`. Same for a user who has asked the OS for reduced
+ * transparency — that preference exists precisely so they do not have to read
+ * text through a translucent surface, and a tint-only panel does not honour it.
+ * Both land on the opaque surface token, which is what the panel would have
+ * been before it became glass.
  *
- * `glass-spotlight` is a radial highlight that follows the pointer. It is
- * pointer-events:none because the element it decorates is often itself a drag
- * handle or a button, and an `::after` that eats pointer events would silently
- * break the thing it is decorating. */
-@utility glass-sheen {
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      135deg,
-      oklch(1 0 0 / 0.35),
-      oklch(1 0 0 / 0.04) 35%,
-      oklch(1 0 0 / 0) 60%,
-      color-mix(in srgb, var(--c-accent) 25%, transparent)
-    );
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
+ * `glass-flat` needs no fallback: it has no filter to lose. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong {
+    background-color: var(--c-surface);
   }
 }
 
-@utility glass-spotlight {
-  --mx: 50%;
-  --my: 0%;
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background: radial-gradient(
-      260px circle at var(--mx) var(--my),
-      color-mix(in srgb, var(--c-accent) 16%, transparent),
-      transparent 65%
-    );
-    opacity: 0;
-    transition: opacity 250ms ease;
-  }
-  /* Two ways in, because there are two wiring strategies:
-     `:hover` is the per-element case (a dialog, a chart panel, a column);
-     `[data-spotlit]` is the delegated case, where one handler on the board root
-     sets the attribute on whichever card the pointer is actually over. Both
-     resolve to the same pseudo-element and the same cost — one opacity write. */
-  &:is(:hover, [data-spotlit])::after {
-    opacity: 1;
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-strong {
+    background-color: var(--c-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 
-/* ---- state glows ----
+/* Scroll-edge fades.
  *
- * Glow is information, never ornament. Each is composed with the tier's own
- * lift rather than replacing it, because a focus ring that drops the panel's
- * elevation shadow makes the panel *sink* on focus, which is backwards.
+ * Content that scrolls *under* a translucent bar should dissolve into it rather
+ * than collide with a hard edge — the first line of a transcript sliced by a
+ * solid header is the thing this is here to prevent.
  *
- * None of these is safe to use alone: a glow is colour, and colour alone never
- * conveys state. Every caller pairs one with a lamp, an icon or a label — the
- * `StatusLamp` on a running card is what actually says "running"; the glow
- * only says "look here". */
-@utility glow-focus {
-  box-shadow: var(--glass-lift-card), var(--glow-ring);
-}
-@utility glow-running {
-  box-shadow: var(--glass-lift-card), var(--glow-running);
-}
-@utility glow-success {
-  box-shadow: var(--glass-lift-card), var(--glow-success);
-}
-@utility glow-danger {
-  box-shadow: var(--glass-lift-card), var(--glow-danger);
-}
-@utility glow-review {
-  box-shadow: var(--glass-lift-card), var(--glow-review);
-}
-
-/* Focus that survives "reduce effects": the ring is the accessibility-relevant
- * half of a glow, the bloom is decoration, so lite mode drops the bloom and
- * keeps the ring everywhere. */
-:where([data-effects="lite"]) :is(.glow-focus, .glow-running, .glow-success, .glow-danger, .glow-review) {
-  box-shadow: var(--glass-lift-card), 0 0 0 1px var(--c-focus);
-}
-
-/* ---- the glow field ----
+ * The fade is a mask on the scrolling element, not a gradient overlay on the
+ * bar, for two reasons: it needs no extra element, and it cannot cover
+ * interaction targets the way an absolutely positioned overlay would. It is
+ * also free to run — no per-frame work, unlike animating a blur radius.
  *
- * Glass looks like nothing over a flat colour, and that is exactly what
- * happened until this was mounted: `glow-ground` was defined in this file and
- * referenced by nothing, so every glass panel was diffusing a uniform canvas
- * and rendering as a plain rectangle. The field is what makes the material
- * real, so it is a real element rather than a background-image on the shell.
+ * These live here rather than as per-component styles because they are a
+ * structural fact about "this container scrolls under something", not a look.
  *
- * Three orbs positioned so that the sidebar, the column strip and the composer
- * each have coloured light behind them — a panel with a flat backdrop has
- * nothing to refract, whatever its tint. */
-@utility glow-field {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-glow);
-  overflow: hidden;
-  pointer-events: none;
+ * Note the app shell itself never scrolls: it is `h-svh` with `overflow-hidden`
+ * and each page owns an inner scroll container. So these only apply where a
+ * page genuinely scrolls beneath a floating surface — the chat transcript is
+ * the case that needs it today. Applying `scroll-fade-top` to a container that
+ * does not scroll under anything just fades its first row for nothing. */
+@utility scroll-fade-top {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px);
 }
 
-@utility glow-orb {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(90px);
-  mix-blend-mode: var(--glow-blend);
-  will-change: transform;
-}
-
-@utility glow-orb-a {
-  width: 46vw;
-  height: 46vw;
-  left: -10vw;
-  top: -14vw;
-  background: var(--glow-a);
-}
-@utility glow-orb-b {
-  width: 38vw;
-  height: 38vw;
-  right: -8vw;
-  top: 18vh;
-  background: var(--glow-b);
-}
-@utility glow-orb-c {
-  width: 34vw;
-  height: 34vw;
-  left: 30vw;
-  bottom: -18vw;
-  background: var(--glow-c);
-}
-
-/* Faint control-plane grid. Masked to a wide ellipse so it fades out well
- * before it reaches a text column — a full-bleed grid behind 13px copy is a
- * legibility cost with no payoff. */
-@utility glow-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(oklch(1 0 0 / 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(1 0 0 / 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
-}
-
-/* Orb drift. Opt-in only.
- *
- * `design.md` §8 records a deliberate decision: the app runs *no* ambient
- * animation, because a loop that runs forever is a loop the user cannot stop.
- * Three permanently drifting orbs are exactly that, so drift is gated on the
- * user's motion preference being `system` — the same gate the status pulse and
- * the board intro already use — rather than on the spec's "always". The orbs
- * themselves still paint under reduced motion; only the motion stops, because
- * an invisible orb would take the glass's backdrop with it. */
-@keyframes orb-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(4vw, 3vh, 0) scale(1.08);
-  }
-  100% {
-    transform: translate3d(-3vw, 6vh, 0) scale(0.96);
-  }
-}
-
-@utility glow-drift {
-  animation: orb-drift 28s ease-in-out infinite alternate;
-}
-
-:where(:not([data-motion="reduce"])) .glow-drift {
-  animation-duration: 28s;
-}
-:where(:not([data-motion="reduce"])) .glow-orb-b {
-  animation: orb-drift 34s ease-in-out -8s infinite alternate;
-}
-:where(:not([data-motion="reduce"])) .glow-orb-c {
-  animation: orb-drift 40s ease-in-out -16s infinite alternate;
-}
-
-/* The one ambient pulse, and it means something: a card is actually running. */
-@keyframes pulse-glow {
-  50% {
-    filter: brightness(1.15);
-  }
-}
-
-@utility glow-pulse {
-  animation: pulse-glow 2.4s ease-in-out infinite;
-}
-
-/* The accent bloom behind a dialog, as its own utility so `ui/dialog.tsx` does
-   not have to hand-write a nested pseudo-element rule. It is on `::before`
-   while the sheen is on `::before` too — so the two cannot be combined on one
-   element, which is why the dialog's bloom lives on its own `data-dialog-bloom`
-   attribute rather than by pairing `glass-sheen dialog-bloom` on the content. */
-@utility dialog-bloom {
-  &::before {
-    content: "";
-    position: absolute;
-    inset: -20% -10% auto;
-    height: 220px;
-    border-radius: 9999px;
-    background: radial-gradient(closest-side, var(--dialog-bloom), transparent);
-    filter: blur(60px);
-    pointer-events: none;
-    z-index: -1;
-  }
-}
-
-/* The shared scrim. `--scrim` rather than a raw black alpha so the dialog,
-   sheet, palette and map dimmer all dim by the same amount. */
-@utility scrim {
-  background: var(--scrim);
-  -webkit-backdrop-filter: blur(var(--scrim-blur));
-  backdrop-filter: blur(var(--scrim-blur));
+/* The bottom fade is sized to clear the floating composer (20px radius, 12px
+ * padding, ~64px tall, plus 16px of inset) rather than to a round number. */
+@utility scroll-fade-both {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 28px,
+    #000 calc(100% - 140px),
+    transparent 100%
+  );
 }
 
 /* One orchestrated entrance, not a per-card scatter.
@@ -1000,20 +714,6 @@
 .toast-item[data-leaving] {
   opacity: 0;
   transform: translateY(-6px);
-}
-
-/* A toast arrives with a glow matching its tone: the glass elevation plus one
-   ring-and-bloom. Set as a whole `box-shadow` rather than by re-declaring
-   `--glass-lift-strong`, because a variable that references itself is a cyclic
-   dependency and resolves to nothing at computed-value time. */
-.toast-item[data-tone="success"] {
-  box-shadow: var(--glass-lift-strong), var(--glow-success);
-}
-.toast-item[data-tone="error"] {
-  box-shadow: var(--glass-lift-strong), var(--glow-danger);
-}
-.toast-item[data-tone="info"] {
-  box-shadow: var(--glass-lift-strong), var(--glow-ring);
 }
 
 /* Dot grid, for decorative areas only: empty states, sign-in, the flow map
@@ -1113,133 +813,44 @@
     );
 }
 
-/* Dark mode needs a stronger glow for the same reason as the wash — at the
-   light-mode strength it is invisible against a near-black canvas. 22% / 16%
-   peaks, verified: body ink 10.63:1, `ink-2` 7.51:1, `ink-3` 4.77:1. */
+/* Dark mode needs a stronger glow than light for the same reason as the wash —
+   at the light-mode strength the bloom is invisible against a near-black canvas.
+
+   Was 22% / 16%. Cut to 14% / 9%, which brings it level with the light theme.
+
+   The earlier comment here justified 22% by saying the weaker bloom left glass
+   diffusing a flat field. That reasoning was correct, but the fix was the wrong
+   one: the field was flat because **nothing was applying this utility at all**,
+   not because the bloom was too weak. Raising the peak had been compensating
+   for a missing ground layer. Now that the shell actually paints it, the light
+   theme's strength reads correctly in dark too, and the heavier value was only
+   adding colour to the top-left corner where the sidebar labels sit.
+
+   The measured margins at 22% were body ink 10.63:1, ink-2 7.51:1, ink-3
+   4.77:1 — ink-3 being the narrowest in the file. Re-measured at the new 14%
+   peak, over the same composite (accent over `--c-canvas`, sRGB source-over,
+   WCAG relative luminance): body ink 12.54:1, ink-2 8.86:1, ink-3 5.63:1. All
+   three improve, as expected — a lower bloom means a lighter worst-case
+   backdrop in dark. */
 .dark .glow-ground {
   background-image:
     radial-gradient(
       ellipse 70% 55% at 12% 0%,
-      color-mix(in srgb, var(--c-accent) 22%, transparent) 0%,
-      color-mix(in srgb, var(--c-accent) 8%, transparent) 38%,
+      color-mix(in srgb, var(--c-accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 5%, transparent) 38%,
       transparent 72%
     ),
     radial-gradient(
       ellipse 55% 45% at 88% 92%,
-      color-mix(in srgb, var(--c-review) 16%, transparent) 0%,
-      color-mix(in srgb, var(--c-review) 6%, transparent) 34%,
+      color-mix(in srgb, var(--c-review) 9%, transparent) 0%,
+      color-mix(in srgb, var(--c-review) 4%, transparent) 34%,
       transparent 68%
     ),
     radial-gradient(
       ellipse 120% 70% at 50% 45%,
-      color-mix(in srgb, var(--c-accent) 7%, transparent) 0%,
+      color-mix(in srgb, var(--c-accent) 4%, transparent) 0%,
       transparent 65%
     );
-}
-
-/* ==========================================================================
-   Fallbacks. The material degrades, it does not break.
-
-   Four cases, in the order they are likely to matter:
-
-     1. no backdrop-filter support  — flat opaque fill, same tint
-     2. prefers-reduced-transparency — the user asked for less; honour it
-     3. data-effects="lite"          — our own budget knob, from Settings
-     4. forced-colors                — Windows high contrast, colours replaced
-
-   Case 2 and 3 deliberately keep the *tint and shadow* and drop only the
-   blur, which is the same trade `glass-flat` makes. The result still reads as
-   a material — it just stops diffusing. Removing the fill as well would be
-   over-correcting: the user asked for less transparency, not for a flat UI.
-   ========================================================================== */
-
-/* 1. No backdrop-filter at all (older Firefox, some embedded webviews). */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass,
-  .glass-strong {
-    background-color: color-mix(in srgb, var(--c-surface) 92%, var(--c-canvas));
-  }
-  /* The orbs cannot be blurred either, so they would be hard-edged discs.
-     Fading them is closer to the intended look than a crisp circle. */
-  .glow-orb {
-    filter: blur(40px);
-    opacity: 0.5;
-  }
-}
-
-/* 2. The user has asked for reduced transparency at the OS level. */
-@media (prefers-reduced-transparency: reduce) {
-  .glass,
-  .glass-strong,
-  .glass-card,
-  .glass-flat,
-  .glass-flat-strong {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background-color: color-mix(in srgb, var(--c-surface) 94%, var(--c-canvas));
-  }
-  /* No blur means no banding risk, but the orbs are now hard-edged against a
-     flat ground, so the grid carries the texture instead. */
-  .glow-orb {
-    filter: none;
-    opacity: 0.32;
-  }
-  .glow-grid {
-    opacity: 0.5;
-  }
-  body::after {
-    display: none;
-  }
-}
-
-/* 3. "Reduce effects" in Settings — our budget knob for low-end GPUs.
-   Blur drops to 8px, drift stops, grain goes. Everything else is unchanged,
-   because this is a performance setting and not a visual style. */
-:where([data-effects="lite"]) {
-  .glass {
-    -webkit-backdrop-filter: blur(var(--blur-lite)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--blur-lite)) saturate(var(--glass-saturate));
-    backdrop-filter: blur(var(--blur-lite)) saturate(var(--glass-saturate));
-  }
-  .glass-strong {
-    -webkit-backdrop-filter: blur(calc(var(--blur-lite) * 1.5)) saturate(160%);
-    -webkit-backdrop-filter: blur(calc(var(--blur-lite) * 1.5)) saturate(160%);
-    backdrop-filter: blur(calc(var(--blur-lite) * 1.5)) saturate(160%);
-  }
-  .glow-drift,
-  .glow-orb-b,
-  .glow-orb-c {
-    animation: none;
-  }
-  .glow-orb {
-    filter: blur(60px);
-    will-change: auto;
-  }
-  body::after {
-    display: none;
-  }
-}
-
-/* 4. Windows high contrast. Every colour here is replaced by the OS, so the
-   honest move is to stop pretending: no fill, no blur, and a real border drawn
-   in the system text colour. */
-@media (forced-colors: active) {
-  .glass,
-  .glass-subtle,
-  .glass-card,
-  .glass-strong,
-  .glass-flat,
-  .glass-flat-strong {
-    background: Canvas;
-    border-color: CanvasText;
-    box-shadow: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .glow-field,
-  body::after {
-    display: none;
-  }
 }
 
 @layer base {
@@ -1267,24 +878,6 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-  }
-
-  /* Grain. Kills the banding a wide, low-alpha gradient produces — which is
-     exactly what the orbs are, so this is not optional decoration but the
-     thing that makes the glow field render as light rather than as visible
-     steps. Inline SVG rather than an asset: it costs no request and needs no
-     cache entry.
-     `z-index: 2` sits above the glow field and below every panel, so grain
-     never lands on text. */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
-    opacity: var(--noise-opacity);
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
   h1,
   h2,
@@ -1379,7 +972,9 @@
  * Restored from before the Q4 token rewrite, when this chart was a dark screen
  * with a faint grid rather than a flat card. The grid is the point: it gives the
  * eye a scale to measure the trace against, and a fixed dark ground is what lets
- * the green line read as a glow rather than a stroke.
+ * the green line read as a glow rather than a stroke. Flattening it to `bg-well`
+ * with an ink line is what made the monitor look wrong — the chart kept its
+ * behaviour and lost its design.
  *
  * The tint is 8%, which is enough to see the cells and not enough to compete
  * with the trace. `--color-success`/`--color-danger` rather than the raw
@@ -1451,25 +1046,16 @@
 }
 
 /* ==========================================================================
-   Legacy layer. Two rules that unmigrated components still reference.
-   `glass-inset-card` is an inset well, `glass-icon-button` the palette's
-   square trigger; both predate the glass tier system and both still have
-   consumers, so they stay.
+   Legacy layer. Three rules that unmigrated components still reference.
 
    The lantern-era `aurora-*` rules are gone, along with `.glass-toolbar`,
    `.glass-sidebar`, `.glass-control`, `.glass-tooltip` and `.status-pill`,
    which had no remaining consumers. `decorative-card` and `aurora-stat` were
    being used as class names in Overview and Knowledge but were never defined
    here at all, so they were doing nothing and have been removed there too.
-   `.glass-panel`, `.glass-panel-raised`, `.chat-running-dot`, `.chat-agent-progress`,
-   `.agent-progress` and `.kanban-drop-placeholder` were deleted in this pass —
-   all verified unreferenced.
-
-   This block used to also carry `.ekg-monitor { background-color: var(--c-well) }`,
-   which silently overrode the real dark ping-monitor ground defined above it and
-   undid the restore that made the trace read as a glow. Deleting it is what
-   brought the monitor back.
    ========================================================================== */
+.glass-panel { background: var(--c-surface); border: 1px solid var(--c-line); }
+.glass-panel-raised { background: var(--c-raised); border-color: var(--c-line-strong); }
 .glass-inset-card { border: 1px solid var(--c-line); background: var(--c-well); }
 .glass-icon-button { border: 1px solid var(--c-line); background: var(--c-well); transition: border-color 120ms var(--ease-out-quint), background-color 120ms var(--ease-out-quint); }
 .glass-icon-button:hover, .glass-icon-button:focus-visible { border-color: var(--c-line-strong); background: var(--c-accent-tint); color: var(--c-accent); }
@@ -1484,6 +1070,7 @@
   72% { opacity: 1; }
   100% { r: 38px; opacity: 0; }
 }
+.ekg-monitor, .ekg-monitor-offline { background-color: var(--c-well); }
 @keyframes flow-travel { 0% { offset-distance:0%; opacity:0; } 8% { opacity:1; } 50% { offset-distance:100%; opacity:1; } 58%,100% { opacity:0; } }
 @keyframes flow-idle { 0% { offset-distance:0%; opacity:.35; } 12%,88% { opacity:.9; } 100% { offset-distance:100%; opacity:.35; } }
 @keyframes flow-active { 0% { offset-distance:0%; opacity:0; } 8%,92% { opacity:1; } 100% { offset-distance:100%; opacity:0; } }
@@ -1493,10 +1080,13 @@
 @keyframes fade-up { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 @keyframes fade-in { from { opacity:0; } to { opacity:1; } }
 @keyframes ring-sweep { from { stroke-dashoffset:0; } to { stroke-dashoffset:var(--ring-c,-100); } }
+.chat-running-dot { width:7px; height:7px; border-radius:999px; background:var(--c-st-running); animation: chat-pulse 1.1s var(--ease-in-out-quart) infinite; }
 @keyframes chat-pulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.15); opacity:.9; } }
 .map-control { display:flex; width:28px; height:28px; align-items:center; justify-content:center; color:var(--c-ink-3); transition:color 120ms var(--ease-out-quint),background-color 120ms var(--ease-out-quint); }
 .map-control:hover { background: var(--c-raised); color: var(--c-ink); }
 .map-control:focus-visible { outline:2px solid var(--c-focus); outline-offset:-2px; }
+.kanban-drop-placeholder { animation: kanban-drop-in 180ms var(--ease-out-quint); }
+@keyframes kanban-drop-in { from { opacity: 0; transform: scaleY(.55); } to { opacity: 1; transform: scaleY(1); } }
 @keyframes cg-waterfall { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 .cg-tree { overflow: hidden; }
 .cg-tree-row { animation: cg-waterfall 380ms var(--ease-out-quint) both; }
@@ -1512,11 +1102,13 @@
 .thinking-shimmer { background: linear-gradient(90deg, var(--c-ink-3) 0%, var(--c-ink) 28%, var(--c-ink-3) 56%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer-text 1.8s linear infinite; }
 .reasoning-text { display: inline-flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--c-ink-3); }
 .reasoning-text__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--c-st-running); animation: chat-pulse 1.1s var(--ease-in-out-quart) infinite; }
+.agent-progress { display: inline-flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--c-ink-3); }
 .agent-progress__timer { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--c-ink-2); }
 .streaming-response { overflow: hidden; }
 .streaming-response__content { padding: 0; font-size: 14px; line-height: 1.65; color: var(--c-ink-2); }
 .streaming-response__history { margin-top: .85rem; max-width: 42rem; }
 .streaming-response__actions { display: flex; align-items: center; gap: .35rem; margin-top: .75rem; color: var(--c-ink-3); }
+.chat-agent-progress { display: flex; flex-direction: column; gap: .5rem; padding: .25rem 0 .5rem; }
 .chat-message-profile { color: var(--c-ink-3); font-size: 11px; }
 .chat-message-hover-meta { display: none; }
 .chat-message-footer:hover .chat-message-hover-meta, .chat-message-footer:focus-within .chat-message-hover-meta, .streaming-response:hover .chat-message-hover-meta, .streaming-response:focus-within .chat-message-hover-meta, .streaming-text:hover .chat-message-hover-meta, .streaming-text:focus-within .chat-message-hover-meta { display: inline-flex; }
