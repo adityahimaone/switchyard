@@ -227,13 +227,21 @@ func verifyRepoRoot() string {
 // file lives elsewhere.
 const VerifyFlowsRelPath = "web/e2e-flows.txt"
 
+// remoteProbeWait bounds the control plane's wait for a remote probe —
+// a trivial shell command (like the git diff below) that should return
+// in seconds once the node picks it up. The full job budget would be
+// wrong here: a slow node would stall the dispatcher's poll loop for
+// the entire budget, wedging every other board. A probe that misses
+// this window fails the verify honestly (verify_unavailable) instead.
+const remoteProbeWait = 90 * time.Second
+
 // verifyChangedFiles runs git in the task's workdir and returns the paths the
 // reviewer is about to see.
 //
 // It reuses the review gate's own definition of the diff — working tree against
 // HEAD, scoped to the workspace, including untracked files — rather than
-// inventing a second one. Routing against a different file set than the one the
-// reviewer looks at is how a gate ends up green on a diff nobody graded.
+// inventing a second definition. Routing against a different file set than the
+// one the reviewer looks at is how a gate ends up green on a diff nobody graded.
 func verifyChangedFiles(workspacePath, title, slug string) ([]string, string, error) {
 	res, err := DispatchRemoteRaw(NodeDispatchRequest{
 		TaskID:    fmt.Sprintf("verify-files-%s-%d", strings.TrimSpace(title), time.Now().UnixNano()),
@@ -243,7 +251,7 @@ func verifyChangedFiles(workspacePath, title, slug string) ([]string, string, er
 		Executor:  "shell",
 		Command:   `git diff --name-only HEAD -- . && git ls-files --others --exclude-standard -- .`,
 		NoRTK:     true,
-	}, RemoteDispatchWait())
+	}, remoteProbeWait)
 	if err != nil {
 		return nil, "", err
 	}
