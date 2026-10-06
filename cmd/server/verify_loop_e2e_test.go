@@ -279,6 +279,9 @@ func TestVerifyLoopE2E(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HERMES_HOME", home)
 	t.Setenv("KANBAN_NODE_AGENT", fake.URL)
+	// The dispatcher stamps the configured job timeout onto
+	// every dispatch; pin it so the e2e can assert the stamp.
+	t.Setenv("KANBAN_NODE_AGENT_JOB_TIMEOUT", "2400")
 	// SWITCHYARD_DEV seeds the known dev password, so the test
 	// signs in the way the board UI does.
 	t.Setenv("SWITCHYARD_DEV", "1")
@@ -357,6 +360,9 @@ func TestVerifyLoopE2E(t *testing.T) {
 	}
 	if taskRun.Board != "loop" {
 		t.Errorf("board = %q, want loop", taskRun.Board)
+	}
+	if taskRun.TimeoutS != 2400 {
+		t.Errorf("dispatch timeout_s = %d, want the configured 2400", taskRun.TimeoutS)
 	}
 	for _, want := range []string{"Design Reference", "design/sign-in.pen"} {
 		if !strings.Contains(taskRun.Message, want) {

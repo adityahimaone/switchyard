@@ -22,6 +22,25 @@ func TestRemoteDispatchWaitForAgentic(t *testing.T) {
 	}
 }
 
+// TestRemoteJobTimeoutFor pins the per-dispatch timeout the
+// dispatcher stamps onto every request: the node-agent's job
+// deadline must be the control plane's configured budget, not
+// the node's own 600s default, or a job the control plane is
+// still willing to wait for dies at the node's deadline.
+func TestRemoteJobTimeoutFor(t *testing.T) {
+	t.Setenv("KANBAN_NODE_AGENT_JOB_TIMEOUT", "17")
+	t.Setenv("KANBAN_NODE_AGENT_SHELL_AGENTIC_TIMEOUT", "1200")
+	if got := RemoteJobTimeoutFor("direct"); got != 17*time.Second {
+		t.Fatalf("RemoteJobTimeoutFor(direct) = %s, want 17s", got)
+	}
+	if got := RemoteJobTimeoutFor("agentic"); got != 20*time.Minute {
+		t.Fatalf("RemoteJobTimeoutFor(agentic) = %s, want 20m", got)
+	}
+	if got := RemoteJobTimeoutFor("  AGENTIC "); got != 20*time.Minute {
+		t.Fatalf("RemoteJobTimeoutFor(AGENTIC) = %s, want 20m", got)
+	}
+}
+
 func TestTaskHealthFromActivityThresholds(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	cases := []struct {

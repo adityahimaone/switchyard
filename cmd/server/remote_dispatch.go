@@ -268,6 +268,12 @@ func dispatchPendingRemoteTasks() {
 
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent workspace=%q isolation=%q workspace_id=%q session_id=%q last_turn_seq=%d continuation=%t",
 				r.id, b.Slug, workWorkspace, r.isolation, binding.HarnessWorkspaceID, dshSessionID, binding.LastTurnSeq, sessionContinuation)
+			// Stamp the per-dispatch job timeout so the node-agent's
+			// deadline is the control plane's configured one. Without
+			// it the node falls back to its own 600s default and kills
+			// jobs the control plane is still willing to wait for — the
+			// design runs t_e44e7e9b and t_be9fcade both died this way.
+			req.TimeoutS = int(kanban.RemoteJobTimeoutFor(r.executionMode).Seconds())
 			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)

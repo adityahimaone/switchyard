@@ -77,6 +77,13 @@ type NodeDispatchRequest struct {
 	RunID                string `json:"run_id,omitempty"`
 	// SessionContinuation tells worker to prompt existing DSHSessionID instead of creating a cold session.
 	SessionContinuation bool `json:"session_continuation,omitempty"`
+	// TimeoutS overrides the node-agent's job timeout for this
+	// dispatch, in seconds. Without it every job runs the node's
+	// own default (600s) even when the control plane is configured
+	// to wait longer — the dispatch dies at the node's deadline
+	// while the control plane still has patience left (the design
+	// runs t_e44e7e9b and t_be9fcade both timed out this way).
+	TimeoutS int `json:"timeout_s,omitempty"`
 }
 
 // NodeDispatchResult mirrors transport.ResultRequest.
@@ -908,11 +915,13 @@ func RemoteJobTimeout() time.Duration {
 	return time.Duration(secs) * time.Second
 }
 
-func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Minute }
-
-// RemoteDispatchWaitFor gives agentic shell jobs enough time for multiple
-// planner/execution cycles without changing the timeout for direct jobs.
-func RemoteDispatchWaitFor(executionMode string) time.Duration {
+// RemoteJobTimeoutFor is the job timeout that matches
+// RemoteDispatchWaitFor's wait: the agentic budget for
+// agentic shell jobs, the shared job timeout otherwise.
+// Stamped onto every dispatch as timeout_s, it makes the
+// node-agent's deadline the control plane's configured
+// one instead of the node's own default.
+func RemoteJobTimeoutFor(executionMode string) time.Duration {
 	if strings.EqualFold(strings.TrimSpace(executionMode), "agentic") {
 		secs := 1200
 		for _, key := range []string{"KANBAN_NODE_AGENT_SHELL_AGENTIC_TIMEOUT", "NODE_AGENT_SHELL_AGENTIC_TIMEOUT"} {
@@ -923,9 +932,17 @@ func RemoteDispatchWaitFor(executionMode string) time.Duration {
 				}
 			}
 		}
-		return time.Duration(secs)*time.Second + 2*time.Minute
+		return time.Duration(secs) * time.Second
 	}
-	return RemoteDispatchWait()
+	return RemoteJobTimeout()
+}
+
+func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Minute }
+
+// RemoteDispatchWaitFor gives agentic shell jobs enough time for multiple
+// planner/execution cycles without changing the timeout for direct jobs.
+func RemoteDispatchWaitFor(executionMode string) time.Duration {
+	return RemoteJobTimeoutFor(executionMode) + 2*time.Minute
 }
 
 func trimErrStr(s string) string {
