@@ -26,10 +26,12 @@ export interface CreateTaskDraft {
    */
   isolation: "workspace" | "worktree"
   /**
-   * Which verification rung applies. "" means auto — routed from the diff — and
-   * is the right choice unless a human knows something the diff will not show.
+   * Which verification rung applies. "auto" means routed from the diff —
+   * and is the right choice unless a human knows something the diff will
+   * not show. The API spells it as an empty string; the form keeps the
+   * sentinel because Radix Select items need non-empty values.
    */
-  verifyProfile: VerifyProfile | ""
+  verifyProfile: VerifyProfile | "auto"
   /**
    * A committed .pen design this task implements verbatim, repo-relative.
    * Empty for everything that is not a design task, and then pen is never
@@ -83,7 +85,7 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // how a card asks to be routed from its diff — and the stored value should
     // say the card asked, rather than leaving it indistinguishable from a card
     // whose author never heard of verification.
-    verify_profile: draft.verifyProfile,
+    verify_profile: draft.verifyProfile === "auto" ? "" : draft.verifyProfile,
     // Omitted when empty, unlike verify_profile: an empty design source is the
     // absence of a requirement, not a declaration of "no design".
     ...(draft.designSource.trim() ? { design_source: draft.designSource.trim() } : {}),

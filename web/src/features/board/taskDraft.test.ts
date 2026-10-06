@@ -23,7 +23,7 @@ const base: CreateTaskDraft = {
   gateCommand: "",
   startMode: "manual",
   isolation: "workspace",
-  verifyProfile: "",
+  verifyProfile: "auto",
   designSource: "",
 }
 

@@ -74,7 +74,7 @@ func handleTaskVerifyRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("task has no workspace to verify in"), http.StatusBadRequest)
 		return
 	}
-	if err := kanban.RunVerify(slug, id, task.WorkspacePath, task.Title, task.VerifyProfile); err != nil {
+	if err := kanban.RunVerify(slug, id, task.WorkspacePath, task.Title, task.VerifyProfile, task.DesignSource); err != nil {
 		// A failed run is still a recorded verdict, not a failed request: the
 		// reviewer wants the output, which the GET returns.
 		if _, _, verr := kanban.VerifyResult(slug, id); verr == nil {

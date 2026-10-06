@@ -1,6 +1,7 @@
 import { BookOpen, BrainCircuit, CheckCircle2, Command, Fingerprint, GitBranch, KeyRound, MessageSquare, Terminal, Workflow, XCircle } from "lucide-react"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
+import { Integration, IntegrationCard } from "@/components/ui/integration-card"
 
 const kanbanSections = [
   {
@@ -117,6 +118,14 @@ export default function KnowledgePage() {
         </PageHeader>
 
         <CollectionBody className="flex flex-col gap-3 pt-5 pb-6">
+
+        <IntegrationCard
+          visual={<Integration />}
+          title="Switchyard Integrations"
+          description="CodeGraph feeds every executor its context, pen.dev designs the canvas before a line of code, e2e verifies the flow — and hermes, codex, deepseek, omp and commandcode carry each card from intent to done over the node agent and git."
+          url="#full-reference"
+          ctaLabel="Full reference"
+        />
 
         <section id="kanban" className="glass-card p-4">
           <div className="flex items-center gap-2"><Workflow className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Kanban Board Flow — end to end</h2></div>
@@ -274,7 +283,7 @@ export default function KnowledgePage() {
               <li>A <span className="font-mono">dsh</span> card is bound to one workspace and one session; changing workspace or session is rejected, not retried.</li>
             </ul>
           </section>
-          <section className="glass-card p-4">
+          <section id="full-reference" className="glass-card p-4">
             <div className="flex items-center gap-2"><BookOpen className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Full reference</h2></div>
             <ul className="mt-2 space-y-1 font-mono text-xs text-ink-3">
               <li><span className="text-accent-text">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>

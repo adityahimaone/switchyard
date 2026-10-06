@@ -14,12 +14,14 @@ package kanban
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -274,7 +276,7 @@ func verifyChangedFiles(workspacePath, title, slug string) ([]string, string, er
 // A task with no rung is not a no-op — it records verify_skipped. Without that
 // record, "nothing ran because nothing needed running" and "the hook silently
 // failed" are the same empty string, and only one of them is true.
-func RunVerify(slug, taskID, workspacePath, title, declaredProfile string) error {
+func RunVerify(slug, taskID, workspacePath, title, declaredProfile, designSource string) error {
 	if !VerifyEnabled() {
 		return nil
 	}
@@ -283,6 +285,13 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile string) error
 		return err
 	}
 	defer db.Close()
+
+	// The design export is card evidence rather than a verify artifact,
+	// so it is captured before the rung resolves: a card whose diff
+	// routes to "none" still shows the design it was graded against.
+	// Idempotent — the blobstore dedups by SHA and the link is
+	// INSERT OR IGNORE — so a manual re-run never duplicates it.
+	designAtts := captureDesignExport(slug, taskID, workspacePath, designSource)
 
 	// The file set is what routing needs, and collecting it costs one remote
 	// round trip. A declared profile does not need it — but collecting it anyway
@@ -348,6 +357,10 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile string) error
 	// Artifacts are pulled before the verdict is written, so a card that reached
 	// review with passing tests but no screenshots is not representable.
 	linked := ingestNodeArtifacts(slug, taskID, res.Artifacts)
+	if len(designAtts) > 0 {
+		linked = append(linked, designAtts...)
+		output += "\nDesign export attached."
+	}
 	if len(linked) > 0 {
 		output += fmt.Sprintf("\n\n%d verification artifact(s) attached.", len(linked))
 	}
@@ -371,6 +384,159 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile string) error
 	broadcastEvent(event, map[string]any{"board": slug, "task_id": taskID})
 	log.Printf("verify: %s %s profile=%s", taskID, event, profile)
 	return nil
+}
+
+// designExportCandidates maps a committed design source to the PNG
+// exports pen.dev ships for it: the repo convention is an exports/
+// directory beside the .pen, and the fallback is the PNG beside the
+// .pen itself.
+func designExportCandidates(designSource string) []string {
+	source := strings.TrimSpace(designSource)
+	if source == "" {
+		return nil
+	}
+	stem := strings.TrimSuffix(path.Base(source), path.Ext(source))
+	dir := path.Dir(source)
+	return []string{
+		path.Join(dir, "exports", stem+".png"),
+		path.Join(dir, stem+".png"),
+	}
+}
+
+// designPathValid allowlists a repo-relative design path before it is
+// interpolated into a shell command. Task validation already rejects
+// control characters and traversal, but a path is interpolated into a
+// command here, so the allowlist is the real guard.
+func designPathValid(p string) bool {
+	if p == "" || strings.HasPrefix(p, "/") || strings.Contains(p, "..") {
+		return false
+	}
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '_' || r == '-' || r == '/':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// captureDesignExport pulls the design's exported PNG from the worker
+// and links it to the card, so a reviewer sees the design the card was
+// graded against beside the screenshots of what was built.
+//
+// A missing export is not an error: a design that was never exported
+// simply leaves nothing to show, and the card is no less verified.
+// Every failure path logs and returns nil rather than failing the run.
+func captureDesignExport(slug, taskID, workspacePath, designSource string) []string {
+	candidates := designExportCandidates(designSource)
+	if len(candidates) == 0 {
+		return nil
+	}
+	var picks []string
+	for _, c := range candidates {
+		if !designPathValid(c) {
+			log.Printf("verify: %s: rejecting unsafe design export path %q", taskID, c)
+			return nil
+		}
+		picks = append(picks, c)
+	}
+	// The marker line anchors the parse: the node-agent prepends
+	// provenance noise to shell output, so the base64 is everything
+	// after the marker, never everything in the output.
+	var cmd strings.Builder
+	cmd.WriteString("f=" + strconv.Quote(picks[0]))
+	for _, p := range picks[1:] {
+		cmd.WriteString(`; [ -f "$f" ] || f=` + strconv.Quote(p))
+	}
+	cmd.WriteString(`; [ -f "$f" ] || exit 9; echo "DESIGN_EXPORT:$f"; base64 < "$f"`)
+	res, err := DispatchRemoteRaw(NodeDispatchRequest{
+		TaskID:    fmt.Sprintf("design-%s-%d", strings.TrimSpace(taskID), time.Now().UnixNano()),
+		Title:     "design export",
+		Board:     slug,
+		Workspace: workspacePath,
+		Executor:  "shell",
+		Command:   cmd.String(),
+		NoRTK:     true,
+	}, RemoteDispatchWait())
+	if err != nil {
+		log.Printf("verify: %s: design export dispatch: %v", taskID, err)
+		return nil
+	}
+	if res == nil || !res.Success {
+		return nil
+	}
+	exportPath, data, ok := parseDesignExportOutput(res.Output)
+	if !ok {
+		log.Printf("verify: %s: design export: no parseable export in output", taskID)
+		return nil
+	}
+	att, err := StoreAttachmentBytes(data, "design-"+path.Base(exportPath))
+	if err != nil {
+		log.Printf("verify: %s: design export store: %v", taskID, err)
+		return nil
+	}
+	if err := LinkTaskAttachment(slug, taskID, att.ID); err != nil {
+		log.Printf("verify: %s: design export link: %v", taskID, err)
+		return nil
+	}
+	return []string{att.ID}
+}
+
+// parseDesignExportOutput splits a design-export command's output into
+// the export's path and its bytes. The node-agent frames shell output
+// with a provenance line on top and an EXECUTOR_PROOF + provenance
+// pair underneath, so the base64 region is bounded: it starts after
+// the marker line and ends at the first line that is not base64.
+func parseDesignExportOutput(out string) (string, []byte, bool) {
+	lines := strings.Split(out, "\n")
+	marker := -1
+	exportPath := ""
+	for i, line := range lines {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "DESIGN_EXPORT:"); ok {
+			marker = i
+			exportPath = strings.TrimSpace(after)
+			break
+		}
+	}
+	if marker < 0 || exportPath == "" {
+		return "", nil, false
+	}
+	var b64 strings.Builder
+	for _, line := range lines[marker+1:] {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "EXECUTOR_PROOF") || strings.HasPrefix(t, "provenance") {
+			break
+		}
+		if !isBase64Line(t) {
+			break
+		}
+		b64.WriteString(t)
+	}
+	data, err := base64.StdEncoding.DecodeString(b64.String())
+	if err != nil || len(data) == 0 {
+		return "", nil, false
+	}
+	return exportPath, data, true
+}
+
+// isBase64Line reports whether a line is nothing but base64. The
+// wrapped payload lines are; the provenance frame that closes the
+// output is not.
+func isBase64Line(t string) bool {
+	if t == "" {
+		return false
+	}
+	for _, r := range t {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case r == '+' || r == '/' || r == '=':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // recordVerifySkipped is the honest record that a card was routed past the
@@ -524,6 +690,7 @@ type VerifyTask struct {
 	Title         string
 	WorkspacePath string
 	VerifyProfile string
+	DesignSource  string
 	Status        string
 }
 
@@ -536,8 +703,8 @@ func LoadVerifyTask(slug, taskID string) (VerifyTask, error) {
 	defer db.Close()
 	var v VerifyTask
 	err = db.QueryRow(`SELECT id, COALESCE(title,''), COALESCE(workspace_path,''),
-		COALESCE(verify_profile,''), COALESCE(status,'')
-		FROM tasks WHERE id=?`, taskID).Scan(&v.ID, &v.Title, &v.WorkspacePath, &v.VerifyProfile, &v.Status)
+		COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(status,'')
+		FROM tasks WHERE id=?`, taskID).Scan(&v.ID, &v.Title, &v.WorkspacePath, &v.VerifyProfile, &v.DesignSource, &v.Status)
 	if err == sql.ErrNoRows {
 		return VerifyTask{}, &RunControlError{Code: 404, Err: fmt.Errorf("task not found: %s", taskID)}
 	}

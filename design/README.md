@@ -73,6 +73,28 @@ unattended:
 Free tier: 5 agent-days and 25 image generations per month —
 enough for the loop, not for bulk production.
 
+## The loop, end to end
+
+`cmd/server/verify_loop_e2e_test.go` drives the whole loop
+through the real dispatcher against a stand-in node-agent: a
+mac-side card (commandcode executor, `design_source`, the
+`ui` rung) is created over the HTTP API, claimed, dispatched
+with the committed design in its prompt, verified by
+`pnpm verify:ui`, and its screenshots land as card
+attachments readable over the API. It proves the control
+plane's half — the API surface, claim, dispatch,
+design-reference injection, session continuity, the verify
+hook, artifact transport — without a Mac or a pen.dev
+login, both of which are per-machine, user-run steps.
+
+The real loop on the Mac needs those steps done first:
+`pen login` (or `PEN_CLI_KEY`) on the node that runs
+workers, a node-agent with `command-code` on its PATH, and
+the Switchyard backend on :8790. Then a card with
+`design_source` set travels the loop for real: the
+commandcode agent reads the committed `.pen`, implements to
+it, and `verify:ui` compares the render against the export.
+
 ## e2e
 
 `web/` holds the e2e project (`e2e.config.ts`, `web/tests/*.e2e.ts`,

@@ -794,7 +794,9 @@ func dispatchRemote(req NodeDispatchRequest, wait time.Duration, persistTask boo
 			r2.Body.Close()
 			continue
 		}
-		b2, _ := io.ReadAll(io.LimitReader(r2.Body, 1<<20))
+		// A real executor transcript runs to megabytes; a smaller cap
+		// truncates the JSON and the result can then never be parsed.
+		b2, _ := io.ReadAll(io.LimitReader(r2.Body, 32<<20))
 		r2.Body.Close()
 		if r2.StatusCode != 200 {
 			continue

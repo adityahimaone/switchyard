@@ -310,6 +310,13 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 			fail(w, err, 400)
 			return
 		}
+		// A board created here must be able to hold cards the same
+		// way an imported one does, or the API-only flow
+		// (create board, then create task) breaks on a missing DB.
+		if err := kanban.EnsureImportSchemaPublic(req.Slug); err != nil {
+			fail(w, err, 500)
+			return
+		}
 		writeJSON(w, http.StatusCreated, b)
 	})
 	mux.HandleFunc("PATCH /api/boards/{slug}", func(w http.ResponseWriter, r *http.Request) {

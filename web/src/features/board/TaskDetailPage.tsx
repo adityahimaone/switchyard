@@ -20,6 +20,8 @@ import {
   AgentPicker, EmptyNote, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
   Section, StatusBadge, TaskActions,
 } from "./taskDetailParts"
+import { AgentTrace } from "@/components/ui/agent-trace"
+import { traceOrigin, traceSpansFromHistory } from "./taskTrace"
 
 type ReplyState = "idle" | "sent" | "notified" | "replied"
 
@@ -464,6 +466,10 @@ export default function TaskDetailPage({
     onError: (e: Error) => toastGlobal(e.message, "error"),
   })
   const groups = events.data ? parseEventCards(events.data) : []
+  const traceSpans = useMemo(
+    () => traceSpansFromHistory(events.data ?? [], runs.data ?? []),
+    [events.data, runs.data]
+  )
   const resultSplit = task.result ? splitAgentResult(task.result) : null
   const jev = parseTaskExecutionMeta(task.execution_meta)
   const runReason = queueReason(task, profile)
@@ -700,8 +706,21 @@ export default function TaskDetailPage({
             ) : !groups.length ? (
               <EmptyNote icon={<History className="size-4" />} title="No events yet" hint="Lifecycle events appear here as the task is created, assigned and run." />
             ) : (
-              <div className="grid grid-cols-1 gap-3 pb-4 md:grid-cols-2 xl:grid-cols-3">
-                {groups.map((g) => <CollapsibleGroup key={g.title} group={g} />)}
+              <div className="space-y-4 pb-4">
+                {/* The run as a replayable time axis, above the event
+                    cards: the trace answers "what did the agent do",
+                    the cards below answer "what was decided". */}
+                <AgentTrace
+                  spans={traceSpans}
+                  timeOrigin={traceOrigin(events.data ?? [])}
+                  runId={task.id}
+                  model={profile?.model}
+                  autoPlay={false}
+                  collapsible
+                />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {groups.map((g) => <CollapsibleGroup key={g.title} group={g} />)}
+                </div>
               </div>
             )}
           </TabsContent>

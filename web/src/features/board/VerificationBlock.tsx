@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Loader2, ShieldCheck, ShieldX, ShieldQuestion } from "lucide-react"
 import { rerunVerify, taskVerify, toastGlobal, type TaskVerify } from "../../api"
+import { AttachmentLightbox, type LightboxAttachment } from "@/components/feedback/attachment-lightbox"
 
 /**
  * The Verification block: what was checked, what routing decided, and the
@@ -49,32 +50,39 @@ function VerdictIcon({ status }: { status: Verdict }) {
   return <ShieldQuestion className="size-3.5 text-ink-3" aria-hidden />
 }
 
-function Screenshot({ id, filename }: { id: string; filename: string }) {
+function Screenshot({ att }: { att: LightboxAttachment }) {
   const [failed, setFailed] = useState(false)
-  const theme = themeOf(filename)
+  const [view, setView] = useState<LightboxAttachment | null>(null)
+  const theme = themeOf(att.filename)
   return (
     <figure className="min-w-0">
-      <a href={`/api/attachments/${id}`} target="_blank" rel="noreferrer" className="block">
+      <button
+        type="button"
+        onClick={() => setView(att)}
+        title={`View ${att.filename} full size`}
+        className="block w-full cursor-zoom-in"
+      >
         {failed ? (
           <div className="flex h-28 items-center justify-center rounded-control border border-line bg-well px-3 text-center text-2xs text-ink-3">
-            {filename}
+            {att.filename}
             <br />
-            preview unavailable — click to open
+            preview unavailable — click to view
           </div>
         ) : (
           <img
-            src={`/api/attachments/${id}`}
-            alt={`${filename}${theme ? `, ${theme} theme` : ""}`}
+            src={`/api/attachments/${att.id}`}
+            alt={`${att.filename}${theme ? `, ${theme} theme` : ""}`}
             loading="lazy"
             onError={() => setFailed(true)}
             className="h-28 w-full rounded-control border border-line bg-canvas object-cover object-top"
           />
         )}
-      </a>
-      <figcaption className="mt-1 truncate font-mono text-2xs text-ink-3" title={filename}>
+      </button>
+      <figcaption className="mt-1 truncate font-mono text-2xs text-ink-3" title={att.filename}>
         {theme ? `${theme} · ` : ""}
-        {filename}
+        {att.filename}
       </figcaption>
+      <AttachmentLightbox att={view} onClose={() => setView(null)} />
     </figure>
   )
 }
@@ -141,7 +149,7 @@ export function VerificationBlock({ slug, taskId }: { slug: string; taskId: stri
         {shots.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
             {shots.map((a) => (
-              <Screenshot key={a.id} id={a.id} filename={a.filename} />
+              <Screenshot key={a.id} att={a} />
             ))}
           </div>
         )}

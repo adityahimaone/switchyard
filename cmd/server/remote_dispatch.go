@@ -284,7 +284,7 @@ func dispatchPendingRemoteTasks() {
 				// runs after the gate rather than before because the gate is the
 				// project's own command and a broken build should surface as the
 				// gate's verdict, not as a pile of failures from both.
-				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile)
+				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile, r.designSource)
 			}
 		}
 		db.Close()
@@ -328,11 +328,11 @@ func appendDesignReference(msg, designSource string) string {
 // today's dispatcher exactly. Every other outcome is recorded rather than fatal:
 // like the gate, a failed or skipped verify leaves the card in review with its
 // diff, and the verdict is what the approve button refuses.
-func runTaskVerify(slug, taskID, workspace, title, declaredProfile string) {
+func runTaskVerify(slug, taskID, workspace, title, declaredProfile, designSource string) {
 	if !kanban.VerifyEnabled() {
 		return
 	}
-	if err := kanban.RunVerify(slug, taskID, workspace, title, declaredProfile); err != nil {
+	if err := kanban.RunVerify(slug, taskID, workspace, title, declaredProfile, designSource); err != nil {
 		log.Printf("verify: %s: %v", taskID, err)
 	}
 }

@@ -182,6 +182,19 @@
   --sidebar-ring: var(--c-focus);
 }
 
+/* Brand marks keep their own palette in every theme: these are the
+   companies' own colors, not app UI, so they never retint with the
+   light/dark switch. Referenced by the inline SVG marks in
+   integration-card.tsx. */
+:root {
+  --brand-codegraph-node: #7a201a;
+  --brand-codegraph-node-off: #f7f6f2;
+  --brand-omp-a: #ed4abf;
+  --brand-omp-b: #9b4dff;
+  --brand-omp-c: #5ad8e6;
+  --brand-omp-tile: #0f0a14;
+}
+
 /* Dark theme. Applied via the `dark` class, which useSettings toggles. */
 .dark {
   color-scheme: dark;

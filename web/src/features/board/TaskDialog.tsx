@@ -141,7 +141,7 @@ export default function TaskDialog({
   const [gateCommand, setGateCommand] = useState("")
   const [startMode, setStartMode] = useState<"manual" | "now">("manual")
   const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
-  const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "">("")
+  const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
   const [designSource, setDesignSource] = useState("")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
@@ -347,7 +347,7 @@ export default function TaskDialog({
        heavier modal than the identical ones next to it. */
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent
-        className="max-h-[90dvh] overflow-y-auto p-4"
+        className="max-h-[90dvh] overflow-y-auto p-4 bg-[var(--c-canvas)]!"
         showClose={false}
       >
         <h2 id="task-dialog-title" className="text-sm font-semibold">
@@ -787,13 +787,13 @@ export default function TaskDialog({
               </div>
               <Select
                 value={verifyProfile}
-                onValueChange={(v) => setVerifyProfile(v as VerifyProfile | "")}
+                onValueChange={(v) => setVerifyProfile(v as VerifyProfile | "auto")}
               >
                 <SelectTrigger id="task-verify-profile" className={`mt-1 ${selCls}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="">
-                  <SelectItem value="" className="text-sm">
+                  <SelectItem value="auto" className="text-sm">
                     Auto — route from the diff
                   </SelectItem>
                   <SelectItem value="none" className="text-sm">
@@ -811,7 +811,7 @@ export default function TaskDialog({
                 </SelectContent>
               </Select>
               <p className="mt-1 text-[11px] text-ink-3">
-                {verifyProfile === ""
+                {verifyProfile === "auto"
                   ? "Nothing needed setting. Auto escalates from the files the agent changed: a web/src change needs the UI rung, and a flow-owning path needs E2E. It never picks a weaker rung than a diff requires."
                   : "An explicit choice always wins over routing — use it to force a check Auto would skip, or to switch one off for a card you already know is safe."}
               </p>
