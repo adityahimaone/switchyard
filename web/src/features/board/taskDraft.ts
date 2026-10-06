@@ -38,6 +38,14 @@ export interface CreateTaskDraft {
    * invoked and no agent-day is spent.
    */
   designSource: string
+  /**
+   * The pen.dev surface that produces this card's design. "pen_cli"
+   * generates a new .pen headlessly (the only surface that can create
+   * one on a worker); "pencil_mcp" edits the document open in the
+   * desktop app. "" means no pen.dev design — the right choice for
+   * every card that is not a design task.
+   */
+  designTool: "" | "pen_cli" | "pencil_mcp"
 }
 
 /** One validation problem, as returned by POST /tasks/validate. */
@@ -89,6 +97,10 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // Omitted when empty, unlike verify_profile: an empty design source is the
     // absence of a requirement, not a declaration of "no design".
     ...(draft.designSource.trim() ? { design_source: draft.designSource.trim() } : {}),
+    // The design-tool switch: omitted when off. The server renders the
+    // tool's mandate into the dispatch prompt from this field, so the
+    // agent's instructions cannot go stale the way body text can.
+    ...(draft.designTool ? { design_tool: draft.designTool } : {}),
   }
 }
 

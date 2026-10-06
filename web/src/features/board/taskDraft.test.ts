@@ -25,6 +25,7 @@ const base: CreateTaskDraft = {
   isolation: "workspace",
   verifyProfile: "auto",
   designSource: "",
+  designTool: "",
 }
 
 describe("buildCreatePayload", () => {
@@ -119,6 +120,15 @@ describe("buildCreatePayload", () => {
     expect(buildCreatePayload({ ...base, designSource: " design/task-card.pen " }).design_source).toBe(
       "design/task-card.pen",
     )
+  })
+
+  it("sends the design tool only when one is chosen", () => {
+    // The switch is what makes the dispatcher render the pen CLI
+    // mandate into the prompt, so off must mean absent — not an
+    // empty string the server would have to interpret.
+    expect("design_tool" in buildCreatePayload(base)).toBe(false)
+    expect(buildCreatePayload({ ...base, designTool: "pen_cli" }).design_tool).toBe("pen_cli")
+    expect(buildCreatePayload({ ...base, designTool: "pencil_mcp" }).design_tool).toBe("pencil_mcp")
   })
 })
 

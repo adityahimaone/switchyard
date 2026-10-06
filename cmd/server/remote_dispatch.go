@@ -80,20 +80,20 @@ func dispatchPendingRemoteTasks() {
 			db.Close()
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
+		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
 		if err != nil {
 			log.Printf("remote-dispatcher: board %s: query failed: %v", b.Slug, err)
 			db.Close()
 			continue
 		}
 		type row struct {
-			id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource string
-			maxIterations                                                                                                                                      int
+			id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
+			maxIterations                                                                                                                                                          int
 		}
 		var pending []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource); err == nil && r.ws != "" {
+			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource, &r.designTool); err == nil && r.ws != "" {
 				pending = append(pending, r)
 			}
 		}
@@ -180,6 +180,12 @@ func dispatchPendingRemoteTasks() {
 			// look. A card without design_source never gets the block — pen
 			// is invoked only when a design was committed for the card.
 			msg = appendDesignReference(msg, r.designSource)
+			// The design-tool switch renders its own mandate: a pen_cli
+			// card is told to generate the mock with the pen CLI, so the
+			// tool choice is structural rather than a sentence in the body
+			// that can go stale (t_e44e7e9b's body said the CLI was not
+			// installed long after it was).
+			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title)
 			command := r.command
 			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
 				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
@@ -273,7 +279,9 @@ func dispatchPendingRemoteTasks() {
 			// it the node falls back to its own 600s default and kills
 			// jobs the control plane is still willing to wait for — the
 			// design runs t_e44e7e9b and t_be9fcade both died this way.
-			req.TimeoutS = int(kanban.RemoteJobTimeoutFor(r.executionMode).Seconds())
+			// A pen_cli design card always gets the full budget: it
+			// generates a mock and then implements to it.
+			req.TimeoutS = int(kanban.RemoteJobTimeoutForTask(r.executionMode, r.designTool).Seconds())
 			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
@@ -326,6 +334,51 @@ func appendDesignReference(msg, designSource string) string {
 		"Read the .pen file (plain JSON) and the PNG exported beside it, then implement to match the design.\n" +
 		"The design is the reference this card is graded against — do not regenerate or move it.\n" +
 		"--- End Design Reference ---"
+}
+
+// appendDesignMandate renders the design-tool switch into a task's
+// dispatch prompt. A pen_cli card is told to generate its mock with
+// the headless pen CLI — the only pen.dev surface that can create a
+// new .pen file on a worker — and then implement to the result. The
+// mandate is structural (read from the design_tool column) rather
+// than a sentence in the card body, so it cannot go stale the way
+// t_e44e7e9b's "the pen CLI is NOT installed" did.
+func appendDesignMandate(msg, designTool, designSource, title string) string {
+	if strings.TrimSpace(designTool) != "pen_cli" {
+		return msg
+	}
+	out := strings.TrimSpace(designSource)
+	if out == "" {
+		out = kanban.DesignPathForTitle(title)
+	}
+	return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
+		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +
+		"authenticated on the worker node. Do not use the desktop app or the pencil MCP to create\n" +
+		"the file: the MCP edits only the document already open in the app and cannot save a new one.\n" +
+		"1. Generate the mock:\n" +
+		"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent gemini\n" +
+		"   (the default claude agent may have no API key on the node; gemini is the reliable backend)\n" +
+		"2. Assert " + out + " parses as JSON and " + designExportPath(out) + " exists.\n" +
+		"3. Register the surface in design/manifest.json (route, export, viewport measured from the\n" +
+		"   export, theme).\n" +
+		"4. Commit only the design artifacts, then implement this card to the committed design.\n" +
+		"If " + out + " already exists and is non-empty, keep it and implement to it — do not regenerate.\n" +
+		"--- End pen.dev Design ---"
+}
+
+// designExportPath is where a design mock's PNG export lands:
+// an exports/ directory beside the .pen, matching the layout the
+// manifest and the verify artifact transport already use.
+func designExportPath(penPath string) string {
+	dir := ""
+	if i := strings.LastIndex(penPath, "/"); i >= 0 {
+		dir = penPath[:i+1]
+	}
+	base := strings.TrimSuffix(penPath, ".pen")
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	return dir + "exports/" + base + ".png"
 }
 
 // runTaskVerify resolves a task's verification rung from its diff and runs it.

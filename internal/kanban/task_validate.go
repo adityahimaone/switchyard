@@ -31,6 +31,11 @@ const (
 	CodeGateRunning      = "gate_running"
 	CodeNotRetryable     = "not_retryable"
 	CodeDependentStarted = "dependent_started"
+	// CodeDesignHint marks the design-tool guard's advice. A hint is
+	// not a rejection: the design_tool switch is the author's explicit
+	// intent and always wins, so hints never fail a create — they are
+	// reported alongside validation issues for the form to show.
+	CodeDesignHint = "design_hint"
 )
 
 const (
@@ -159,6 +164,22 @@ func ValidateNewTask(t *Task) []Issue {
 	if t.DesignSource != "" && (strings.HasPrefix(t.DesignSource, "/") || strings.Contains(t.DesignSource, "..")) {
 		add(CodeBadRequest, "design_source",
 			"design source must be a repo-relative path like design/task-card.pen, not %q", t.DesignSource)
+	}
+
+	// The design-tool switch. A fixed token like verify_profile, so it
+	// gets the same enum treatment: capped, control-character-free, and
+	// one of the ladder. The two-way vocabulary guard around the switch
+	// lives in TaskDesignWarnings, which the dry-run endpoint reports
+	// alongside these issues — a hint never fails a create.
+	if len(t.DesignTool) > maxDesignToolBytes {
+		add(CodeBadRequest, "design_tool", "design tool is %d bytes, maximum is %d", len(t.DesignTool), maxDesignToolBytes)
+	}
+	if hasControlChars(t.DesignTool) {
+		add(CodeBadRequest, "design_tool", "design tool contains control characters")
+	}
+	if t.DesignTool != "" && !ValidDesignTools[t.DesignTool] {
+		add(CodeBadRequest, "design_tool", "design_tool %q is not one of %s",
+			t.DesignTool, strings.Join(DesignToolLadder, "/"))
 	}
 
 	// Existing rules, restated so the dry run reports them with the same codes

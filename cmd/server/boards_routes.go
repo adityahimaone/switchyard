@@ -237,6 +237,10 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 			return
 		}
 		issues := kanban.ValidateNewTask(&t)
+		// The design-tool guard's hints ride along with the hard
+		// issues: they are advice about the design_tool switch, not
+		// rejections of the card.
+		issues = append(issues, kanban.TaskDesignWarnings(&t)...)
 		if issues == nil {
 			issues = []kanban.Issue{}
 		}
@@ -249,8 +253,18 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 				Message: fmt.Sprintf("board %q not found", r.PathValue("slug")),
 			})
 		}
+		// A hint never fails the dry run: the design_tool switch is the
+		// author's explicit intent and always wins, so ok stays true when
+		// only hints fired.
+		ok := true
+		for _, issue := range issues {
+			if issue.Code != kanban.CodeDesignHint {
+				ok = false
+				break
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":     len(issues) == 0,
+			"ok":     ok,
 			"issues": issues,
 		})
 	})

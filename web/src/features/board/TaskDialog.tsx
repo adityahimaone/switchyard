@@ -143,6 +143,9 @@ export default function TaskDialog({
   const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
   const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
   const [designSource, setDesignSource] = useState("")
+  // "none" is the form's sentinel for "no pen.dev design" — Radix
+  // Select items need non-empty values, the API wants the absence.
+  const [designTool, setDesignTool] = useState<"none" | "pen_cli" | "pencil_mcp">("none")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMode, setAiMode] = useState<"fast" | "deep" | null>(null)
@@ -187,6 +190,7 @@ export default function TaskDialog({
     isolation,
     verifyProfile,
     designSource,
+    designTool: designTool === "none" ? "" : designTool,
   }
 
   // Dry-run validation, debounced so typing a title does not fire a request per
@@ -213,7 +217,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, verifyProfile, designSource, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, verifyProfile, designSource, designTool, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -837,6 +841,39 @@ export default function TaskDialog({
                 design source never invokes pen and never spends an agent-day.
               </p>
               {issuesForField(issues, "design_source").map((i) => (
+                <FieldIssue key={i.code + i.message} issue={i} />
+              ))}
+            </div>
+
+            <div>
+              <Label className="block text-xs text-ink-3" htmlFor="task-design-tool">
+                Design tool
+              </Label>
+              <Select value={designTool} onValueChange={(v) => setDesignTool(v as "none" | "pen_cli" | "pencil_mcp")}>
+                <SelectTrigger id="task-design-tool" className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="">
+                  <SelectItem value="none" className="text-sm">
+                    None — no pen.dev design
+                  </SelectItem>
+                  <SelectItem value="pen_cli" className="text-sm">
+                    pen CLI — generate the mock headlessly
+                  </SelectItem>
+                  <SelectItem value="pencil_mcp" className="text-sm">
+                    pencil MCP — edit the open document
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px] text-ink-3">
+                How this card's design is produced. The pen CLI writes a
+                new .pen and its PNG export on the worker; the pencil MCP
+                edits the document already open in the desktop app (it
+                cannot save a new one). The choice rides the dispatch
+                prompt structurally, so it cannot go stale the way body
+                text can.
+              </p>
+              {issuesForField(issues, "design_tool").map((i) => (
                 <FieldIssue key={i.code + i.message} issue={i} />
               ))}
             </div>

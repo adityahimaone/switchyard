@@ -57,6 +57,14 @@ export interface Task {
   verify_output?: string
   /** A committed .pen design this task implements verbatim. */
   design_source?: string
+  /**
+   * Which pen.dev surface produces this card's design:
+   * "pen_cli" (the headless CLI — the only surface that can
+   * create a new .pen on a worker) or "pencil_mcp" (the
+   * desktop app's MCP, which edits the document already open
+   * in the app). Undefined means no pen.dev design is involved.
+   */
+  design_tool?: "pen_cli" | "pencil_mcp"
 }
 
 /** The verification ladder, weakest first. */
@@ -214,7 +222,7 @@ export function rerunVerify(slug: string, taskId: string) {
 export function patchTaskFields(
   slug: string,
   taskId: string,
-  fields: { verify_profile?: VerifyProfile | ""; design_source?: string },
+  fields: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" },
 ) {
   return api<Task>(`/api/boards/${slug}/tasks/${taskId}/fields`, {
     method: "PATCH",

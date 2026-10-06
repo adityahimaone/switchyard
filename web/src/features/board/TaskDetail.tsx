@@ -200,6 +200,7 @@ export default function TaskDetail({
                       </span>
                     </Field>
                   )}
+                  {task.design_tool && <Field label="Design tool">{task.design_tool}</Field>}
                 </FieldList>
               </Section>
 

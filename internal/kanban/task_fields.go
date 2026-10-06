@@ -26,6 +26,7 @@ import (
 type TaskFields struct {
 	VerifyProfile *string `json:"verify_profile,omitempty"`
 	DesignSource  *string `json:"design_source,omitempty"`
+	DesignTool    *string `json:"design_tool,omitempty"`
 }
 
 // UpdateTaskFields applies an edit to a task's post-create fields.
@@ -67,6 +68,23 @@ func UpdateTaskFields(slug, taskID string, f TaskFields) error {
 		sets = append(sets, "design_source=?")
 		args = append(args, source)
 		changed = append(changed, "design_source")
+	}
+	if f.DesignTool != nil {
+		tool := strings.ToLower(strings.TrimSpace(*f.DesignTool))
+		// Same rules as create time: a fixed token from the ladder.
+		// Clearing (empty string) is allowed — it turns the switch off.
+		if tool != "" && !ValidDesignTools[tool] {
+			return &RunControlError{Code: 400, Err: fmt.Errorf(
+				"design_tool %q is not one of %s", tool, strings.Join(DesignToolLadder, "/"))}
+		}
+		// Editing the requirement may invalidate a derived design_source:
+		// a card that stops being a pen_cli card must not keep a
+		// title-derived path it never asked for. The reverse (turning
+		// pen_cli on with no source) is left to the next create-like
+		// edit — the dispatch mandate derives a fallback from the title.
+		sets = append(sets, "design_tool=?")
+		args = append(args, tool)
+		changed = append(changed, "design_tool")
 	}
 	if len(sets) == 0 {
 		return &RunControlError{Code: 400, Err: fmt.Errorf("no editable field in request")}

@@ -27,25 +27,36 @@ export function VerifySettings({
   slug: string
   task: Task
   saving: boolean
-  onSave: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string }) => void
+  onSave: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" }) => void
 }) {
   const [profile, setProfile] = useState<VerifyProfile | "">(task.verify_profile ?? "")
   const [design, setDesign] = useState(task.design_source ?? "")
+  // "none" is the form's sentinel for "no design tool"; the API
+  // wants the empty string to clear the switch.
+  const [tool, setTool] = useState<"none" | "pen_cli" | "pencil_mcp">(
+    task.design_tool ?? "none",
+  )
 
-  // Re-sync when the card changes underneath us — after a save, or when the
-  // drawer is reopened on a different card. Without this the field would keep
+  // Re-sync when the card changes underneath us — after a save, or when
+  // the drawer is reopened on a different card. Without this the field would keep
   // showing a value the server no longer holds.
   useEffect(() => {
     setProfile(task.verify_profile ?? "")
     setDesign(task.design_source ?? "")
-  }, [task.id, task.verify_profile, task.design_source])
+    setTool(task.design_tool ?? "none")
+  }, [task.id, task.verify_profile, task.design_source, task.design_tool])
 
   const profileDirty = profile !== (task.verify_profile ?? "")
   const designDirty = design.trim() !== (task.design_source ?? "")
-  const dirty = profileDirty || designDirty
+  const toolDirty = tool !== (task.design_tool ?? "none")
+  const dirty = profileDirty || designDirty || toolDirty
 
   function save() {
-    onSave({ verify_profile: profile, design_source: design.trim() })
+    onSave({
+      verify_profile: profile,
+      design_source: design.trim(),
+      design_tool: tool === "none" ? "" : tool,
+    })
   }
 
   return (
@@ -94,6 +105,31 @@ export function VerifySettings({
             className="mt-1 text-xs"
           />
         </div>
+
+        <div className="min-w-0">
+          <Label className="block text-xs text-ink-3" htmlFor="detail-design-tool">
+            Design tool
+          </Label>
+          <Select
+            value={tool}
+            onValueChange={(v) => setTool(v as "none" | "pen_cli" | "pencil_mcp")}
+          >
+            <SelectTrigger id="detail-design-tool" className="mt-1 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="">
+              <SelectItem value="none" className="text-sm">
+                None — no pen.dev design
+              </SelectItem>
+              <SelectItem value="pen_cli" className="text-sm">
+                pen CLI — generate headlessly
+              </SelectItem>
+              <SelectItem value="pencil_mcp" className="text-sm">
+                pencil MCP — edit open document
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <p className="mt-1.5 text-2xs text-ink-3">
@@ -122,6 +158,7 @@ export function VerifySettings({
             onClick={() => {
               setProfile(task.verify_profile ?? "")
               setDesign(task.design_source ?? "")
+              setTool(task.design_tool ?? "none")
             }}
           >
             Discard

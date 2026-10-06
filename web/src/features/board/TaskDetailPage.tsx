@@ -456,7 +456,7 @@ export default function TaskDetailPage({
   })
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const fields = useMutation({
-    mutationFn: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string }) =>
+    mutationFn: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" }) =>
       patchTaskFields(slug, task.id, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks", slug] })

@@ -937,6 +937,23 @@ func RemoteJobTimeoutFor(executionMode string) time.Duration {
 	return RemoteJobTimeout()
 }
 
+// RemoteJobTimeoutForTask is the per-dispatch budget for a task,
+// keyed by execution mode and design tool. A pen_cli design card
+// runs an agent that generates a mock and then implements to it —
+// the longest job class there is — so it always gets at least the
+// full shared job timeout, even when its execution mode would
+// otherwise budget less. Stamped as timeout_s, it is the deadline
+// the node-agent enforces.
+func RemoteJobTimeoutForTask(executionMode, designTool string) time.Duration {
+	base := RemoteJobTimeoutFor(executionMode)
+	if strings.EqualFold(strings.TrimSpace(designTool), "pen_cli") {
+		if full := RemoteJobTimeout(); full > base {
+			return full
+		}
+	}
+	return base
+}
+
 func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Minute }
 
 // RemoteDispatchWaitFor gives agentic shell jobs enough time for multiple

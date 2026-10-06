@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -84,6 +85,14 @@ type Task struct {
 	// Empty for the overwhelming majority of cards, and then pen is never
 	// invoked and no agent-day is spent.
 	DesignSource string `json:"design_source,omitempty"`
+	// DesignTool is the pen.dev surface that produces this card's
+	// design: pen_cli (the headless CLI, the only surface that can
+	// create a new .pen on a worker) or pencil_mcp (the desktop
+	// app's MCP, which edits the document open in the app). Empty
+	// means no pen.dev design is involved. The dispatcher renders
+	// the tool's mandate into the prompt from this column, so the
+	// tool choice cannot go stale the way card prose can.
+	DesignTool string `json:"design_tool,omitempty"`
 	// manual: wait for the dispatcher poll. now: claim on create.
 	StartMode string `json:"start_mode,omitempty"`
 	// Retry counter. Attempt 1 is the original run.
@@ -299,6 +308,10 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		// A committed .pen design this task implements verbatim. Empty for
 		// every card that is not a design task.
 		`ALTER TABLE tasks ADD COLUMN design_source TEXT NOT NULL DEFAULT ''`,
+		// Which pen.dev surface produces this card's design. See
+		// DesignTool on the Task struct. Empty for every card that
+		// is not a pen.dev design task.
+		`ALTER TABLE tasks ADD COLUMN design_tool TEXT NOT NULL DEFAULT ''`,
 		// manual = wait for the dispatcher poll; now = claim on create.
 		`ALTER TABLE tasks ADD COLUMN start_mode TEXT NOT NULL DEFAULT 'manual'`,
 		// Incremented by retry. Attempt 1 is the original run.
@@ -426,6 +439,21 @@ func CreateTask(slug string, t *Task) error {
 	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" {
 		return fmt.Errorf("shell executor requires command")
 	}
+	// The design-tool switch: normalized once here so the row, the
+	// dispatcher's mandate and the verify hook all read the same
+	// token. A pen_cli card with no explicit design_source gets the
+	// title-derived default, so the generated mock and its export
+	// have a predictable home.
+	t.DesignTool = strings.ToLower(strings.TrimSpace(t.DesignTool))
+	if t.DesignTool != "" && !ValidDesignTools[t.DesignTool] {
+		return fmt.Errorf("invalid design_tool %q (want one of %s)", t.DesignTool, strings.Join(DesignToolLadder, "/"))
+	}
+	if t.DesignTool == "pen_cli" && strings.TrimSpace(t.DesignSource) == "" {
+		t.DesignSource = DesignPathForTitle(t.Title)
+	}
+	for _, hint := range TaskDesignWarnings(t) {
+		log.Printf("kanban: %s (task %q)", hint.Message, strings.TrimSpace(t.Title))
+	}
 	if t.WorkspaceKind == "" {
 		t.WorkspaceKind = "dir"
 	}
@@ -483,12 +511,12 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, verify_profile, design_source)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, verify_profile, design_source, design_tool)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation,
 		// verify_profile_effective/verify_status are intentionally not inserted:
 		// they are decided by routing after the run, not by the author of the card.
-		t.VerifyProfile, t.DesignSource); err != nil {
+		t.VerifyProfile, t.DesignSource, t.DesignTool); err != nil {
 		return err
 	}
 	if len(t.DependsOn) > 0 {
