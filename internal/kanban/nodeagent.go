@@ -2,6 +2,7 @@ package kanban
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
@@ -49,6 +50,100 @@ func nodeAgentToken() string {
 		}
 	}
 	return ""
+}
+
+// NodeAgentSetupView is everything the Overview's
+// node-agent card needs to onboard a worker: the
+// shared secret (provisioned on first read), the
+// advertised node-agent URL, and the ready-to-paste
+// one-command install and update lines for each
+// platform.
+type NodeAgentSetupView struct {
+	Token          string `json:"token"`
+	TokenCreated   bool   `json:"token_created"`
+	ServerURL      string `json:"server_url"`
+	InstallMac     string `json:"install_mac"`
+	InstallWindows string `json:"install_windows"`
+	UpdateMac      string `json:"update_mac"`
+	UpdateWindows  string `json:"update_windows"`
+}
+
+// NodeAgentSetup bundles the worker onboarding details.
+// The token file is provisioned on first read, so opening
+// the Overview is the only setup step on the control
+// plane — the node-agent server resolves the same file,
+// so the pair shares one secret without shell exports.
+func NodeAgentSetup() (NodeAgentSetupView, error) {
+	created, err := ProvisionNodeAgentToken()
+	if err != nil {
+		return NodeAgentSetupView{}, err
+	}
+	token := nodeAgentToken()
+	serverURL := strings.TrimRight(os.Getenv("NODE_AGENT_PUBLIC_URL"), "/")
+	return NodeAgentSetupView{
+		Token:          token,
+		TokenCreated:   created,
+		ServerURL:      serverURL,
+		InstallMac:     installCommand("mac", token, serverURL),
+		InstallWindows: installCommand("windows", token, serverURL),
+		UpdateMac:      updateCommand("mac", serverURL),
+		UpdateWindows:  updateCommand("windows", serverURL),
+	}, nil
+}
+
+// ProvisionNodeAgentToken creates the shared secret on
+// first use: 32 random bytes, hex-encoded, in the same
+// 0600 file every local consumer reads. A second call is
+// a no-op, and an env-provided token needs no file.
+func ProvisionNodeAgentToken() (bool, error) {
+	path := filepath.Join(hermesHome(), "node-agent.env")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	}
+	if nodeAgentToken() != "" {
+		return false, nil
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return false, fmt.Errorf("generate node-agent token: %w", err)
+	}
+	line := "NODE_AGENT_TOKEN=" + hex.EncodeToString(buf) + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+		return false, fmt.Errorf("write %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// installCommand is the one-line first-install command
+// for a platform: the installer script piped to a shell
+// that already carries the token. Empty when no
+// NODE_AGENT_PUBLIC_URL is configured — the panel then
+// tells the operator what to set.
+func installCommand(platform, token, serverURL string) string {
+	if serverURL == "" {
+		return ""
+	}
+	switch platform {
+	case "mac":
+		return "curl -fsSL " + serverURL + "/install/mac | env NODE_AGENT_TOKEN=" + token + " bash"
+	default:
+		return "powershell -NoProfile -Command \"$env:NODE_AGENT_TOKEN='" + token + "'; iex (irm " + serverURL + "/install/windows)\""
+	}
+}
+
+// updateCommand is the one-line upgrade for a platform.
+// It carries no token: the updater reads the one already
+// on the worker. Empty when NODE_AGENT_PUBLIC_URL is unset.
+func updateCommand(platform, serverURL string) string {
+	if serverURL == "" {
+		return ""
+	}
+	switch platform {
+	case "mac":
+		return "curl -fsSL " + serverURL + "/update/mac | bash"
+	default:
+		return "powershell -NoProfile -Command \"iex (irm " + serverURL + "/update/windows)\""
+	}
 }
 
 // NodeDispatchRequest mirrors transport.DispatchRequest on the node-agent.

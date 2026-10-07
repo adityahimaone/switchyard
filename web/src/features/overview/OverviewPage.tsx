@@ -1,7 +1,7 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Activity, CheckCircle2, Cpu, Database, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Users, Workflow, XCircle } from "lucide-react"
-import { api, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
+import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
@@ -254,6 +254,96 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
   )
 }
 
+// ── node agent onboarding ─────────────────────────────────────────
+
+function SetupCommandRow({ label, command, copied, onCopy }: { label: string; command: string; copied: boolean; onCopy: (command: string) => void }) {
+  return (
+    <div className="flex items-start gap-2 rounded-control border border-line bg-well/45 p-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-medium text-ink-3">{label}</p>
+        <code className="mt-0.5 block break-all font-mono text-[10px] leading-4 text-ink-2">{command}</code>
+      </div>
+      <button
+        type="button"
+        onClick={() => onCopy(command)}
+        className="shrink-0 rounded-control border border-line bg-canvas p-1.5 text-ink-3 transition-colors hover:text-ink-2"
+        aria-label={`Copy ${label} command`}
+        title="Copy command"
+      >
+        {copied ? <Check className="size-3 text-success-text" /> : <Copy className="size-3" />}
+      </button>
+    </div>
+  )
+}
+
+function NodeAgentSetupCard() {
+  const { data, isLoading } = useQuery({ queryKey: ["node-agent-setup"], queryFn: getNodeAgentSetup })
+  const [revealed, setRevealed] = useState(false)
+  const [copiedLabel, setCopiedLabel] = useState("")
+  const copy = (label: string, command: string) => {
+    void navigator.clipboard.writeText(command)
+    setCopiedLabel(label)
+    window.setTimeout(() => setCopiedLabel((cur) => (cur === label ? "" : cur)), 1500)
+  }
+  const masked = (t: string) => (t.length <= 10 ? "••••••••" : `${t.slice(0, 6)}…${t.slice(-4)}`)
+
+  return (
+    <section className="glass-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium text-accent-text">Node agent</p>
+          <h2 className="mt-1 text-sm font-semibold">Worker install &amp; update</h2>
+        </div>
+        <Terminal className="size-4 text-accent-text" />
+      </div>
+      {isLoading || !data ? (
+        <p className="mt-6 text-xs text-ink-3">Loading node agent setup…</p>
+      ) : (
+        <>
+          <div className="mt-4 flex items-center gap-2 rounded-control border border-line bg-well/45 p-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-medium text-ink-3">Shared token{data.token_created ? " — generated on first view" : ""}</p>
+              <code className="mt-0.5 block break-all font-mono text-[10px] leading-4 text-ink-2">{revealed ? data.token : masked(data.token)}</code>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRevealed((v) => !v)}
+              className="shrink-0 rounded-control border border-line bg-canvas p-1.5 text-ink-3 transition-colors hover:text-ink-2"
+              aria-label={revealed ? "Hide token" : "Reveal token"}
+              title={revealed ? "Hide token" : "Reveal token"}
+            >
+              {revealed ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => copy("token", data.token)}
+              className="shrink-0 rounded-control border border-line bg-canvas p-1.5 text-ink-3 transition-colors hover:text-ink-2"
+              aria-label="Copy token"
+              title="Copy token"
+            >
+              {copiedLabel === "token" ? <Check className="size-3 text-success-text" /> : <Copy className="size-3" />}
+            </button>
+          </div>
+          {data.token_created && (
+            <p className="mt-2 text-[10px] text-ink-3">The node-agent server reads this same file, so the pair shares one secret — no shell exports needed.</p>
+          )}
+          {!data.server_url ? (
+            <p className="mt-4 text-xs text-ink-3">Set <code className="font-mono text-ink-2">NODE_AGENT_PUBLIC_URL</code> on the server (e.g. <code className="font-mono text-ink-2">http://100.75.2.78:8788</code>) to generate the install commands.</p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              <SetupCommandRow label="Install — macOS" command={data.install_mac} copied={copiedLabel === "install_mac"} onCopy={(c) => copy("install_mac", c)} />
+              <SetupCommandRow label="Install — Windows" command={data.install_windows} copied={copiedLabel === "install_windows"} onCopy={(c) => copy("install_windows", c)} />
+              <SetupCommandRow label="Update — macOS" command={data.update_mac} copied={copiedLabel === "update_mac"} onCopy={(c) => copy("update_mac", c)} />
+              <SetupCommandRow label="Update — Windows" command={data.update_windows} copied={copiedLabel === "update_windows"} onCopy={(c) => copy("update_windows", c)} />
+            </div>
+          )}
+          <p className="mt-3 text-[10px] text-ink-3">Update commands carry no token — the updater reads the one already on the worker. First install: run the command on the worker, once.</p>
+        </>
+      )}
+    </section>
+  )
+}
+
 // ── review gate metrics ────────────────────────────────────────────────────
 
 function ReviewGateCard({ data, loading }: { data?: ReviewMetrics; loading: boolean }) {
@@ -477,6 +567,11 @@ export default function OverviewPage() {
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <HealthCard icon={Activity} label="Hermes daemon" status={daemon.data?.status === "ready" ? "ready" : daemon.isLoading ? "checking" : "down"} detail={daemon.data?.socket ?? "Local Unix socket"} />
           <NodeFleetCard nodes={nodes.data} loading={nodes.isLoading} />
+        </div>
+
+        {/* ── Node agent onboarding ── */}
+        <div className="mt-3">
+          <NodeAgentSetupCard />
         </div>
 
         {/* ── Review gate metrics ── */}

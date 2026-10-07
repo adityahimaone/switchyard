@@ -19,6 +19,14 @@ func registerRuntimeRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, st)
 	})
+	mux.HandleFunc("GET /api/node-agent/setup", func(w http.ResponseWriter, r *http.Request) {
+		setup, err := kanban.NodeAgentSetup()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, http.StatusOK, setup)
+	})
 	mux.HandleFunc("GET /api/chat/daemon-health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, kanban.ChatDaemonHealth())
 	})

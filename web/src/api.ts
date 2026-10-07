@@ -794,3 +794,17 @@ export function getOverviewReview() { return api<ReviewMetrics>("/api/overview/r
 
 export interface QueueTrendPoint { date: string; queue_size: number; completed: number; failed: number }
 export function getOverviewQueueTrend(days = 30) { return api<QueueTrendPoint[]>(`/api/overview/queue-trend?days=${days}`) }
+
+/** Worker onboarding details: the shared token (provisioned on
+ *  first read), the advertised node-agent URL, and one-command
+ *  install/update lines. Update lines deliberately carry no token. */
+export interface NodeAgentSetup {
+  token: string
+  token_created: boolean
+  server_url: string
+  install_mac: string
+  install_windows: string
+  update_mac: string
+  update_windows: string
+}
+export function getNodeAgentSetup() { return api<NodeAgentSetup>("/api/node-agent/setup") }

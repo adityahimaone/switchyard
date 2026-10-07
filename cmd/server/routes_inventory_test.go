@@ -210,6 +210,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/flow/active":                                            true,
 	"GET /api/logs":                                                   true,
 	"GET /api/memory":                                                 true,
+	"GET /api/node-agent/setup":                                       true,
 	"GET /api/nodes":                                                  true,
 	"GET /api/notifications":                                          true,
 	"GET /api/overview":                                               true,
