@@ -116,7 +116,7 @@ curl -fsSL http://<vps>:8788/update/mac | bash
 powershell -NoProfile -Command "iex (irm http://<vps>:8788/update/windows)"
 ```
 
-Set `NODE_AGENT_PUBLIC_URL` on the server so the card can generate the commands; update commands never carry the token by design. When the node-agent server is unreachable, the updaters fall back to a release URL (GitHub) — configured on the node-agent server with `NODE_AGENT_GITHUB_RELEASE`, or per worker with `NODE_AGENT_RELEASE_URL`.
+Set `NODE_AGENT_PUBLIC_URL` on the server so the card can generate the commands; update commands never carry the token by design. When the node-agent server is unreachable, the updaters fall back to a release URL (GitHub) — configured on the node-agent server with `NODE_AGENT_GITHUB_RELEASE`, or per worker with `NODE_AGENT_RELEASE_URL`. The node-agent repository publishes release assets under the names the scripts fetch (`node-agent-darwin-arm64`, `node-agent-windows-amd64.exe`), so the fallback is live out of the box.
 
 ### Hard guard, claim, and retry
 
