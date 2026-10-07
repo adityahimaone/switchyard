@@ -314,10 +314,12 @@ export default function TaskDialog({
       }
     }
 
-    // "Start now" claims the card immediately rather than leaving it for the
-    // next poll. A refusal is a legitimate outcome — a lease held by another
-    // task, or an unmet dependency — so it is reported rather than blocking the
-    // close: the card exists and is queued either way.
+    // "Start now" wakes the dispatcher instead of waiting
+    // for its next poll; the dispatcher's pass is what
+    // claims the card. A refusal is a legitimate outcome —
+    // a lease held by another task, or an unmet dependency —
+    // so it is reported rather than blocking the close: the
+    // card exists and is queued either way.
     if (startMode === "now" && taskId && slug) {
       try {
         const res = await startTask(slug, taskId)

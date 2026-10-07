@@ -14,11 +14,13 @@ import (
 //
 //	read status -> check dependencies -> acquire leases -> mark running
 //
-// Wrapping it matters because a lease check and a lease insert in separate
-// statements are a race: two tasks can each read a free path and both take it.
-// SQLite has no SELECT ... FOR UPDATE, so BEGIN IMMEDIATE is what takes the
-// write lock up front and makes the read-then-write sequence atomic against a
-// competing claim.
+// Claiming is serialized in practice, and the transaction is what makes the
+// sequence atomic against that: the dispatcher loop is the only path that
+// claims with dependencies and leases (an explicit start only wakes it) and
+// it claims one card at a time, while every openDB handle funnels its
+// transactions through a single pooled connection (SetMaxOpenConns(1)),
+// which fences a claim against a lease release or a retry committing at
+// the same time.
 
 // ClaimRejection is a claim that was refused for a reason the dispatcher should
 // treat as "not yet" rather than "failed": the task is fine, its turn has not

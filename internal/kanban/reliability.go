@@ -315,6 +315,9 @@ func RetryTask(slug, taskID string) (Task, error) {
 	broadcastEvent("task_retried", map[string]any{
 		"board": slug, "task_id": taskID, "attempt": nextAttempt,
 	})
+	// The card is back in the queue; wake the dispatcher
+	// rather than waiting for its next poll.
+	WakeDispatcher()
 	return taskByID(db, taskID)
 }
 
@@ -417,12 +420,18 @@ func releaseStaleTask(slug, taskID, source string) (Task, error) {
 		return Task{}, err
 	}
 	broadcastEvent("status_changed", map[string]any{"board": slug, "task_id": taskID, "from": "running", "to": "todo"})
+	// Released back into the queue; wake the dispatcher so
+	// the re-run starts promptly.
+	WakeDispatcher()
 	return taskByID(db, taskID)
 }
 
-// AutoReleaseStaleTasks is the background safety net for runs whose worker
-// stopped producing log activity. ReleaseStaleTask still performs the
-// transaction-local health recheck, so a concurrent dispatcher claim wins.
+// AutoReleaseStaleTasks releases every run whose worker stopped
+// producing log activity. It is a helper for an explicit sweep:
+// nothing calls it on a timer, because release is an operator
+// decision in this design (ReleaseStaleTask is the manual path
+// and runs the same health recheck). Wiring this into a
+// background loop would be a policy change, not a wiring fix.
 func AutoReleaseStaleTasks() {
 	boards, err := ListBoards()
 	if err != nil {

@@ -197,6 +197,13 @@ func openDB(slug string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// The dispatch selection excludes cards with unmet dependencies
+	// in SQL, so the table must exist on every board, not only on
+	// boards that have had a dependency added to them.
+	if err := ensureDependencies(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
 }
 
@@ -538,6 +545,9 @@ func CreateTask(slug string, t *Task) error {
 		return err
 	}
 	broadcastEvent("task_created", map[string]any{"board": slug, "task_id": t.ID, "status": t.Status})
+	// A fresh card is dispatchable now: wake the dispatcher instead
+	// of leaving it to wait out the next 30s poll.
+	WakeDispatcher()
 	return nil
 }
 
@@ -588,6 +598,11 @@ func StatusTransition(slug, taskID, to string) error {
 		return err
 	}
 	broadcastEvent("status_changed", map[string]any{"task_id": taskID, "from": current, "to": to})
+	if to == "todo" || to == "ready" {
+		// Back in the queue: wake the dispatcher rather than
+		// waiting for its next poll.
+		WakeDispatcher()
+	}
 	return nil
 }
 

@@ -101,7 +101,7 @@ export function phaseCopy(phase: AgentPhase, who: string, elapsedSec: number, st
       return { label: "Sending", tone: "progress" }
     case "queued":
       return elapsedSec >= QUEUE_SLOW_AFTER_SEC
-        ? { label: "Still queued", detail: "No worker has picked this up yet. Check the node on the Overview tab.", tone: "warn" }
+        ? { label: "Still queued", detail: "No worker has picked this up yet — one dispatcher runs cards in order, so this may be waiting behind a running task.", tone: "warn" }
         : { label: `Queued for ${name}`, detail: "Waiting for a worker to pick it up", tone: "progress" }
     case "working":
       return { label: `${name} is working`, detail: formatElapsed(elapsedSec), tone: "progress" }

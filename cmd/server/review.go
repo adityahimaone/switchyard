@@ -596,6 +596,9 @@ func completeApprove(slug, id string) error {
 	if err := kanban.ReleaseTaskLeases(db, id); err != nil {
 		log.Printf("approve: %s: could not release path leases: %v", id, err)
 	}
+	// Done unblocks any task that depended on this one; wake the
+	// dispatcher so it considers them now rather than on its next poll.
+	kanban.WakeDispatcher()
 	return nil
 }
 

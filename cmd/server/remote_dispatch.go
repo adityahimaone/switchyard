@@ -39,25 +39,76 @@ func dispatchDSHSessionID(binding kanban.HarnessBinding, continuation bool) stri
 	return dispatchHarnessSessionID(binding, continuation)
 }
 
-// startRemoteDispatcher polls all boards every 30s for todo tasks with
-// workspace_transport='node-agent' and dispatches them via node-agent instead of
-// letting the Hermes Python dispatcher try (and fail) to spawn locally.
+// startRemoteDispatcher polls all boards for todo tasks with
+// workspace_transport='node-agent' and dispatches them via node-agent instead
+// of letting the Hermes Python dispatcher try (and fail) to spawn locally.
 //
 // The context is the shutdown signal: cancelling it stops the poll loop so a
 // draining server never claims a new task.
 func startRemoteDispatcher(ctx context.Context) {
 	go func() {
+		// One pass at boot: cards created while the server was down
+		// (or in the second before this loop started) dispatch now
+		// rather than waiting out the first 30s tick.
+		dispatchPendingRemoteTasks()
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				log.Println("remote-dispatcher: stopped")
 				return
-			case <-time.After(30 * time.Second):
+			case <-ticker.C:
+				dispatchPendingRemoteTasks()
+			case <-kanban.DispatcherWake():
+				// A state change made a card dispatchable — a
+				// create, a comment requeue, a retry, a release,
+				// an approval, or an explicit start — so run a
+				// pass now instead of waiting for the next tick.
 				dispatchPendingRemoteTasks()
 			}
 		}
 	}()
-	log.Println("remote-dispatcher: started (poll 30s)")
+	log.Println("remote-dispatcher: started (poll 30s, wake on change)")
+}
+
+// dispatchCandidate is one card the dispatch selection surfaced.
+type dispatchCandidate struct {
+	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
+	maxIterations                                                                                                                                                  int
+}
+
+// pendingDispatchCandidates runs the dispatch selection.
+//
+// Priority orders the queue — highest first, oldest first within a
+// priority — and the NOT EXISTS excludes cards still waiting on a
+// dependency, so a run of blocked cards cannot crowd out the free
+// cards a bare LIMIT would never reach. The claim path re-checks
+// both rules at claim time; this keeps the poll itself from even
+// considering a card that cannot run.
+func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
+	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
+		AND NOT EXISTS (
+			SELECT 1 FROM task_dependencies d
+			LEFT JOIN tasks dt ON dt.id = d.depends_on_id
+			WHERE d.task_id = tasks.id AND COALESCE(dt.status,'') <> 'done'
+		)
+		ORDER BY priority DESC, created_at ASC LIMIT 5`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pending []dispatchCandidate
+	for rows.Next() {
+		var r dispatchCandidate
+		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource, &r.designTool); err != nil {
+			return nil, err
+		}
+		if r.ws != "" {
+			pending = append(pending, r)
+		}
+	}
+	return pending, rows.Err()
 }
 
 func dispatchPendingRemoteTasks() {
@@ -80,25 +131,12 @@ func dispatchPendingRemoteTasks() {
 			db.Close()
 			continue
 		}
-		rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent' LIMIT 5`)
+		pending, err := pendingDispatchCandidates(db)
 		if err != nil {
 			log.Printf("remote-dispatcher: board %s: query failed: %v", b.Slug, err)
 			db.Close()
 			continue
 		}
-		type row struct {
-			id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
-			maxIterations                                                                                                                                                          int
-		}
-		var pending []row
-		for rows.Next() {
-			var r row
-			if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource, &r.designTool); err == nil && r.ws != "" {
-				pending = append(pending, r)
-			}
-		}
-		rows.Close()
-
 		for _, r := range pending {
 			continuity := kanban.HarnessContinuityEnabled(r.executor)
 			var binding kanban.HarnessBinding

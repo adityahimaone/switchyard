@@ -173,5 +173,11 @@ func AddComment(slug, taskID, author, body string) (*TaskComment, error) {
 		return nil, err
 	}
 	broadcastEvent("commented", map[string]any{"board": slug, "task_id": taskID, "author": author})
+	if requeued {
+		// The comment put the card back in the queue; wake the
+		// dispatcher so a reply reaches the agent in about a
+		// second rather than up to 30s.
+		WakeDispatcher()
+	}
 	return &TaskComment{ID: id, TaskID: taskID, Author: author, Body: body, CreatedAt: now, Requeued: requeued}, nil
 }

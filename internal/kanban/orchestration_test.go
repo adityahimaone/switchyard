@@ -25,21 +25,23 @@ func orchestratorBoard(t *testing.T, tasks ...Task) {
 	}
 }
 
-func TestStartTaskNowClaims(t *testing.T) {
+func TestStartTaskNowPokesWithoutClaiming(t *testing.T) {
 	orchestratorBoard(t, Task{ID: "t1", Title: "one"})
 
 	res, err := StartTaskNow("default", "t1")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if !res.Started || res.Status != "running" {
-		t.Fatalf("StartTaskNow = %+v, want started/running", res)
+	if !res.Started || res.Status != "todo" {
+		t.Fatalf("StartTaskNow = %+v, want started with the card still queued", res)
 	}
-	// The claim is what moved it, so the persisted status must agree.
+	// The dispatcher owns claiming. A poke that claimed would
+	// strand the card as running with no worker attached,
+	// because only the dispatcher ever dispatches a claimed run.
 	if got, err := TaskStatus("default", "t1"); err != nil {
 		t.Fatal(err)
-	} else if got != "running" {
-		t.Fatalf("persisted status = %q, want running", got)
+	} else if got != "todo" {
+		t.Fatalf("persisted status = %q, want todo (the dispatcher's pass claims it)", got)
 	}
 }
 
@@ -48,7 +50,14 @@ func TestStartTaskNowDefersOnLeaseConflict(t *testing.T) {
 		Task{ID: "t1", Title: "one", Paths: []string{"src/auth/**"}},
 		Task{ID: "t2", Title: "two", Paths: []string{"src/auth/token.rs"}},
 	)
-	if _, err := StartTaskNow("default", "t1"); err != nil {
+	// t1 holds the overlapping scope the way a dispatched run does;
+	// a poke alone would not, because pokes never claim. The
+	// project is the one StartTaskNow derives from the task's
+	// workspace path, so the preflight reads the same lease
+	// namespace the claim wrote.
+	db := mustDB(t)
+	project := LeaseProjectFor(Workspace{Path: "", Host: ""})
+	if _, err := ClaimTaskRunGuarded(db, "t1", project); err != nil {
 		t.Fatal(err)
 	}
 	res, err := StartTaskNow("default", "t2")
@@ -93,7 +102,9 @@ func TestStartTaskNowOnMissingTask(t *testing.T) {
 
 func TestStartTaskNowOnAlreadyRunning(t *testing.T) {
 	orchestratorBoard(t, Task{ID: "t1", Title: "one"})
-	if _, err := StartTaskNow("default", "t1"); err != nil {
+	db := mustDB(t)
+	project := LeaseProjectFor(Workspace{Path: "", Host: ""})
+	if _, err := ClaimTaskRunGuarded(db, "t1", project); err != nil {
 		t.Fatal(err)
 	}
 	res, err := StartTaskNow("default", "t1")
@@ -105,24 +116,6 @@ func TestStartTaskNowOnAlreadyRunning(t *testing.T) {
 	}
 	if res.Rejected != CodeNotRetryable {
 		t.Fatalf("rejected code = %q, want %q", res.Rejected, CodeNotRetryable)
-	}
-}
-
-// TestStartQueueIsABoundedHint proves the explicit-start queue degrades to the
-// normal poll rather than blocking or growing without limit.
-func TestStartQueueIsABoundedHint(t *testing.T) {
-	// Drain anything left by an earlier test.
-	DrainStarts(func(startItem) {})
-
-	var seen []string
-	pendingStarts.Enqueue("default", "a", "run_a")
-	pendingStarts.Enqueue("default", "b", "run_b")
-	n := DrainStarts(func(it startItem) { seen = append(seen, it.task) })
-	if n != 2 || len(seen) != 2 || seen[0] != "a" || seen[1] != "b" {
-		t.Fatalf("drained %d items %v, want [a b] in order", n, seen)
-	}
-	if n := DrainStarts(func(startItem) { t.Error("drained a phantom item") }); n != 0 {
-		t.Fatalf("a second drain returned %d items, want 0", n)
 	}
 }
 

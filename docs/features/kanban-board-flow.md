@@ -7,7 +7,7 @@ Dokumen canonical untuk task flow Switchyard/Kanban. Kanban mengatur intent, wor
 ```text
 Kanban UI/API
   -> Control plane: board DB, validation, dispatcher, review gate
-  -> Transport: node-agent HTTP/gRPC atau legacy SSH
+  -> Transport: node-agent HTTP/gRPC (SSH sudah retire; kartu lama dimigrasi saat server boot)
   -> Execution plane: Mac/Windows worker
   -> Workspace: source code host
   -> Result + provenance + events
@@ -119,7 +119,7 @@ Bedanya ada di pagar pengaman. `dsh` melaporkan workspace id dan urutan turn mon
 
 Detail per-harness: [dsh-harness.md](dsh-harness.md) dan [commandcode-executor.md](commandcode-executor.md).
 
-Worker tidak boleh menghapus session id, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment biasa tidak membuka kembali card yang sudah `review`.
+Worker tidak boleh menghapus session id, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment apa pun pada card `review` atau `blocked` membuka kembali card ke `todo`; pada card `done` hanya comment yang @mention assignee.
 
 Kontrak worker lengkap: [node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md). Feature knowledge Switchyard: [dsh-harness.md](dsh-harness.md).
 
@@ -136,15 +136,11 @@ Sebelum create/dispatch task remote:
 - shell command self-contained dan aman.
 - board, priority, workspace, profile, executor eksplisit.
 
-Canary remote:
-
-```sh
-ssh mac-tailscale 'test -d /Users/adityahimawan/Development/next-portfolio-blog && pwd'
-```
+Canary remote: workspace harus terdaftar di `~/.hermes/workspaces.json` dan nodenya online — `GET /api/workspaces` pada node-agent server menampilkan keduanya.
 
 ## 8. G — Gateway and dispatcher
 
-Dispatcher satu-satunya pemilik claim task. Polling normal setiap 30 detik.
+Dispatcher satu-satunya pemilik claim task. Polling normal setiap 30 detik, ditambah wake langsung saat create, comment requeue, retry, release, approve, atau "start now" — jadi kartu baru biasanya dispatch dalam ~1 detik, bukan menunggu poll berikutnya. "Start now" hanya membangunkan dispatcher (poke); claim tetap milik dispatcher, sehingga kartu tidak pernah terdampar `running` tanpa worker.
 
 Lifecycle claim:
 
@@ -161,7 +157,7 @@ Saat claim:
 - assemble previous result/comment context sebelum DB handle ditutup.
 - route berdasarkan registered workspace, bukan tebakan dari path.
 
-Remote card tanpa transport lama harus dinormalisasi ke `ssh` + target approved sebelum spawn. Jangan menjalankan dua dispatcher yang berebut DB.
+Remote card tanpa transport lama dimigrasi ke node-agent saat server boot (`MigrateRetiredTransport`). Jangan menjalankan dua dispatcher yang berebut DB.
 
 ## 9. H — Host routing
 
@@ -304,7 +300,7 @@ Continuation flow:
 review -> comment @assignee -> todo -> running -> review
 ```
 
-Mention assignee pada done/review/blocked boleh requeue. Preserve previous result; clear hanya completion marker yang memang perlu. Attempt baru harus punya log/result snapshot terpisah.
+Mention assignee pada done requeue; comment apa pun pada review/blocked juga requeue. Preserve previous result; clear hanya completion marker yang memang perlu. Attempt baru harus punya log/result snapshot terpisah.
 
 ## 20. S — Stop and cancellation
 
@@ -316,7 +312,7 @@ Late worker result tidak boleh mengubah state terminal attempt baru.
 
 | Symptom | Root cause | Fix |
 |---|---|---|
-| `Permission denied: /Users` | VPS treat Mac path as local | register exact remote workspace; route node-agent/SSH |
+| `Permission denied: /Users` | VPS treat Mac path as local | register exact remote workspace; route node-agent |
 | `executor_unavailable` | binary missing atau PATH launchd beda | `command -v` pada worker; restart/reinstall agent |
 | `blocker_auth` | auth/quota real atau stale metadata | inspect raw worker log; clear stale only with proof |
 | `respawn_guarded` | retry guard aktif | diagnose cause; jangan blind reassign |

@@ -20,12 +20,20 @@ type StartableResult struct {
 	Message  string `json:"message,omitempty"`
 }
 
-// StartTaskNow attempts to move a task into the dispatch queue and, if it can be
-// claimed, hand it straight to the dispatcher rather than waiting for the poll.
+// StartTaskNow asks the dispatcher to run a queued task now.
 //
-// It returns a 409-shaped rejection rather than an error when the task is simply
-// not its turn — unmet dependencies, or an overlapping lease — so the UI can
-// explain the wait instead of showing a failure.
+// It does not claim the card: the dispatcher owns claiming, so an
+// explicit start is a wake-up. The pass the poke triggers claims and
+// dispatches the card — typically within a second — instead of the
+// card sitting queued for up to 30s for the next poll. Claiming here
+// would strand the card as running with no worker attached, because
+// only the dispatcher ever dispatches a claimed run.
+//
+// The claim rules still run first, as a dry run inside a transaction
+// that is rolled back, so an unmet dependency or an overlapping lease
+// is reported as the same 409-shaped rejection the dispatcher's own
+// claim would produce — the UI can explain the wait instead of
+// showing a failure.
 func StartTaskNow(slug, taskID string) (StartableResult, error) {
 	db, err := openDB(slug)
 	if err != nil {
@@ -33,9 +41,9 @@ func StartTaskNow(slug, taskID string) (StartableResult, error) {
 	}
 	defer db.Close()
 
-	var status, ws, target string
-	err = db.QueryRow(`SELECT status, COALESCE(workspace_path,''), COALESCE(workspace_ssh_target,'') FROM tasks WHERE id=?`, taskID).
-		Scan(&status, &ws, &target)
+	var status, ws, target, paths string
+	err = db.QueryRow(`SELECT status, COALESCE(workspace_path,''), COALESCE(workspace_ssh_target,''), COALESCE(paths,'[]') FROM tasks WHERE id=?`, taskID).
+		Scan(&status, &ws, &target, &paths)
 	if err == sql.ErrNoRows {
 		return StartableResult{}, &RunControlError{Code: 404, Err: fmt.Errorf("task not found: %s", taskID)}
 	}
@@ -51,83 +59,49 @@ func StartTaskNow(slug, taskID string) (StartableResult, error) {
 	}
 
 	project := LeaseProjectFor(Workspace{Path: ws, Host: target})
-	claim, err := ClaimTaskRunGuarded(db, taskID, project)
-	if err != nil {
-		if IsRejection(err) {
-			rej := err.(*ClaimRejection)
-			// Record the wait so the board shows why the card is not moving.
-			_ = insertEvent(db, taskID, "start_deferred", map[string]any{
-				"source": "board-ui", "code": rej.Code, "message": rej.Error(),
-			})
-			return StartableResult{TaskID: taskID, Status: status, Started: false,
-				Rejected: rej.Code, Message: rej.Error()}, nil
-		}
-		return StartableResult{}, err
-	}
-	if !claim.Claimed {
+	if rej := preflightClaim(db, taskID, project, paths); rej != nil {
+		// Record the wait so the board shows why the card is not moving.
+		_ = insertEvent(db, taskID, "start_deferred", map[string]any{
+			"source": "board-ui", "code": rej.Code, "message": rej.Error(),
+		})
 		return StartableResult{TaskID: taskID, Status: status, Started: false,
-			Rejected: CodeNotRetryable, Message: "another dispatcher claimed it first"}, nil
+			Rejected: rej.Code, Message: rej.Error()}, nil
 	}
 
-	// Hand the claimed run to the dispatch loop. The loop owns execution, so
-	// this does not start a second dispatcher: it just wakes the existing one
-	// rather than waiting up to 30s for its next poll.
-	pendingStarts.Enqueue(slug, taskID, claim.RunID)
-	if err := insertEvent(db, taskID, "started", map[string]any{
-		"source": "board-ui", "run_id": claim.RunID,
-	}); err != nil {
-		log.Printf("start: %s: could not record event: %v", taskID, err)
+	_ = insertEvent(db, taskID, "run_requested", map[string]any{"source": "board-ui"})
+	WakeDispatcher()
+	return StartableResult{TaskID: taskID, Status: status, Started: true}, nil
+}
+
+// preflightClaim checks a task against the claim rules without claiming
+// it. The whole check runs in one transaction that is always rolled
+// back, so the trial leases AcquireLeases takes never stick and the
+// card stays queued for the dispatcher the poke wakes.
+//
+// A transient failure reports no rejection: an explicit start must not
+// be blocked by a flaky read, and the dispatcher's own claim re-checks
+// everything anyway.
+func preflightClaim(db *sql.DB, taskID, project, pathsJSON string) *ClaimRejection {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil
 	}
-	return StartableResult{TaskID: taskID, Status: "running", Started: true}, nil
-}
+	defer tx.Rollback()
 
-// startQueue carries explicitly-started runs to the dispatch loop, so "Start now"
-// is a wake-up rather than a second execution path.
-var pendingStarts = &startQueue{items: make(chan startItem, 64)}
-
-type startItem struct {
-	slug  string
-	task  string
-	runID string
-}
-
-type startQueue struct {
-	items chan startItem
-}
-
-func (q *startQueue) Enqueue(slug, task, runID string) {
-	select {
-	case q.items <- startItem{slug: slug, task: task, runID: runID}:
-	default:
-		// The queue is full, which means the loop is far behind. The run is
-		// already claimed and leased, so it will be picked up by the normal poll
-		// instead; dropping the hint costs latency, not correctness.
-		log.Printf("start: queue full, %s will be picked up by the next poll", task)
+	pending, err := pendingDependencies(tx, taskID)
+	if err != nil {
+		return nil
 	}
-}
-
-// Take returns the next explicitly-started run, if any.
-func (q *startQueue) Take() (startItem, bool) {
-	select {
-	case it := <-q.items:
-		return it, true
-	default:
-		return startItem{}, false
+	if len(pending) > 0 {
+		return &ClaimRejection{Code: CodeDepsNotDone, Err: fmt.Errorf("waiting for %v", pending)}
 	}
-}
-
-// DrainStarts hands every queued explicit start to fn, and reports how many it
-// processed. The dispatcher calls this at the top of each pass.
-func DrainStarts(fn func(startItem)) int {
-	n := 0
-	for {
-		it, ok := pendingStarts.Take()
-		if !ok {
-			return n
+	if err := AcquireLeases(tx, project, taskID, PathsParse(pathsJSON)); err != nil {
+		if IsLeaseConflict(err) {
+			return &ClaimRejection{Code: CodeLeaseConflict, Err: err}
 		}
-		fn(it)
-		n++
+		return nil
 	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
