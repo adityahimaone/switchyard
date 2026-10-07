@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { addTaskDependency, api, cancelRun, openEventStream, parseTaskExecutionMeta, patchTaskFields, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskComment, type TaskEvent, type VerifyProfile, type Workspace, type TaskHealth as TH } from "../../api"
+import { addTaskDependency, api, cancelRun, parseTaskExecutionMeta, patchTaskFields, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskEvent, type VerifyProfile, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
 import { VerifySettings } from "./VerifySettings"
-import { ArrowLeft, Check, ChevronDown, ChevronRight, GitBranch, History, Loader2, MessageSquare, Send, Trash2 } from "lucide-react"
+import { ArrowLeft, ChevronDown, ChevronRight, GitBranch, History, MessageSquare, Trash2 } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import type { Attachment } from "../../api"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { TaskOutput } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
+import { DiscussionPanel } from "./DiscussionPanel"
+import { useTaskDiscussion } from "./useTaskDiscussion"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
 import {
   AgentPicker, EmptyNote, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
@@ -22,244 +23,6 @@ import {
 } from "./taskDetailParts"
 import { AgentTrace } from "@/components/ui/agent-trace"
 import { traceOrigin, traceSpansFromHistory } from "./taskTrace"
-
-type ReplyState = "idle" | "sent" | "notified" | "replied"
-
-const REPLY_STEPS = [
-  { key: "sent", label: "Sent" },
-  { key: "notified", label: "Agent notified" },
-  { key: "replied", label: "Agent replied" },
-] as const
-
-const REPLY_ORDER: Record<Exclude<ReplyState, "idle">, number> = { sent: 1, notified: 2, replied: 3 }
-
-function ReplyStatus({ state }: { state: ReplyState }) {
-  if (state === "idle") return null
-  const reached = REPLY_ORDER[state]
-  return (
-    <ol className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-live="polite">
-      {REPLY_STEPS.map((step, index) => {
-        const done = REPLY_ORDER[step.key] <= reached
-        return (
-          <li key={step.key} className="flex items-center gap-1.5">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors ${
-                done
-                  ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
-                  : "border-[var(--c-line)] text-ink-3"
-              }`}
-            >
-              {done ? <Check className="size-3" aria-hidden /> : <span className="size-1.5 rounded-full bg-ink-4" aria-hidden />}
-              {step.label}
-            </span>
-            {index < REPLY_STEPS.length - 1 && <ChevronRight className="size-3 shrink-0 text-ink-3" aria-hidden />}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
-
-function CommentSection({ slug, task, profiles }: { slug: string; task: Task; profiles: Profile[] }) {
-  const qc = useQueryClient()
-  const [draft, setDraft] = useState("")
-  const [err, setErr] = useState<string | null>(null)
-  const [replyState, setReplyState] = useState<ReplyState>("idle")
-  const [lastSentAt, setLastSentAt] = useState(0)
-  const threadRef = useRef<HTMLDivElement>(null)
-  const previousCount = useRef(0)
-
-  const comments = useQuery({
-    queryKey: ["comments", slug, task.id],
-    queryFn: () => api<TaskComment[]>(`/api/boards/${slug}/tasks/${task.id}/comments`),
-    refetchInterval: 10_000,
-  })
-
-  useEffect(() => {
-    const latest = comments.data?.[comments.data.length - 1]
-    if (!latest) return
-    if (replyState === "sent") setReplyState("notified")
-    if (lastSentAt && latest.created_at >= lastSentAt && latest.author !== "board-ui") setReplyState("replied")
-  }, [comments.data, lastSentAt, replyState])
-
-  /* Keep the newest message in view when one arrives, but only when the user
-     was already at the bottom. Otherwise scrolling fights the reader. */
-  useEffect(() => {
-    const count = comments.data?.length ?? 0
-    if (!count) return
-    const grew = count > previousCount.current
-    previousCount.current = count
-    if (!grew) return
-    const el = threadRef.current
-    if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-    if (nearBottom) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
-  }, [comments.data])
-
-  useEffect(() => openEventStream((event) => {
-    if (event.data.task_id !== task.id) return
-    if (event.kind === "commented" || event.kind === "task_event" || event.kind === "task_updated" || event.kind === "status_changed") {
-      qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
-      qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
-    }
-  }), [qc, slug, task.id])
-
-  const post = useMutation({
-    mutationFn: (body: string) =>
-      api<TaskComment>(`/api/boards/${slug}/tasks/${task.id}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ body, author: "board-ui" }),
-      }),
-    onSuccess: (comment) => {
-      setDraft("")
-      setLastSentAt(comment.created_at)
-      setReplyState("sent")
-      toastGlobal(comment.requeued ? "Comment sent. Task requeued to todo." : "Comment sent. Task was not requeued.", comment.requeued ? "success" : "info")
-      qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
-      qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
-      qc.invalidateQueries({ queryKey: ["tasks", slug] })
-    },
-    onError: (e: Error) => setErr(e.message),
-  })
-
-  function mention(name: string) {
-    setDraft((d) => (d.endsWith(" ") || d === "" ? `${d}@${name} ` : `${d} @${name} `))
-  }
-
-  const list = comments.data ?? []
-  const agentReplies = list.filter((c) => c.author !== "board-ui").length
-  const canSend = !!draft.trim() && !post.isPending
-
-  return (
-    <div className="flex min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2">
-        <MessageSquare className="size-3.5 shrink-0 text-ink-3" aria-hidden />
-        <h2 className="text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase">Discussion</h2>
-        {list.length > 0 && (
-          <span className="text-2xs tabular-nums text-ink-3">
-            {list.length} {list.length === 1 ? "message" : "messages"}
-            {agentReplies > 0 && ` · ${agentReplies} from agent`}
-          </span>
-        )}
-
-        {profiles.filter((p) => p.valid).length > 0 && (
-          <div className="ml-auto flex flex-wrap items-center gap-1">
-            <span className="text-2xs text-ink-3">Tag</span>
-            {profiles.filter((p) => p.valid).map((p) => (
-              <button
-                key={p.name}
-                type="button"
-                onClick={() => mention(p.name)}
-                className={`inline-flex h-6 items-center rounded-full border px-2 text-2xs transition-colors ${
-                  task.assignee === p.name
-                    ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)] text-[var(--c-accent)]"
-                    : "border-[var(--c-line)] text-ink-3 hover:border-[var(--c-line-strong)] hover:text-[var(--c-accent)]"
-                }`}
-                title={`Insert @${p.name} into the reply`}
-                aria-label={`Tag ${p.name}`}
-              >
-                @{p.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div
-        ref={threadRef}
-        className="mt-2.5 max-h-[26rem] min-h-[6rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5"
-      >
-        {list.map((c) => {
-          const mine = c.author === "board-ui"
-          return (
-            <article
-              key={c.id}
-              className={`rounded-lg border px-3 py-2 ${
-                mine
-                  ? "border-[var(--c-line-strong)] bg-[var(--c-accent-tint)]/40"
-                  : "border-[var(--c-line)] bg-[var(--c-surface)]/50"
-              }`}
-            >
-              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className={`text-meta font-semibold ${mine ? "text-[var(--c-accent)]" : "text-ink-2"}`}>
-                  {mine ? "You" : c.author}
-                </span>
-                <time
-                  className="font-mono text-2xs tabular-nums text-ink-3"
-                  dateTime={new Date(c.created_at * 1000).toISOString()}
-                >
-                  {new Date(c.created_at * 1000).toLocaleString()}
-                </time>
-                {!mine && (
-                  <span className="ml-auto shrink-0 rounded-full border border-[var(--c-line)] px-1.5 text-2xs text-ink-3">
-                    agent
-                  </span>
-                )}
-              </header>
-              <p className="mt-1 whitespace-pre-wrap break-words text-body leading-relaxed text-ink-2">{c.body}</p>
-            </article>
-          )
-        })}
-
-        {comments.isLoading && (
-          <div className="space-y-1.5" aria-hidden>
-            {[0, 1].map((i) => (
-              <div key={i} className="h-14 animate-pulse rounded-lg border border-[var(--c-line)] bg-[var(--c-line)]/20" />
-            ))}
-          </div>
-        )}
-
-        {!comments.isLoading && !list.length && (
-          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-[var(--c-line)] px-3 py-8 text-center">
-            <MessageSquare className="size-5 text-ink-3" aria-hidden />
-            <p className="text-meta text-ink-3">No messages yet</p>
-            <p className="max-w-[40ch] text-2xs leading-relaxed text-ink-3">
-              Start a conversation. Comments are delivered into the agent's worker context, so a tagged
-              agent sees them on its next step.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <ReplyStatus state={replyState} />
-
-      <div className="mt-2.5 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)]/40 focus-within:border-[var(--c-line-strong)]">
-        <label htmlFor={`reply-${task.id}`} className="sr-only">Write a reply</label>
-        <Textarea
-          id={`reply-${task.id}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSend) {
-              e.preventDefault()
-              setErr(null)
-              post.mutate(draft.trim())
-            }
-          }}
-          rows={3}
-          placeholder={`Reply to the agent… tag @${task.assignee || "an agent"} to get a response`}
-          className="min-h-0 resize-none border-none bg-transparent text-body focus-visible:ring-0"
-        />
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--c-line)] px-2.5 py-2">
-          <p className="min-w-0 flex-1 text-2xs leading-relaxed text-ink-3">
-            If the task is done or blocked, tagging the assignee requeues it to todo so the agent respawns and replies.
-          </p>
-          <span className="hidden shrink-0 font-mono text-2xs text-ink-3 sm:inline">⌘↵</span>
-          <Button
-            size="sm"
-            disabled={!canSend}
-            onClick={() => { setErr(null); post.mutate(draft.trim()) }}
-            className="shrink-0 gap-1.5"
-          >
-            {post.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            Send
-          </Button>
-        </div>
-      </div>
-      {err && <p className="mt-1.5 text-meta text-danger-text">{err}</p>}
-    </div>
-  )
-}
 
 function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone?: string }) {
   const long = value.length > FIELD_TRUNCATE_LEN
@@ -375,6 +138,8 @@ export default function TaskDetailPage({
   onReassign: (a: string) => Promise<void>
 }) {
   const qc = useQueryClient()
+  const [tab, setTab] = useState("overview")
+  const discussion = useTaskDiscussion(slug, task.id, tab === "discussion")
   const attachments = useQuery<Attachment[]>({
     queryKey: ["attachments", slug, task.id],
     queryFn: () => api<Attachment[]>(`/api/boards/${slug}/tasks/${task.id}/attachments`),
@@ -489,11 +254,20 @@ export default function TaskDetailPage({
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="mt-4">
+        <Tabs value={tab} onValueChange={setTab} className="mt-4">
           <TabsList variant="line" className="w-full justify-start gap-1 border-b border-[var(--c-line)] pb-0">
             <TabsTrigger value="overview" className="gap-1.5 text-meta"><GitBranch className="size-3.5" />Overview</TabsTrigger>
             <TabsTrigger value="output" className="gap-1.5 text-meta">Output</TabsTrigger>
-            <TabsTrigger value="discussion" className="gap-1.5 text-meta"><MessageSquare className="size-3.5" />Discussion</TabsTrigger>
+            <TabsTrigger value="discussion" className="gap-1.5 text-meta"><MessageSquare className="size-3.5" />Discussion
+              {discussion.unread > 0 && (
+                <span
+                  className="rounded-full bg-[var(--c-accent)] px-1.5 text-2xs font-semibold tabular-nums text-[var(--c-canvas)]"
+                  aria-label={`${discussion.unread} unread ${discussion.unread === 1 ? "reply" : "replies"}`}
+                >
+                  {discussion.unread}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="history" className="gap-1.5 text-meta">
               <History className="size-3.5" />History
               {eventCount > 0 && <span className="rounded-full bg-[var(--c-line)]/60 px-1.5 text-2xs tabular-nums text-ink-3">{eventCount}</span>}
@@ -696,7 +470,15 @@ export default function TaskDetailPage({
 
           {/* -------------------------------------------------- discussion -- */}
           <TabsContent value="discussion" className="mt-4">
-            <CommentSection slug={slug} task={task} profiles={profiles} />
+            <DiscussionPanel
+              key={task.id}
+              slug={slug}
+              task={task}
+              profiles={profiles}
+              comments={discussion.comments}
+              isLoading={discussion.isLoading}
+              seenId={discussion.seenId}
+            />
           </TabsContent>
 
           {/* ----------------------------------------------------- history -- */}

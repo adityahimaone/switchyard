@@ -340,14 +340,49 @@ export interface ServerEvent {
   at: number
 }
 
-export function openEventStream(onEvent: (event: ServerEvent) => void) {
+/** Kinds the stream subscribes to. The server also emits default
+    (unnamed) events, which `onmessage` covers. */
+const STREAM_KINDS = [
+  "task_created", "task_updated", "status_changed", "task_event", "commented",
+  "workspace_ping", "node_health", "chat_session_created", "chat_session_updated",
+  "chat_message", "chat_run", "chat_run_state", "chat_run_event",
+]
+
+/* One EventSource for the whole app, fanned out to subscribers. The
+   shell, the task page and the chat page all listen; a browser caps
+   the connections it opens per origin, so sharing one stream keeps
+   that budget for the API calls that actually need it. */
+type StreamListener = (event: ServerEvent) => void
+
+let stream: EventSource | null = null
+const streamListeners = new Set<StreamListener>()
+
+function ensureEventStream() {
+  if (stream) return
   const source = new EventSource("/api/events/stream")
-  const handle = (message: MessageEvent<string>) => {
-    try { onEvent(JSON.parse(message.data) as ServerEvent) } catch { /* refetch remains fallback */ }
+  const dispatch = (message: MessageEvent<string>) => {
+    let event: ServerEvent
+    try { event = JSON.parse(message.data) as ServerEvent } catch { return }
+    streamListeners.forEach((fn) => {
+      // One broken listener must not drop the event for the rest.
+      try { fn(event) } catch { /* refetch remains fallback */ }
+    })
   }
-  source.onmessage = handle
-  ;["task_created", "task_updated", "status_changed", "task_event", "commented", "workspace_ping", "node_health", "chat_session_created", "chat_session_updated", "chat_message", "chat_run", "chat_run_state", "chat_run_event"].forEach((kind) => source.addEventListener(kind, handle))
-  return () => source.close()
+  source.onmessage = dispatch
+  STREAM_KINDS.forEach((kind) => source.addEventListener(kind, dispatch))
+  stream = source
+}
+
+export function openEventStream(onEvent: StreamListener) {
+  ensureEventStream()
+  streamListeners.add(onEvent)
+  return () => {
+    streamListeners.delete(onEvent)
+    if (streamListeners.size === 0) {
+      stream?.close()
+      stream = null
+    }
+  }
 }
 
 export interface Workspace {
