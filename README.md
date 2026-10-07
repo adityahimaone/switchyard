@@ -417,9 +417,10 @@ Shell agentic path gives a read-only planner workspace visibility, then executes
 |---|---|---|
 | `kanban.dispatch_in_gateway` | `~/.hermes/config.yaml` | Set `false` — prevents a second dispatcher |
 | `workspaces` | `~/.hermes/workspaces.json` | Workspaces, hosts, OS, prequest notes |
-| `NODE_AGENT_TOKEN` | `~/.hermes/node-agent.env` | Shared secret, file mode `0600` |
+| `NODE_AGENT_TOKEN` | `~/.hermes/node-agent.env` | Shared secret, file mode `0600`; provisioned on first Overview view |
 | `KANBAN_NODE_AGENT` | env | Override node-agent HTTP base URL (default `http://127.0.0.1:8788`) |
 | `KANBAN_NODE_AGENT_TOKEN` | env | Shared auth token for node-agent HTTP + gRPC metadata |
+| `NODE_AGENT_PUBLIC_URL` | env | URL the node-agent server advertises (e.g. `http://<tailscale-ip>:8788`); powers the install/update commands on the Overview page |
 | `KANBAN_SSH_TARGET` | env | Override SSH target for review and legacy transport |
 | `TYPESAFE_API_KEY` | env | Optional TypeSafe AI key; enables JEV task classification before dispatch |
 | `TYPESAFE_JEV_MODEL` | env | Optional JEV model override (default `jev-latest`) |
@@ -493,6 +494,26 @@ curl -H "X-Node-Agent-Token: <token>" http://<vps>:8788/health
 A healthy node is `idle`. gRPC workers show `transports: ["grpc", "http"]`. When the gRPC stream drops, `auto` mode falls back to HTTP and the transport badge in Flow switches to `http`.
 
 If the VPS server is already new but the Mac agent has not been upgraded yet, new executors like `commandcode` or `omp` will not appear on that node — expected until the Mac installer is re-run.
+
+### Node agent install & update
+
+The Overview page has a **Node agent** card that provisions the shared
+token on first view (random 64-char hex, written to the `0600`
+`~/.hermes/node-agent.env` both servers resolve) and shows four
+copy-paste commands:
+
+```sh
+# first install (token included — the only time you type it)
+curl -fsSL http://<vps>:8788/install/mac | env NODE_AGENT_TOKEN=<token> bash
+powershell -NoProfile -Command "$env:NODE_AGENT_TOKEN='<token>'; iex (irm http://<vps>:8788/install/windows)"
+
+# upgrade — no token, it reads the one already on the worker
+curl -fsSL http://<vps>:8788/update/mac | bash
+powershell -NoProfile -Command "iex (irm http://<vps>:8788/update/windows)"
+```
+
+Set `NODE_AGENT_PUBLIC_URL` on the server so the card can generate the
+commands; the token never appears in an update command by design.
 
 ### Remote task tries to run on the VPS
 
