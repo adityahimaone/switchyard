@@ -102,6 +102,22 @@ NODE_AGENT_GRPC_TARGET=<VPS_TAILSCALE_IP>:8789
 - `http` forces the compatibility lane.
 - gRPC port `8789` must stay private on the tailnet.
 
+## Node agent install & update
+
+First install a worker once with the token; after that, updating never asks for it again — the updater reads the token and server URL from the worker's own install (LaunchAgent config on Mac, User environment on Windows). The Overview page has a **Node agent** card that provisions the shared token on first view (random 64-char hex in the `0600` `~/.hermes/node-agent.env` both servers resolve) and shows the same four commands with copy buttons:
+
+```sh
+# first install — the only time the token is typed
+curl -fsSL http://<vps>:8788/install/mac | env NODE_AGENT_TOKEN=<token> bash
+powershell -NoProfile -Command "$env:NODE_AGENT_TOKEN='<token>'; iex (irm http://<vps>:8788/install/windows)"
+
+# upgrade — no token, it reads the one already on the worker
+curl -fsSL http://<vps>:8788/update/mac | bash
+powershell -NoProfile -Command "iex (irm http://<vps>:8788/update/windows)"
+```
+
+Set `NODE_AGENT_PUBLIC_URL` on the server so the card can generate the commands; update commands never carry the token by design.
+
 ### Hard guard, claim, and retry
 
 - Remote paths with an empty transport are routed by `remoteTransportForPath`: `/Users/...` and `C:\...` resolve to `node-agent` with default targets `mac-tailscale` and `windows-tailscale`. An explicitly set `ssh` or `node-agent` transport is honored as-is.
@@ -493,27 +509,7 @@ curl -H "X-Node-Agent-Token: <token>" http://<vps>:8788/health
 
 A healthy node is `idle`. gRPC workers show `transports: ["grpc", "http"]`. When the gRPC stream drops, `auto` mode falls back to HTTP and the transport badge in Flow switches to `http`.
 
-If the VPS server is already new but the Mac agent has not been upgraded yet, new executors like `commandcode` or `omp` will not appear on that node — expected until the Mac installer is re-run.
-
-### Node agent install & update
-
-The Overview page has a **Node agent** card that provisions the shared
-token on first view (random 64-char hex, written to the `0600`
-`~/.hermes/node-agent.env` both servers resolve) and shows four
-copy-paste commands:
-
-```sh
-# first install (token included — the only time you type it)
-curl -fsSL http://<vps>:8788/install/mac | env NODE_AGENT_TOKEN=<token> bash
-powershell -NoProfile -Command "$env:NODE_AGENT_TOKEN='<token>'; iex (irm http://<vps>:8788/install/windows)"
-
-# upgrade — no token, it reads the one already on the worker
-curl -fsSL http://<vps>:8788/update/mac | bash
-powershell -NoProfile -Command "iex (irm http://<vps>:8788/update/windows)"
-```
-
-Set `NODE_AGENT_PUBLIC_URL` on the server so the card can generate the
-commands; the token never appears in an update command by design.
+If the VPS server is already new but the Mac agent has not been upgraded yet, new executors like `commandcode` or `omp` will not appear on that node — expected until the Mac installer is re-run (commands: **Node agent install & update**, above).
 
 ### Remote task tries to run on the VPS
 
