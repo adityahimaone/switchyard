@@ -17,11 +17,11 @@ lamp plus label so state never depends on colour alone, and one type scale.
 
 | Kanban board | Agent chat |
 |---|---|
-| ![Kanban board](docs/screenshots/board.png) | ![Agent chat](docs/screenshots/chat.png) |
+| ![Kanban board](docs/screenshots/board.png?v=b7f4d6a) | ![Agent chat](docs/screenshots/chat.png?v=b7f4d6a) |
 
 | Flow map | Overview |
 |---|---|
-| ![Flow map](docs/screenshots/flow-map.png) | ![Overview](docs/screenshots/overview.png) |
+| ![Flow map](docs/screenshots/flow-map.png?v=b7f4d6a) | ![Overview](docs/screenshots/overview.png?v=b7f4d6a) |
 
 The **board** shows the review gate holding work — cards sit in `review` until
 the diff is approved, never straight to `done`. The **flow map** traces live
