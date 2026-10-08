@@ -18,6 +18,9 @@ func TestDefaultExecutorSettingsEnableEverything(t *testing.T) {
 	if s.Order[0] != "auto" {
 		t.Fatalf("auto must stay first in the picker, got %q", s.Order[0])
 	}
+	if !ExecutorEnabled("claude", s) {
+		t.Fatal("Claude must be enabled by default for explicit selection")
+	}
 }
 
 func TestExecutorEnabledHidesDisabledButKeepsAuto(t *testing.T) {
@@ -52,7 +55,7 @@ func TestNormalizeExecutorSettingsRepairsPartialInput(t *testing.T) {
 		t.Fatalf("known executors dropped: %v", s.Order)
 	}
 	// The explicit order leads; the rest are appended in canonical order.
-	want := []string{"shell", "dsh", "auto", "hermes", "codex", "commandcode", "omp"}
+	want := []string{"shell", "dsh", "auto", "hermes", "codex", "commandcode", "claude", "omp"}
 	if len(s.Order) != len(want) {
 		t.Fatalf("order = %v, want %v", s.Order, want)
 	}
@@ -93,7 +96,7 @@ func TestSaveAndLoadExecutorSettingsRoundTrip(t *testing.T) {
 	if got.DefaultExecutionMode != want.DefaultExecutionMode {
 		t.Fatalf("mode = %q, want %q", got.DefaultExecutionMode, want.DefaultExecutionMode)
 	}
-	if len(got.Order) != 7 || got.Order[0] != "dsh" {
+	if len(got.Order) != len(knownExecutors) || got.Order[0] != "dsh" || got.Order[1] != "commandcode" || got.Order[2] != "auto" {
 		t.Fatalf("order not persisted: %v", got.Order)
 	}
 	if ExecutorEnabled("hermes", got) {

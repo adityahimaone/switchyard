@@ -26,7 +26,7 @@ type ExecutorSettings struct {
 
 // knownExecutors is the canonical display order. It is derived from
 // ValidExecutors so a newly added executor is never silently missing.
-var knownExecutors = []string{"auto", "hermes", "codex", "commandcode", "dsh", "omp", "shell"}
+var knownExecutors = []string{"auto", "hermes", "codex", "commandcode", "claude", "dsh", "omp", "shell"}
 
 // IsValidExecutionMode guards the stored default against a hand-edited file.
 func IsValidExecutionMode(mode string) bool {

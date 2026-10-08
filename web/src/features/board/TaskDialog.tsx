@@ -30,13 +30,14 @@ const EXECUTOR_LABELS: Record<string, string> = {
   hermes: "Hermes",
   codex: "Codex",
   commandcode: "Command Code",
+  claude: "Claude Code",
   dsh: "DeepSeek Harness",
   omp: "omp (oh-my-pi)",
   shell: "Shell agent (workspace access)",
 }
 
 const FALLBACK_EXECUTORS: ExecutorSettings = {
-  order: ["auto", "hermes", "codex", "commandcode", "dsh", "omp", "shell"],
+  order: ["auto", "hermes", "codex", "commandcode", "claude", "dsh", "omp", "shell"],
   disabled: [],
   default_execution_mode: "direct",
 }

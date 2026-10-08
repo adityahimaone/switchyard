@@ -87,9 +87,11 @@ startup, and the review gate reaches the worker through node-agent too.
 | `codex` | node-agent | Codex on workspace host |
 | `dsh` | node-agent | DeepSeek Harness session on workspace host |
 | `commandcode` | node-agent | CommandCode on workspace host |
+| `claude` | node-agent | Claude Code CLI on a trusted workspace host, with per-card session continuity |
 | `omp` | node-agent | omp (oh-my-pi) on workspace host |
+| `shell` | node-agent | Shell (agentic/direct) on workspace host |
 
-`auto` is kept for backward compatibility with old tasks. New tasks that need a local worker should pick an explicit executor. Node-agent prefers gRPC when available and falls back to HTTP long-poll when the gRPC stream is down.
+`auto` is kept for backward compatibility with old tasks. New tasks that need a local worker should pick an explicit executor. `claude` is explicit-only and must run on a trusted worker (per-card session continuity with `--resume`). Node-agent prefers gRPC when available and falls back to HTTP long-poll when the gRPC stream is down.
 
 Force transport via node-agent config:
 
@@ -135,7 +137,7 @@ Tasks store human intent as `title` + `description`. Users pick an AI executor o
 {"executor": "commandcode"}
 ```
 
-Valid values: `auto`, `hermes`, `codex`, `commandcode`, `dsh`, `omp`, `shell`.
+Valid values: `auto`, `hermes`, `codex`, `commandcode`, `claude`, `dsh`, `omp`, `shell`.
 
 `shell` is a normal task executor for direct remote commands. `command` is the only executed input; `body` is descriptive text and is never executed. Empty/whitespace `command` is rejected at task create (`400 shell executor requires command`) and by both dispatchers as `blocked`. Shell preflight (`NODE_AGENT_SHELL_PREFLIGHT=1`) and output compaction (`NODE_AGENT_SHELL_CAVEMAN=1`) are opt-in on the worker and use environment only — they never mutate `command`.
 
@@ -177,40 +179,22 @@ off the `dsh web` daemon's, and finished sessions are published back into
 
 ### CommandCode
 
-Node-agent follows the official CommandCode CLI:
+Node-agent runs CommandCode CLI:
 
 ```sh
 cmd -p "<prompt>" --yolo --skip-onboarding --output-format json
 ```
 
-A follow-up turn on the same card resumes that exact session, so review feedback
-does not restart the work from scratch:
+Resume:
 
 ```sh
 cmd -p "<prompt>" --yolo --skip-onboarding --output-format json --resume <session-id>
 ```
 
-Switchyard stores the session in `harness_bindings` (`harness_kind=commandcode`) and sends an empty session id on the first run so Command Code mints a real one. The terminal `{"type":"result"}` frame supplies `sessionId`, `finalText`, and `usage`; a run that fails before a session resolves omits `sessionId`, which Switchyard accepts. A worker build without `--output-format json` falls back to `text` once per binary — such a run cannot prove continuity and is treated as a first run.
-
-On Windows the binary alias is `cmdc`. Node-agent probes `cmd`, `cmdc`, or `command-code` depending on platform. `--yolo` allows the worker to edit files and run shell commands — use it only on trusted nodes.
-
-Session continuity uses the same `harness_bindings` mechanism as `dsh`, keyed by
-`harness_kind`. Two differences are worth knowing:
-
-- **No workspace identity.** DSH keys its session store by workspace, so Switchyard
-  requires a workspace id before it will resume. CommandCode resolves sessions per
-  working directory, so a `commandcode` card is resumable without one.
-- **No stale-turn rejection.** `last_turn_seq` is sent on the wire but never
-  returned for CommandCode, so the stale-turn check does not apply. The only guard
-  against a late result is the `current_run_id` ownership fence.
-
-A successful run must return a `sessionId` matching the dispatched one, or the card
-is blocked with `commandcode_identity_rejected`. A failed run may omit `sessionId`.
-`commandcode_session_missing:` is deterministic and is never retried.
+On Windows the binary alias is `cmdc`; probes `cmd`, `cmdc`, or `command-code`. `--yolo` enables edits/shell — use only on trusted nodes. Per-card continuity via `harness_bindings` (`harness_kind=commandcode`), `commandcode_session_id`. Terminal `{"type":"result"}` supplies `sessionId`. No workspace/turn identity — `current_run_id` fence. Missing ID on a successful run is handled conservatively; identity mismatch → `commandcode_identity_rejected`; `commandcode_session_missing:` is deterministic. A worker build without `--output-format json` falls back to text once per binary (treated as first run).
 
 Full detail: [docs/features/commandcode-executor.md](docs/features/commandcode-executor.md).
-Worker-side contract and troubleshooting:
-[node-agent docs/dsh-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/dsh-harness.md).
+Worker-side contract: [node-agent docs/commandcode-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/commandcode-harness.md) (referenced in node-agent README).
 
 ### omp (oh-my-pi)
 
@@ -269,6 +253,34 @@ card is blocked with `omp_identity_rejected`. `omp_unavailable:` and
 Full detail: [docs/features/omp-executor.md](docs/features/omp-executor.md).
 Worker-side contract and troubleshooting:
 [node-agent docs/omp-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/omp-harness.md).
+
+### Claude Code CLI
+
+`claude` is an explicit Kanban executor, not a Chat agent and not part of the
+`auto` fallback. Install Claude Code on the worker using Anthropic's
+[platform-native instructions](https://code.claude.com/docs/en/overview), then
+authenticate as the same OS account that runs node-agent. Switchyard does not
+install the CLI or provision Anthropic credentials.
+
+The worker runs Claude headlessly with JSON result metadata and trusted-node
+permission bypass:
+
+```sh
+claude -p --output-format json --permission-mode bypassPermissions "<prompt>"
+claude -p --output-format json --permission-mode bypassPermissions --resume <session-id> "<prompt>"
+```
+
+`--permission-mode bypassPermissions` permits unattended file edits and shell
+operations; register only trusted worker hosts for Claude tasks. The terminal
+JSON result must return `session_id`; Switchyard binds it per card and rejects a
+missing or mismatched ID. Review continuations resume that exact session. Like
+CommandCode and omp, Claude has no workspace or turn cursor; `current_run_id` is
+its stale-result fence. A successful run without `session_id` yields
+`claude_session_missing:` (deterministic, no retry).
+
+Full control-plane contract: [docs/features/claude-code-executor.md](docs/features/claude-code-executor.md).
+Worker install, authentication, and CLI contract:
+[node-agent docs/claude-code-harness.md](https://github.com/adityahimaone/node-agent/blob/master/docs/claude-code-harness.md).
 
 ## Review gate
 

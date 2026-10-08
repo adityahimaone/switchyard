@@ -21,7 +21,7 @@ var ValidStatuses = map[string]bool{
 }
 
 var ValidExecutors = map[string]bool{
-	"auto": true, "hermes": true, "codex": true, "commandcode": true, "dsh": true, "omp": true, "shell": true,
+	"auto": true, "hermes": true, "codex": true, "commandcode": true, "claude": true, "dsh": true, "omp": true, "shell": true,
 }
 
 const maxTaskIterations = 24
@@ -38,26 +38,27 @@ type Board struct {
 }
 
 type Task struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	Body          string `json:"body"`
-	Status        string `json:"status"`
-	Priority      int    `json:"priority"`
-	Assignee      string `json:"assignee"`
-	Executor      string `json:"executor"`
-	Command       string `json:"command,omitempty"`
-	ExecutionMode string `json:"execution_mode,omitempty"`
-	MaxIterations int    `json:"max_iterations,omitempty"`
-	WorkspaceKind string `json:"workspace_kind"`
-	WorkspacePath string `json:"workspace_path"`
-	Result        string `json:"result"`
-	CreatedBy     string `json:"created_by"`
-	CreatedAt     int64  `json:"created_at"`
-	StartedAt     *int64 `json:"started_at"`
-	CompletedAt   *int64 `json:"completed_at"`
-	Failures      int    `json:"consecutive_failures"`
-	LastError     string `json:"last_failure_error"`
-	ExecutionMeta string `json:"execution_meta,omitempty"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Body            string `json:"body"`
+	Status          string `json:"status"`
+	Priority        int    `json:"priority"`
+	Assignee        string `json:"assignee"`
+	Executor        string `json:"executor"`
+	Command         string `json:"command,omitempty"`
+	ClaudeSessionID string `json:"claude_session_id,omitempty"`
+	ExecutionMode   string `json:"execution_mode,omitempty"`
+	MaxIterations   int    `json:"max_iterations,omitempty"`
+	WorkspaceKind   string `json:"workspace_kind"`
+	WorkspacePath   string `json:"workspace_path"`
+	Result          string `json:"result"`
+	CreatedBy       string `json:"created_by"`
+	CreatedAt       int64  `json:"created_at"`
+	StartedAt       *int64 `json:"started_at"`
+	CompletedAt     *int64 `json:"completed_at"`
+	Failures        int    `json:"consecutive_failures"`
+	LastError       string `json:"last_failure_error"`
+	ExecutionMeta   string `json:"execution_meta,omitempty"`
 	// Declared edit scope as globs relative to WorkspacePath. Used to detect
 	// two tasks that would edit the same files. Advisory for review, enforced
 	// for scheduling by the claim transaction.
@@ -279,6 +280,7 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN dsh_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN commandcode_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN omp_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN claude_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN current_run_id TEXT`,
 		// Routing columns the dispatcher and flow view read. Boards created by an
 		// older Hermes lack them, and without these every task insert fails on
@@ -518,9 +520,9 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, verify_profile, design_source, design_tool)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation,
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, verify_profile, design_source, design_tool)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation,
 		// verify_profile_effective/verify_status are intentionally not inserted:
 		// they are decided by routing after the run, not by the author of the card.
 		t.VerifyProfile, t.DesignSource, t.DesignTool); err != nil {

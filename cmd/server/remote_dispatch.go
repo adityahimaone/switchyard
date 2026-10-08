@@ -31,6 +31,8 @@ func harnessLabel(executor string) string {
 		return "Command Code"
 	case "omp":
 		return "omp"
+	case "claude":
+		return "Claude Code"
 	}
 	return "DSH"
 }

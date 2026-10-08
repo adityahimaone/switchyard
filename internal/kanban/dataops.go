@@ -90,7 +90,7 @@ func ensurePositionColumn(db *sql.DB) error {
 
 func taskSelectCols() string {
 	// Keep column order synced with ListTasks scan.
-	return `id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''),
+	return `id, title, COALESCE(body,''), status, priority, COALESCE(assignee,''), COALESCE(executor,'auto'), COALESCE(command,''), COALESCE(claude_session_id,''),
 	        COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1),
 	        workspace_kind, COALESCE(workspace_path,''), COALESCE(result,''),
 	        COALESCE(created_by,''), created_at, started_at, completed_at,
@@ -108,7 +108,7 @@ func scanTask(rows *sql.Rows) (Task, error) {
 	// paths is read as raw text and decoded here: the column holds a JSON array,
 	// and a corrupt value must not fail the whole board listing.
 	var pathsJSON string
-	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command, &t.ExecutionMode, &t.MaxIterations,
+	if err := rows.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Assignee, &t.Executor, &t.Command, &t.ClaudeSessionID, &t.ExecutionMode, &t.MaxIterations,
 		&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt,
 		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta,
 		&pathsJSON, &t.GateCommand, &t.GateStatus, &t.GateOutput, &t.StartMode, &t.Attempt,
@@ -394,14 +394,14 @@ func ExportBoard(slug string) (*BoardSnapshot, error) {
 	sort.Slice(events, func(i, j int) bool { return events[i].ID < events[j].ID })
 	sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
 	bindings := []HarnessBinding{}
-	rows, err := db.Query(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status FROM harness_bindings ORDER BY card_id`)
+	rows, err := db.Query(`SELECT card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, COALESCE(harness_kind,'dsh') FROM harness_bindings ORDER BY card_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var binding HarnessBinding
-		if err := rows.Scan(&binding.CardID, &binding.WorkspacePath, &binding.HarnessWorkspaceID, &binding.HarnessSessionID, &binding.LastTurnSeq, &binding.LastCommentID, &binding.Status); err != nil {
+		if err := rows.Scan(&binding.CardID, &binding.WorkspacePath, &binding.HarnessWorkspaceID, &binding.HarnessSessionID, &binding.LastTurnSeq, &binding.LastCommentID, &binding.Status, &binding.HarnessKind); err != nil {
 			return nil, err
 		}
 		bindings = append(bindings, binding)
@@ -518,16 +518,16 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 			if t.Executor == "" {
 				t.Executor = "auto"
 			}
-			_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, execution_mode, max_iterations, workspace_kind, workspace_path, created_by, created_at, started_at, completed_at, consecutive_failures, last_failure_error)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError)
+			_, err = db.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, created_by, created_at, started_at, completed_at, consecutive_failures, last_failure_error)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError)
 			if err != nil {
 				return created, nil, err
 			}
 		} else {
 			// Overwrite main fields; keep identity.
-			if _, err := db.Exec(`UPDATE tasks SET title=?, body=?, status=?, priority=?, assignee=?, executor=?, command=?, execution_mode=?, max_iterations=?, workspace_kind=?, workspace_path=?, result=?, created_by=?, created_at=?, started_at=?, completed_at=?, consecutive_failures=?, last_failure_error=? WHERE id=?`,
-				t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.Result, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError, t.ID); err != nil {
+			if _, err := db.Exec(`UPDATE tasks SET title=?, body=?, status=?, priority=?, assignee=?, executor=?, command=?, claude_session_id=?, execution_mode=?, max_iterations=?, workspace_kind=?, workspace_path=?, result=?, created_by=?, created_at=?, started_at=?, completed_at=?, consecutive_failures=?, last_failure_error=? WHERE id=?`,
+				t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, t.Result, t.CreatedBy, t.CreatedAt, t.StartedAt, t.CompletedAt, t.Failures, t.LastError, t.ID); err != nil {
 				return created, nil, err
 			}
 		}
@@ -573,12 +573,15 @@ func ImportBoard(snap *BoardSnapshot) (bool, []string, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, binding := range snap.Bindings {
-		result, err := db.Exec(`INSERT INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(card_id) DO NOTHING`, binding.CardID, binding.WorkspacePath, binding.HarnessWorkspaceID, binding.HarnessSessionID, binding.LastTurnSeq, binding.LastCommentID, binding.Status, now, now)
+		if binding.HarnessKind == "" {
+			binding.HarnessKind = "dsh"
+		}
+		result, err := db.Exec(`INSERT INTO harness_bindings (card_id, workspace_path, harness_workspace_id, harness_session_id, last_turn_seq, last_comment_id, status, created_at, updated_at, harness_kind) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(card_id) DO NOTHING`, binding.CardID, binding.WorkspacePath, binding.HarnessWorkspaceID, binding.HarnessSessionID, binding.LastTurnSeq, binding.LastCommentID, binding.Status, now, now, binding.HarnessKind)
 		if err != nil {
 			return created, nil, err
 		}
 		if inserted, _ := result.RowsAffected(); inserted == 1 {
-			_, _ = db.Exec(`UPDATE tasks SET dsh_session_id=? WHERE id=?`, binding.HarnessSessionID, binding.CardID)
+			_, _ = db.Exec(`UPDATE tasks SET `+harnessSessionColumn(binding.HarnessKind)+`=? WHERE id=?`, binding.HarnessSessionID, binding.CardID)
 		}
 	}
 	return created, ids, nil

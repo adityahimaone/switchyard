@@ -65,6 +65,25 @@ func TestNodeDispatchCarriesDSHContinuation(t *testing.T) {
 	}
 }
 
+func TestNodeDispatchCarriesClaudeContinuation(t *testing.T) {
+	raw, err := json.Marshal(NodeDispatchRequest{TaskID: "run-claude", Executor: "claude", HarnessKind: "claude", ClaudeSessionID: "claude-session", SessionContinuation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["harness_kind"] != "claude" || got["claude_session_id"] != "claude-session" || got["session_continuation"] != true {
+		t.Fatalf("Claude request = %s", raw)
+	}
+	for _, key := range []string{"dsh_session_id", "dsh_workspace_id", "commandcode_session_id", "omp_session_id", "last_turn_seq"} {
+		if _, exists := got[key]; exists {
+			t.Fatalf("Claude request leaked %s: %s", key, raw)
+		}
+	}
+}
+
 func TestNodeDispatchOmitsDSHCursorForOtherExecutors(t *testing.T) {
 	raw, err := json.Marshal(NodeDispatchRequest{TaskID: "task-1", Workspace: "/tmp/repo", Executor: "codex"})
 	if err != nil {

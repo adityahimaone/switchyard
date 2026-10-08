@@ -14,7 +14,7 @@ export interface Task {
   status: Status
   priority: number
   assignee: string
-  executor: "auto" | "hermes" | "codex" | "commandcode" | "dsh" | "omp" | "shell"
+  executor: "auto" | "hermes" | "codex" | "commandcode" | "claude" | "dsh" | "omp" | "shell"
   command?: string
   execution_mode?: "direct" | "agentic"
   max_iterations?: number

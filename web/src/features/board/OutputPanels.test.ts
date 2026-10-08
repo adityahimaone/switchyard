@@ -10,6 +10,29 @@ const commandCodeOutput = [
 ].join("\n")
 
 describe("parseHarnessResult", () => {
+  it("reads Claude Code result and session_id without treating other frames as the answer", () => {
+    const raw = [
+      'provenance executor=claude ws=/repo claude_session_id=claude-1',
+      '{"type":"system","subtype":"init","session_id":"not-terminal"}',
+      '{"type":"result","subtype":"success","is_error":false,"session_id":"claude-1","result":"Updated the feature."}',
+    ].join("\n")
+    const parsed = parseHarnessResult(raw, "claude")
+    expect(parsed.answer).toBe("Updated the feature.")
+    expect(parsed.provenance?.sessionId).toBe("claude-1")
+    expect(parsed.events).toHaveLength(2)
+  })
+
+  it("falls back to Claude result session_id when provenance lacks it", () => {
+    const parsed = parseHarnessResult('{"type":"result","session_id":"claude-only","result":"done"}', "claude")
+    expect(parsed.answer).toBe("done")
+    expect(parsed.provenance?.sessionId).toBe("claude-only")
+  })
+
+  it("does not interpret Claude result fields as Command Code output", () => {
+    const parsed = parseHarnessResult('{"type":"result","session_id":"claude-1","result":"Claude answer"}', "commandcode")
+    expect(parsed.answer).toContain("No final answer text returned")
+  })
+
   it("reads the answer and session from a Command Code result frame", () => {
     const parsed = parseHarnessResult(commandCodeOutput, "commandcode")
     expect(parsed.answer).toBe("Refactored main.go.")

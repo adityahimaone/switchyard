@@ -167,6 +167,7 @@ type NodeDispatchRequest struct {
 	HarnessKind          string `json:"harness_kind,omitempty"`
 	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
 	OMPSessionID         string `json:"omp_session_id,omitempty"`
+	ClaudeSessionID      string `json:"claude_session_id,omitempty"`
 	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 	LastCommentID        *int64 `json:"last_comment_id,omitempty"`
 	RunID                string `json:"run_id,omitempty"`
@@ -194,6 +195,7 @@ type NodeDispatchResult struct {
 	SessionID            string `json:"session_id,omitempty"`
 	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
 	OMPSessionID         string `json:"omp_session_id,omitempty"`
+	ClaudeSessionID      string `json:"claude_session_id,omitempty"`
 	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 	// Artifacts are files the worker produced alongside the output (verify
 	// screenshots, axe reports). Only the metadata travels in this channel; the
@@ -218,10 +220,10 @@ type NodeArtifact struct {
 var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|commandcode_session_id|omp_session_id|session_id|sessionId|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
 
 // HarnessContinuityEnabled reports whether an executor keeps durable per-card
-// session identity. dsh, commandcode and omp all do; the other executors are
+// session identity. dsh, commandcode, claude and omp do; the other executors are
 // stateless one-shot spawns and must never carry a binding or a cursor.
 func HarnessContinuityEnabled(executor string) bool {
-	return executor == "dsh" || executor == "commandcode" || executor == "omp"
+	return executor == "dsh" || executor == "commandcode" || executor == "claude" || executor == "omp"
 }
 
 // harnessUsesWorkspaceIdentity reports whether a harness keys its session store
@@ -240,6 +242,8 @@ func harnessSessionColumn(kind string) string {
 		return "commandcode_session_id"
 	case "omp":
 		return "omp_session_id"
+	case "claude":
+		return "claude_session_id"
 	}
 	return "dsh_session_id"
 }
@@ -369,6 +373,9 @@ func harnessSessionID(req NodeDispatchRequest) string {
 	if id := strings.TrimSpace(req.OMPSessionID); id != "" {
 		return id
 	}
+	if id := strings.TrimSpace(req.ClaudeSessionID); id != "" {
+		return id
+	}
 	return strings.TrimSpace(req.DSHSessionID)
 }
 
@@ -387,29 +394,47 @@ func ApplyHarnessIdentity(req *NodeDispatchRequest, kind, sessionID string) {
 		req.OMPSessionID = sessionID
 		req.DSHSessionID = ""
 		req.DSHWorkspaceID = ""
+	case "claude":
+		req.ClaudeSessionID = sessionID
+		req.DSHSessionID = ""
+		req.DSHWorkspaceID = ""
 	default:
 		req.DSHSessionID = sessionID
 	}
 }
 
 func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult) (dshResultIdentity, error) {
-	sessionID := strings.TrimSpace(result.DSHSessionID)
-	if sessionID == "" {
+	sessionID := ""
+	returnedSession := false
+	switch req.Executor {
+	case "claude":
+		sessionID = strings.TrimSpace(result.ClaudeSessionID)
+		returnedSession = sessionID != ""
+	case "commandcode":
 		sessionID = strings.TrimSpace(result.CommandCodeSessionID)
-	}
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(result.OMPSessionID)
-	}
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(result.SessionID)
-	}
-	if sessionID == "" {
-		match := dshSessionProof.FindStringSubmatch(result.Output)
-		if len(match) == 2 {
-			sessionID = strings.TrimSpace(match[1])
+		if sessionID == "" {
+			sessionID = strings.TrimSpace(result.SessionID)
 		}
+		returnedSession = sessionID != ""
+	case "omp":
+		sessionID = strings.TrimSpace(result.OMPSessionID)
+		if sessionID == "" {
+			sessionID = strings.TrimSpace(result.SessionID)
+		}
+		returnedSession = sessionID != ""
+	default:
+		sessionID = strings.TrimSpace(result.DSHSessionID)
+		if sessionID == "" {
+			sessionID = strings.TrimSpace(result.SessionID)
+		}
+		if sessionID == "" {
+			match := dshSessionProof.FindStringSubmatch(result.Output)
+			if len(match) == 2 {
+				sessionID = strings.TrimSpace(match[1])
+			}
+		}
+		returnedSession = sessionID != ""
 	}
-	returnedSession := sessionID != ""
 	if expected := harnessSessionID(req); sessionID != "" && expected != "" && sessionID != expected {
 		return dshResultIdentity{}, fmt.Errorf("worker returned session %q, dispatched session was %q", sessionID, expected)
 	}
@@ -418,8 +443,8 @@ func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult
 	}
 
 	// dsh alone carries a workspace identity and a monotonic turn cursor.
-	// commandcode resolves sessions per working directory and emits no turn
-	// sequence, so its only stale-result fence is the current_run_id ownership
+	// commandcode, omp and claude return session identity without a turn
+	// sequence, so their stale-result fence is the current_run_id ownership
 	// check in finalizeRemoteResult.
 	isDSH := req.Executor == "dsh"
 
@@ -505,8 +530,8 @@ func saveDSHSessionID(db *sql.DB, taskID, fallbackSessionID, fallbackWorkspaceID
 // by out-of-band paths and tests. It resolves identity exactly as a live run
 // would, then persists the binding in one transaction.
 func saveHarnessSessionIDFor(db *sql.DB, taskID, kind, fallbackSessionID, fallbackWorkspaceID string, fallbackCommentID *int64, continuation bool, result NodeDispatchResult) {
-	req := NodeDispatchRequest{Executor: kind, HarnessKind: kind, DSHSessionID: fallbackSessionID, CommandCodeSessionID: fallbackSessionID, DSHWorkspaceID: fallbackWorkspaceID, SessionContinuation: continuation}
-	if kind == "commandcode" {
+	req := NodeDispatchRequest{Executor: kind, HarnessKind: kind, DSHSessionID: fallbackSessionID, CommandCodeSessionID: fallbackSessionID, OMPSessionID: fallbackSessionID, ClaudeSessionID: fallbackSessionID, DSHWorkspaceID: fallbackWorkspaceID, SessionContinuation: continuation}
+	if kind == "commandcode" || kind == "omp" || kind == "claude" {
 		req.DSHWorkspaceID = ""
 	}
 	identity, err := resolveDSHResultIdentity(req, result)
