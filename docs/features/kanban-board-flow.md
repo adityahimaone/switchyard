@@ -36,7 +36,7 @@ User membuat task dengan data eksplisit:
 - workspace path
 - workspace transport/target jika remote
 - assignee/profile
-- executor: `hermes`, `codex`, `commandcode`, `dsh`, `shell`, atau compatibility `auto`
+- executor: `hermes`, `codex`, `commandcode`, `claude`, `dsh`, `omp`, `shell`, atau compatibility `auto`
 - priority
 - optional shell `command` for direct mode; new shell tasks default to agentic mode
 
@@ -95,29 +95,29 @@ Semua save wajib merge unknown keys seperti `luvus_workspace_id`, `remote`, dan 
 | `codex` | `codex exec --full-auto ...` | CodeGraph + prerequisites | task message | provenance `executor=codex` |
 | `dsh` | `dsh --profile headless --json [--session-id <id>]` | health check + CodeGraph | task message | provenance `executor=dsh` + `dsh_session_id` |
 | `commandcode` | `cmd -p --yolo --output-format json [--resume <id>]` | binary probe + CodeGraph | task message | provenance `executor=commandcode` + `commandcode_session_id` |
+| `claude` | `claude -p --output-format json --permission-mode bypassPermissions [--resume <id>]` | binary probe | task message | provenance `executor=claude` + `claude_session_id` |
+| `omp` | `omp -p --auto-approve --mode json [--resume <id>]` | binary probe | task message | provenance `executor=omp` + `omp_session_id` |
 | `shell` | planner read-only → `bash -lc ...` | bounded iterations + optional shell preflight | intent (agentic) atau `command` (direct) | provenance + iteration events |
 | `auto` | compatibility fallback | resolved runtime | task message | resolved provenance |
 
 Gunakan executor explicit saat membandingkan runtime. Jangan menyimpulkan executor dari durasi, title, atau teks `Sisyphus`.
 
-### Session continuity (dsh dan commandcode)
+### Session continuity (dsh, commandcode, claude dan omp)
 
-Task `dsh` dan `commandcode` memakai satu session per card, disimpan di `harness_bindings` dengan kolom `harness_kind` yang mencatat harness pemiliknya. Kind berbeda memakai field identitas berbeda, jadi binding `dsh` tidak akan tertukar dengan `commandcode`.
+Task `dsh`, `commandcode`, `claude` dan `omp` memakai satu session per card, disimpan di `harness_bindings` dengan kolom `harness_kind`. Setiap harness memiliki field identitas sendiri, jadi binding tidak tertukar.
 
-Task `dsh` mengirim `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id`, `run_id`, dan `session_continuation`; result wajib mengembalikan `dsh_workspace_id`, `dsh_session_id`, dan `last_turn_seq` tertinggi yang dikonsumsi.
+| Harness | Dispatch | Result | Guard tambahan |
+|---|---|---|---|
+| `dsh` | `dsh_workspace_id`, `dsh_session_id`, `last_turn_seq`, `last_comment_id` | workspace id, session id, turn sequence | workspace identity + stale-turn check |
+| `commandcode` | `commandcode_session_id`, `last_comment_id` | `commandcode_session_id` | `current_run_id` |
+| `claude` | `claude_session_id`, `last_comment_id` | `claude_session_id` (`session_id` dari JSON terminal result) | `current_run_id` |
+| `omp` | `omp_session_id`, `last_comment_id` | `omp_session_id` | `current_run_id` |
 
-Task `commandcode` mengirim `commandcode_session_id` dan `last_comment_id`; result mengembalikan `commandcode_session_id` dari frame `{"type":"result"}`.
+Aturan continuity: run pertama mengirim session ID kosong agar worker membuat session sungguhan; continuation wajib memakai ID terikat dan tidak boleh cold-start; `last_comment_id` maju hanya setelah turn sukses; session hasil yang berbeda ditolak (`<harness>_identity_rejected`) dan card masuk `blocked`. `commandcode`, `claude` dan `omp` tidak mengirim workspace identity atau turn sequence, sehingga `current_run_id` adalah stale-result fence mereka.
 
-Aturan yang sama berlaku untuk keduanya:
+Claude CLI dijalankan dengan `--permission-mode bypassPermissions` agar dapat berjalan tanpa prompt interaktif. Mode ini memberi akses edit dan shell; pilih executor `claude` hanya pada worker yang dipercaya. Install dan autentikasi CLI dilakukan terpisah sebagai akun OS yang menjalankan node-agent; installer node-agent tidak memasang Claude atau menyimpan credential Anthropic. Executor ini explicit-only dan tidak mengubah urutan `auto`.
 
-- run pertama mengirim session id **kosong** supaya worker membuat session sungguhan dan mengembalikan id-nya;
-- continuation mengirim id yang terikat dan wajib melanjutkan session itu;
-- `last_comment_id` maju hanya setelah turn sukses, sehingga turn gagal mengulang comment yang belum dikonfirmasi;
-- session yang dikembalikan berbeda dari yang di-dispatch ditolak (`<harness>_identity_rejected`) dan card masuk `blocked`.
-
-Bedanya ada di pagar pengaman. `dsh` melaporkan workspace id dan urutan turn monotonik, sehingga mismatch identity, workspace kosong, dan turn basi semuanya ditolak. `commandcode` tidak melaporkan keduanya — result JSON-nya hanya membawa `sessionId`. Karena itu pemeriksaan khusus `dsh` dilewati dan **pagar kepemilikan run** (`current_run_id` yang diperiksa di dalam transaksi finalize) menjadi satu-satunya pelindung dari hasil basi.
-
-Detail per-harness: [dsh-harness.md](dsh-harness.md) dan [commandcode-executor.md](commandcode-executor.md).
+Detail per-harness: [dsh-harness.md](dsh-harness.md), [commandcode-executor.md](commandcode-executor.md), [claude-code-executor.md](claude-code-executor.md), dan [omp-executor.md](omp-executor.md).
 
 Worker tidak boleh menghapus session id, tidak boleh membuat session baru untuk menghindari kegagalan, dan tidak boleh melanjutkan ke session stateless saat `session_continuation=true`. Loop satu card: kirim comment, lalu reopen card dari `review` supaya dispatcher claim ulang. Comment apa pun pada card `review` atau `blocked` membuka kembali card ke `todo`; pada card `done` hanya comment yang @mention assignee.
 
