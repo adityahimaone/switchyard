@@ -4,6 +4,10 @@ Reference captures of redesigned surfaces, checked in so a PR can show the
 result rather than ask a reviewer to run the app. The main grid lives in the
 [project README](../../README.md); this folder holds the source images.
 
+The four README captures use a consistent 2400×1400 viewport at 1× device scale.
+Kanban and Chat are captured in dark mode; Flow Map and Overview are captured in
+light mode. Their content uses an isolated demo board and fictional chat activity.
+
 ## Flow map — opaque nodes and docked inspector
 
 The node cards, the zoom control bar and the minimap were `glass-card` /
