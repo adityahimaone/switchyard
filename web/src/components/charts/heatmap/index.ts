@@ -79,6 +79,7 @@ export {
   buildHeatmapSeparatorGradientStops,
   countHeatmapWeekDaysOnOrAfter,
   filterHeatmapColumns,
+  filterHeatmapTicksByLabelWidth,
   findHeatmapColumnIndexForDate,
   formatHeatmapContributionLabel,
   formatHeatmapTooltipDate,

@@ -19,7 +19,10 @@ func registerOverviewRoutes(mux *http.ServeMux) {
 			fail(w, err, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, o)
+		writeJSON(w, http.StatusOK, struct {
+			kanban.Overview
+			AppVersion string `json:"app_version"`
+		}{Overview: o, AppVersion: version})
 	})
 	mux.HandleFunc("GET /api/overview/activity", func(w http.ResponseWriter, r *http.Request) {
 		days := 180

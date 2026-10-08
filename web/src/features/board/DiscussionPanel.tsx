@@ -271,6 +271,7 @@ export function DiscussionPanel({
         // for a beat and the status line would wrongly say "not delivered".
         qc.setQueryData<Task[]>(["tasks", slug], (old) =>
           old?.map((t) => (t.id === task.id ? { ...t, status: "todo" } : t)))
+        qc.invalidateQueries({ queryKey: ["tasks", slug], refetchType: "active" })
       } else if (task.status === "done" || task.status === "archived") {
         toastGlobal("Comment saved. The task was not reopened.", "info")
       }

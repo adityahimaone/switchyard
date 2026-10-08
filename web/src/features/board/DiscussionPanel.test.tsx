@@ -75,10 +75,18 @@ describe("DiscussionPanel", () => {
     expect(out).toContain("default is working")
   })
 
-  it("shows queued copy for a freshly sent comment on a todo task", () => {
+  it("shows queued copy after a blocked task comment requeues the cached task", () => {
     const justNow = Math.floor(Date.now() / 1000) - 5
     const out = render({ task: { status: "todo" }, comments: [msg("default", "hi"), msg("board-ui", "retry", justNow)] })
     expect(out).toContain("Queued for default")
+    expect(out).not.toContain("Saved, but not delivered")
+  })
+
+  it("reports a review comment as delivered after the agent returns to review", () => {
+    const justNow = Math.floor(Date.now() / 1000) - 5
+    const out = render({ task: { status: "review" }, comments: [msg("default", "done"), msg("board-ui", "sync codegraph", justNow)] })
+    expect(out).toContain("Comment delivered")
+    expect(out).not.toContain("Saved, but not delivered")
   })
 
   it("escalates a comment that has been queued for a long time", () => {

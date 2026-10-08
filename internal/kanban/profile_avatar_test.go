@@ -1,8 +1,14 @@
 package kanban
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -92,16 +98,25 @@ func TestProfileAvatarRejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestSetProfileAvatarURLValid(t *testing.T) {
+func TestSetProfileAvatarURLImportsImageLocally(t *testing.T) {
 	patchProfilesHome(t)
-	if err := SetProfileAvatarURL("base", "https://picsum.photos/200"); err != nil {
+	previous := avatarURLFetcher
+	avatarURLFetcher = func(string) ([]byte, string, error) {
+		return []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"), "image/gif", nil
+	}
+	t.Cleanup(func() { avatarURLFetcher = previous })
+	if err := SetProfileAvatarURL("base", "https://example.com/avatar.gif"); err != nil {
 		t.Fatalf("set url: %v", err)
 	}
-	if got := ProfileAvatarURL("base"); got != "https://picsum.photos/200" {
-		t.Fatalf("url read back: %q", got)
+	if got := ProfileAvatarURL("base"); got != "" {
+		t.Fatalf("imported URL should not remain external: %q", got)
 	}
-	if _, _, ok := ProfileAvatar("base"); ok {
-		t.Fatal("url mode should not fake bytes")
+	if _, mime, ok := ProfileAvatar("base"); !ok || mime != "image/gif" {
+		t.Fatalf("imported image missing: ok=%v mime=%q", ok, mime)
+	}
+	profile, err := GetProfile("base")
+	if err != nil || !strings.Contains(profile.AvatarURL, "?v=") {
+		t.Fatalf("profile avatar URL is not revisioned: profile=%+v err=%v", profile, err)
 	}
 }
 
@@ -147,4 +162,76 @@ func TestProfileAvatarGhostRead(t *testing.T) {
 	if _, _, ok := ProfileAvatar("ghost"); ok {
 		t.Error("ghost profile avatar reported present")
 	}
+}
+
+func TestAvatarResponseRejectsOversizeAndNonImage(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want int64
+	}{
+		{name: "oversize", body: bytes.Repeat([]byte("x"), maxAvatarBytes+1), want: -1},
+		{name: "non-image", body: []byte("<html>not an image</html>"), want: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{StatusCode: http.StatusOK, ContentLength: tc.want, Body: io.NopCloser(bytes.NewReader(tc.body))}
+			if _, _, err := readAvatarResponse(resp); err == nil {
+				t.Fatal("invalid response accepted")
+			}
+		})
+	}
+}
+
+func TestAvatarRedirectRejectsPrivateAndHTTPTargets(t *testing.T) {
+	for _, raw := range []string{"http://example.com/avatar.png", "https://127.0.0.1/avatar.png", "https://[::1]/avatar.png"} {
+		req := httptest.NewRequest(http.MethodGet, raw, nil)
+		if err := validateAvatarRedirect(req, []*http.Request{{}}); err == nil {
+			t.Errorf("accepted unsafe redirect %q", raw)
+		}
+	}
+}
+
+func TestFailedProfileAvatarURLImportPreservesCurrentAvatar(t *testing.T) {
+	patchProfilesHome(t)
+	gif := []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
+	if err := SetProfileAvatar("base", "image/gif", gif); err != nil {
+		t.Fatal(err)
+	}
+	previous := avatarURLFetcher
+	avatarURLFetcher = func(string) ([]byte, string, error) { return nil, "", io.ErrUnexpectedEOF }
+	t.Cleanup(func() { avatarURLFetcher = previous })
+	if err := SetProfileAvatarURL("base", "https://example.com/new.gif"); err == nil {
+		t.Fatal("failed import returned success")
+	}
+	got, mime, ok := ProfileAvatar("base")
+	if !ok || mime != "image/gif" || !bytes.Equal(got, gif) {
+		t.Fatal("failed URL import changed the existing avatar")
+	}
+}
+
+func TestConcurrentProfileAvatarReadsAndWrites(t *testing.T) {
+	patchProfilesHome(t)
+	gif := []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
+	if err := SetProfileAvatar("base", "image/gif", gif); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				if i%2 == 0 {
+					if err := SetProfileAvatar("base", "image/gif", gif); err != nil {
+						t.Error(err)
+					}
+				} else {
+					if data, mime, ok := ProfileAvatar("base"); ok && (mime != "image/gif" || !bytes.Equal(data, gif)) {
+						t.Error("reader observed mismatched avatar data")
+					}
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 }

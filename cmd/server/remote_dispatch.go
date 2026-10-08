@@ -160,6 +160,7 @@ func dispatchPendingRemoteTasks() {
 				continue
 			}
 			var lastCommentID *int64
+			hasReviewFeedback := false
 			if continuity {
 				commentCursor := binding.LastCommentID
 				lastCommentID = &commentCursor
@@ -169,10 +170,17 @@ func dispatchPendingRemoteTasks() {
 					continue
 				}
 				if len(comments) > 0 {
+					hasReviewFeedback = true
 					id := comments[len(comments)-1].ID
 					lastCommentID = &id
 					feedback := kanban.RenderReviewComments(r.id, r.title, comments)
-					if sessionContinuation {
+					commentBodies := make([]string, 0, len(comments))
+					for _, comment := range comments {
+						commentBodies = append(commentBodies, comment.Body)
+					}
+					if compact, ok := kanban.FocusedGitReviewPrompt(strings.Join(commentBodies, "\n")); ok {
+						msg, focusedGitPrompt = compact, true
+					} else if sessionContinuation {
 						msg = feedback
 					} else {
 						msg += "\n\n" + feedback
@@ -181,7 +189,7 @@ func dispatchPendingRemoteTasks() {
 					msg = fmt.Sprintf("[CONTINUATION] Resume the existing %s session and apply only the new task feedback below.\n\n%s", harnessLabel(r.executor), msg)
 				}
 			}
-			if continuity {
+			if continuity && !hasReviewFeedback {
 				if compact, ok := kanban.FocusedGitReviewPrompt(msg); ok {
 					msg, focusedGitPrompt = compact, true
 				}

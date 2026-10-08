@@ -4,7 +4,10 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useHeatmap } from "./heatmap-context";
-import { getHeatmapColumnMonthAnchor } from "./heatmap-utils";
+import {
+  filterHeatmapTicksByLabelWidth,
+  getHeatmapColumnMonthAnchor,
+} from "./heatmap-utils";
 
 export interface HeatmapXAxisProps {
   /** Additional class name for labels */
@@ -18,13 +21,34 @@ export const HeatmapXAxis = memo(function HeatmapXAxis({
 }: HeatmapXAxisProps) {
   const { containerRef, data, margin, xScale } = useHeatmap();
   const [mounted, setMounted] = useState(false);
+  const [fontEpoch, setFontEpoch] = useState(0);
+  const measureRef = useMemo(() => ({ current: null as HTMLSpanElement | null }), []);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let frame = 0;
+    const refresh = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setFontEpoch((epoch) => epoch + 1));
+    };
+    const observer = new ResizeObserver(refresh);
+    observer.observe(container);
+    document.fonts?.ready.then(refresh);
+    document.fonts?.addEventListener("loadingdone", refresh);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      document.fonts?.removeEventListener("loadingdone", refresh);
+    };
+  }, [containerRef]);
+
   const labels = useMemo(() => {
-    const ticks: { label: string; x: number; key: string }[] = [];
+    const ticks: { label: string; x: number; width: number; key: string }[] = [];
     let lastMonthKey = "";
 
     for (let columnIndex = 0; columnIndex < data.length; columnIndex++) {
@@ -43,16 +67,25 @@ export const HeatmapXAxis = memo(function HeatmapXAxis({
         continue;
       }
 
+      const label = monthFmt.format(monthAnchor);
+      const measure = measureRef.current;
+      if (!measure) return [];
+      measure.textContent = label;
       ticks.push({
-        label: monthFmt.format(monthAnchor),
+        label,
         x: margin.left + xScale(columnIndex),
+        width: measure.getBoundingClientRect().width,
         key: monthKey,
       });
       lastMonthKey = monthKey;
     }
 
-    return ticks;
-  }, [data, margin.left, xScale]);
+    return filterHeatmapTicksByLabelWidth(
+      ticks,
+      6,
+      containerRef.current?.clientWidth ?? Number.POSITIVE_INFINITY
+    );
+  }, [containerRef, data, fontEpoch, margin.left, measureRef, xScale]);
 
   const container = containerRef.current;
   if (!(mounted && container)) {
@@ -60,28 +93,31 @@ export const HeatmapXAxis = memo(function HeatmapXAxis({
   }
 
   return createPortal(
-    labels.map((tick) => (
-      <div
-        className="pointer-events-none absolute"
-        key={tick.key}
-        style={{
-          top: 0,
-          left: tick.x,
-          width: 0,
-          display: "flex",
-          justifyContent: "flex-start",
-        }}
-      >
-        <span
-          className={cn(
-            "whitespace-nowrap text-chart-label text-xs",
-            className
-          )}
+    <>
+      <span
+        ref={(element) => { measureRef.current = element; }}
+        aria-hidden="true"
+        className={cn("pointer-events-none invisible absolute whitespace-nowrap text-chart-label text-xs", className)}
+        style={{ top: 0, left: 0 }}
+      />
+      {labels.map((tick) => (
+        <div
+          className="pointer-events-none absolute"
+          key={tick.key}
+          style={{
+            top: 0,
+            left: tick.x,
+            width: 0,
+            display: "flex",
+            justifyContent: "flex-start",
+          }}
         >
-          {tick.label}
-        </span>
-      </div>
-    )),
+          <span className={cn("whitespace-nowrap text-chart-label text-xs", className)}>
+            {tick.label}
+          </span>
+        </div>
+      ))}
+    </>,
     container
   );
 });

@@ -1,9 +1,10 @@
 package kanban
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,8 +78,9 @@ func GetWorkspaceIdentityView() (WorkspaceIdentityView, error) {
 		return WorkspaceIdentityView{}, err
 	}
 	view := WorkspaceIdentityView{WorkspaceIdentity: id}
-	if _, _, ok := WorkspaceAvatar(); ok {
-		view.ResolvedAvatarURL = "/api/workspace/avatar"
+	if data, _, ok := WorkspaceAvatar(); ok {
+		sum := sha256.Sum256(data)
+		view.ResolvedAvatarURL = "/api/workspace/avatar?v=" + hex.EncodeToString(sum[:8])
 		view.HasUploadedAvatar = true
 	} else {
 		view.ResolvedAvatarURL = id.AvatarURL
@@ -138,11 +140,8 @@ func SaveWorkspaceIdentity(id WorkspaceIdentity) (WorkspaceIdentity, error) {
 	if err := validateWorkspaceName(id.Name); err != nil {
 		return WorkspaceIdentity{}, err
 	}
-	if len(id.AvatarURL) > 2048 {
-		return WorkspaceIdentity{}, fmt.Errorf("avatar URL too long")
-	}
-	if id.AvatarURL != "" && !validAvatarURL(id.AvatarURL) {
-		return WorkspaceIdentity{}, fmt.Errorf("avatar URL must be public http(s) URL")
+	if len(id.AvatarURL) > 2048 || (id.AvatarURL != "" && !validAvatarURL(id.AvatarURL)) {
+		return WorkspaceIdentity{}, fmt.Errorf("avatar URL must be a valid public http(s) URL")
 	}
 	if err := os.MkdirAll(hermesHome(), 0o700); err != nil {
 		return WorkspaceIdentity{}, err
@@ -167,110 +166,139 @@ func SaveWorkspaceIdentity(id WorkspaceIdentity) (WorkspaceIdentity, error) {
 // exposed as a second operation: the caller should not have to know which state
 // it is leaving.
 func SetWorkspaceAvatarURL(rawURL string) (WorkspaceIdentity, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL != "" {
+		var err error
+		rawURL, err = validateAvatarSourceURL(rawURL)
+		if err != nil {
+			return WorkspaceIdentity{}, err
+		}
+	}
+	var data []byte
+	var mime string
+	if rawURL != "" {
+		var err error
+		data, mime, err = avatarURLFetcher(rawURL)
+		if err != nil {
+			return WorkspaceIdentity{}, err
+		}
+		if mime, err = validateAvatarData(mime, data); err != nil {
+			return WorkspaceIdentity{}, err
+		}
+	}
+	avatarStorageMu.Lock()
+	defer avatarStorageMu.Unlock()
 	id, err := LoadWorkspaceIdentity()
 	if err != nil {
 		return WorkspaceIdentity{}, err
 	}
-	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
-		// Clearing the URL must also drop an uploaded blob, or it would silently
-		// reappear as the avatar the moment the URL was removed.
-		_ = RemoveWorkspaceAvatar()
 		id.AvatarURL = ""
-		return SaveWorkspaceIdentity(id)
+		if _, err := SaveWorkspaceIdentity(id); err != nil {
+			return WorkspaceIdentity{}, err
+		}
+		removeWorkspaceAvatarFiles()
+		return id, nil
 	}
-	if len(rawURL) > 2048 {
-		return WorkspaceIdentity{}, fmt.Errorf("avatar URL too long")
+	if err := os.MkdirAll(hermesHome(), 0o700); err != nil {
+		return WorkspaceIdentity{}, err
 	}
-	if !validAvatarURL(rawURL) {
-		return WorkspaceIdentity{}, fmt.Errorf("avatar URL must be public http(s) URL")
+	rawPath, metaPath := workspaceAvatarPaths()
+	oldRaw, oldRawErr := os.ReadFile(rawPath)
+	oldMeta, oldMetaErr := os.ReadFile(metaPath)
+	if err := writeAvatarFiles(rawPath, metaPath, mime, data); err != nil {
+		return WorkspaceIdentity{}, err
 	}
-	// A URL and an uploaded blob are two answers to one question. Keeping both
-	// would make the winner depend on removal order.
-	_ = RemoveWorkspaceAvatar()
-	id.AvatarURL = rawURL
-	return SaveWorkspaceIdentity(id)
+	id.AvatarURL = ""
+	saved, err := SaveWorkspaceIdentity(id)
+	if err != nil {
+		if oldRawErr == nil {
+			_ = os.WriteFile(rawPath, oldRaw, 0o644)
+		} else {
+			_ = os.Remove(rawPath)
+		}
+		if oldMetaErr == nil {
+			_ = os.WriteFile(metaPath, oldMeta, 0o644)
+		} else {
+			_ = os.Remove(metaPath)
+		}
+		return WorkspaceIdentity{}, err
+	}
+	return saved, nil
 }
 
 // SetWorkspaceAvatar stores an uploaded image. Validation mirrors
 // SetProfileAvatar: the declared multipart mime is untrusted, so the sniffed
 // content type is the trust boundary.
 func SetWorkspaceAvatar(mime string, data []byte) error {
-	mime = strings.ToLower(strings.TrimSpace(mime))
-	if mime == "image/jpg" {
-		mime = "image/jpeg"
-	}
-	isGeneric := mime == "" || mime == "application/octet-stream" || mime == "binary/octet-stream"
-	if !isGeneric && !allowedAvatarMimes[mime] {
-		return fmt.Errorf("unsupported avatar type %q", mime)
-	}
-	if len(data) == 0 {
-		return fmt.Errorf("avatar empty")
-	}
-	if len(data) > maxAvatarBytes {
-		return fmt.Errorf("avatar too large (%d > %d)", len(data), maxAvatarBytes)
-	}
-	sniffed := http.DetectContentType(data)
-	if !allowedAvatarMimes[sniffed] {
-		return fmt.Errorf("avatar content type %q not allowed", sniffed)
-	}
-	if !isGeneric && sniffed != mime {
-		return fmt.Errorf("mime %q does not match content %q", mime, sniffed)
+	sniffed, err := validateAvatarData(mime, data)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(hermesHome(), 0o700); err != nil {
 		return err
 	}
+	avatarStorageMu.Lock()
+	defer avatarStorageMu.Unlock()
 	rawPath, metaPath := workspaceAvatarPaths()
-	// Write the blob before touching the identity record: a failed record write
-	// then leaves an avatar the client will not show, which is recoverable,
-	// rather than a record pointing at a blob that was never written.
-	if err := writeFileAtomic(rawPath, data, 0o644); err != nil {
+	oldRaw, oldRawErr := os.ReadFile(rawPath)
+	oldMeta, oldMetaErr := os.ReadFile(metaPath)
+	if err := writeAvatarFiles(rawPath, metaPath, sniffed, data); err != nil {
 		return err
 	}
-	metaRaw, err := json.Marshal(avatarMeta{Mime: sniffed})
-	if err != nil {
-		return err
-	}
-	if err := writeFileAtomic(metaPath, metaRaw, 0o600); err != nil {
-		_ = os.Remove(rawPath)
-		return err
-	}
-	// An uploaded blob wins over a URL, so clear the URL that would otherwise
-	// keep taking precedence in GetWorkspaceIdentityView.
 	id, err := LoadWorkspaceIdentity()
-	if err != nil {
-		return err
-	}
-	if id.AvatarURL != "" {
+	if err == nil && id.AvatarURL != "" {
 		id.AvatarURL = ""
-		if _, err := SaveWorkspaceIdentity(id); err != nil {
-			return err
+		_, err = SaveWorkspaceIdentity(id)
+	}
+	if err != nil {
+		if oldRawErr == nil {
+			_ = os.WriteFile(rawPath, oldRaw, 0o644)
+		} else {
+			_ = os.Remove(rawPath)
 		}
+		if oldMetaErr == nil {
+			_ = os.WriteFile(metaPath, oldMeta, 0o644)
+		} else {
+			_ = os.Remove(metaPath)
+		}
+		return err
 	}
 	return nil
 }
 
 func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".identity-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
 		return err
 	}
-	return nil
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // WorkspaceAvatar returns the uploaded bytes and mime, if one is stored.
 func WorkspaceAvatar() ([]byte, string, bool) {
+	avatarStorageMu.RLock()
+	defer avatarStorageMu.RUnlock()
 	rawPath, metaPath := workspaceAvatarPaths()
 	metaRaw, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, "", false
 	}
 	var meta avatarMeta
-	if json.Unmarshal(metaRaw, &meta) != nil || meta.Mime == "" {
+	if json.Unmarshal(metaRaw, &meta) != nil || meta.Mime == "" || meta.URL != "" {
 		return nil, "", false
 	}
 	data, err := os.ReadFile(rawPath)
@@ -285,9 +313,23 @@ func HasWorkspaceAvatar() bool {
 	return ok
 }
 
-func RemoveWorkspaceAvatar() error {
+func removeWorkspaceAvatarFiles() {
 	rawPath, metaPath := workspaceAvatarPaths()
 	_ = os.Remove(rawPath)
 	_ = os.Remove(metaPath)
-	return nil
+}
+
+func RemoveWorkspaceAvatar() error {
+	avatarStorageMu.Lock()
+	defer avatarStorageMu.Unlock()
+	removeWorkspaceAvatarFiles()
+	id, err := LoadWorkspaceIdentity()
+	if err != nil {
+		return err
+	}
+	if id.AvatarURL != "" {
+		id.AvatarURL = ""
+		_, err = SaveWorkspaceIdentity(id)
+	}
+	return err
 }

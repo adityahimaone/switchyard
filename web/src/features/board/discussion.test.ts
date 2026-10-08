@@ -66,15 +66,24 @@ describe("awaiting + phase", () => {
     expect(agentPhase("review", optimistic)).toBe("sending")
   })
 
-  it.each(["triage", "todo", "scheduled", "ready"] as const)("is 'queued' while %s", (s) => {
-    expect(agentPhase(s, me())).toBe("queued")
-  })
+	it.each(["triage", "todo", "scheduled", "ready"] as const)("is 'queued' while %s", (s) => {
+		expect(agentPhase(s, me())).toBe("queued")
+	})
 
-  it("is 'working' while running", () => {
-    expect(agentPhase("running", me())).toBe("working")
-  })
+	it("is 'working' while running", () => {
+		expect(agentPhase("running", me())).toBe("working")
+	})
 
-  it.each(["review", "blocked", "done", "archived"] as const)("is 'parked' in %s", (s) => {
+	it("recognizes review as a completed delivery", () => {
+		expect(agentPhase("review", me())).toBe("delivered")
+		expect(phaseCopy("delivered", "default", 0, "review")?.label).toBe("Comment delivered")
+	})
+
+	it("keeps blocked parked until the requeue succeeds", () => {
+		expect(agentPhase("blocked", me())).toBe("parked")
+	})
+
+	it.each(["done", "archived"] as const)("is 'parked' in %s", (s) => {
     expect(agentPhase(s, me())).toBe("parked")
   })
 })

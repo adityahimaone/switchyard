@@ -30,8 +30,7 @@ export function useWorkspaceIdentity() {
   return useQuery<WorkspaceIdentity>({
     queryKey: WORKSPACE_IDENTITY_KEY,
     queryFn: getWorkspaceIdentity,
-    // Identity changes rarely and the avatar sits in every top-bar render.
-    // Refetching on window focus would fight the 300s avatar cache.
+    // Identity changes rarely; the returned avatar URL changes with its content revision.
     staleTime: 60_000,
   })
 }
@@ -53,17 +52,11 @@ export function workspaceMonogram(name: string): string {
 }
 
 /**
- * Cache-bust key for an uploaded avatar. The response is `private, max-age=300`,
- * so without this the browser keeps showing the previous image for five minutes
- * after a replace.
+ * The server returns a content-revisioned URL for uploaded avatars, so the same
+ * value refreshes every consumer as soon as the stored image changes.
  */
-export function workspaceAvatarSrc(
-  identity: WorkspaceIdentity | undefined,
-  stamp: number | null,
-): string {
-  if (!identity?.avatar_url) return ""
-  if (!identity.has_uploaded_avatar) return identity.avatar_url
-  return stamp ? `${identity.avatar_url}?ts=${stamp}` : identity.avatar_url
+export function workspaceAvatarSrc(identity: WorkspaceIdentity | undefined): string {
+  return identity?.avatar_url ?? ""
 }
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
@@ -78,7 +71,6 @@ export default function WorkspaceTab() {
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [avatarErr, setAvatarErr] = useState<string | null>(null)
   const [urlDraft, setUrlDraft] = useState("")
-  const [stamp, setStamp] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Seed the field from the server once, then leave it under the user's control.
@@ -91,7 +83,6 @@ export default function WorkspaceTab() {
   /** Writes the server's answer back into the cache so the top bar updates. */
   function apply(next: WorkspaceIdentity) {
     qc.setQueryData(WORKSPACE_IDENTITY_KEY, next)
-    setStamp(Date.now())
   }
 
   async function saveName(e: React.FormEvent) {
@@ -155,7 +146,7 @@ export default function WorkspaceTab() {
     })
   }
 
-  const preview = workspaceAvatarSrc(loaded, stamp)
+  const preview = workspaceAvatarSrc(loaded)
   const displayName = name.trim() || WORKSPACE_NAME_FALLBACK
 
   return (

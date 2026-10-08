@@ -180,7 +180,7 @@ func GetProfile(name string) (*AgentProfile, error) {
 	}
 	p.Valid = profileValid(p.Provider)
 	if hasAvatar(name) {
-		p.AvatarURL = "/api/profiles/" + name + "/avatar"
+		p.AvatarURL = fmt.Sprintf("/api/profiles/%s/avatar?v=%s", name, profileAvatarRevision(name))
 	}
 	if p.AvatarURL == "" {
 		if ext := ProfileAvatarURL(name); ext != "" {

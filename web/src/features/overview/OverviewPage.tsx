@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Radio, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
+import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Plug, Radio, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
 import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
@@ -28,11 +28,12 @@ import { Gauge } from "@/components/charts/gauge"
 import { RingChart } from "@/components/charts/ring-chart"
 import { Ring } from "@/components/charts/ring"
 import { RingCenter } from "@/components/charts/ring-center"
+import { INTEGRATIONS as KNOWLEDGE_INTEGRATIONS, IntegrationGlyph } from "@/components/ui/integration-card"
 
 // ── types ──────────────────────────────────────────────────────────────────
 
 interface DaemonHealth { status: string; socket?: string }
-interface NodeHealth { status: string; nodes?: { node_id: string; hostname: string; status: string; last_seen: string; dsh_health?: { ok: boolean; version?: string; model?: string; provider?: string; error?: string; checked_at?: number } }[]; error?: string }
+interface NodeHealth { status: string; nodes?: { node_id: string; hostname: string; status: string; last_seen: string; versions?: Record<string, string>; dsh_health?: { ok: boolean; version?: string; model?: string; provider?: string; error?: string; checked_at?: number } }[]; error?: string }
 
 type Overview = {
   metrics: { cpu_percent: number; memory_used_mb: number; memory_total_mb: number; goroutines: number }
@@ -44,6 +45,7 @@ type Overview = {
   profiles: number
   workspaces: number
   task_health: { healthy: number; silent: number; stuck: number; lost: number; unknown: number }
+  app_version?: string
 }
 
 type Tone = "accent" | "success" | "warning" | "danger" | "info"
@@ -199,7 +201,7 @@ function HealthCard({ icon: Icon, label, status, detail }: { icon: typeof Activi
 
 function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolean }) {
   const list = nodes?.nodes ?? []
-  const anyOnline = list.some((n) => n.status === "up" || n.status === "online")
+  const isOnline = (status: string) => ["up", "online", "idle", "busy"].includes(status.toLowerCase())
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -216,7 +218,7 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
       ) : (
         <div className="mt-4 space-y-2">
           {list.map((n) => {
-            const isUp = n.status === "up" || n.status === "online"
+            const isUp = isOnline(n.status)
             const last = n.last_seen ? new Date(Number(n.last_seen) > 1e10 ? Number(n.last_seen) : n.last_seen).toLocaleString("en-ID", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—"
             const dh = n.dsh_health
             const hasDsh = !!dh
@@ -248,7 +250,127 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
         </div>
       )}
       {list.length > 0 && (
-        <p className="mt-3 text-[10px] text-ink-3">{anyOnline ? list.filter((n) => n.status === "up" || n.status === "online").length : 0} of {list.length} online</p>
+        <p className="mt-3 text-[10px] text-ink-3">{list.filter((n) => isOnline(n.status)).length} of {list.length} online</p>
+      )}
+    </section>
+  )
+}
+
+// ── integration health ────────────────────────────────────────────
+
+// One registered worker device, as /api/nodes reports it.
+export interface IntegrationDevice {
+  node_id: string
+  hostname?: string
+  status: string
+  versions?: Record<string, string>
+}
+
+// The node agent normalizes its hostname to "mac" or "windows"
+// at startup, so a substring match resolves the device column
+// even when NODE_AGENT_ID was overridden with a longer name.
+export function integrationDevices(nodes: IntegrationDevice[] | undefined) {
+  const list = nodes ?? []
+  const find = (platform: "mac" | "windows") => list.find((node) => {
+    const identity = `${node.node_id} ${node.hostname ?? ""}`.toLowerCase()
+    return platform === "mac"
+      ? identity.includes("mac") || identity.includes("darwin")
+      : identity.includes("win")
+  })
+  return [
+    { key: "mac", label: "mac", node: find("mac") },
+    { key: "windows", label: "windows", node: find("windows") },
+  ]
+}
+
+// One integration on one device. Installed and reachable reads
+// as a glowing green dot beside the version the agent probed at
+// registration; anything else reads red with the reason.
+export function integrationDeviceState(node: IntegrationDevice | undefined, integrationId: string) {
+  if (!node) {
+    return { ok: false, text: "worker not registered" }
+  }
+  if (node.status === "offline" || node.status === "down") {
+    return { ok: false, text: "worker offline" }
+  }
+  const version = node.versions?.[integrationId]
+  if (!version || !version.trim()) {
+    return { ok: false, text: "not installed" }
+  }
+  if (version.trim() === "probe failed") {
+    return { ok: false, text: "probe failed" }
+  }
+  // `--version` output can span lines; the first is the release.
+  const text = version.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? version.trim()
+  // tailscale's probe carries its tailnet state in parentheses;
+  // only a Running backend means the node is actually on the
+  // tailnet, so any other state reads as unhealthy even
+  // though the binary is installed.
+  if (integrationId === "tailscale" && !/\(running\)$/i.test(text)) {
+    return { ok: false, text }
+  }
+  return { ok: true, text }
+}
+
+function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { nodes?: NodeHealth; loading: boolean; unavailable: boolean; appVersion: string }) {
+  const devices = integrationDevices(nodes?.nodes)
+  const agentDown = unavailable || nodes?.status === "down"
+  const connected = devices.map((device) => KNOWLEDGE_INTEGRATIONS.filter((integration) => integrationDeviceState(device.node, integration.id).ok).length)
+  return (
+    <section className="glass-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium text-accent-text">Integration health</p>
+          <h2 className="mt-1 text-sm font-semibold">Connected to kanban</h2>
+          <p className="mt-1 font-mono text-[10px] text-ink-3">Kanban {appVersion}</p>
+        </div>
+        <Plug className="size-4 text-accent-text" />
+      </div>
+      {loading ? (
+        <p className="mt-6 text-xs text-ink-3">Checking integrations…</p>
+      ) : (
+        <>
+          {/* Column headers only line up on sm+, where the rows are a
+              three-column grid; on narrow screens each cell carries its
+              own device label instead. */}
+          <div className="mt-4 hidden gap-2 px-3 pb-1 text-[9px] font-medium uppercase tracking-wider text-ink-3 sm:grid sm:grid-cols-[minmax(0,1.1fr)_repeat(2,minmax(0,1fr))]">
+            <span>integration</span>
+            <span className="text-center">mac</span>
+            <span className="text-center">windows</span>
+          </div>
+          <div className="mt-2 space-y-2">
+            {KNOWLEDGE_INTEGRATIONS.map((integration) => (
+              <div key={integration.id} className="grid gap-2 rounded-control border border-line bg-well/45 px-3 py-2 sm:grid-cols-[minmax(0,1.1fr)_repeat(2,minmax(0,1fr))] sm:items-center">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent-text">
+                    <IntegrationGlyph integration={integration} className="size-3" />
+                  </span>
+                  <span className="truncate text-xs font-medium text-ink-2">{integration.label}</span>
+                </span>
+                {devices.map((device) => {
+                  const state = agentDown
+                    ? { ok: false, text: "agent unavailable" }
+                    : integrationDeviceState(device.node, integration.id)
+                  return (
+                    <span key={device.key} className="flex min-w-0 items-center gap-2 sm:justify-center" title={`${device.label} · ${integration.label}: ${state.text}`}>
+                      <span
+                        aria-hidden
+                        className={`size-2 shrink-0 rounded-full ${state.ok ? "bg-success" : "bg-danger"}`}
+                        style={state.ok ? { boxShadow: "0 0 10px var(--c-success)" } : undefined}
+                      />
+                      <span className="font-mono text-[9px] text-ink-3 sm:hidden">{device.label}</span>
+                      <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.text}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] text-ink-3">
+            {devices.map((device, i) => `${device.label} ${connected[i]} of ${KNOWLEDGE_INTEGRATIONS.length}`).join(" · ")}
+            {nodes?.error ? ` — ${nodes.error}` : ""}
+          </p>
+        </>
       )}
     </section>
   )
@@ -523,12 +645,13 @@ export default function OverviewPage() {
                       className="w-full"
                       layout="fluid"
                       weekStartDay={1}
+                      margin={{ left: 58 }}
                       animate
                       levelColors={["var(--c-well)", "color-mix(in srgb, var(--c-accent) 20%, var(--c-well))", "color-mix(in srgb, var(--c-accent) 40%, var(--c-well))", "color-mix(in srgb, var(--c-accent) 65%, var(--c-well))", "var(--c-accent)"]}
                     >
                       <HeatmapCells inactiveOpacity={1} inactiveScale={1} />
                       <HeatmapXAxis />
-                      <HeatmapYAxis />
+                      <HeatmapYAxis labelFormat="abbreviated" />
                       <HeatmapTooltip instant formatLabel={(count, date) => `${count} total · ${date.toLocaleDateString("en-ID", { weekday: "short", day: "numeric", month: "short" })}`} />
                     </HeatmapChart>
                     <HeatmapLegend inactiveOpacity={1} inactiveScale={1} align="end" />
@@ -569,16 +692,19 @@ export default function OverviewPage() {
           <NodeFleetCard nodes={nodes.data} loading={nodes.isLoading} />
         </div>
 
-        {/* ── Node agent onboarding ── */}
-        <div className="mt-3">
-          <NodeAgentSetupCard />
-        </div>
+        {/* ── Integration health: what each worker device has
+              installed, read from the fleet's registration-time
+              version probe ── */}
+        <IntegrationHealthCard nodes={nodes.data} loading={nodes.isLoading} unavailable={nodes.isError} appVersion={data.app_version ?? "unknown"} />
 
         {/* ── Review gate metrics ── */}
         <ReviewGateCard data={review.data} loading={review.isLoading} />
 
         {/* ── Queue trend ── */}
         <QueueTrendChart data={queueTrend.data} loading={queueTrend.isLoading} />
+
+        {/* ── Node agent onboarding ── */}
+        <NodeAgentSetupCard />
 
         <footer className="flex items-center gap-2 text-[10px] text-ink-3">
           <Radio className="size-3.5 text-accent-text" />

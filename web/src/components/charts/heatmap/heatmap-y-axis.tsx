@@ -20,6 +20,8 @@ export interface HeatmapYAxisProps {
   tickFilter?: HeatmapYAxisTickFilter;
   /** Label format — `"initial"` shows the first letter only (Mon → M). Default: `"full"`. */
   labelFormat?: HeatmapYAxisLabelFormat;
+  /** Accessible full label when a compact visual format is used. */
+  titleLabelFormat?: HeatmapYAxisLabelFormat;
   /** Per-row label opacity — mirrors {@link HeatmapCells} `rowOpacity`. */
   rowOpacity?: number | readonly number[];
 }
@@ -28,6 +30,7 @@ export const HeatmapYAxis = memo(function HeatmapYAxis({
   className,
   tickFilter = "odd",
   labelFormat = "full",
+  titleLabelFormat = "full",
   rowOpacity,
 }: HeatmapYAxisProps) {
   const { containerRef, margin, binHeight, gap, yScale, weekStartDay } =
@@ -44,10 +47,11 @@ export const HeatmapYAxis = memo(function HeatmapYAxis({
         .map((label, row) => ({
           row,
           label: formatHeatmapYAxisLabel(label, labelFormat),
+          accessibleLabel: formatHeatmapYAxisLabel(label, titleLabelFormat),
           y: margin.top + yScale(row) + (binHeight - gap) / 2,
         }))
         .filter((tick) => shouldShowHeatmapYAxisTick(tick.row, tickFilter)),
-    [binHeight, gap, labelFormat, margin.top, tickFilter, weekStartDay, yScale]
+    [binHeight, gap, labelFormat, margin.top, tickFilter, titleLabelFormat, weekStartDay, yScale]
   );
 
   const container = containerRef.current;
@@ -71,6 +75,8 @@ export const HeatmapYAxis = memo(function HeatmapYAxis({
         }}
       >
         <span
+          aria-label={tick.accessibleLabel}
+          title={tick.accessibleLabel}
           className={cn(
             "whitespace-nowrap text-chart-label text-xs",
             className

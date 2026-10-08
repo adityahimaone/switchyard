@@ -32,6 +32,7 @@ const FALLBACK_PROVIDERS = [
 ]
 
 const NAME_RE = /^[a-z0-9_-]{1,32}$/
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 function FieldError({ children }: { children: React.ReactNode }) {
   if (!children) return null
@@ -103,12 +104,16 @@ function ProfileForm({
 
   async function onAvatarPicked(f: File) {
     if (!initial) return
+    if (f.size > MAX_AVATAR_BYTES) {
+      setAvatarErr("Image must be 2 MB or smaller")
+      return
+    }
     setAvatarBusy(true); setAvatarErr(null)
     try {
-      await uploadProfileAvatar(initial.name, f)
+      const saved = await uploadProfileAvatar(initial.name, f)
       profileQueries.invalidateQueries({ queryKey: ["profiles-full"] })
       profileQueries.invalidateQueries({ queryKey: ["profiles"] })
-      setAvatarPreview(`/api/profiles/${initial.name}/avatar?ts=${Date.now()}`)
+      setAvatarPreview(saved.avatar_url ?? "")
     } catch (e) {
       setAvatarErr((e as Error).message)
     } finally {
@@ -123,7 +128,7 @@ function ProfileForm({
       const saved = await setProfileAvatarUrl(initial.name, avatarUrl)
       profileQueries.invalidateQueries({ queryKey: ["profiles-full"] })
       profileQueries.invalidateQueries({ queryKey: ["profiles"] })
-      setAvatarPreview(saved.avatar_url ?? avatarUrl)
+      setAvatarPreview(saved.avatar_url ?? "")
       setAvatarUrl("")
     } catch (e) {
       setAvatarErr((e as Error).message)

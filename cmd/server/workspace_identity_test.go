@@ -14,108 +14,9 @@ import (
 	"kanban-board/internal/kanban"
 )
 
-// workspaceMux mirrors the real route registrations. They are inline closures in
-// main(), so this is a copy: it is the only way to exercise the handlers over
-// HTTP, and it is what catches a route that compiles but is wired to the wrong
-// helper.
 func workspaceMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/workspace", func(w http.ResponseWriter, r *http.Request) {
-		view, err := kanban.GetWorkspaceIdentityView()
-		if err != nil {
-			fail(w, err, http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, view)
-	})
-	mux.HandleFunc("PUT /api/workspace", func(w http.ResponseWriter, r *http.Request) {
-		var in struct {
-			Name string `json:"name"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		if _, err := kanban.SetWorkspaceName(in.Name); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		view, err := kanban.GetWorkspaceIdentityView()
-		if err != nil {
-			fail(w, err, http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, view)
-	})
-	mux.HandleFunc("GET /api/workspace/avatar", func(w http.ResponseWriter, r *http.Request) {
-		data, mime, ok := kanban.WorkspaceAvatar()
-		if !ok {
-			fail(w, http.ErrMissingFile, http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Cache-Control", "private, max-age=300")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(data)
-	})
-	mux.HandleFunc("PUT /api/workspace/avatar-url", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			URL string `json:"url"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		if _, err := kanban.SetWorkspaceAvatarURL(req.URL); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		view, err := kanban.GetWorkspaceIdentityView()
-		if err != nil {
-			fail(w, err, http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, view)
-	})
-	mux.HandleFunc("POST /api/workspace/avatar", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(2*1024*1024 + 512); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		file, header, err := r.FormFile("avatar")
-		if err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-		data, err := io.ReadAll(io.LimitReader(file, 2*1024*1024+1))
-		if err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		if err := kanban.SetWorkspaceAvatar(header.Header.Get("Content-Type"), data); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		view, err := kanban.GetWorkspaceIdentityView()
-		if err != nil {
-			fail(w, err, http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, view)
-	})
-	mux.HandleFunc("DELETE /api/workspace/avatar", func(w http.ResponseWriter, r *http.Request) {
-		if err := kanban.RemoveWorkspaceAvatar(); err != nil {
-			fail(w, err, http.StatusBadRequest)
-			return
-		}
-		view, err := kanban.GetWorkspaceIdentityView()
-		if err != nil {
-			fail(w, err, http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, view)
-	})
+	registerWorkspaceIdentityRoutes(mux)
 	// authHandler exempts /api/auth/login, so the mux has to actually serve it
 	// for the session cookie to exist.
 	mux.HandleFunc("POST /api/auth/login", func(w http.ResponseWriter, r *http.Request) {
@@ -230,36 +131,32 @@ func TestWorkspaceIdentityAuthE2E(t *testing.T) {
 		t.Fatalf("bad name = %d, want 400", res.StatusCode)
 	}
 
-	// Set an avatar URL.
-	res = do("PUT", "/api/workspace/avatar-url", strings.NewReader(`{"url":"https://example.com/a.png"}`))
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("avatar-url = %d", res.StatusCode)
-	}
-	if view := decodeView(t, res); view.ResolvedAvatarURL != "https://example.com/a.png" {
-		t.Fatalf("url not applied: %+v", view)
-	}
-
-	// A private URL is refused — the same SSRF guard the profile avatar uses.
-	res = do("PUT", "/api/workspace/avatar-url", strings.NewReader(`{"url":"http://127.0.0.1/x.png"}`))
+	// A URL that targets a local address is refused before any fetch occurs.
+	res = do("PUT", "/api/workspace/avatar-url", strings.NewReader(`{"url":"https://127.0.0.1/x.png"}`))
 	res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("private url = %d, want 400", res.StatusCode)
 	}
 
-	// The name-only PUT must not have disturbed the avatar URL.
-	res = do("PUT", "/api/workspace", strings.NewReader(`{"name":"Ops Room"}`))
+	// The name-only PUT remains independent of legacy avatar metadata.
+	if _, err := kanban.SaveWorkspaceIdentity(kanban.WorkspaceIdentity{Name: "Ops Room", AvatarURL: "https://example.com/a.png"}); err != nil {
+		t.Fatal(err)
+	}
+	res = do("PUT", "/api/workspace", strings.NewReader(`{"name":"Renamed Room"}`))
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("second PUT = %d", res.StatusCode)
 	}
 	if view := decodeView(t, res); view.ResolvedAvatarURL != "https://example.com/a.png" {
-		t.Fatalf("rename cleared the avatar url: %+v", view)
+		t.Fatalf("rename cleared legacy avatar url: %+v", view)
 	}
 
 	res = do("DELETE", "/api/workspace/avatar", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("delete = %d", res.StatusCode)
 	}
-	res.Body.Close()
+	if view := decodeView(t, res); view.ResolvedAvatarURL != "" {
+		t.Fatalf("delete did not clear legacy avatar URL: %+v", view)
+	}
 }
 
 // A real upload has to survive the multipart round trip, and the served bytes
@@ -305,12 +202,12 @@ func TestWorkspaceAvatarUploadE2E(t *testing.T) {
 		t.Fatalf("upload = %d: %s", res.StatusCode, body)
 	}
 	view := decodeView(t, res)
-	if view.ResolvedAvatarURL != "/api/workspace/avatar" || !view.HasUploadedAvatar {
-		t.Fatalf("upload did not resolve to api path: %+v", view)
+	if !strings.HasPrefix(view.ResolvedAvatarURL, "/api/workspace/avatar?v=") || !view.HasUploadedAvatar {
+		t.Fatalf("upload did not resolve to revisioned api path: %+v", view)
 	}
 
 	// And the bytes served back are the bytes uploaded.
-	get, err := http.Get(srv.URL + "/api/workspace/avatar")
+	get, err := http.Get(srv.URL + view.ResolvedAvatarURL)
 	if err != nil {
 		t.Fatal(err)
 	}

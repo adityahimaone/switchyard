@@ -50,7 +50,11 @@ func registerWorkspaceIdentityRoutes(mux *http.ServeMux) {
 			return
 		}
 		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Cache-Control", "private, max-age=300")
+		if r.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "private, max-age=300")
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	})

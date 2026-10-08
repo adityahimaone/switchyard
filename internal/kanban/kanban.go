@@ -750,7 +750,7 @@ func ListProfiles() ([]Profile, error) {
 			}
 			p.Valid = profileValid(p.Provider)
 			if hasAvatar(e.Name()) {
-				p.AvatarURL = "/api/profiles/" + e.Name() + "/avatar"
+				p.AvatarURL = fmt.Sprintf("/api/profiles/%s/avatar?v=%s", e.Name(), profileAvatarRevision(e.Name()))
 			} else {
 				p.AvatarURL = ProfileAvatarURL(e.Name())
 			}
@@ -764,7 +764,7 @@ func ListProfiles() ([]Profile, error) {
 	}
 	def.Valid = profileValid(def.Provider)
 	if hasAvatar("default") {
-		def.AvatarURL = "/api/profiles/default/avatar"
+		def.AvatarURL = fmt.Sprintf("/api/profiles/default/avatar?v=%s", profileAvatarRevision("default"))
 	} else {
 		def.AvatarURL = ProfileAvatarURL("default")
 	}

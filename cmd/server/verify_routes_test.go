@@ -11,6 +11,26 @@ import (
 	"kanban-board/internal/kanban"
 )
 
+func TestOverviewRouteIncludesAppVersion(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	mux := http.NewServeMux()
+	registerOverviewRoutes(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("overview returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		AppVersion string `json:"app_version"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode overview: %v", err)
+	}
+	if response.AppVersion != version {
+		t.Fatalf("app_version = %q, want %q", response.AppVersion, version)
+	}
+}
+
 // verifyTaskRow creates a migrated board with one task in review, so the verify
 // columns exist and the approve veto queries them for real rather than failing
 // open on a missing column.

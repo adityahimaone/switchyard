@@ -19,6 +19,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -274,6 +275,77 @@ func loopAPI(t *testing.T, baseURL string, cookie *http.Cookie, method, path str
 // committed design in its prompt, the verify hook routes the card to
 // the ui rung, the run's screenshots are pulled back as card
 // attachments, and the verdict is readable over the API.
+func TestReviewCommentReachesCommandCodeContinuation(t *testing.T) {
+	fake := startLoopFakeNode(t)
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	t.Setenv("KANBAN_NODE_AGENT", fake.URL)
+	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte("model:\n  default: loop-test-model\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := kanban.EnsureImportSchemaPublic("default"); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	task := kanban.Task{
+		ID: "t_review_comment", Title: "Git Pull And Setup Codegraph", Body: "Switch to main branch and git pull before implementation",
+		Status: "review", Assignee: "default", Executor: "commandcode", WorkspaceKind: "dir", WorkspacePath: workspace,
+	}
+	if err := kanban.CreateTask("default", &task); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+kanban.BoardDBPath("default")+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE tasks SET workspace_transport='node-agent' WHERE id=?`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := kanban.AddComment("default", task.ID, "board-ui", "previous feedback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE tasks SET status='review' WHERE id=?`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = kanban.ResolveHarnessBindingFor(db, "default", task.ID, workspace, "commandcode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE harness_bindings SET harness_session_id=?, last_comment_id=?, status='idle' WHERE card_id=?`, "cc-review-session", previous.ID, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE tasks SET commandcode_session_id=? WHERE id=?`, "cc-review-session", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	comment, err := kanban.AddComment("default", task.ID, "board-ui", "@default can you sync codegraph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !comment.Requeued {
+		t.Fatal("review comment did not requeue task")
+	}
+
+	dispatchPendingRemoteTasks()
+	dispatched := fake.dispatchByExecutor("commandcode")
+	if dispatched == nil {
+		t.Fatal("no commandcode continuation reached fake node")
+	}
+	if !dispatched.SessionContinuation || dispatched.CommandCodeSessionID != "cc-review-session" {
+		t.Fatalf("continuation identity = (%t, %q), want existing commandcode session", dispatched.SessionContinuation, dispatched.CommandCodeSessionID)
+	}
+	if dispatched.LastCommentID == nil || *dispatched.LastCommentID != comment.ID {
+		t.Fatalf("last_comment_id = %v, want %d", dispatched.LastCommentID, comment.ID)
+	}
+	if !strings.Contains(dispatched.Message, "@default can you sync codegraph") {
+		t.Fatalf("dispatch prompt omitted fresh feedback:\n%s", dispatched.Message)
+	}
+	if strings.Contains(dispatched.Message, "previous feedback") || strings.Contains(dispatched.Message, "Project prerequisites (README.md head):") {
+		t.Fatalf("dispatch prompt contains stale task context:\n%s", dispatched.Message)
+	}
+}
+
 func TestVerifyLoopE2E(t *testing.T) {
 	fake := startLoopFakeNode(t)
 	home := t.TempDir()

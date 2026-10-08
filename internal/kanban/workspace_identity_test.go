@@ -2,9 +2,11 @@ package kanban
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -19,6 +21,9 @@ func patchWorkspaceHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HERMES_HOME", home)
+	previous := avatarURLFetcher
+	avatarURLFetcher = func(string) ([]byte, string, error) { return wsGif, "image/gif", nil }
+	t.Cleanup(func() { avatarURLFetcher = previous })
 	return home
 }
 
@@ -118,7 +123,7 @@ func TestSaveWorkspaceIdentityPreservesUploadedAvatar(t *testing.T) {
 // trap: a client that sends only a name would otherwise clear the avatar.
 func TestSetWorkspaceNameLeavesAvatarUntouched(t *testing.T) {
 	patchWorkspaceHome(t)
-	if _, err := SetWorkspaceAvatarURL("https://example.com/a.png"); err != nil {
+	if _, err := SaveWorkspaceIdentity(WorkspaceIdentity{AvatarURL: "https://example.com/a.png"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := SetWorkspaceName("Renamed"); err != nil {
@@ -162,8 +167,8 @@ func TestSetWorkspaceAvatarWritesAndReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An uploaded blob resolves to the API path, so the client can cache-bust it.
-	if view.ResolvedAvatarURL != "/api/workspace/avatar" || !view.HasUploadedAvatar {
-		t.Fatalf("uploaded avatar not resolved to api path: %+v", view)
+	if !strings.HasPrefix(view.ResolvedAvatarURL, "/api/workspace/avatar?v=") || !view.HasUploadedAvatar {
+		t.Fatalf("uploaded avatar not resolved to revisioned api path: %+v", view)
 	}
 }
 
@@ -214,33 +219,27 @@ func TestAvatarURLAndUploadAreMutuallyExclusive(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, _ := GetWorkspaceIdentityView()
-	if view.ResolvedAvatarURL != "https://example.com/a.png" || view.HasUploadedAvatar {
-		t.Fatalf("url avatar not applied: %+v", view)
+	if !strings.HasPrefix(view.ResolvedAvatarURL, "/api/workspace/avatar?v=") || !view.HasUploadedAvatar {
+		t.Fatalf("URL image was not imported locally: %+v", view)
 	}
 
-	// An upload must displace the URL.
 	if err := SetWorkspaceAvatar("image/gif", wsGif); err != nil {
 		t.Fatal(err)
 	}
-	id, _ := LoadWorkspaceIdentity()
-	if id.AvatarURL != "" {
-		t.Fatalf("upload left a stale url: %q", id.AvatarURL)
-	}
 	view, _ = GetWorkspaceIdentityView()
 	if !view.HasUploadedAvatar {
-		t.Fatalf("upload did not take precedence: %+v", view)
+		t.Fatalf("upload did not replace imported image: %+v", view)
 	}
 
-	// Setting a URL again must displace the blob, not silently lose to it.
 	if _, err := SetWorkspaceAvatarURL("https://example.com/b.png"); err != nil {
 		t.Fatal(err)
 	}
-	if HasWorkspaceAvatar() {
-		t.Error("url did not clear the uploaded blob")
+	if !HasWorkspaceAvatar() {
+		t.Error("imported URL image was not stored as a local avatar")
 	}
 	view, _ = GetWorkspaceIdentityView()
-	if view.ResolvedAvatarURL != "https://example.com/b.png" || view.HasUploadedAvatar {
-		t.Fatalf("url should now win: %+v", view)
+	if !strings.HasPrefix(view.ResolvedAvatarURL, "/api/workspace/avatar?v=") || !view.HasUploadedAvatar {
+		t.Fatalf("URL import did not replace the prior avatar: %+v", view)
 	}
 }
 
@@ -357,8 +356,6 @@ func TestRemoveWorkspaceAvatar(t *testing.T) {
 	if HasWorkspaceAvatar() {
 		t.Fatal("avatar still present after remove")
 	}
-	// Removing twice must stay quiet — the settings page can call it on a
-	// workspace that never had an avatar.
 	if err := RemoveWorkspaceAvatar(); err != nil {
 		t.Fatalf("second remove errored: %v", err)
 	}
@@ -366,4 +363,45 @@ func TestRemoveWorkspaceAvatar(t *testing.T) {
 	if view.ResolvedAvatarURL != "" {
 		t.Fatalf("resolved url should be empty after remove: %+v", view)
 	}
+}
+
+func TestFailedWorkspaceAvatarURLImportPreservesCurrentAvatar(t *testing.T) {
+	patchWorkspaceHome(t)
+	if err := SetWorkspaceAvatar("image/gif", wsGif); err != nil {
+		t.Fatal(err)
+	}
+	previous := avatarURLFetcher
+	avatarURLFetcher = func(string) ([]byte, string, error) { return nil, "", io.ErrUnexpectedEOF }
+	t.Cleanup(func() { avatarURLFetcher = previous })
+	if _, err := SetWorkspaceAvatarURL("https://example.com/new.gif"); err == nil {
+		t.Fatal("failed import returned success")
+	}
+	got, mime, ok := WorkspaceAvatar()
+	if !ok || mime != "image/gif" || !bytes.Equal(got, wsGif) {
+		t.Fatal("failed URL import changed the existing workspace avatar")
+	}
+}
+
+func TestConcurrentWorkspaceAvatarReadsAndWrites(t *testing.T) {
+	patchWorkspaceHome(t)
+	if err := SetWorkspaceAvatar("image/gif", wsGif); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				if i%2 == 0 {
+					if err := SetWorkspaceAvatar("image/gif", wsGif); err != nil {
+						t.Error(err)
+					}
+				} else if data, mime, ok := WorkspaceAvatar(); ok && (mime != "image/gif" || !bytes.Equal(data, wsGif)) {
+					t.Error("reader observed mismatched workspace avatar")
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 }

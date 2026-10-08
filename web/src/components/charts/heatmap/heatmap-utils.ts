@@ -144,6 +144,26 @@ export function resolveHeatmapWeekRange(
   };
 }
 
+export function filterHeatmapTicksByLabelWidth<T extends { x: number; width: number }>(
+  ticks: T[],
+  gap = 6,
+  rightBound = Number.POSITIVE_INFINITY
+): T[] {
+  const visible: T[] = [];
+  let lastRight = Number.NEGATIVE_INFINITY;
+
+  for (const tick of ticks) {
+    const right = tick.x + tick.width;
+    if (tick.x < lastRight + gap || right > rightBound) {
+      continue;
+    }
+    visible.push(tick);
+    lastRight = right;
+  }
+
+  return visible;
+}
+
 /** Month label anchor for a week column — prefers the 1st, else the 1st of the first bin's month. */
 export function getHeatmapColumnMonthAnchor(
   column: HeatmapColumn
@@ -311,14 +331,16 @@ export function rotateHeatmapColumnBins(
 /** Which Y-axis row ticks to display. */
 export type HeatmapYAxisTickFilter = "all" | "odd" | "even";
 
-/** Y-axis label display — `initial` shows the first letter only (Mon → M). */
-export type HeatmapYAxisLabelFormat = "full" | "initial";
+/** Y-axis label display — `abbreviated` keeps distinct weekday names like Tue and Thu. */
+export type HeatmapYAxisLabelFormat = "full" | "initial" | "abbreviated";
 
 export function formatHeatmapYAxisLabel(
   label: string,
   labelFormat: HeatmapYAxisLabelFormat
 ): string {
-  return labelFormat === "initial" ? label.charAt(0) : label;
+  if (labelFormat === "initial") return label.charAt(0)
+  if (labelFormat === "abbreviated") return label.slice(0, 3)
+  return label
 }
 
 export function shouldShowHeatmapYAxisTick(

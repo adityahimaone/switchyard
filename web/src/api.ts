@@ -609,7 +609,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export async function uploadProfileAvatar(name: string, file: File) {
   const body = new FormData()
   body.append("avatar", file)
-  const res = await fetch(`/api/profiles/${name}/avatar`, { method: "POST", body })
+  const res = await fetch(`/api/profiles/${encodeURIComponent(name)}/avatar`, {
+    method: "POST",
+    body,
+    credentials: "include",
+  })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error((data as { error?: string }).error ?? res.statusText)
@@ -618,14 +622,14 @@ export async function uploadProfileAvatar(name: string, file: File) {
 }
 
 export function setProfileAvatarUrl(name: string, url: string) {
-  return api<ProfileDetail>(`/api/profiles/${name}/avatar-url`, {
+  return api<ProfileDetail>(`/api/profiles/${encodeURIComponent(name)}/avatar-url`, {
     method: "PUT",
     body: JSON.stringify({ url }),
   })
 }
 
 export function removeProfileAvatar(name: string) {
-  return api<{ ok: boolean }>(`/api/profiles/${name}/avatar`, { method: "DELETE" })
+  return api<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(name)}/avatar`, { method: "DELETE" })
 }
 
 /**

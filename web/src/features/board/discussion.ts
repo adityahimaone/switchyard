@@ -56,6 +56,7 @@ export type AgentPhase =
   | "sending" // optimistic comment, server has not confirmed yet
   | "queued" //  confirmed, task is waiting for a worker
   | "working" // task is running
+  | "delivered" // run completed after receiving the comment
   | "parked" //  confirmed, but the task is in a state that will not run
 
 const QUEUED: ReadonlySet<Status> = new Set(["triage", "todo", "scheduled", "ready"])
@@ -64,6 +65,7 @@ export function agentPhase(status: Status, awaiting: TaskComment | null): AgentP
   if (!awaiting) return "none"
   if (isPending(awaiting)) return "sending"
   if (status === "running") return "working"
+  if (status === "review") return "delivered"
   if (QUEUED.has(status)) return "queued"
   return "parked"
 }
@@ -105,6 +107,8 @@ export function phaseCopy(phase: AgentPhase, who: string, elapsedSec: number, st
         : { label: `Queued for ${name}`, detail: "Waiting for a worker to pick it up", tone: "progress" }
     case "working":
       return { label: `${name} is working`, detail: formatElapsed(elapsedSec), tone: "progress" }
+    case "delivered":
+      return { label: "Comment delivered", detail: "The agent responded; this task is back in review.", tone: "progress" }
     case "parked":
       return {
         label: "Saved, but not delivered",
