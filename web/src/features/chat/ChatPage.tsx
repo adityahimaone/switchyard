@@ -446,9 +446,18 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     if (projectWorkspace) setWorkspace(projectWorkspace)
     if (projectExecutor) setAgent(projectExecutor)
     if (projectOptions) setExecutorOptions(projectOptions)
-  }, [projectID, projectWorkspace, projectExecutor, projectOptions])
+    // Opening a project starts on a clean slate: the composer is ready and the
+    // first send creates a session bound to this project. An explicit deep link
+    // (initialSessionID) still wins.
+    if (!initialSessionID) setSessionID(undefined)
+    setSelectedRun(undefined)
+  }, [projectID, projectWorkspace, projectExecutor, projectOptions, initialSessionID])
 
   useEffect(() => {
+    // Inside a project there is no "the" session to auto-open: the composer sits
+    // ready and the first send creates the session (see the send mutation). The
+    // auto-create/auto-select below is only for the global chat list.
+    if (projectID) return
     if (sessions.isSuccess && sessions.data?.length === 0 && !initialCreate.current) {
       initialCreate.current = true
       void createChatSession({ title: "New chat", agent, profile, workspace, model: "", executor_options: executorOptions }).then((created) => {
@@ -458,7 +467,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       return
     }
     if (!sessionID && sessions.data?.[0]) setActive(sessions.data[0].id)
-  }, [qc, sessionID, sessions.data, sessions.isSuccess, profile])
+  }, [qc, sessionID, sessions.data, sessions.isSuccess, profile, projectID])
 
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
@@ -507,6 +516,13 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
 
   const visibleSessions = showArchived ? (archivedSessions.data ?? []) : (sessions.data ?? [])
+  // Inside a project the transcript belongs to that project, so the list is its
+  // sessions only. The rail still draws the full tree; this just scopes what
+  // "no session yet → create on send" and the empty state reason about.
+  const scopedSessions = useMemo(
+    () => (projectID ? visibleSessions.filter((item) => item.project_id === projectID) : visibleSessions),
+    [visibleSessions, projectID],
+  )
   const filteredSessions = useMemo(() => visibleSessions.filter((item) => {
     const text = `${item.title} ${item.agent} ${item.profile} ${item.workspace} ${item.model}`.toLowerCase()
     return !query || text.includes(query.toLowerCase())
@@ -530,16 +546,31 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       shouldFollowChatRef.current = true
       setShowJumpToLatest(false)
     },
-    mutationFn: () => {
+    mutationFn: async () => {
       if (uploading) throw new Error("Wait for attachment upload to finish")
       // The model roster only applies to hermes; dsh/commandcode fix their own model.
       if (agent === "hermes" && model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
       const ids = pendingAtts.map((a) => a.id)
       const opts = agent === "hermes" ? undefined : executorOptions
-      if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts })
-      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts, attachment_ids: ids })
+      // Enter-then-send with no session yet: create it now, bound to the project
+      // when one is open, so the user never has to click "new chat" first. The
+      // title is the prompt's opening line so the rail row is identifiable.
+      let sid = sessionID
+      if (!sid) {
+        const title = prompt.trim().slice(0, 60) || "New chat"
+        const created = await createChatSession(
+          projectID
+            ? { title, agent, profile, workspace, model: "", executor_options: executorOptions, project_id: projectID }
+            : { title, agent, profile, workspace, model, executor_options: executorOptions },
+        )
+        sid = created.id
+        setActive(sid)
+        void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
+      }
+      if (!ids.length) return sendChatMessage(sid, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts })
+      return sendChatMessage(sid, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts, attachment_ids: ids })
     },
-    onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
+    onSuccess: (data) => { const sid = data.run?.session_id ?? sessionID; setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sid] }); void qc.invalidateQueries({ queryKey: ["chat-session", sid] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sid] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
   async function newChat(project?: ChatProject) {
@@ -745,7 +776,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                       <div className="group/proj flex items-center gap-1 rounded-lg pr-1 hover:bg-well">
                         <button
                           type="button"
-                          onClick={() => toggleSection(`proj:${project.id}`)}
+                          onClick={() => { if (onOpenProject) onOpenProject(project); setCollapsed((prev) => ({ ...prev, [`proj:${project.id}`]: false })) }}
                           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
                           aria-expanded={!collapsed[`proj:${project.id}`]}
                         >
@@ -887,8 +918,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       >
         {activeMessages.length === 0 && !run ? (
           <div className="rounded-card border border-dashed border-line bg-surface p-6">
-            <div className="text-sm font-medium text-ink">Start a conversation</div>
-            <div className="mt-1 text-sm leading-6 text-ink-3">Pick a prompt or type your own. Agent runs show live context activity.</div>
+            <div className="text-sm font-medium text-ink">{projectName ? `Start a chat in ${projectName}` : "Start a conversation"}</div>
+            <div className="mt-1 text-sm leading-6 text-ink-3">
+              {projectName
+                ? `Type a prompt and a new session is created here automatically.${scopedSessions.length ? ` ${scopedSessions.length} chat${scopedSessions.length === 1 ? "" : "s"} already in this project.` : ""}`
+                : "Pick a prompt or type your own. Agent runs show live context activity."}
+            </div>
             <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40">{example}</button>)}</div>
           </div>
         ) : activeMessages.map((message) => (

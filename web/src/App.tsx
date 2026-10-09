@@ -31,7 +31,6 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
-const ProjectsPage = lazy(() => import("./features/projects/ProjectsPage"))
 
 export default function App() {
   const initialRoute = useMemo(() => parseRoute(window.location.pathname), [])
@@ -233,31 +232,26 @@ export default function App() {
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
           {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onToggleSidebar={() => setChatSidebarOpen((v) => !v)} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
-          {page === "projects" && !projectID && (
+          {page === "projects" && (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <ProjectsPage workspaces={workspaces.data ?? []} onOpenProject={openProject} />
-            </div>
-          )}
-          {page === "projects" && projectID && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {activeProject ? (
+              {projectID && !activeProject ? (
+                <LoadingState variant="detail" label="Loading project" />
+              ) : (
                 <ChatPage
-                  key={activeProject.id}
+                  key={activeProject?.id ?? "all"}
                   profiles={profiles.data ?? []}
                   workspaces={workspaces.data ?? []}
                   initialSessionID={chatSessionID}
                   sidebarOpen={chatSidebarOpen}
                   onToggleSidebar={() => setChatSidebarOpen((v) => !v)}
-                  projectID={activeProject.id}
-                  projectName={activeProject.name}
-                  projectWorkspace={activeProject.workspace}
-                  projectExecutor={activeProject.executor}
-                  projectOptions={activeProject.options}
+                  projectID={activeProject?.id}
+                  projectName={activeProject?.name}
+                  projectWorkspace={activeProject?.workspace}
+                  projectExecutor={activeProject?.executor}
+                  projectOptions={activeProject?.options}
                   onOpenProject={openProject}
-                  onSessionChange={(id) => { setChatRouteID(id); go(`/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}`) }}
+                  onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : `/projects/-/${encodeURIComponent(id)}`) }}
                 />
-              ) : (
-                <LoadingState variant="detail" label="Loading project" />
               )}
             </div>
           )}

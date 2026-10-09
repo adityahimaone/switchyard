@@ -26,7 +26,13 @@ export function parseRoute(pathname: string): AppRoute {
   }
 
   if (root === "chat") return { page: "chat", chatSessionID: second }
-  if (root === "projects") return { page: "projects", projectID: second, chatSessionID: third }
+  if (root === "projects") {
+    // `/projects` and `/projects/-/<session>` are the landing (all projects);
+    // `/projects/<id>[/<session>]` is a project. Without the `-` sentinel a
+    // landing-view session id would be parsed as a project id.
+    if (second === "-") return { page: "projects", chatSessionID: third }
+    return { page: "projects", projectID: second, chatSessionID: third }
+  }
   if (root && PAGES.has(root as Page)) return { page: root as Page }
   return { page: "overview", slug: "f8-saas" }
 }
