@@ -19,6 +19,27 @@ func registerRuntimeRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, st)
 	})
+	// Persisted integration versions: last known version per device, written on
+	// every /api/nodes read and by the refresh button below.
+	mux.HandleFunc("GET /api/nodes/integrations", func(w http.ResponseWriter, r *http.Request) {
+		view, err := kanban.SavedIntegrations()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
+	})
+	// "Ping all versions": ask every worker to re-probe, wait (bounded) for the
+	// versions to change, save them. Offline workers keep the request queued and
+	// answer on their next heartbeat, so a press is never lost.
+	mux.HandleFunc("POST /api/nodes/refresh", func(w http.ResponseWriter, r *http.Request) {
+		res, err := kanban.NodeAgentRefresh(20 * time.Second)
+		if err != nil {
+			fail(w, err, http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+	})
 	mux.HandleFunc("GET /api/node-agent/setup", func(w http.ResponseWriter, r *http.Request) {
 		setup, err := kanban.NodeAgentSetup()
 		if err != nil {

@@ -427,6 +427,64 @@ export interface NodeAgentStatus {
 
 export function nodeAgentHealth() { return api<NodeAgentStatus>("/api/nodes") }
 
+/** One stored device/integration row (SQLite, written on every /api/nodes read). */
+export interface SavedIntegration {
+  node_id: string
+  integration_id: string
+  version: string
+  status: string
+  ok: boolean
+  checked_at: number
+}
+
+export interface SavedIntegrationNode {
+  node_id: string
+  hostname: string
+  status: string
+  last_seen: string
+  updated_at: number
+  connected: number
+  total: number
+}
+
+export interface IntegrationPing {
+  id: number
+  started_at: number
+  finished_at: number
+  nodes: number
+  updated: number
+  ok: boolean
+  message: string
+}
+
+export interface SavedIntegrations {
+  saved_at: number
+  nodes: SavedIntegrationNode[]
+  items: SavedIntegration[]
+  last_ping?: IntegrationPing
+}
+
+export interface RefreshResult {
+  ok: boolean
+  requested: number
+  nodes: number
+  saved: number
+  changed: boolean
+  elapsed_ms: number
+  message: string
+  status?: NodeAgentStatus
+}
+
+/** Versions persisted in the database, i.e. what each device last reported. */
+export function savedIntegrations() { return api<SavedIntegrations>("/api/nodes/integrations") }
+
+/**
+ * "Ping all versions": asks every worker to re-probe its tools, waits for the
+ * versions to change, then saves them. Offline workers answer on their next
+ * heartbeat, so pressing it while a device is down is safe.
+ */
+export function refreshNodeVersions() { return api<RefreshResult>("/api/nodes/refresh", { method: "POST" }) }
+
 export interface CodeGraphEntry {
   path: string
   name: string

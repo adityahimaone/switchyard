@@ -649,19 +649,26 @@ func finalizeRemoteTimeout(db *sql.DB, req NodeDispatchRequest, taskID string) (
 
 // NodeAgentStatus is what GET /api/remote/nodes returns.
 type NodeAgentStatus struct {
-	Status string `json:"status"` // up | down
-	Nodes  []struct {
-		NodeID     string            `json:"node_id"`
-		Hostname   string            `json:"hostname"`
-		Workspaces []string          `json:"workspaces"`
-		Executors  []string          `json:"executors,omitempty"`
-		Versions   map[string]string `json:"versions,omitempty"`
-		Transports []string          `json:"transports,omitempty"`
-		DSHHealth  *DSHHealthView    `json:"dsh_health,omitempty"`
-		Status     string            `json:"status"`
-		LastSeen   string            `json:"last_seen"`
-	} `json:"nodes,omitempty"`
-	Error string `json:"error,omitempty"`
+	Status string          `json:"status"` // up | down
+	Nodes  []NodeAgentNode `json:"nodes,omitempty"`
+	Error  string          `json:"error,omitempty"`
+	// SavedAt is when the snapshot behind this response was written to
+	// SQLite (0 when persistence failed). It lets the Overview prove the
+	// grid it renders is also the grid in the database.
+	SavedAt int64 `json:"saved_at,omitempty"`
+}
+
+// NodeAgentNode is one registered worker as node-agent reports it.
+type NodeAgentNode struct {
+	NodeID     string            `json:"node_id"`
+	Hostname   string            `json:"hostname"`
+	Workspaces []string          `json:"workspaces"`
+	Executors  []string          `json:"executors,omitempty"`
+	Versions   map[string]string `json:"versions,omitempty"`
+	Transports []string          `json:"transports,omitempty"`
+	DSHHealth  *DSHHealthView    `json:"dsh_health,omitempty"`
+	Status     string            `json:"status"`
+	LastSeen   string            `json:"last_seen"`
 }
 
 // DSHHealthView mirrors node-agent's DSHHealth JSON so the Overview can render
@@ -675,31 +682,45 @@ type DSHHealthView struct {
 	CheckedAt int64  `json:"checked_at"`
 }
 
-// NodeAgentHealth proxies node-agent /health.
+// NodeAgentHealth proxies node-agent /health and persists the snapshot.
 func NodeAgentHealth() (*NodeAgentStatus, error) {
+	st, err := fetchNodeAgentHealth()
+	if err != nil {
+		return nil, err
+	}
+	broadcastEvent("node_health", st)
+	// Every read is also a write. The Overview's grid must not be the only
+	// place a version exists: with the snapshot in SQLite the last known
+	// version per device survives node-agent restarts, worker restarts and
+	// offline workers, and the "ping all versions" button has a durable
+	// record of what it changed.
+	if saved, err := SaveNodeSnapshot(st); err == nil {
+		st.SavedAt = saved.At
+	}
+	return st, nil
+}
+
+// fetchNodeAgentHealth reads node-agent /health: no broadcast, no persistence.
+// An unreachable node-agent is reported as status "down" instead of an error,
+// because that is a state the Overview renders rather than a failed request.
+func fetchNodeAgentHealth() (*NodeAgentStatus, error) {
 	c := &http.Client{Timeout: 5 * time.Second}
 	hreq, err := http.NewRequest("GET", nodeAgentBase()+"/health", nil)
 	if err != nil {
-		st := &NodeAgentStatus{Status: "down", Error: err.Error()}
-		broadcastEvent("node_health", st)
-		return st, nil
+		return &NodeAgentStatus{Status: "down", Error: err.Error()}, nil
 	}
 	if tok := nodeAgentToken(); tok != "" {
 		hreq.Header.Set("X-Node-Agent-Token", tok)
 	}
 	resp, err := c.Do(hreq)
 	if err != nil {
-		st := &NodeAgentStatus{Status: "down", Error: err.Error()}
-		broadcastEvent("node_health", st)
-		return st, nil
+		return &NodeAgentStatus{Status: "down", Error: err.Error()}, nil
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	var st NodeAgentStatus
 	if err := json.Unmarshal(body, &st); err != nil {
-		down := &NodeAgentStatus{Status: "down", Error: err.Error()}
-		broadcastEvent("node_health", down)
-		return down, nil
+		return &NodeAgentStatus{Status: "down", Error: err.Error()}, nil
 	}
 	// A healthy HTTP response only proves that the node-agent endpoint is
 	// reachable. Preserve an explicit status from the agent and use "up" only
@@ -707,7 +728,6 @@ func NodeAgentHealth() (*NodeAgentStatus, error) {
 	if strings.TrimSpace(st.Status) == "" {
 		st.Status = "up"
 	}
-	broadcastEvent("node_health", st)
 	return &st, nil
 }
 

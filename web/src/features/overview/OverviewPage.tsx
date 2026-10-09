@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, MemoryStick, Minus, Plug, Radio, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
-import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview } from "@/api"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Radio, RefreshCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, refreshNodeVersions, savedIntegrations } from "@/api"
 import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
@@ -283,39 +283,75 @@ export function integrationDevices(nodes: IntegrationDevice[] | undefined) {
   ]
 }
 
-// One integration on one device. Installed and reachable reads
-// as a glowing green dot beside the version the agent probed at
-// registration; anything else reads red with the reason.
-export function integrationDeviceState(node: IntegrationDevice | undefined, integrationId: string) {
+// What one integration reads as on one device: the verdict word the card
+// prints, the release behind it when there is one, and whether the pair
+// counts as healthy. Installed and reachable reads as "connected" with the
+// version the agent probed at registration; anything else reads red with the
+// reason beside it.
+export interface IntegrationState {
+  ok: boolean
+  status: string
+  version: string
+}
+
+export function integrationDeviceState(node: IntegrationDevice | undefined, integrationId: string): IntegrationState {
   if (!node) {
-    return { ok: false, text: "worker not registered" }
+    return { ok: false, status: "worker not registered", version: "" }
   }
   if (node.status === "offline" || node.status === "down") {
-    return { ok: false, text: "worker offline" }
+    return { ok: false, status: "worker offline", version: "" }
   }
-  const version = node.versions?.[integrationId]
-  if (!version || !version.trim()) {
-    return { ok: false, text: "not installed" }
+  const raw = (node.versions?.[integrationId] ?? "").trim()
+  if (!raw) {
+    return { ok: false, status: "not installed", version: "" }
   }
-  if (version.trim() === "probe failed") {
-    return { ok: false, text: "probe failed" }
+  // A tool that answers with prose instead of a release comes back as
+  // `probe failed: <reason>`; the dot goes red and the reason is what the
+  // tooltip explains, because "it printed something" is not health.
+  if (raw === "probe failed") {
+    return { ok: false, status: "probe failed", version: "" }
+  }
+  if (raw.startsWith("probe failed:")) {
+    return { ok: false, status: "probe failed", version: raw.slice("probe failed:".length).trim() }
   }
   // `--version` output can span lines; the first is the release.
-  const text = version.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? version.trim()
+  const version = raw.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? raw
   // tailscale's probe carries its tailnet state in parentheses;
   // only a Running backend means the node is actually on the
   // tailnet, so any other state reads as unhealthy even
   // though the binary is installed.
-  if (integrationId === "tailscale" && !/\(running\)$/i.test(text)) {
-    return { ok: false, text }
+  if (integrationId === "tailscale" && !/\(running\)$/i.test(version)) {
+    return { ok: false, status: "not connected", version }
   }
-  return { ok: true, text }
+  return { ok: true, status: "connected", version }
 }
 
 function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { nodes?: NodeHealth; loading: boolean; unavailable: boolean; appVersion: string }) {
   const devices = integrationDevices(nodes?.nodes)
   const agentDown = unavailable || nodes?.status === "down"
   const connected = devices.map((device) => KNOWLEDGE_INTEGRATIONS.filter((integration) => integrationDeviceState(device.node, integration.id).ok).length)
+  // Versions live in SQLite as well as on screen, so the footnote can show
+  // when they were last stored even while node-agent is answering from memory.
+  const saved = useQuery({ queryKey: ["nodes-integrations"], queryFn: savedIntegrations, refetchInterval: 60_000 })
+  const queryClient = useQueryClient()
+  const [pinging, setPinging] = useState(false)
+  const [pingMsg, setPingMsg] = useState("")
+  const pingAllVersions = async () => {
+    setPinging(true)
+    setPingMsg("")
+    try {
+      const res = await refreshNodeVersions()
+      setPingMsg(res.message)
+      await queryClient.invalidateQueries({ queryKey: ["nodes"] })
+      await queryClient.invalidateQueries({ queryKey: ["nodes-integrations"] })
+    } catch (err) {
+      // A failed ping must say so: a silent no-op would look like a
+      // refresh that found nothing to change.
+      setPingMsg(err instanceof Error ? err.message : "ping failed")
+    } finally {
+      setPinging(false)
+    }
+  }
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -324,7 +360,19 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
           <h2 className="mt-1 text-sm font-semibold">Connected to kanban</h2>
           <p className="mt-1 font-mono text-[10px] text-ink-3">Kanban {appVersion}</p>
         </div>
-        <Plug className="size-4 text-accent-text" />
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={pingAllVersions}
+            disabled={pinging}
+            title="Ask every worker to re-probe its tools, then save the versions"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-well/60 px-2.5 py-1 text-[11px] font-medium text-ink-2 transition-colors hover:border-accent-border hover:text-accent-text disabled:opacity-60"
+          >
+            {pinging ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+            {pinging ? "pinging…" : "ping all versions"}
+          </button>
+          <Plug className="size-4 text-accent-text" />
+        </div>
       </div>
       {loading ? (
         <p className="mt-6 text-xs text-ink-3">Checking integrations…</p>
@@ -348,18 +396,23 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
                   <span className="truncate text-xs font-medium text-ink-2">{integration.label}</span>
                 </span>
                 {devices.map((device) => {
-                  const state = agentDown
-                    ? { ok: false, text: "agent unavailable" }
+                  const state: IntegrationState = agentDown
+                    ? { ok: false, status: "agent unavailable", version: "" }
                     : integrationDeviceState(device.node, integration.id)
                   return (
-                    <span key={device.key} className="flex min-w-0 items-center gap-2 sm:justify-center" title={`${device.label} · ${integration.label}: ${state.text}`}>
+                    <span
+                      key={device.key}
+                      className="flex min-w-0 items-center gap-2 sm:justify-center"
+                      title={`${device.label} · ${integration.label}: ${state.status}${state.version ? ` · ${state.version}` : ""}`}
+                    >
                       <span
                         aria-hidden
                         className={`size-2 shrink-0 rounded-full ${state.ok ? "bg-success" : "bg-danger"}`}
                         style={state.ok ? { boxShadow: "0 0 10px var(--c-success)" } : undefined}
                       />
                       <span className="font-mono text-[9px] text-ink-3 sm:hidden">{device.label}</span>
-                      <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.text}</span>
+                      <span className={`truncate font-mono text-[10px] ${state.ok ? "text-success-text" : "text-ink-3"}`}>{state.status}</span>
+                      {state.version && <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.version}</span>}
                     </span>
                   )
                 })}
@@ -369,6 +422,13 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
           <p className="mt-3 text-[10px] text-ink-3">
             {devices.map((device, i) => `${device.label} ${connected[i]} of ${KNOWLEDGE_INTEGRATIONS.length}`).join(" · ")}
             {nodes?.error ? ` — ${nodes.error}` : ""}
+          </p>
+          {pingMsg && <p className="mt-1 text-[10px] text-accent-text">{pingMsg}</p>}
+          <p className="mt-1 text-[10px] text-ink-3">
+            {saved.data?.saved_at
+              ? `versions saved ${new Date(saved.data.saved_at * 1000).toLocaleTimeString()}`
+              : "versions not saved yet"}
+            {saved.data?.last_ping ? ` · last ping ${new Date(saved.data.last_ping.started_at * 1000).toLocaleTimeString()}` : ""}
           </p>
         </>
       )}

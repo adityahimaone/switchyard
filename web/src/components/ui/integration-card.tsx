@@ -188,6 +188,7 @@ export const INTEGRATIONS: Integration[] = [
     id: "tailscale",
     label: "tailscale",
     icon: Waypoints,
+    iconSrc: "/brand/tailscale.png",
     x: 80,
     y: 294,
     path: "M 282 205 L 80 294",
