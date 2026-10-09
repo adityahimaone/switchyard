@@ -220,12 +220,12 @@ come from env `DSH_PERMISSION_MODE` (read-only|workspace-write|danger-full-acces
 closed. `cmdc` exposes `--plan` / `--permission-mode <standard|plan|accept-edits|yolo>`
 / `--yolo`.
 
-- [ ] Slice 1 — backend: `chat_projects` gains `workspace/executor/options/description`; `chat_sessions` gains `executor_options/executor_session_id`; project CRUD validates workspace against `ListWorkspaces()` and executor against `{hermes,dsh,commandcode}`; add routes to `routes_inventory_test.go`
-- [ ] Slice 2 — chat executors: widen `validChatAgents`; `RunChat` branches non-hermes to `runChatViaExecutor` (remote dispatch with executor + options + `executor_session_id` continuation)
-- [ ] Slice 3 — node-agent: `DispatchRequest`/`NodeDispatchRequest` gain `dsh_permission_mode` + `commandcode_mode`; dsh sets `DSH_PERMISSION_MODE`; `commandCodeArgs` honours `plan`/`standard`/`accept-edits`/`yolo`
-- [ ] Slice 4 — frontend: `features/projects/*` page + create dialog; composer executor select; model select disabled when executor≠hermes; options select (dsh decision / cc mode)
-- [ ] Slice 5 — routing + nav: `Page` += `projects`; `routes.ts` `/projects` + `/projects/:id`; nav manifest row; `App.tsx` lazy route
-- [ ] Verify: `go test ./...`, `go vet ./...`, `go build ./cmd/server`, `pnpm --dir web build`, node-agent `GOOS=darwin GOARrm64 go build ./cmd/agent`
+- [x] Slice 1 — backend: `chat_projects` gains `workspace/executor/options/description`; `chat_sessions` gains `executor_options/executor_session_id`; project CRUD validates workspace against `ListWorkspaces()` and executor against `{hermes,dsh,commandcode}`; existing `/api/chat/projects` routes reused, so `routes_inventory_test.go` needs no new entry
+- [x] Slice 2 — chat executors: widen `validChatAgents`; `RunChat` branches non-hermes to `runChatViaExecutor` (remote dispatch with executor + options + `executor_session_id` continuation)
+- [x] Slice 3 — node-agent: `DispatchRequest`/`NodeDispatchRequest` gain `dsh_permission_mode` + `commandcode_mode`; dsh sets `DSH_PERMISSION_MODE`; `commandCodeArgs` honours `plan`/`standard`/`accept-edits`/`yolo`
+- [x] Slice 4 — frontend: `features/projects/*` page + create dialog; composer executor select; model select disabled when executor≠hermes; options select (dsh decision / cc mode)
+- [x] Slice 5 — routing + nav: `Page` += `projects`; `routes.ts` `/projects` + `/projects/:id`; nav manifest row; `App.tsx` lazy route
+- [x] Verify: `go test ./...`, `go vet ./...`, `go build ./cmd/server`, `pnpm --dir web build`, node-agent `GOOS=darwin GOARrm64 go build ./cmd/agent`
 - [ ] Live: project on remote workspace → hermes turn → dsh turn (provenance executor=dsh) → commandcode turn (provenance executor=commandcode); 2nd turn resumes same executor session
 
 ### Change map (file → change)
