@@ -238,6 +238,15 @@ closed. `cmdc` exposes `--plan` / `--permission-mode <standard|plan|accept-edits
 - [x] Verify: `tsc -p tsconfig.json --noEmit` 0 errors, `pnpm build` OK, vitest 219/219, token-lint 0 errors; `go build`/`go vet` OK, `go test ./...` ok except pre-existing `TestResolveOMPIdentityFallsBackToOutputProof`
 - [x] Live: deployed web/dist (ChatPage-CMt9l7Wn.js 200, ProjectDialog-BvYgC98M.js 200, old chunk 404) + rebuilt `bin/kanban-board` (hash `ebdd2b99…`); E2E round-trip — create session w/ `project_id` → `201` bound, project filter includes it, pinned filter includes it, delete `200`
 
+### Slice 7 — Projects *are* the Chat (no separate page)
+
+- [x] Deleted `features/projects/ProjectsPage.tsx` — the `Projects` sidebar entry now renders `ChatPage`, so the rail tree (Pinned / Projects / Recents) is the projects list and its "New project" button is the only create surface. No grid page.
+- [x] Clicking a project in the rail calls `onOpenProject` (opens + expands it); the transcript scopes to that project's sessions (`scopedSessions`).
+- [x] Auto-create on send: `send.mutationFn` is now async — with no `sessionID` it creates one first (title = prompt head, `project_id` when a project is open) and sends into it in the same action; `onSuccess` invalidates by the created session's id. The global auto-create effect skips when `projectID` is set.
+- [x] `routes.ts`: `-` sentinel — `/projects/-/<session>` is the landing view, `/projects/<id>[/<session>]` is a project; without it a landing session id parsed as a project id. `routes.test.ts` covers the collision.
+- [x] Verify: `tsc --noEmit` 0 errors, `pnpm build` OK, vitest 222/222, token-lint 0 errors
+- [x] Live: `web/dist` redeployed (index-Dyjz4hZZ.js, ChatPage-ssMq7vd6.js 200, `ProjectsPage-*` 404, served chunk contains "Start a chat in" + `projects/-/`); E2E auto-create sequence — create w/ `project_id` → `201` bound, project scope lists it, message `202`
+
 ### Change map (file → change)
 
 **`internal/kanban/chat.go`** — schema + structs
