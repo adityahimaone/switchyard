@@ -228,6 +228,16 @@ closed. `cmdc` exposes `--plan` / `--permission-mode <standard|plan|accept-edits
 - [x] Verify: `go test ./...`, `go vet ./...`, `go build ./cmd/server`, `pnpm --dir web build`, node-agent `GOOS=darwin GOARrm64 go build ./cmd/agent`
 - [x] Live: project on remote workspace → hermes turn (marker OK) → commandcode turn (`agent=commandcode`, marker OK, mode `plan` round-trip) → dsh turn (provenance `executor=dsh`, marker OK); 2nd dsh turn resumes same session (`--session-id session-dc7abe2f…`, dsh emits `turn:2`) — answer blocked by external 9router `balance=0` quota, not a resume failure
 
+### Slice 6 — Projects inside Chat (rail tree)
+
+- [x] `features/chat/railTree.ts` — pure partition (pinned wins → project → time-grouped recents) + `railTree.test.ts` (4 tests: bucket ages, pinned-wins-no-double-render, recents grouping); keeps the "shown in exactly one place" rule unit-tested
+- [x] `ChatPage.tsx` — collapsible `Pinned` section + `Projects` section, each project a collapsible node listing its own sessions; per-project "new session" inherits the project's workspace/executor/options and sends `project_id`; header shows the active project name; rail-header "New project" button mounts the shared dialog
+- [x] `features/projects/ProjectDialog.tsx` — shared create/edit dialog (own save mutation, invalidates `chat-projects`) so the grid and the rail use one component; `ProjectsPage.tsx` trimmed to a grid that reuses it
+- [x] `App.tsx` — project-bound `ChatPage` receives `projectName` + `onOpenProject`
+- [x] Fix: `POST /api/chat/sessions` dropped `project_id` (create handler never read the field) → sessions created into a project were stored unbound; now persisted (variadic param, 16 test call sites untouched) + `TestCreateChatSessionBindsProject`
+- [x] Verify: `tsc -p tsconfig.json --noEmit` 0 errors, `pnpm build` OK, vitest 219/219, token-lint 0 errors; `go build`/`go vet` OK, `go test ./...` ok except pre-existing `TestResolveOMPIdentityFallsBackToOutputProof`
+- [x] Live: deployed web/dist (ChatPage-CMt9l7Wn.js 200, ProjectDialog-BvYgC98M.js 200, old chunk 404) + rebuilt `bin/kanban-board` (hash `ebdd2b99…`); E2E round-trip — create session w/ `project_id` → `201` bound, project filter includes it, pinned filter includes it, delete `200`
+
 ### Change map (file → change)
 
 **`internal/kanban/chat.go`** — schema + structs
