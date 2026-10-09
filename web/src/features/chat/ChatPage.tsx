@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Activity, Archive, Check, FileImage, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
+import { Activity, Archive, Check, ChevronRight, FileImage, FolderKanban, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { StatusLamp } from "@/components/ui/status-lamp"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -20,10 +21,12 @@ import { useHeaderTrail } from "@/components/header-trail-context"
 import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
-import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
+import { ProjectDialog } from "@/features/projects/ProjectDialog"
+import { GROUP_ORDER, GROUP_LABEL, buildRailTree } from "./railTree"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 
 /** Sentence case, and a name that matches what the user would say. */
@@ -223,24 +226,6 @@ const CHAT_COMMANDS = [
   { command: "/new", label: "New chat", description: "Start a separate chat room." },
 ]
 
-type GroupKey = "today" | "yesterday" | "prev7" | "prev30" | "older"
-const GROUP_LABEL: Record<GroupKey, string> = { today: "Today", yesterday: "Yesterday", prev7: "Previous 7 days", prev30: "Previous 30 days", older: "Older" }
-const GROUP_ORDER: GroupKey[] = ["today", "yesterday", "prev7", "prev30", "older"]
-
-function groupKeyFor(ts: number): GroupKey {
-  const d = new Date(ts * 1000)
-  const now = new Date()
-  const start = new Date(now); start.setHours(0, 0, 0, 0)
-  const startMs = start.getTime()
-  const dMs = d.getTime()
-  const day = 86400000
-  if (dMs >= startMs) return "today"
-  if (dMs >= startMs - day) return "yesterday"
-  if (dMs >= startMs - 7 * day) return "prev7"
-  if (dMs >= startMs - 30 * day) return "prev30"
-  return "older"
-}
-
 function isLive(w: Workspace): boolean { return w.status === "connected" || w.status === "local" }
 // Empty path is the local sentinel in the composer's workspace select; local
 // has no node-agent, so dsh/commandcode execution cannot run against it.
@@ -292,7 +277,7 @@ function SessionNotice({ text }: { text: string }) {
   </div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectWorkspace, projectExecutor, projectOptions }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectName, projectWorkspace, projectExecutor, projectOptions, onOpenProject }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
@@ -310,6 +295,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const shouldFollowChatRef = useRef(true)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  // Rail section open/closed, keyed by section id ("pinned", "projects",
+  // "recents", or `proj:<id>`). Open by default so the tree reads fully the
+  // first time; the record only stores what the user collapsed.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [newProject, setNewProject] = useState(false)
   const [sessionAction, setSessionAction] = useState<{ kind: SessionAction; session: ChatSession } | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
   const [actionBusy, setActionBusy] = useState(false)
@@ -363,6 +353,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     finally { setAnalyzeBusy(null) }
   }
   const sessions = useQuery({ queryKey: ["chat-sessions", false], queryFn: () => listChatSessions(false) })
+  // The rail's tree reads projects from the same cache the Projects page writes,
+  // so a project created in either place shows up in both without a refetch dance.
+  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects })
   const archivedSessions = useQuery({ queryKey: ["chat-sessions", true], queryFn: () => listChatSessions(true), enabled: showArchived })
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
   const messages = useQuery({ queryKey: ["chat-messages", sessionID], queryFn: () => listChatMessages(sessionID!), enabled: !!sessionID })
@@ -419,6 +412,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     shouldFollowChatRef.current = true
     setShowJumpToLatest(false)
     if (onSessionChange) onSessionChange(id)
+  }
+
+  function toggleSection(id: string) {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
 
@@ -515,11 +512,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     return !query || text.includes(query.toLowerCase())
   }), [query, visibleSessions])
 
-  const grouped = useMemo(() => {
-    const map: Record<GroupKey, ChatSession[]> = { today: [], yesterday: [], prev7: [], prev30: [], older: [] }
-    for (const s of filteredSessions) map[groupKeyFor(s.updated_at)].push(s)
-    return map
-  }, [filteredSessions])
+  /* The rail is a tree, not a flat time list. Pinned sessions float to the top,
+     each project is a collapsible node holding its own sessions, and everything
+     else falls into the time-grouped "Recents" bucket. A session is shown in
+     exactly one place: pinned wins, then its project, then recents — otherwise a
+     pinned session inside a project would render twice. */
+  const railTree = useMemo(() => buildRailTree(filteredSessions), [filteredSessions])
 
   const send = useMutation({
     /* No manual scroll here any more. MessageScroller follows the live edge on
@@ -544,7 +542,18 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
-  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model, executor_options: executorOptions }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
+  async function newChat(project?: ChatProject) {
+    // A session opened inside a project inherits the project's binding so the
+    // first turn runs against the right workspace/executor without the user
+    // re-picking anything.
+    const payload = project
+      ? { title: "New chat", agent: project.executor, profile, workspace: project.workspace, model: "", executor_options: project.options, project_id: project.id }
+      : { title: "New chat", agent, profile, workspace, model, executor_options: executorOptions }
+    const created = await createChatSession(payload)
+    if (project) { setWorkspace(project.workspace); setAgent(project.executor); setExecutorOptions(project.options) }
+    setActive(created.id)
+    await qc.invalidateQueries({ queryKey: ["chat-sessions"] })
+  }
   async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); if (item.agent) setAgent(item.agent); setExecutorOptions(item.executor_options || "{}"); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
   function openSessionAction(kind: SessionAction, item: ChatSession) {
     setSessionAction({ kind, session: item })
@@ -652,7 +661,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           control now sits on the thing it operates rather than in a bar about to
           be deleted. */}
       <div className="flex h-13 shrink-0 items-center justify-between gap-2 px-3">
-        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : "Chats"}</h1>
+        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : projectName || "Chats"}</h1>
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -670,14 +679,24 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             <TooltipContent side="bottom">{showArchived ? "Show active chats" : "Show archived chats"}</TooltipContent>
           </Tooltip>
           {!showArchived && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => void newChat()} aria-label="New chat">
-                  <Plus className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">New chat</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => setNewProject(true)} aria-label="New project">
+                    <FolderKanban className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New project</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => void newChat()} aria-label="New chat">
+                    <Plus className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New chat</TooltipContent>
+              </Tooltip>
+            </>
           )}
           {current.data && !showArchived && (
             <SessionMenu
@@ -705,114 +724,87 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        {filteredSessions.length === 0 ? (
+        {filteredSessions.length === 0 && (projects.data ?? []).length === 0 ? (
           <div className="rounded-card border border-dashed border-line p-4 text-center text-xs text-ink-3">No chat for this filter</div>
         ) : (
-          GROUP_ORDER.map((key) => {
-            const items = grouped[key]
-            if (items.length === 0) return null
-            return (
-              <div key={key} className="mb-3 last:mb-0">
-                {/* Section label: the app's group-label treatment — 12px muted,
-                    uppercase, with the count as a quiet suffix. */}
-                <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
-                  {GROUP_LABEL[key]}
-                  <span className="tabular font-normal tracking-normal normal-case">{items.length}</span>
-                </div>
-                <div className="space-y-0.5">
-                  {items.map((item) => {
-                    const active = item.id === sessionID
-                    /* Selection signal, corrected after measurement.
+          <>
+            {railTree.pinned.length > 0 && (
+              <RailSection id="pinned" label="Pinned" count={railTree.pinned.length} collapsed={collapsed} onToggle={toggleSection}>
+                {railTree.pinned.map((item) => (
+                  <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                ))}
+              </RailSection>
+            )}
 
-                       The first attempt used `border-line bg-surface
-                       shadow-active` to match a "hairline row" reading.
-                       Measured, that was *weaker* than both the app's own active
-                       nav row (`bg-accent/10`) and this row's previous state:
-                       `border-line` on `surface` is 1.26:1 in light and 1.23:1 in
-                       dark, and the 4%-black shadow is a no-op on a near-black
-                       ground — in dark the selection was carried by a 1.23:1
-                       hairline alone, and a hovered row actually measured *more*
-                       selected than the selected one.
-
-                       So the accent tint is back, and it is the app's own
-                       treatment: `accent-tint` with `accent-text` type, the
-                       text-safe pairing the palette already defines. That is what
-                       makes this row read as the same control as the nav rows in
-                       the sidebar beside it.
-
-                       Idle rows carry `border-line` on hover rather than a fill,
-                       because `--c-raised` is `#ffffff` — identical to
-                       `--c-surface` — so `hover:bg-raised` measured as a literal
-                       no-op in light mode with no visible hover state at all. */
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          "group flex w-full items-stretch rounded-lg border transition-colors",
-                          active
-                            ? "border-line bg-accent-tint"
-                            : "border-transparent hover:border-line hover:bg-well",
-                        )}
-                      >
+            {(projects.data ?? []).length > 0 && (
+              <RailSection id="projects" label="Projects" count={(projects.data ?? []).length} collapsed={collapsed} onToggle={toggleSection}>
+                {(projects.data ?? []).map((project) => {
+                  const list = railTree.byProject.get(project.id) ?? []
+                  return (
+                    <div key={project.id} className="mb-0.5">
+                      <div className="group/proj flex items-center gap-1 rounded-lg pr-1 hover:bg-well">
                         <button
                           type="button"
-                          onClick={() => void selectSession(item)}
-                          title={item.title}
-                          aria-current={active ? "page" : undefined}
-                          className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          onClick={() => toggleSection(`proj:${project.id}`)}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          aria-expanded={!collapsed[`proj:${project.id}`]}
                         >
-                          <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
-                            {item.title}
-                          </div>
-                          {/* The meta line only carries what varies. Every row
-                              used to open with its workspace, and `local` is
-                              the default — so most rows rendered the same word,
-                              which is not information but noise, and it is the
-                              widest thing on the line, squeezing the model and
-                              the time out. A row now shows the workspace only
-                              when it is a real one. */}
-                          <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
-                            {item.workspace && item.workspace !== "local" && (
-                              <span className="truncate">{item.workspace.split("/").filter(Boolean).pop()}</span>
-                            )}
-                            {item.model && (
-                              <>
-                                {item.workspace && item.workspace !== "local" && <span aria-hidden>·</span>}
-                                <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
-                              </>
-                            )}
-                            {/* A lamp, not a spinner: the row already says the
-                                session is busy, and the lamp matches the rest
-                                of the app's running state. */}
-                            {activeRunBySession.has(item.id) && (
-                              <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />
-                            )}
-                          </div>
+                          <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
+                          <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || "var(--c-accent)" }} />
+                          <span className={cn("min-w-0 flex-1 truncate text-[13px]", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
+                          <span className="shrink-0 tabular text-2xs text-ink-3">{list.length}</span>
                         </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <button
                               type="button"
-                              aria-label={`Actions for ${item.title}`}
-                              className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+                              aria-label={`New chat in ${project.name}`}
+                              onClick={() => void newChat(project)}
+                              className="shrink-0 rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover/proj:opacity-100"
                             >
-                              <MoreHorizontal className="size-4" />
+                              <Plus className="size-3.5" />
                             </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="border-line bg-raised">
-                            <DropdownMenuItem onSelect={() => openSessionAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => openSessionAction(showArchived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {showArchived ? "Restore" : "Archive"}</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem variant="destructive" onSelect={() => openSessionAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">New chat in project</TooltipContent>
+                        </Tooltip>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })
+                      {!collapsed[`proj:${project.id}`] && (
+                        <div className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-1.5">
+                          {list.length === 0 ? (
+                            <p className="px-2 py-1 text-2xs text-ink-3">No chats yet</p>
+                          ) : list.map((item) => (
+                            <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </RailSection>
+            )}
+
+            <RailSection id="recents" label="Recents" collapsed={collapsed} onToggle={toggleSection}>
+              {GROUP_ORDER.map((key) => {
+                const items = railTree.recentsGrouped[key]
+                if (items.length === 0) return null
+                return (
+                  <div key={key} className="mb-3 last:mb-0">
+                    {/* Section label: the app's group-label treatment — 12px muted,
+                        uppercase, with the count as a quiet suffix. */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
+                      {GROUP_LABEL[key]}
+                      <span className="tabular font-normal tracking-normal normal-case">{items.length}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {items.map((item) => (
+                        <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </RailSection>
+          </>
         )}
       </div>
 
@@ -1217,5 +1209,101 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
         </DetailSheet>
       )}
+      {newProject && (
+        <ProjectDialog
+          workspaces={workspaces}
+          onClose={() => setNewProject(false)}
+          onSaved={(p) => { setNewProject(false); if (onOpenProject) onOpenProject(p) }}
+        />
+      )}
   </div>
+}
+
+/* A collapsible rail section: the chevron + label header the Pinned, Projects
+   and Recents blocks share. Open by default (the caller's `collapsed` record
+   only holds what the user closed), so the tree reads fully the first time. */
+function RailSection({
+  id, label, count, collapsed, onToggle, children,
+}: {
+  id: string
+  label: string
+  count?: number
+  collapsed: Record<string, boolean>
+  onToggle: (id: string) => void
+  children: ReactNode
+}) {
+  const isCollapsed = !!collapsed[id]
+  return (
+    <Collapsible open={!isCollapsed} onOpenChange={() => onToggle(id)} className="mb-2 last:mb-0">
+      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-lg px-2 py-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
+        <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !isCollapsed && "rotate-90")} />
+        <span className="text-2xs font-semibold tracking-wide text-ink-3 uppercase">{label}</span>
+        {count !== undefined && <span className="tabular text-2xs font-normal text-ink-3">{count}</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-0.5 space-y-0.5">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/* One session row. Lifted out of the old inline map so Pinned, a project node
+   and Recents all render the identical control. */
+function RailRow({
+  item, active, running, archived, onSelect, onAction,
+}: {
+  item: ChatSession
+  active: boolean
+  running: boolean
+  archived: boolean
+  onSelect: (item: ChatSession) => void | Promise<void>
+  onAction: (kind: SessionAction, item: ChatSession) => void
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex w-full items-stretch rounded-lg border transition-colors",
+        active ? "border-line bg-accent-tint" : "border-transparent hover:border-line hover:bg-well",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => void onSelect(item)}
+        title={item.title}
+        aria-current={active ? "page" : undefined}
+        className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+      >
+        <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
+          {item.title}
+        </div>
+        <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
+          {item.workspace && item.workspace !== "local" && (
+            <span className="truncate">{item.workspace.split("/").filter(Boolean).pop()}</span>
+          )}
+          {item.model && (
+            <>
+              {item.workspace && item.workspace !== "local" && <span aria-hidden>·</span>}
+              <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
+            </>
+          )}
+          {running && <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />}
+        </div>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Actions for ${item.title}`}
+            className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="border-line bg-raised">
+          <DropdownMenuItem onSelect={() => onAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onAction(archived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {archived ? "Restore" : "Archive"}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => onAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }

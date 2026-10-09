@@ -249,9 +249,11 @@ export default function App() {
                   sidebarOpen={chatSidebarOpen}
                   onToggleSidebar={() => setChatSidebarOpen((v) => !v)}
                   projectID={activeProject.id}
+                  projectName={activeProject.name}
                   projectWorkspace={activeProject.workspace}
                   projectExecutor={activeProject.executor}
                   projectOptions={activeProject.options}
+                  onOpenProject={openProject}
                   onSessionChange={(id) => { setChatRouteID(id); go(`/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}`) }}
                 />
               ) : (
