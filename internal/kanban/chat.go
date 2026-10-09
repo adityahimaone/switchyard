@@ -134,7 +134,7 @@ func newChatID(prefix string) string {
 	return fmt.Sprintf("%s_%08x", prefix, time.Now().UnixNano()&0xffffffff)
 }
 
-func CreateChatSession(title, agent, profile, workspace, model string) (*ChatSession, error) {
+func CreateChatSession(title, agent, profile, workspace, model string, projectID ...string) (*ChatSession, error) {
 	if strings.TrimSpace(title) == "" {
 		title = "New chat"
 	}
@@ -153,8 +153,12 @@ func CreateChatSession(title, agent, profile, workspace, model string) (*ChatSes
 	}
 	defer db.Close()
 	now := time.Now().Unix()
-	s := &ChatSession{ID: newChatID("cs"), Title: strings.TrimSpace(title), Agent: agent, Profile: profile, Workspace: workspace, Model: model, CreatedAt: now, UpdatedAt: now}
-	if _, err := db.Exec(`INSERT INTO chat_sessions (id,title,agent,profile,workspace,model,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`, s.ID, s.Title, s.Agent, s.Profile, s.Workspace, s.Model, s.CreatedAt, s.UpdatedAt); err != nil {
+	pid := ""
+	if len(projectID) > 0 {
+		pid = strings.TrimSpace(projectID[0])
+	}
+	s := &ChatSession{ID: newChatID("cs"), Title: strings.TrimSpace(title), Agent: agent, Profile: profile, Workspace: workspace, Model: model, ProjectID: pid, CreatedAt: now, UpdatedAt: now}
+	if _, err := db.Exec(`INSERT INTO chat_sessions (id,title,agent,profile,workspace,model,project_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, s.ID, s.Title, s.Agent, s.Profile, s.Workspace, s.Model, s.ProjectID, s.CreatedAt, s.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if err := replaceChatTags(db, s.ID, s.Title); err != nil {

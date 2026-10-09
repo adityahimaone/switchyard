@@ -120,6 +120,26 @@ func TestExecutorSessionIDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCreateChatSessionBindsProject(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	// The chat rail creates a session straight into a project; if create drops
+	// project_id the node never lists it and the rail tree silently loses it.
+	s, err := CreateChatSession("t", "hermes", "default", "", "", "cp_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ProjectID != "cp_123" {
+		t.Fatalf("create dropped project_id: %q", s.ProjectID)
+	}
+	got, err := GetChatSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProjectID != "cp_123" {
+		t.Fatalf("stored project_id lost: %q", got.ProjectID)
+	}
+}
+
 func TestChatSessionAcceptsExecutorAgents(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	for _, agent := range []string{"hermes", "dsh", "commandcode"} {

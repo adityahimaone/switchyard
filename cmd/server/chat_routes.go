@@ -30,13 +30,18 @@ func registerChatRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat/sessions", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Title, Agent, Profile, Workspace, Model string
-			ExecutorOptions                         string `json:"executor_options"`
+			ExecutorOptions                         string  `json:"executor_options"`
+			ProjectID                               *string `json:"project_id"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		s, err := kanban.CreateChatSession(req.Title, req.Agent, req.Profile, req.Workspace, req.Model)
+		projectID := ""
+		if req.ProjectID != nil {
+			projectID = strings.TrimSpace(*req.ProjectID)
+		}
+		s, err := kanban.CreateChatSession(req.Title, req.Agent, req.Profile, req.Workspace, req.Model, projectID)
 		if err != nil {
 			fail(w, err, 400)
 			return
