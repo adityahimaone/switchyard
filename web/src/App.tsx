@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
-import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
+import { api, listChatProjects, openEventStream, type Board, type ChatProject, type Profile, type Status, type Task, type Workspace } from "./api"
 import { BoardPage } from "./features/board/BoardPage"
 import type { Page } from "./lib/sidebar-preferences"
 import CommandPalette from "@/components/app/command-palette"
@@ -31,6 +31,7 @@ const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
 const ChatPage = lazy(() => import("./features/chat/ChatPage"))
+const ProjectsPage = lazy(() => import("./features/projects/ProjectsPage"))
 
 export default function App() {
   const initialRoute = useMemo(() => parseRoute(window.location.pathname), [])
@@ -42,6 +43,7 @@ export default function App() {
   const [detail, setDetail] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
+  const [projectID, setProjectID] = useState<string | undefined>(initialRoute.projectID)
   /* Defaults closed below `lg`. The chat rail overlays the transcript at narrow
      widths, so opening it by default put a 280px panel over a viewport that
      cannot spare it — and, measured at 768px, left the "Show chat list" toggle
@@ -72,6 +74,10 @@ export default function App() {
   const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board" })
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
+  // Only needed to render the Projects grid and to resolve a project-bound chat
+  // route; skip the request while the user is elsewhere.
+  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects, enabled: page === "projects" })
+  const activeProject = projectID ? (projects.data ?? []).find((p) => p.id === projectID) ?? null : null
 
   const detailPage = detailId ? (tasks.data ?? []).find((task) => task.id === detailId) ?? null : null
   const chatSessionID = chatRouteID
@@ -91,6 +97,7 @@ export default function App() {
       setDetailId(route.taskId ?? null)
       setDetail(null)
       setChatRouteID(route.chatSessionID ?? undefined)
+      setProjectID(route.projectID ?? undefined)
     }
     window.addEventListener("popstate", onPopState)
     return () => window.removeEventListener("popstate", onPopState)
@@ -137,10 +144,25 @@ export default function App() {
       }
       setChatSidebarOpen(true)
       setChatRouteID(undefined)
+      setProjectID(undefined)
       go("/chat")
+    } else if (p === "projects") {
+      // Sidebar entry shows the grid, never a specific project; the project id
+      // is cleared so the URL cannot keep a stale binding.
+      setProjectID(undefined)
+      setChatRouteID(undefined)
+      go("/projects")
     } else {
+      setProjectID(undefined)
       go(pagePath(p, slug))
     }
+  }
+
+  function openProject(project: ChatProject) {
+    setChatRouteID(undefined)
+    setProjectID(project.id)
+    setPage("projects")
+    go(`/projects/${encodeURIComponent(project.id)}`)
   }
 
   const boardMenuItems = (
@@ -211,6 +233,32 @@ export default function App() {
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
           {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onToggleSidebar={() => setChatSidebarOpen((v) => !v)} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
+          {page === "projects" && !projectID && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <ProjectsPage workspaces={workspaces.data ?? []} onOpenProject={openProject} />
+            </div>
+          )}
+          {page === "projects" && projectID && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {activeProject ? (
+                <ChatPage
+                  key={activeProject.id}
+                  profiles={profiles.data ?? []}
+                  workspaces={workspaces.data ?? []}
+                  initialSessionID={chatSessionID}
+                  sidebarOpen={chatSidebarOpen}
+                  onToggleSidebar={() => setChatSidebarOpen((v) => !v)}
+                  projectID={activeProject.id}
+                  projectWorkspace={activeProject.workspace}
+                  projectExecutor={activeProject.executor}
+                  projectOptions={activeProject.options}
+                  onSessionChange={(id) => { setChatRouteID(id); go(`/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}`) }}
+                />
+              ) : (
+                <LoadingState variant="detail" label="Loading project" />
+              )}
+            </div>
+          )}
           {page === "board" && detailId && detailPage && (
             <TaskDetailPage
               slug={slug}

@@ -21,8 +21,9 @@ import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 
 /** Sentence case, and a name that matches what the user would say. */
@@ -241,6 +242,9 @@ function groupKeyFor(ts: number): GroupKey {
 }
 
 function isLive(w: Workspace): boolean { return w.status === "connected" || w.status === "local" }
+// Empty path is the local sentinel in the composer's workspace select; local
+// has no node-agent, so dsh/commandcode execution cannot run against it.
+function isLocalWorkspace(path: string): boolean { return path === "" }
 
 /* Markdown rendering is `AgentMarkdown`, imported from the board feature.
 
@@ -288,13 +292,15 @@ function SessionNotice({ text }: { text: string }) {
   </div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectWorkspace, projectExecutor, projectOptions }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
   const [profile, setProfile] = useState(() => profiles.find((p) => p.active)?.name ?? "default")
-  const [workspace, setWorkspace] = useState("")
+  const [workspace, setWorkspace] = useState(projectWorkspace ?? "")
   const [model, setModel] = useState("")
+  const [agent, setAgent] = useState<ChatAgent>(projectExecutor ?? "hermes")
+  const [executorOptions, setExecutorOptions] = useState<string>(projectOptions ?? "{}")
   const [modelSearch, setModelSearch] = useState("")
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
@@ -311,7 +317,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const streamBufferRef = useRef<Record<string, string>>({})
   // sync ref for use in event handlers without re-binding effect
   useEffect(() => { streamBufferRef.current = streamBuffer }, [streamBuffer])
-  const agent: ChatAgent = "hermes"
   const initialCreate = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [pendingAtts, setPendingAtts] = useState<Attachment[]>([])
@@ -430,14 +435,26 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   useEffect(() => {
     if (!current.data || current.data.id !== sessionID) return
     setProfile(current.data.profile)
-    setWorkspace(current.data.workspace)
+    setWorkspace(projectID ? (projectWorkspace ?? current.data.workspace) : current.data.workspace)
     setModel(current.data.model)
+    if (current.data.agent) setAgent(current.data.agent)
+    setExecutorOptions(current.data.executor_options || "{}")
   }, [current.data?.id, sessionID]) // ponytail: prop drives initial active session; internal setActive updates caller via onSessionChange
+
+  /* A project owns the workspace and a default executor; the composer may still
+     switch executor for the turn, but the workspace is pinned to the project so
+     chat-to-code never runs against a different tree than the project declares. */
+  useEffect(() => {
+    if (!projectID) return
+    if (projectWorkspace) setWorkspace(projectWorkspace)
+    if (projectExecutor) setAgent(projectExecutor)
+    if (projectOptions) setExecutorOptions(projectOptions)
+  }, [projectID, projectWorkspace, projectExecutor, projectOptions])
 
   useEffect(() => {
     if (sessions.isSuccess && sessions.data?.length === 0 && !initialCreate.current) {
       initialCreate.current = true
-      void createChatSession({ title: "New chat", agent: "hermes", profile, workspace: "", model: "" }).then((created) => {
+      void createChatSession({ title: "New chat", agent, profile, workspace, model: "", executor_options: executorOptions }).then((created) => {
         setActive(created.id)
         void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
       }).catch(() => { initialCreate.current = false })
@@ -517,16 +534,18 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     },
     mutationFn: () => {
       if (uploading) throw new Error("Wait for attachment upload to finish")
-      if (model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
+      // The model roster only applies to hermes; dsh/commandcode fix their own model.
+      if (agent === "hermes" && model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
       const ids = pendingAtts.map((a) => a.id)
-      if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
-      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model, attachment_ids: ids })
+      const opts = agent === "hermes" ? undefined : executorOptions
+      if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts })
+      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts, attachment_ids: ids })
     },
     onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
-  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
-  async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
+  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model, executor_options: executorOptions }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
+  async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); if (item.agent) setAgent(item.agent); setExecutorOptions(item.executor_options || "{}"); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
   function openSessionAction(kind: SessionAction, item: ChatSession) {
     setSessionAction({ kind, session: item })
     setRenameDraft(item.title)
@@ -1005,6 +1024,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 the dropdowns are unchanged for keyboard and pointer users — only
                 the box is removed. `PROMPT_CHIP` is shared by all three because
                 they must not drift apart. */}
+            <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgent)}>
+              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Executor">
+                <SelectValue placeholder="Executor" />
+              </SelectTrigger>
+              <SelectContent>
+                {EXECUTORS.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select value={profile || "default"} onValueChange={setProfile}>
               <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
@@ -1031,8 +1061,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace">
+            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)} disabled={!!projectID}>
+              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace" disabled={!!projectID}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1054,33 +1084,56 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
-                <SelectValue placeholder="Default model" />
-              </SelectTrigger>
-              {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
-                    past the viewport top on short windows: Radix anchors a
-                    `position="popper"` panel to the trigger and will not push it
-                    above, so the panel has to be willing to shrink. The sticky
-                    search row above still pins inside it. */}
-              <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
-                  <Input
-                    value={modelSearch}
-                    onChange={(event) => setModelSearch(event.target.value)}
-                    placeholder="Search models"
-                    aria-label="Search models"
-                  />
-                </div>
-                <SelectItem value="__default">Default model</SelectItem>
-                {filteredModelOptions.length === 0 && (
-                  <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
-                )}
-                {filteredModelOptions.map((v) => (
-                  <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {agent === "hermes" ? (
+              <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
+                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
+                  <SelectValue placeholder="Default model" />
+                </SelectTrigger>
+                {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
+                      past the viewport top on short windows: Radix anchors a
+                      `position="popper"` panel to the trigger and will not push it
+                      above, so the panel has to be willing to shrink. The sticky
+                      search row above still pins inside it. */}
+                <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
+                  <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+                    <Input
+                      value={modelSearch}
+                      onChange={(event) => setModelSearch(event.target.value)}
+                      placeholder="Search models"
+                      aria-label="Search models"
+                    />
+                  </div>
+                  <SelectItem value="__default">Default model</SelectItem>
+                  {filteredModelOptions.length === 0 && (
+                    <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
+                  )}
+                  {filteredModelOptions.map((v) => (
+                    <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : executorDef(agent).option ? (
+              /* dsh/commandcode fix their own model, so the roster select is
+                 replaced by the executor's own knob: dsh's sandbox/approval
+                 decision, or commandcode's permission mode. */
+              <Select
+                value={optionValue(executorOptions, agent)}
+                onValueChange={(v) => setExecutorOptions((prev) => withOption(prev, agent, v))}
+              >
+                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label={executorDef(agent).option!.label}>
+                  <SelectValue placeholder={executorDef(agent).option!.label} />
+                </SelectTrigger>
+                <SelectContent>
+                  {executorDef(agent).option!.choices.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+
+            {agent !== "hermes" && isLocalWorkspace(workspace) && (
+              <span className="text-2xs text-danger-text">execution needs a remote workspace</span>
+            )}
 
             <input
               ref={fileRef}

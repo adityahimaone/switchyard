@@ -5,11 +5,12 @@ export type AppRoute = {
   slug?: string
   taskId?: string
   chatSessionID?: string
+  projectID?: string
 }
 
 const PAGES = new Set<Page>([
   "overview", "board", "workspaces", "profiles", "providers", "logs", "skills",
-  "memory", "agent-mapping", "knowledge", "cron", "ecosystem", "chat", "settings",
+  "memory", "agent-mapping", "knowledge", "cron", "ecosystem", "chat", "projects", "settings",
 ])
 
 export function parseRoute(pathname: string): AppRoute {
@@ -25,6 +26,7 @@ export function parseRoute(pathname: string): AppRoute {
   }
 
   if (root === "chat") return { page: "chat", chatSessionID: second }
+  if (root === "projects") return { page: "projects", projectID: second, chatSessionID: third }
   if (root && PAGES.has(root as Page)) return { page: root as Page }
   return { page: "overview", slug: "f8-saas" }
 }
@@ -36,5 +38,6 @@ export function pagePath(page: Page, slug: string, taskId?: string): string {
       : `/board/${encodeURIComponent(slug)}`
   }
   if (page === "chat" && slug) return `/chat/${encodeURIComponent(slug)}`
+  if (page === "projects" && slug) return `/projects/${encodeURIComponent(slug)}`
   return `/${page}`
 }
