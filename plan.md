@@ -203,3 +203,252 @@ Design: `docs/superpowers/specs/2026-09-24-dsh-health-overview-design.md`
 - [ ] Verify: frontend build, go test ./..., go vet ./..., git diff --check
 - [ ] Deploy: VPS binary + Mac node-agent (darwin arm64, launchd restart)
 - [ ] Live verify: Mac node shows dsh_health.ok=true with real version/model
+
+## Active roadmap — Projects (chat-to-code)
+
+Design: `docs/superpowers/specs/2026-10-10-projects-chat-code-design.md`
+
+A Project = named container bound to one registered workspace, holding chats that
+code directly (no Kanban flow). Chat executor selectable: `hermes` (model free) |
+`dsh` (model locked, user picks decision/permission preset) | `commandcode` (model
+locked, user picks mode). Projects limited to `~/.hermes/workspaces.json` paths.
+
+Verified on live Mac: `dsh --profile headless` has no approval flag; sandbox+approval
+come from env `DSH_PERMISSION_MODE` (read-only|workspace-write|danger-full-access) in
+`@deepseek-ai/dsh-base/cordis.patch.yml`. node-agent sets no DSH_PERMISSION_MODE today
+→ pins workspace-write+ask, and headless ships no approval answerer → `ask` fails
+closed. `cmdc` exposes `--plan` / `--permission-mode <standard|plan|accept-edits|yolo>`
+/ `--yolo`.
+
+- [ ] Slice 1 — backend: `chat_projects` gains `workspace/executor/options/description`; `chat_sessions` gains `executor_options/executor_session_id`; project CRUD validates workspace against `ListWorkspaces()` and executor against `{hermes,dsh,commandcode}`; add routes to `routes_inventory_test.go`
+- [ ] Slice 2 — chat executors: widen `validChatAgents`; `RunChat` branches non-hermes to `runChatViaExecutor` (remote dispatch with executor + options + `executor_session_id` continuation)
+- [ ] Slice 3 — node-agent: `DispatchRequest`/`NodeDispatchRequest` gain `dsh_permission_mode` + `commandcode_mode`; dsh sets `DSH_PERMISSION_MODE`; `commandCodeArgs` honours `plan`/`standard`/`accept-edits`/`yolo`
+- [ ] Slice 4 — frontend: `features/projects/*` page + create dialog; composer executor select; model select disabled when executor≠hermes; options select (dsh decision / cc mode)
+- [ ] Slice 5 — routing + nav: `Page` += `projects`; `routes.ts` `/projects` + `/projects/:id`; nav manifest row; `App.tsx` lazy route
+- [ ] Verify: `go test ./...`, `go vet ./...`, `go build ./cmd/server`, `pnpm --dir web build`, node-agent `GOOS=darwin GOARrm64 go build ./cmd/agent`
+- [ ] Live: project on remote workspace → hermes turn → dsh turn (provenance executor=dsh) → commandcode turn (provenance executor=commandcode); 2nd turn resumes same executor session
+
+### Change map (file → change)
+
+**`internal/kanban/chat.go`** — schema + structs
+
+Add to the `ensureChatDB` stmt list (and to the fresh `CREATE TABLE chat_projects`):
+
+```go
+`ALTER TABLE chat_projects ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`,
+`ALTER TABLE chat_projects ADD COLUMN executor TEXT NOT NULL DEFAULT 'hermes'`,
+`ALTER TABLE chat_projects ADD COLUMN options TEXT NOT NULL DEFAULT '{}'`,
+`ALTER TABLE chat_projects ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+`ALTER TABLE chat_sessions ADD COLUMN executor_options TEXT NOT NULL DEFAULT '{}'`,
+`ALTER TABLE chat_sessions ADD COLUMN executor_session_id TEXT NOT NULL DEFAULT ''`,
+```
+
+Widen agents (chat.go):
+
+```go
+var validChatAgents = map[string]bool{"hermes": true, "dsh": true, "commandcode": true}
+```
+
+Add `ExecutorOptions`, `ExecutorSessionID` to `ChatSession`; `SetExecutorSessionID`
+mirrors `SetHermesSessionID`. All session SELECTs (`ListChatSessions`,
+`GetChatSession`, `UpdateChatSession`) must add the two columns to the list and
+`Scan` args.
+
+**`internal/kanban/chat_workspace.go`** — project CRUD
+
+```go
+type ChatProject struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Workspace   string `json:"workspace"`
+	Executor    string `json:"executor"`
+	Options     string `json:"options"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
+var projectExecutors = map[string]bool{"hermes": true, "dsh": true, "commandcode": true}
+
+func ValidateProjectWorkspace(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" { return fmt.Errorf("workspace required") }
+	list, err := ListWorkspaces()
+	if err != nil { return err }
+	for _, w := range list { if w.Path == path { return nil } }
+	return fmt.Errorf("workspace %q is not registered", path)
+}
+```
+
+`CreateChatProject(name, color, workspace, executor, options, description string)` and
+`UpdateChatProject` gain the same params; both call `ValidateProjectWorkspace` and
+reject `executor` not in `projectExecutors`. Update the caller in
+`cmd/server/chat_routes.go` and `chat_workspace_test.go` in the same commit.
+
+**`internal/kanban/chat_exec.go`** — executor branch
+
+`chatCommand` stays hermes-only. In `RunChat`, after the routing/confirmation block
+and before the hermes daemon/CLI path:
+
+```go
+if agent != "hermes" {
+	runChatViaExecutor(ctx, runID, agent, profile, workspace, model, prompt)
+	return
+}
+```
+
+```go
+type chatExecutorOptions struct {
+	DSHPermissionMode string `json:"permission_mode"`
+	CommandCodeMode   string `json:"mode"`
+}
+
+func parseExecutorOptions(raw string) chatExecutorOptions {
+	var o chatExecutorOptions
+	_ = json.Unmarshal([]byte(raw), &o)
+	return o
+}
+
+func runChatViaExecutor(ctx context.Context, runID, executor, profile, workspace, model, prompt string) {
+	_ = AppendChatRunEvent(runID, "phase", `{"phase":"executor_resolved","label":"Resolved executor"}`)
+	run, _ := GetChatRun(runID)
+	var session *ChatSession
+	if run != nil { session, _ = GetChatSession(run.SessionID) }
+	opts := chatExecutorOptions{}
+	if session != nil { opts = parseExecutorOptions(session.ExecutorOptions) }
+	req := NodeDispatchRequest{
+		TaskID: runID, Title: "Chat: " + chatTitleFromPrompt(prompt), Board: "default",
+		Message: prompt, Workspace: workspace, Model: model, Provider: profile,
+		Executor: executor, DSHPermissionMode: opts.DSHPermissionMode, CommandCodeMode: opts.CommandCodeMode,
+	}
+	if session != nil && session.ExecutorSessionID != "" {
+		req.SessionContinuation = true
+		ApplyHarnessIdentity(&req, executor, session.ExecutorSessionID)
+	}
+	res, err := DispatchRemoteWithProgress(req, RemoteDispatchWait(), func(chunk string) {
+		appendChatProgressLines(runID, "", chunk)
+	})
+	if err != nil { _ = UpdateChatRunState(runID, "error", "", err.Error()); return }
+	if res == nil || !res.Success {
+		msg := "remote agent failed"
+		if res != nil && res.Error != "" { msg = res.Error }
+		_ = UpdateChatRunState(runID, "error", "", msg)
+		return
+	}
+	if sid := firstNonEmpty(res.DSHSessionID, res.CommandCodeSessionID, res.SessionID); sid != "" && session != nil {
+		_ = SetExecutorSessionID(session.ID, sid)
+	}
+	_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"executor":%q}`, len(res.Output), executor))
+	_ = UpdateChatRunState(runID, "done", res.Output, "")
+	if r, e := GetChatRun(runID); e == nil { _, _ = CreateChatMessage(r.SessionID, "assistant", res.Output, r.ID) }
+}
+```
+
+Add `firstNonEmpty` helper (or inline). Non-hermes chat requires a remote workspace:
+guard `if isLocalWorkspace(workspace) { error "execution executor requires a remote workspace" }`.
+
+**`internal/kanban/nodeagent.go`** — request mirror
+
+```go
+DSHPermissionMode string `json:"dsh_permission_mode,omitempty"`
+CommandCodeMode   string `json:"commandcode_mode,omitempty"`
+```
+
+**`~/apps/node-agent/internal/transport/transport.go`** — same two fields on `DispatchRequest`.
+
+**`~/apps/node-agent/cmd/agent/main.go`** — executor knobs
+
+dsh case, after `cmd.Env = dshCommandEnv()`:
+
+```go
+if mode := strings.TrimSpace(job.DSHPermissionMode); mode != "" {
+	cmd.Env = append(cmd.Env, "DSH_PERMISSION_MODE="+mode)
+}
+```
+
+commandcode:
+
+```go
+func commandCodeArgs(job transport.DispatchRequest, jsonOutput bool) []string {
+	args := []string{"-p", "--skip-onboarding"}
+	switch strings.TrimSpace(job.CommandCodeMode) {
+	case "plan":
+		args = append(args, "--plan")
+	case "accept-edits":
+		args = append(args, "--accept-edits")
+	case "yolo", "":
+		args = append(args, "--yolo")
+	default: // standard
+		args = append(args, "--permission-mode", "standard")
+	}
+	if jsonOutput {
+		args = append(args, "--output-format", "json")
+	} else {
+		args = append(args, "--output-format", "text")
+	}
+	if sessionID := strings.TrimSpace(job.CommandCodeSessionID); sessionID != "" {
+		args = append(args, "--resume", sessionID)
+	}
+	return args
+}
+```
+
+**`web/src/api.ts`**
+
+```ts
+export type ChatAgent = "hermes" | "dsh" | "commandcode"
+export interface ChatProject { id: string; name: string; color: string; workspace: string; executor: ChatAgent; options: string; description: string; created_at: number }
+export function createChatProject(input: { name: string; color?: string; workspace: string; executor?: ChatAgent; options?: string; description?: string }) { return api<ChatProject>("/api/chat/projects", { method: "POST", body: JSON.stringify(input) }) }
+export function updateChatProject(id: string, input: Partial<{ name: string; color: string; workspace: string; executor: ChatAgent; options: string; description: string }>) { return api<ChatProject>(`/api/chat/projects/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+```
+
+`sendChatMessage` input gains `executor_options?: string`.
+
+**`web/src/features/projects/ProjectsPage.tsx`** (new) — card grid of projects;
+create/edit dialog with workspace `Select` (from `listWorkspaces()`), executor
+`Select`, and executor-options `Select`; row opens `/projects/:id`.
+
+**`web/src/features/chat/ChatPage.tsx`** — new optional props
+`projectID?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string`.
+When `projectID` is set: lock `workspace` to `projectWorkspace`, default
+`executor`/`options` from the project, send `executor_options` on messages.
+Add local `executor` state; when `executor !== "hermes"` hide the model `Select` and
+render the options `Select`:
+
+```tsx
+{executor === "hermes" ? (/* existing model Select */ null) : executor === "dsh" ? (
+  <Select value={dshMode} onValueChange={setDshMode}>
+    <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="DSH decision"><SelectValue /></SelectTrigger>
+    <SelectContent>
+      <SelectItem value="danger-full-access">Full access (auto-approve)</SelectItem>
+      <SelectItem value="workspace-write">Workspace write</SelectItem>
+      <SelectItem value="read-only">Read only</SelectItem>
+    </SelectContent>
+  </Select>
+) : (
+  <Select value={ccMode} onValueChange={setCcMode}>
+    <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Command Code mode"><SelectValue /></SelectTrigger>
+    <SelectContent>
+      <SelectItem value="yolo">Bypass (yolo)</SelectItem>
+      <SelectItem value="plan">Plan mode</SelectItem>
+      <SelectItem value="accept-edits">Accept edits</SelectItem>
+      <SelectItem value="standard">Standard</SelectItem>
+    </SelectContent>
+  </Select>
+)}
+```
+
+Default DSH decision to `danger-full-access` (see fail-closed caveat). Executor
+`Select` in the same leading controls row: `hermes` / `DeepSeek Harness` / `Command Code`.
+
+**`web/src/components/chat/composer.tsx`** — no signature change; the executor and
+options selects ride in the existing `controls` slot.
+
+**`web/src/lib/sidebar-preferences.ts`** — add `"projects"` to `Page`.
+**`web/src/lib/routes.ts`** — add `"projects"` to `PAGES`; `parseRoute` →
+`{ page: "projects", chatSessionID: second }` for `/projects/:id`; `pagePath` →
+`/projects` and `/projects/<id>`.
+**`web/src/components/app-shared.tsx`** — add `{ title: "Projects", page: "projects", icon: <FolderKanbanIcon /> }` to the Work group.
+**`web/src/App.tsx`** — `lazy(() => import("./features/projects/ProjectsPage"))`, route state for project id, render `page === "projects"`.
+
+**`cmd/server/routes_inventory_test.go`** — add every new/changed pattern to `expectedRoutes`.
