@@ -23,8 +23,10 @@ type ChatSession struct {
 	UpdatedAt       int64    `json:"updated_at"`
 	Archived        bool     `json:"archived"`
 	Pinned          bool     `json:"pinned"`
-	ProjectID       string   `json:"project_id"`
-	Tags            []string `json:"tags"`
+	ProjectID         string   `json:"project_id"`
+	ExecutorOptions   string   `json:"executor_options,omitempty"`
+	ExecutorSessionID string   `json:"executor_session_id,omitempty"`
+	Tags              []string `json:"tags"`
 }
 
 type ChatMessage struct {
@@ -78,7 +80,7 @@ func broadcastChatLifecycle(r *ChatRun) {
 	broadcastEvent("chat_run_state", ChatLifecycleEvent{SessionID: r.SessionID, RunID: r.ID, MessageID: r.MessageID, State: r.State})
 }
 
-var validChatAgents = map[string]bool{"hermes": true}
+var validChatAgents = map[string]bool{"hermes": true, "dsh": true, "commandcode": true}
 var validChatStates = map[string]bool{"loading": true, "running": true, "done": true, "error": true, "cancelled": true}
 
 func chatDBPath() string { return filepath.Join(hermesHome(), "kanban", "chat.db") }
@@ -97,7 +99,13 @@ func ensureChatDB() (*sql.DB, error) {
 		`ALTER TABLE chat_sessions ADD COLUMN hermes_session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE chat_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''`,
-		`CREATE TABLE IF NOT EXISTS chat_projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`,
+		`ALTER TABLE chat_sessions ADD COLUMN executor_options TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE chat_sessions ADD COLUMN executor_session_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS chat_projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '', workspace TEXT NOT NULL DEFAULT '', executor TEXT NOT NULL DEFAULT 'hermes', options TEXT NOT NULL DEFAULT '{}', description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`,
+		`ALTER TABLE chat_projects ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE chat_projects ADD COLUMN executor TEXT NOT NULL DEFAULT 'hermes'`,
+		`ALTER TABLE chat_projects ADD COLUMN options TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE chat_projects ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_projects_name_nocase ON chat_projects(name COLLATE NOCASE)`,
 		`CREATE TABLE IF NOT EXISTS chat_session_tags (session_id TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY(session_id, tag)) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS chat_fork_links (fork_id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, source_message_id TEXT NOT NULL, created_at INTEGER NOT NULL)`,
@@ -166,7 +174,7 @@ func ListChatSessions(archived bool, filters ...string) ([]ChatSession, error) {
 	if archived {
 		archivedValue = 1
 	}
-	q, args := `SELECT s.id,s.title,s.agent,s.profile,s.workspace,s.model,s.hermes_session_id,s.created_at,s.updated_at,s.archived,s.pinned,s.project_id,COALESCE((SELECT GROUP_CONCAT(tag, ',') FROM chat_session_tags WHERE session_id=s.id ORDER BY tag),'') FROM chat_sessions s WHERE s.archived=?`, []any{archivedValue}
+	q, args := `SELECT s.id,s.title,s.agent,s.profile,s.workspace,s.model,s.hermes_session_id,s.executor_options,s.executor_session_id,s.created_at,s.updated_at,s.archived,s.pinned,s.project_id,COALESCE((SELECT GROUP_CONCAT(tag, ',') FROM chat_session_tags WHERE session_id=s.id ORDER BY tag),'') FROM chat_sessions s WHERE s.archived=?`, []any{archivedValue}
 	if len(filters) > 0 && strings.TrimSpace(filters[0]) != "" {
 		q += ` AND (s.title LIKE ? COLLATE NOCASE OR EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id=s.id AND m.content LIKE ? COLLATE NOCASE))`
 		needle := "%" + strings.TrimSpace(filters[0]) + "%"
@@ -194,7 +202,7 @@ func ListChatSessions(archived bool, filters ...string) ([]ChatSession, error) {
 		var s ChatSession
 		var archivedInt, pinnedInt int
 		var tags string
-		if err := rows.Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID, &tags); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.ExecutorOptions, &s.ExecutorSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID, &tags); err != nil {
 			return nil, err
 		}
 		s.Archived, s.Pinned = archivedInt != 0, pinnedInt != 0
@@ -219,7 +227,7 @@ func GetChatSession(id string) (*ChatSession, error) {
 	defer db.Close()
 	var s ChatSession
 	var archivedInt, pinnedInt int
-	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID); err != nil {
+	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,executor_options,executor_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&s.ID, &s.Title, &s.Agent, &s.Profile, &s.Workspace, &s.Model, &s.HermesSessionID, &s.ExecutorOptions, &s.ExecutorSessionID, &s.CreatedAt, &s.UpdatedAt, &archivedInt, &pinnedInt, &s.ProjectID); err != nil {
 		return nil, err
 	}
 	s.Archived, s.Pinned = archivedInt != 0, pinnedInt != 0
@@ -238,7 +246,7 @@ func UpdateChatSession(id string, title, agent, profile, workspace, model *strin
 	defer db.Close()
 	var cur ChatSession
 	var archivedInt, pinnedInt int
-	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&cur.ID, &cur.Title, &cur.Agent, &cur.Profile, &cur.Workspace, &cur.Model, &cur.HermesSessionID, &cur.CreatedAt, &cur.UpdatedAt, &archivedInt, &pinnedInt, &cur.ProjectID); err != nil {
+	if err := db.QueryRow(`SELECT id,title,agent,profile,workspace,model,hermes_session_id,executor_options,executor_session_id,created_at,updated_at,archived,pinned,project_id FROM chat_sessions WHERE id=?`, id).Scan(&cur.ID, &cur.Title, &cur.Agent, &cur.Profile, &cur.Workspace, &cur.Model, &cur.HermesSessionID, &cur.ExecutorOptions, &cur.ExecutorSessionID, &cur.CreatedAt, &cur.UpdatedAt, &archivedInt, &pinnedInt, &cur.ProjectID); err != nil {
 		return nil, err
 	}
 	if title != nil {
@@ -569,6 +577,40 @@ func SetHermesSessionID(id, sessionID string) error {
 
 func ClearHermesSessionID(id string) error {
 	return SetHermesSessionID(id, "")
+}
+
+// SetExecutorOptions snapshots the executor option blob (dsh decision / command
+// code mode) chosen when a session was created, so every turn reuses it.
+func SetExecutorOptions(id, options string) error {
+	if strings.TrimSpace(options) == "" {
+		options = "{}"
+	}
+	db, err := ensureChatDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE chat_sessions SET executor_options=?, updated_at=? WHERE id=?`, options, time.Now().Unix(), id); err != nil {
+		return err
+	}
+	broadcastEvent("chat_session_updated", map[string]any{"session_id": id})
+	return nil
+}
+
+// SetExecutorSessionID stores the durable continuation id for a non-hermes
+// executor (dsh/commandcode). Kept separate from hermes_session_id so the two
+// executors never overwrite each other's resume handle.
+func SetExecutorSessionID(id, sessionID string) error {
+	db, err := ensureChatDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE chat_sessions SET executor_session_id=?, updated_at=? WHERE id=?`, sessionID, time.Now().Unix(), id); err != nil {
+		return err
+	}
+	broadcastEvent("chat_session_updated", map[string]any{"session_id": id})
+	return nil
 }
 
 func ActiveChatRun(sessionID string) (*ChatRun, error) {

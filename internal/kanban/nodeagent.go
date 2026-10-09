@@ -164,7 +164,14 @@ type NodeDispatchRequest struct {
 	Acceptance           string `json:"acceptance,omitempty"`
 	DSHWorkspaceID       string `json:"dsh_workspace_id,omitempty"`
 	DSHSessionID         string `json:"dsh_session_id,omitempty"`
-	HarnessKind          string `json:"harness_kind,omitempty"`
+	// DSHPermissionMode is the user-selected sandbox/approval preset for a dsh
+	// chat turn (read-only|workspace-write|danger-full-access). Empty leaves the
+	// node-agent default. Set from the Project's executor options.
+	DSHPermissionMode string `json:"dsh_permission_mode,omitempty"`
+	// CommandCodeMode is the user-selected Command Code mode for a chat turn
+	// (standard|plan|accept-edits|yolo). Empty leaves the node-agent default.
+	CommandCodeMode string `json:"commandcode_mode,omitempty"`
+	HarnessKind     string `json:"harness_kind,omitempty"`
 	CommandCodeSessionID string `json:"commandcode_session_id,omitempty"`
 	OMPSessionID         string `json:"omp_session_id,omitempty"`
 	ClaudeSessionID      string `json:"claude_session_id,omitempty"`

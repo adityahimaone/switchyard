@@ -193,3 +193,51 @@ func TestClearHermesSessionIDFunc(t *testing.T) {
 		t.Fatalf("expected cleared, got %q", got.HermesSessionID)
 	}
 }
+
+func TestParseExecutorOptions(t *testing.T) {
+	o := parseExecutorOptions(`{"permission_mode":"read-only","mode":"plan"}`)
+	if o.DSHPermissionMode != "read-only" || o.CommandCodeMode != "plan" {
+		t.Fatalf("opts=%+v", o)
+	}
+	if got := parseExecutorOptions(""); got.DSHPermissionMode != "" || got.CommandCodeMode != "" {
+		t.Fatalf("empty opts=%+v", got)
+	}
+	if got := parseExecutorOptions("not json"); got.DSHPermissionMode != "" {
+		t.Fatalf("garbage opts=%+v", got)
+	}
+}
+
+func TestRunChatViaExecutorRequiresRemoteWorkspace(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	s, err := CreateChatSession("t", "dsh", "default", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := CreateChatMessage(s.ID, "user", "do work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := CreateChatRun(s.ID, m.ID, "dsh", "default", "", "", "do work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A local/empty workspace must fail closed before any remote dispatch.
+	runChatViaExecutor(context.Background(), run.ID, "dsh", "default", "", "", "do work")
+	got, err := GetChatRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "error" || !strings.Contains(got.Error, "remote workspace") {
+		t.Fatalf("state=%q error=%q", got.State, got.Error)
+	}
+}
+
+func TestRunChatNonHermesDoesNotUseChatCommand(t *testing.T) {
+	// chatCommand stays hermes-only; the executor branch is what handles dsh/cc.
+	if _, err := chatCommand("dsh", "default", "", "x", ""); err == nil {
+		t.Fatal("chatCommand must reject non-hermes agents")
+	}
+	if _, err := chatCommand("commandcode", "default", "", "x", ""); err == nil {
+		t.Fatal("chatCommand must reject non-hermes agents")
+	}
+}

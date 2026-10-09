@@ -86,10 +86,11 @@ func TestChatWorkspaceProjectTagsAndSearch(t *testing.T) {
 
 func TestChatProjectNamesAreCaseInsensitive(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
-	if _, err := CreateChatProject("Agents", ""); err != nil {
+	seedWorkspaces(t, "/Users/dev/one")
+	if _, err := CreateChatProject("Agents", "", "/Users/dev/one", "hermes", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateChatProject(" agents ", ""); err == nil {
+	if _, err := CreateChatProject(" agents ", "", "/Users/dev/one", "hermes", "", ""); err == nil {
 		t.Fatal("duplicate project name accepted")
 	}
 }
