@@ -226,7 +226,7 @@ closed. `cmdc` exposes `--plan` / `--permission-mode <standard|plan|accept-edits
 - [x] Slice 4 — frontend: `features/projects/*` page + create dialog; composer executor select; model select disabled when executor≠hermes; options select (dsh decision / cc mode)
 - [x] Slice 5 — routing + nav: `Page` += `projects`; `routes.ts` `/projects` + `/projects/:id`; nav manifest row; `App.tsx` lazy route
 - [x] Verify: `go test ./...`, `go vet ./...`, `go build ./cmd/server`, `pnpm --dir web build`, node-agent `GOOS=darwin GOARrm64 go build ./cmd/agent`
-- [ ] Live: project on remote workspace → hermes turn → dsh turn (provenance executor=dsh) → commandcode turn (provenance executor=commandcode); 2nd turn resumes same executor session
+- [x] Live: project on remote workspace → hermes turn (marker OK) → commandcode turn (`agent=commandcode`, marker OK, mode `plan` round-trip) → dsh turn (provenance `executor=dsh`, marker OK); 2nd dsh turn resumes same session (`--session-id session-dc7abe2f…`, dsh emits `turn:2`) — answer blocked by external 9router `balance=0` quota, not a resume failure
 
 ### Change map (file → change)
 
