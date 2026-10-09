@@ -73,9 +73,10 @@ export default function App() {
   const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board" })
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
-  // Only needed to render the Projects grid and to resolve a project-bound chat
-  // route; skip the request while the user is elsewhere.
-  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects, enabled: page === "projects" })
+  // Projects are chats, not a page: the Chat rail lists them, so resolve the
+  // active project whenever Chat is up (it needs the binding to scope the
+  // transcript). Skipped elsewhere.
+  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects, enabled: page === "chat" })
   const activeProject = projectID ? (projects.data ?? []).find((p) => p.id === projectID) ?? null : null
 
   const detailPage = detailId ? (tasks.data ?? []).find((task) => task.id === detailId) ?? null : null
@@ -137,7 +138,9 @@ export default function App() {
     setDetailId(null)
     setPage(p)
     if (p === "chat") {
-      if (page === "chat") {
+      // Re-clicking Chat while already on the flat list toggles the rail; coming
+      // from a project (or another page) returns to the flat list.
+      if (page === "chat" && !projectID) {
         setChatSidebarOpen((value) => !value)
         return
       }
@@ -145,12 +148,6 @@ export default function App() {
       setChatRouteID(undefined)
       setProjectID(undefined)
       go("/chat")
-    } else if (p === "projects") {
-      // Sidebar entry shows the grid, never a specific project; the project id
-      // is cleared so the URL cannot keep a stale binding.
-      setProjectID(undefined)
-      setChatRouteID(undefined)
-      go("/projects")
     } else {
       setProjectID(undefined)
       go(pagePath(p, slug))
@@ -160,7 +157,7 @@ export default function App() {
   function openProject(project: ChatProject) {
     setChatRouteID(undefined)
     setProjectID(project.id)
-    setPage("projects")
+    setPage("chat")
     go(`/projects/${encodeURIComponent(project.id)}`)
   }
 
@@ -231,10 +228,9 @@ export default function App() {
           {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
-          {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onToggleSidebar={() => setChatSidebarOpen((v) => !v)} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
-          {page === "projects" && (
+          {page === "chat" && (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {projectID && !activeProject ? (
+              {projectID && !activeProject && projects.isLoading ? (
                 <LoadingState variant="detail" label="Loading project" />
               ) : (
                 <ChatPage
@@ -250,7 +246,7 @@ export default function App() {
                   projectExecutor={activeProject?.executor}
                   projectOptions={activeProject?.options}
                   onOpenProject={openProject}
-                  onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : `/projects/-/${encodeURIComponent(id)}`) }}
+                  onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : pagePath("chat", id)) }}
                 />
               )}
             </div>

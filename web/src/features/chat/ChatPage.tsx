@@ -353,8 +353,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     finally { setAnalyzeBusy(null) }
   }
   const sessions = useQuery({ queryKey: ["chat-sessions", false], queryFn: () => listChatSessions(false) })
-  // The rail's tree reads projects from the same cache the Projects page writes,
-  // so a project created in either place shows up in both without a refetch dance.
+  // The rail's tree reads projects from the shared cache the create dialog
+  // writes, so a project created here shows up immediately without a refetch dance.
   const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects })
   const archivedSessions = useQuery({ queryKey: ["chat-sessions", true], queryFn: () => listChatSessions(true), enabled: showArchived })
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })

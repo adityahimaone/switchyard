@@ -10,7 +10,7 @@ export type AppRoute = {
 
 const PAGES = new Set<Page>([
   "overview", "board", "workspaces", "profiles", "providers", "logs", "skills",
-  "memory", "agent-mapping", "knowledge", "cron", "ecosystem", "chat", "projects", "settings",
+  "memory", "agent-mapping", "knowledge", "cron", "ecosystem", "chat", "settings",
 ])
 
 export function parseRoute(pathname: string): AppRoute {
@@ -27,11 +27,11 @@ export function parseRoute(pathname: string): AppRoute {
 
   if (root === "chat") return { page: "chat", chatSessionID: second }
   if (root === "projects") {
-    // `/projects` and `/projects/-/<session>` are the landing (all projects);
-    // `/projects/<id>[/<session>]` is a project. Without the `-` sentinel a
-    // landing-view session id would be parsed as a project id.
-    if (second === "-") return { page: "projects", chatSessionID: third }
-    return { page: "projects", projectID: second, chatSessionID: third }
+    // Projects are chats, not a page of their own: the Chat rail lists them and
+    // clicking one opens this view, so these URLs render the Chat page. The `-`
+    // sentinel keeps a landing-view session id from being read as a project id.
+    if (second === "-") return { page: "chat", chatSessionID: third }
+    return { page: "chat", projectID: second, chatSessionID: third }
   }
   if (root && PAGES.has(root as Page)) return { page: root as Page }
   return { page: "overview", slug: "f8-saas" }
@@ -44,6 +44,5 @@ export function pagePath(page: Page, slug: string, taskId?: string): string {
       : `/board/${encodeURIComponent(slug)}`
   }
   if (page === "chat" && slug) return `/chat/${encodeURIComponent(slug)}`
-  if (page === "projects" && slug) return `/projects/${encodeURIComponent(slug)}`
   return `/${page}`
 }

@@ -9,7 +9,6 @@ import {
 	ServerCogIcon,
 	BrainIcon,
 	FolderGitIcon,
-	FolderKanbanIcon,
 	ClockIcon,
 	BoxesIcon,
 	SettingsIcon,
@@ -47,7 +46,6 @@ export const navGroups: SidebarNavGroup[] = [
 		label: "Work",
 		items: [
 			{ title: "Board", page: "board", icon: <KanbanSquareIcon /> },
-			{ title: "Projects", page: "projects", icon: <FolderKanbanIcon /> },
 			{ title: "Chat", page: "chat", icon: <MessageSquareIcon /> },
 			{ title: "Flow map", page: "agent-mapping", icon: <RouteIcon /> },
 			{ title: "Knowledge", page: "knowledge", icon: <NetworkIcon /> },
