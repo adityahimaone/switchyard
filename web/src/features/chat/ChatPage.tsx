@@ -917,15 +917,52 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         contentClassName="mx-auto max-w-[44rem] space-y-6 pr-12"
       >
         {activeMessages.length === 0 && !run ? (
-          <div className="rounded-card border border-dashed border-line bg-surface p-6">
-            <div className="text-sm font-medium text-ink">{projectName ? `Start a chat in ${projectName}` : "Start a conversation"}</div>
-            <div className="mt-1 text-sm leading-6 text-ink-3">
-              {projectName
-                ? `Type a prompt and a new session is created here automatically.${scopedSessions.length ? ` ${scopedSessions.length} chat${scopedSessions.length === 1 ? "" : "s"} already in this project.` : ""}`
-                : "Pick a prompt or type your own. Agent runs show live context activity."}
+          projectID ? (
+            /* Project landing: opening a project shows every session it holds,
+               so you pick one to continue or just type below — the composer
+               creates a new session on enter (see the send mutation). */
+            <div className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-sm font-medium text-ink">{projectName ?? "Project"}</h2>
+                <span className="text-2xs text-ink-3">{scopedSessions.length} chat{scopedSessions.length === 1 ? "" : "s"}</span>
+              </div>
+              {scopedSessions.length === 0 ? (
+                <div className="rounded-card border border-dashed border-line bg-surface p-6">
+                  <div className="text-sm font-medium text-ink">No chats yet in {projectName ?? "this project"}</div>
+                  <div className="mt-1 text-sm leading-6 text-ink-3">Type a prompt below — a new session is created and runs here automatically.</div>
+                </div>
+              ) : (
+                <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+                  {scopedSessions.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => void selectSession(item)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] text-ink">{item.title}</span>
+                          <span className="mt-0.5 block truncate text-2xs text-ink-3">
+                            {item.agent}
+                            {item.workspace && item.workspace !== "local" ? ` · ${item.workspace.split("/").filter(Boolean).pop()}` : ""}
+                            {` · ${new Date(item.updated_at * 1000).toLocaleString()}`}
+                          </span>
+                        </span>
+                        {activeRunBySession.has(item.id) && <StatusLamp status="running" label="Running" size="sm" className="shrink-0" />}
+                        <ChevronRight className="size-4 shrink-0 text-ink-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+          ) : (
+          <div className="rounded-card border border-dashed border-line bg-surface p-6">
+            <div className="text-sm font-medium text-ink">Start a conversation</div>
+            <div className="mt-1 text-sm leading-6 text-ink-3">Pick a prompt or type your own. Agent runs show live context activity.</div>
             <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40">{example}</button>)}</div>
           </div>
+          )
         ) : activeMessages.map((message) => (
           /* `data-slot="message"` and `data-from` are what MessageScroller's
              navigation rail queries to build its list, and it reads the row's
@@ -971,7 +1008,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         running={isRunning}
         phase={run?.state === "error" ? "Failed" : run?.state === "done" ? "Finished" : "Working"}
         placeholder={profile ? `Message ${profile}` : "Message the agent"}
-        disabled={!sessionID || send.isPending || uploading}
+        /* No `!sessionID` gate: with no session yet the first send creates one
+           (project landing + flat chat), so the composer must stay typeable. */
+        disabled={send.isPending || uploading}
         /* PromptInput owns the Plus menu, so the existing dropdown becomes its
            action list and the three selects move to the leading slot. Same
            behaviour and same handlers, one implementation. */
