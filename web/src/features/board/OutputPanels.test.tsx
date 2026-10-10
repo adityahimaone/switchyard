@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { parseHarnessResult, parseHarnessLogEvents } from "./OutputPanels"
+import { renderToStaticMarkup } from "react-dom/server"
+import { parseHarnessResult, parseHarnessLogEvents, HarnessChatResult } from "./OutputPanels"
 
 const commandCodeOutput = [
   'provenance executor=commandcode requested=commandcode bin=/usr/local/bin/cmd args=["-p"] ws=/Users/example/repo commandcode_session_id=cc-9f4e',
@@ -98,6 +99,32 @@ describe("parseHarnessResult", () => {
     expect(parsed.provenance?.bin).toBe("/opt/homebrew/bin/dsh")
     // No raw JSON leaks into the answer surface.
     expect(parsed.answer).not.toContain("{")
+  })
+})
+
+describe("HarnessChatResult", () => {
+  const raw = [
+    'provenance executor=dsh requested=dsh bin=/opt/homebrew/bin/dsh args=["--profile" "headless" "--json"] ws=/Users/adityahimawan/Development/habbit-tracking-next dsh_session_id=session-853d3b4e',
+    '{"type":"tool_call","callId":"call_01","tool":"bash","input":{"command":"echo OKE"}}',
+    '{"type":"text","text":"OKE"}',
+    '{"type":"final","text":"OKE"}',
+    "EXECUTOR_PROOF=dsh",
+  ].join("\n")
+
+  it("renders the answer as the message, not the raw JSON stream", () => {
+    const out = renderToStaticMarkup(<HarnessChatResult text={raw} executor="dsh" />)
+    expect(out).toContain("OKE")
+    expect(out).not.toContain('"type":"tool_call"')
+    expect(out).not.toContain("EXECUTOR_PROOF")
+  })
+
+  it("puts the harness metadata in a collapsed footnote (closed by default)", () => {
+    const out = renderToStaticMarkup(<HarnessChatResult text={raw} executor="dsh" />)
+    expect(out).toContain("DeepSeek Harness")
+    expect(out).toContain("habbit-tracking-next") // workspace, derived from ws=
+    // Collapsed: the provenance grid and raw trace are not rendered until opened.
+    expect(out).not.toContain("/opt/homebrew/bin/dsh")
+    expect(out).not.toContain("Session")
   })
 })
 

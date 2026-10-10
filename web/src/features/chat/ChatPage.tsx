@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
-import { ResultPanel } from "@/features/board/OutputPanels"
+import { HarnessChatResult } from "@/features/board/OutputPanels"
 import { AgentProgress } from "@/components/agents/loading-states"
 import { TaskList, type TaskListTask } from "@/TodoList"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -993,14 +993,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgEvents = isLiveRunMessage ? mergeActivityEvents(events.data ?? [], liveEvents) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const response = splitResponseText(messageStreaming ? (run?.id ? (answerBuffer[run.id] ?? "") : "") : (message.content || msgRun?.output || ""))
                   // dsh/commandcode turns store the harness's raw stream (provenance
-                  // + JSON events + final). Render it with the same ResultPanel the
-                  // Kanban task view uses — provenance, answer, collapsible trace —
-                  // instead of dumping the JSON into the markdown renderer.
+                  // + JSON events + final). Render the answer as the message and
+                  // push the harness metadata to a collapsed footnote below it,
+                  // so a chat turn reads like a chat — not like a task panel.
                   const harness = msgRun && msgRun.agent !== "hermes" ? msgRun.agent : undefined
                   const rawOutput = message.content || msgRun?.output || ""
                   return <><SessionNotice text={response.notice} />{harness && !messageStreaming ? (
                     <div className="space-y-2">
-                      <ResultPanel text={rawOutput} hasWorking={false} executor={harness} />
+                      <HarnessChatResult text={rawOutput} executor={harness} />
                       <div className="flex min-h-7 items-center gap-0.5 text-[var(--color-ink-3)]"><MessageFooter run={msgRun} sessionID={sessionID} isStreaming={false} messageCreatedAt={message.created_at} /></div>
                     </div>
                   ) : (
