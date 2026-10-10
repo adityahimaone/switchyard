@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
+import { ResultPanel } from "@/features/board/OutputPanels"
 import { AgentProgress } from "@/components/agents/loading-states"
 import { TaskList, type TaskListTask } from "@/TodoList"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -991,7 +992,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = isLiveRunMessage ? mergeActivityEvents(events.data ?? [], liveEvents) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const response = splitResponseText(messageStreaming ? (run?.id ? (answerBuffer[run.id] ?? "") : "") : (message.content || msgRun?.output || ""))
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} />{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  // dsh/commandcode turns store the harness's raw stream (provenance
+                  // + JSON events + final). Render it with the same ResultPanel the
+                  // Kanban task view uses — provenance, answer, collapsible trace —
+                  // instead of dumping the JSON into the markdown renderer.
+                  const harness = msgRun && msgRun.agent !== "hermes" ? msgRun.agent : undefined
+                  const rawOutput = message.content || msgRun?.output || ""
+                  return <><SessionNotice text={response.notice} />{harness && !messageStreaming ? (
+                    <div className="space-y-2">
+                      <ResultPanel text={rawOutput} hasWorking={false} executor={harness} />
+                      <div className="flex min-h-7 items-center gap-0.5 text-[var(--color-ink-3)]"><MessageFooter run={msgRun} sessionID={sessionID} isStreaming={false} messageCreatedAt={message.created_at} /></div>
+                    </div>
+                  ) : (
+                    <StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} /></StreamingText>
+                  )}{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
