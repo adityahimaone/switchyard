@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import { AgentOrb } from "./thinking-orb"
 
 export function ThinkingShimmer({ children = "Thinking…", className }: { children?: React.ReactNode; className?: string }) {
   return <span className={cn("thinking-shimmer", className)}>{children}</span>
@@ -61,18 +62,16 @@ export function AgentProgress({ label = "Working", elapsedSeconds, initialSecond
     return () => window.clearInterval(timer)
   }, [elapsedSeconds, initialSeconds, running])
   const elapsed = elapsedSeconds ?? internalSeconds
-  // A pulsing lamp instead of an animated orb. The app already uses this
-  // treatment for every other running thing, and an orb was decoration
-  // competing with the status it was meant to communicate.
+  // The thinking orb, not a pulsing lamp. The orb's nine states let the
+  // animation say *what* the agent is doing (searching, solving, composing),
+  // which the run's phase label already claims in words right next to it.
   return (
     <span
       role="status"
       aria-label={`${label}, in progress`}
       className={cn("inline-flex items-center gap-2 text-sm text-ink-2", className)}
     >
-      <span aria-hidden className="relative inline-block size-2 shrink-0 rounded-full bg-accent">
-        <span className="absolute inset-0 animate-lamp rounded-full bg-accent" />
-      </span>
+      <AgentOrb state={running ? "running" : "idle"} phase={label} size={20} />
       <span className="font-medium">
         <ScrambleText text={label} />
       </span>

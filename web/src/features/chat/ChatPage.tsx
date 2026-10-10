@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { StatusLamp } from "@/components/ui/status-lamp"
+import { AgentOrb } from "@/components/agents/thinking-orb"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MessageScroller } from "@/components/agents/message-scroller"
@@ -949,7 +949,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                             {` · ${new Date(item.updated_at * 1000).toLocaleString()}`}
                           </span>
                         </span>
-                        {activeRunBySession.has(item.id) && <StatusLamp status="running" label="Running" size="sm" className="shrink-0" />}
+                        {activeRunBySession.has(item.id) && <AgentOrb state="running" size={20} className="shrink-0" label="Running" />}
                         <ChevronRight className="size-4 shrink-0 text-ink-3" />
                       </button>
                     </li>
@@ -1372,7 +1372,7 @@ function RailRow({
               <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
             </>
           )}
-          {running && <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />}
+          {running && <AgentOrb state="running" size={20} className="ml-auto shrink-0" label="Running" />}
         </div>
       </button>
       <DropdownMenu>
