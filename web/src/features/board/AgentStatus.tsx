@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Check, ChevronDown, RotateCw, X } from "lucide-react"
+import { BoardLoader } from "@/components/ui/board-loader"
 import type { Task, TaskEvent } from "../../api"
-
-const CHEVRON = Array.from({ length: 9 }, (_, index) => {
-  const row = Math.floor(index / 3)
-  const column = index % 3
-  return (column + Math.abs(row - 1)) * 90
-})
 
 const EVENT_LABELS: Record<string, string> = {
   created: "Task created",
@@ -49,18 +44,12 @@ export function useElapsed(startedAt?: number | null, endAt?: number | null, act
     : `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`
 }
 
-function LoaderGrid() {
-  return (
-    <span aria-hidden className="grid shrink-0 grid-cols-[repeat(3,4px)] gap-[1.5px]">
-      {CHEVRON.map((delay, index) => (
-        <span
-          key={index}
-          className="size-1 rounded-[1px] bg-[var(--c-accent)]"
-          style={{ opacity: 0.18, animation: `pixel-on 650ms ease-in-out ${delay}ms infinite` }}
-        />
-      ))}
-    </span>
-  )
+/* The board loader: the Dot Matrix 3×3 glyph (`@dotmatrix/dotm-3x3-21`) behind
+   a thin wrapper. It replaced a hand-rolled 3×3 pixel grid with the same idea
+   but no pause state — the registry component keeps its frame when stopped, so
+   a stalled card still shows a loader instead of an empty box. */
+function LoaderGrid({ active = true }: { active?: boolean } = {}) {
+  return <BoardLoader running={active} size={14} />
 }
 
 /* Synchronized circular progress ring: arc sweeps the circumference once per
@@ -146,7 +135,7 @@ export function RunningIndicator({ startedAt, endAt, compact = false }: { starte
   const elapsed = useElapsed(startedAt, endAt, !endAt)
   return (
     <span role="status" aria-label={`Running for ${elapsed}`} className={`inline-flex items-center ${compact ? "gap-2" : "gap-2.5"}`}>
-      <LoaderGrid />
+      <LoaderGrid active={!endAt} />
       <span className="font-mono text-meta tabular-nums text-ink-3">{elapsed}</span>
     </span>
   )
@@ -184,7 +173,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
     <section className="glass-inset-card min-w-0 rounded-lg p-2.5" aria-label="Agent progress">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {live ? <LoaderGrid /> : <span className={`size-2 shrink-0 rounded-full ${task.status === "done" || task.status === "review" ? "bg-success" : "bg-ink-4"}`} aria-hidden />}
+          {live ? <LoaderGrid active /> : <span className={`size-2 shrink-0 rounded-full ${task.status === "done" || task.status === "review" ? "bg-success" : "bg-ink-4"}`} aria-hidden />}
           <h2 className="truncate text-2xs font-semibold tracking-[0.14em] text-ink-3 uppercase">Agent progress</h2>
         </div>
         <div className="flex shrink-0 items-center gap-1">

@@ -137,6 +137,13 @@ func timeChatAnswer(prompt string, now time.Time) (string, bool) {
 func RunChat(ctx context.Context, runID, agent, profile, workspace, model, prompt string) {
 	_ = UpdateChatRunState(runID, "running", "", "")
 	_ = AppendChatRunEvent(runID, "spawned", fmt.Sprintf(`{"agent":%q,"profile":%q}`, agent, profile))
+	// Non-hermes executors (dsh, commandcode) are remote harnesses with their own
+	// session model and no Hermes routing/task-creation semantics. They never run
+	// the hermes fast path, daemon, or CLI below.
+	if agent != "" && agent != "hermes" {
+		runChatViaExecutor(ctx, runID, agent, profile, workspace, model, prompt)
+		return
+	}
 	originalPrompt := prompt
 	route, recent, routeErr := routeChatForRun(ctx, runID, prompt, workspace)
 	runRecord, _ := GetChatRun(runID)
@@ -314,6 +321,83 @@ func RunChat(ctx context.Context, runID, agent, profile, workspace, model, promp
 	_ = UpdateChatRunState(runID, "done", result, "")
 	if r, err := GetChatRun(runID); err == nil {
 		_, _ = CreateChatMessage(r.SessionID, "assistant", result, r.ID)
+	}
+}
+
+// chatExecutorOptions is the JSON blob stored on a Project (and snapshotted onto
+// each session) that carries the per-executor knob the user picked. dsh uses
+// permission_mode (its sandbox/approval preset); commandcode uses mode.
+type chatExecutorOptions struct {
+	DSHPermissionMode string `json:"permission_mode"`
+	CommandCodeMode   string `json:"mode"`
+}
+
+func parseExecutorOptions(raw string) chatExecutorOptions {
+	var o chatExecutorOptions
+	_ = json.Unmarshal([]byte(raw), &o)
+	return o
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// runChatViaExecutor runs a non-hermes chat turn through the node-agent. dsh and
+// commandcode are remote-only harnesses: they need a registered remote workspace
+// (the node that owns the DSH_HOME / cmdc install) and carry their own session
+// identity, persisted on the session so the next turn resumes the same run.
+func runChatViaExecutor(ctx context.Context, runID, executor, profile, workspace, model, prompt string) {
+	if isLocalWorkspace(workspace) {
+		_ = UpdateChatRunState(runID, "error", "", "execution executor requires a remote workspace")
+		return
+	}
+	_ = AppendChatRunEvent(runID, "phase", `{"phase":"executor_resolved","label":"Resolved executor"}`)
+	run, _ := GetChatRun(runID)
+	var session *ChatSession
+	if run != nil {
+		session, _ = GetChatSession(run.SessionID)
+	}
+	opts := chatExecutorOptions{}
+	if session != nil {
+		opts = parseExecutorOptions(session.ExecutorOptions)
+	}
+	req := NodeDispatchRequest{
+		TaskID: runID, Title: "Chat: " + chatTitleFromPrompt(prompt), Board: "default",
+		Message: prompt, Workspace: workspace, Model: model, Provider: profile,
+		Executor: executor, DSHPermissionMode: opts.DSHPermissionMode, CommandCodeMode: opts.CommandCodeMode,
+	}
+	if session != nil && session.ExecutorSessionID != "" {
+		req.SessionContinuation = true
+		ApplyHarnessIdentity(&req, executor, session.ExecutorSessionID)
+	}
+	progress := ""
+	res, err := DispatchRemoteWithProgress(req, RemoteDispatchWait(), func(chunk string) {
+		progress = appendChatProgressLines(runID, progress, chunk)
+	})
+	if err != nil {
+		_ = UpdateChatRunState(runID, "error", "", err.Error())
+		return
+	}
+	if res == nil || !res.Success {
+		msg := "remote agent failed"
+		if res != nil && res.Error != "" {
+			msg = res.Error
+		}
+		_ = UpdateChatRunState(runID, "error", "", msg)
+		return
+	}
+	if sid := firstNonEmpty(res.DSHSessionID, res.CommandCodeSessionID, res.SessionID); sid != "" && session != nil {
+		_ = SetExecutorSessionID(session.ID, sid)
+	}
+	_ = AppendChatRunEvent(runID, "completed", fmt.Sprintf(`{"bytes":%d,"executor":%q}`, len(res.Output), executor))
+	_ = UpdateChatRunState(runID, "done", res.Output, "")
+	if r, err := GetChatRun(runID); err == nil {
+		_, _ = CreateChatMessage(r.SessionID, "assistant", res.Output, r.ID)
 	}
 }
 

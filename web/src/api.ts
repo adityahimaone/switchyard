@@ -777,10 +777,10 @@ export function toastGlobal(message: string, tone: "success" | "error" | "info" 
   window.dispatchEvent(new CustomEvent("kb-toast", { detail: { message, tone } }))
 }
 
-export type ChatAgent = "hermes"
+export type ChatAgent = "hermes" | "dsh" | "commandcode"
 export type ChatState = "loading" | "running" | "done" | "error" | "cancelled"
-export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; created_at: number; updated_at: number; archived?: boolean; pinned?: boolean; project_id?: string; tags?: string[] }
-export interface ChatProject { id: string; name: string; color: string; created_at: number }
+export interface ChatSession { id: string; title: string; agent: ChatAgent; profile: string; workspace: string; model: string; hermes_session_id?: string; executor_options?: string; executor_session_id?: string; created_at: number; updated_at: number; archived?: boolean; pinned?: boolean; project_id?: string; tags?: string[] }
+export interface ChatProject { id: string; name: string; color: string; workspace: string; executor: ChatAgent; options: string; description: string; created_at: number }
 export interface ChatForkLink { fork_id: string; source_session_id: string; source_message_id: string; created_at: number }
 export interface ChatLineage { forks: ChatForkLink[]; source: ChatForkLink | null }
 export interface ChatExport { session: Omit<ChatSession, "id" | "hermes_session_id"> & { id?: string; hermes_session_id?: never }; messages: ChatMessage[] }
@@ -794,8 +794,8 @@ export function createChatSession(input: Partial<ChatSession>) { return api<Chat
 export function getChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}`) }
 export function updateChatSession(id: string, input: { title?: string; pinned?: boolean; project_id?: string }) { return api<ChatSession>(`/api/chat/sessions/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
 export function listChatProjects() { return api<ChatProject[]>("/api/chat/projects") }
-export function createChatProject(input: { name: string; color?: string }) { return api<ChatProject>("/api/chat/projects", { method: "POST", body: JSON.stringify(input) }) }
-export function updateChatProject(id: string, input: { name?: string; color?: string }) { return api<ChatProject>(`/api/chat/projects/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
+export function createChatProject(input: { name: string; color?: string; workspace: string; executor?: ChatAgent; options?: string; description?: string }) { return api<ChatProject>("/api/chat/projects", { method: "POST", body: JSON.stringify(input) }) }
+export function updateChatProject(id: string, input: { name?: string; color?: string; workspace?: string; executor?: ChatAgent; options?: string; description?: string }) { return api<ChatProject>(`/api/chat/projects/${id}`, { method: "PATCH", body: JSON.stringify(input) }) }
 export function deleteChatProject(id: string) { return api<{ ok: boolean }>(`/api/chat/projects/${id}`, { method: "DELETE" }) }
 export function duplicateChatSession(id: string) { return api<ChatSession>(`/api/chat/sessions/${id}/duplicate`, { method: "POST" }) }
 export function forkChatSession(id: string, message_id: string) { return api<ChatSession>(`/api/chat/sessions/${id}/fork`, { method: "POST", body: JSON.stringify({ message_id }) }) }
@@ -824,7 +824,7 @@ export async function uploadAttachment(file: File) {
 }
 export function attachmentURL(id: string) { return `/api/attachments/${id}` }
 export function analyzeAttachment(id: string, model: string, prompt = "") { return api<{ result: string; model: string; mime: string }>(`/api/attachments/${id}/analyze`, { method: "POST", body: JSON.stringify({ model, prompt }) }) }
-export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string; attachment_ids?: string[] }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
+export function sendChatMessage(id: string, input: { content: string; agent?: string; profile?: string; workspace?: string; model?: string; executor_options?: string; attachment_ids?: string[] }) { return api<{ message: ChatMessage; run: ChatRun }>(`/api/chat/sessions/${id}/messages`, { method: "POST", body: JSON.stringify(input) }) }
 export function getChatRun(id: string) { return api<ChatRun>(`/api/chat/runs/${id}`) }
 export function listChatRunEvents(id: string) { return api<ChatRunEvent[]>(`/api/chat/runs/${id}/events`) }
 export interface ProviderInput { name: string; base_url: string; api_key?: string; default_model?: string }

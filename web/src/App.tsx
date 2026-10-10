@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
-import { api, openEventStream, type Board, type Profile, type Status, type Task, type Workspace } from "./api"
+import { api, listChatProjects, openEventStream, type Board, type ChatProject, type Profile, type Status, type Task, type Workspace } from "./api"
 import { BoardPage } from "./features/board/BoardPage"
 import type { Page } from "./lib/sidebar-preferences"
 import CommandPalette from "@/components/app/command-palette"
@@ -42,6 +42,7 @@ export default function App() {
   const [detail, setDetail] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(initialRoute.taskId ?? null)
   const [chatRouteID, setChatRouteID] = useState<string | undefined>(initialRoute.chatSessionID)
+  const [projectID, setProjectID] = useState<string | undefined>(initialRoute.projectID)
   /* Defaults closed below `lg`. The chat rail overlays the transcript at narrow
      widths, so opening it by default put a 280px panel over a viewport that
      cannot spare it — and, measured at 768px, left the "Show chat list" toggle
@@ -72,6 +73,11 @@ export default function App() {
   const tasks = useQuery({ queryKey: ["tasks", slug], queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`), enabled: page === "board" })
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: () => api<Workspace[]>("/api/workspaces") })
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api<Profile[]>("/api/profiles") })
+  // Projects are chats, not a page: the Chat rail lists them, so resolve the
+  // active project whenever Chat is up (it needs the binding to scope the
+  // transcript). Skipped elsewhere.
+  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects, enabled: page === "chat" })
+  const activeProject = projectID ? (projects.data ?? []).find((p) => p.id === projectID) ?? null : null
 
   const detailPage = detailId ? (tasks.data ?? []).find((task) => task.id === detailId) ?? null : null
   const chatSessionID = chatRouteID
@@ -91,6 +97,7 @@ export default function App() {
       setDetailId(route.taskId ?? null)
       setDetail(null)
       setChatRouteID(route.chatSessionID ?? undefined)
+      setProjectID(route.projectID ?? undefined)
     }
     window.addEventListener("popstate", onPopState)
     return () => window.removeEventListener("popstate", onPopState)
@@ -131,16 +138,27 @@ export default function App() {
     setDetailId(null)
     setPage(p)
     if (p === "chat") {
-      if (page === "chat") {
+      // Re-clicking Chat while already on the flat list toggles the rail; coming
+      // from a project (or another page) returns to the flat list.
+      if (page === "chat" && !projectID) {
         setChatSidebarOpen((value) => !value)
         return
       }
       setChatSidebarOpen(true)
       setChatRouteID(undefined)
+      setProjectID(undefined)
       go("/chat")
     } else {
+      setProjectID(undefined)
       go(pagePath(p, slug))
     }
+  }
+
+  function openProject(project: ChatProject) {
+    setChatRouteID(undefined)
+    setProjectID(project.id)
+    setPage("chat")
+    go(`/projects/${encodeURIComponent(project.id)}`)
   }
 
   const boardMenuItems = (
@@ -210,7 +228,29 @@ export default function App() {
           {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
-          {page === "chat" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><ChatPage profiles={profiles.data ?? []} workspaces={workspaces.data ?? []} initialSessionID={chatSessionID} sidebarOpen={chatSidebarOpen} onToggleSidebar={() => setChatSidebarOpen((v) => !v)} onSessionChange={(id) => { setChatRouteID(id); go(pagePath("chat", id)) }} /></div>}
+          {page === "chat" && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {projectID && !activeProject && projects.isLoading ? (
+                <LoadingState variant="detail" label="Loading project" />
+              ) : (
+                <ChatPage
+                  key={activeProject?.id ?? "all"}
+                  profiles={profiles.data ?? []}
+                  workspaces={workspaces.data ?? []}
+                  initialSessionID={chatSessionID}
+                  sidebarOpen={chatSidebarOpen}
+                  onToggleSidebar={() => setChatSidebarOpen((v) => !v)}
+                  projectID={activeProject?.id}
+                  projectName={activeProject?.name}
+                  projectWorkspace={activeProject?.workspace}
+                  projectExecutor={activeProject?.executor}
+                  projectOptions={activeProject?.options}
+                  onOpenProject={openProject}
+                  onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : pagePath("chat", id)) }}
+                />
+              )}
+            </div>
+          )}
           {page === "board" && detailId && detailPage && (
             <TaskDetailPage
               slug={slug}

@@ -28,15 +28,30 @@ func registerChatRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, items)
 	})
 	mux.HandleFunc("POST /api/chat/sessions", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Title, Agent, Profile, Workspace, Model string }
+		var req struct {
+			Title, Agent, Profile, Workspace, Model string
+			ExecutorOptions                         string  `json:"executor_options"`
+			ProjectID                               *string `json:"project_id"`
+		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		s, err := kanban.CreateChatSession(req.Title, req.Agent, req.Profile, req.Workspace, req.Model)
+		projectID := ""
+		if req.ProjectID != nil {
+			projectID = strings.TrimSpace(*req.ProjectID)
+		}
+		s, err := kanban.CreateChatSession(req.Title, req.Agent, req.Profile, req.Workspace, req.Model, projectID)
 		if err != nil {
 			fail(w, err, 400)
 			return
+		}
+		if strings.TrimSpace(req.ExecutorOptions) != "" {
+			if err := kanban.SetExecutorOptions(s.ID, req.ExecutorOptions); err == nil {
+				if updated, getErr := kanban.GetChatSession(s.ID); getErr == nil {
+					s = updated
+				}
+			}
 		}
 		writeJSON(w, 201, s)
 	})
@@ -50,14 +65,18 @@ func registerChatRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /api/chat/projects", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Name  string `json:"name"`
-			Color string `json:"color"`
+			Name        string `json:"name"`
+			Color       string `json:"color"`
+			Workspace   string `json:"workspace"`
+			Executor    string `json:"executor"`
+			Options     string `json:"options"`
+			Description string `json:"description"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		p, err := kanban.CreateChatProject(req.Name, req.Color)
+		p, err := kanban.CreateChatProject(req.Name, req.Color, req.Workspace, req.Executor, req.Options, req.Description)
 		if err != nil {
 			fail(w, err, 400)
 			return
@@ -66,14 +85,18 @@ func registerChatRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("PATCH /api/chat/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Name  *string `json:"name"`
-			Color *string `json:"color"`
+			Name        *string `json:"name"`
+			Color       *string `json:"color"`
+			Workspace   *string `json:"workspace"`
+			Executor    *string `json:"executor"`
+			Options     *string `json:"options"`
+			Description *string `json:"description"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		p, err := kanban.UpdateChatProject(r.PathValue("id"), req.Name, req.Color)
+		p, err := kanban.UpdateChatProject(r.PathValue("id"), req.Name, req.Color, req.Workspace, req.Executor, req.Options, req.Description)
 		if err != nil {
 			fail(w, err, 400)
 			return
@@ -206,6 +229,7 @@ func registerChatRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Content, Agent, Profile, Workspace, Model string
+			ExecutorOptions                           string   `json:"executor_options"`
 			AttachmentIDs                             []string `json:"attachment_ids"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
@@ -236,6 +260,11 @@ func registerChatRoutes(mux *http.ServeMux) {
 		if err := kanban.ValidateChatModel(req.Profile, req.Model); err != nil {
 			fail(w, err, 400)
 			return
+		}
+		// Snapshot the executor knob onto the session so the next turn and any
+		// resume reuse the exact decision/mode the user picked this turn.
+		if strings.TrimSpace(req.ExecutorOptions) != "" {
+			_ = kanban.SetExecutorOptions(s.ID, req.ExecutorOptions)
 		}
 		m, err := kanban.CreateChatMessage(s.ID, "user", req.Content, "")
 		if err != nil {

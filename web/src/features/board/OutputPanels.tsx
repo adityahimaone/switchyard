@@ -816,6 +816,69 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
   )
 }
 
+/* Chat-shaped rendering for a harness turn (dsh/commandcode/claude/omp).
+
+   The transcript should read like a chat, not like a task result: the answer is
+   the message, and the harness's provenance/trace is metadata that belongs at
+   the bottom, collapsed. `DshResultPanel` (the Kanban task view) leads with a
+   provenance grid — right for a card's "what did the worker do" panel, wrong
+   inside a conversation, where the answer is the point and the executor is a
+   footnote. */
+export function HarnessChatResult({ text, executor }: { text: string; executor: Task["executor"] }) {
+  const parsed = useMemo(() => parseHarnessResult(text, executor), [text, executor])
+  const [open, setOpen] = useState(false)
+  const harnessName = executor === "commandcode" ? "Command Code" : executor === "claude" ? "[CC]" : executor === "omp" ? "omp" : "DeepSeek Harness"
+  const workspace = parsed.provenance?.workspace ?? ""
+  const workspaceName = workspace ? workspace.split("/").filter(Boolean).pop() : ""
+  const traceCount = parsed.events.length
+
+  return (
+    <div className="space-y-2.5">
+      <AgentMarkdown text={parsed.answer} />
+
+      {/* The harness footnote: who ran this, in which tree, and a door into the
+          trace. One quiet row under the answer instead of a panel above it. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-3">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--c-line)] px-2 py-0.5 text-2xs text-ink-3 transition-colors hover:border-[var(--c-accent)]/40 hover:text-ink-2"
+        >
+          <BrainCircuit className="size-3" />
+          <span className="font-medium text-ink-2">{harnessName}</span>
+          <ChevronDown className={`size-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+        </button>
+        {workspaceName && <span className="truncate font-mono" title={workspace}>{workspaceName}</span>}
+        {parsed.provenance?.sessionId && <span className="hidden truncate font-mono sm:inline" title={parsed.provenance.sessionId}>{parsed.provenance.sessionId}</span>}
+        {traceCount > 0 && <span className="tabular">{traceCount} events</span>}
+      </div>
+
+      {open && (
+        <div className="space-y-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-well)]/60 p-2.5">
+          {parsed.provenance && (
+            <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+              {[
+                ["Session", parsed.provenance.sessionId],
+                ["Workspace", parsed.provenance.workspace],
+                ["CWD", parsed.provenance.cwd],
+                ["Binary", parsed.provenance.bin],
+                ["Args", parsed.provenance.args],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <div key={label as string} className="min-w-0">
+                  <dt className="text-2xs text-ink-3">{label}</dt>
+                  <dd className="truncate font-mono text-2xs text-ink-2" title={value as string}>{value as string}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <pre className="max-h-72 overflow-auto rounded-md border border-[var(--c-line)] bg-[var(--c-well)] p-3 font-mono text-meta leading-relaxed text-ink-2">{text}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
   if (executor === "dsh" || executor === "commandcode" || executor === "claude" || executor === "omp") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} />
   const [wrap, setWrap] = useState(true)

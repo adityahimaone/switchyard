@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Activity, Archive, Check, FileImage, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
+import { Activity, Archive, Check, ChevronRight, FileImage, FolderKanban, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { StatusLamp } from "@/components/ui/status-lamp"
+import { AgentOrb } from "@/components/agents/thinking-orb"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
+import { HarnessChatResult } from "@/features/board/OutputPanels"
 import { AgentProgress } from "@/components/agents/loading-states"
 import { TaskList, type TaskListTask } from "@/TodoList"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -20,9 +22,12 @@ import { useHeaderTrail } from "@/components/header-trail-context"
 import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
-import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
+import { ProjectDialog } from "@/features/projects/ProjectDialog"
+import { GROUP_ORDER, GROUP_LABEL, buildRailTree } from "./railTree"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 
 /** Sentence case, and a name that matches what the user would say. */
@@ -222,25 +227,10 @@ const CHAT_COMMANDS = [
   { command: "/new", label: "New chat", description: "Start a separate chat room." },
 ]
 
-type GroupKey = "today" | "yesterday" | "prev7" | "prev30" | "older"
-const GROUP_LABEL: Record<GroupKey, string> = { today: "Today", yesterday: "Yesterday", prev7: "Previous 7 days", prev30: "Previous 30 days", older: "Older" }
-const GROUP_ORDER: GroupKey[] = ["today", "yesterday", "prev7", "prev30", "older"]
-
-function groupKeyFor(ts: number): GroupKey {
-  const d = new Date(ts * 1000)
-  const now = new Date()
-  const start = new Date(now); start.setHours(0, 0, 0, 0)
-  const startMs = start.getTime()
-  const dMs = d.getTime()
-  const day = 86400000
-  if (dMs >= startMs) return "today"
-  if (dMs >= startMs - day) return "yesterday"
-  if (dMs >= startMs - 7 * day) return "prev7"
-  if (dMs >= startMs - 30 * day) return "prev30"
-  return "older"
-}
-
 function isLive(w: Workspace): boolean { return w.status === "connected" || w.status === "local" }
+// Empty path is the local sentinel in the composer's workspace select; local
+// has no node-agent, so dsh/commandcode execution cannot run against it.
+function isLocalWorkspace(path: string): boolean { return path === "" }
 
 /* Markdown rendering is `AgentMarkdown`, imported from the board feature.
 
@@ -288,13 +278,15 @@ function SessionNotice({ text }: { text: string }) {
   </div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectName, projectWorkspace, projectExecutor, projectOptions, onOpenProject }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
   const [profile, setProfile] = useState(() => profiles.find((p) => p.active)?.name ?? "default")
-  const [workspace, setWorkspace] = useState("")
+  const [workspace, setWorkspace] = useState(projectWorkspace ?? "")
   const [model, setModel] = useState("")
+  const [agent, setAgent] = useState<ChatAgent>(projectExecutor ?? "hermes")
+  const [executorOptions, setExecutorOptions] = useState<string>(projectOptions ?? "{}")
   const [modelSearch, setModelSearch] = useState("")
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
@@ -304,6 +296,11 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const shouldFollowChatRef = useRef(true)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  // Rail section open/closed, keyed by section id ("pinned", "projects",
+  // "recents", or `proj:<id>`). Open by default so the tree reads fully the
+  // first time; the record only stores what the user collapsed.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [newProject, setNewProject] = useState(false)
   const [sessionAction, setSessionAction] = useState<{ kind: SessionAction; session: ChatSession } | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
   const [actionBusy, setActionBusy] = useState(false)
@@ -311,7 +308,6 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const streamBufferRef = useRef<Record<string, string>>({})
   // sync ref for use in event handlers without re-binding effect
   useEffect(() => { streamBufferRef.current = streamBuffer }, [streamBuffer])
-  const agent: ChatAgent = "hermes"
   const initialCreate = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [pendingAtts, setPendingAtts] = useState<Attachment[]>([])
@@ -358,6 +354,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     finally { setAnalyzeBusy(null) }
   }
   const sessions = useQuery({ queryKey: ["chat-sessions", false], queryFn: () => listChatSessions(false) })
+  // The rail's tree reads projects from the shared cache the create dialog
+  // writes, so a project created here shows up immediately without a refetch dance.
+  const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects })
   const archivedSessions = useQuery({ queryKey: ["chat-sessions", true], queryFn: () => listChatSessions(true), enabled: showArchived })
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
   const messages = useQuery({ queryKey: ["chat-messages", sessionID], queryFn: () => listChatMessages(sessionID!), enabled: !!sessionID })
@@ -416,6 +415,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     if (onSessionChange) onSessionChange(id)
   }
 
+  function toggleSection(id: string) {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
 
   useEffect(() => {
     if (initialSessionID && initialSessionID !== sessionID) setSessionID(initialSessionID)
@@ -430,21 +433,42 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   useEffect(() => {
     if (!current.data || current.data.id !== sessionID) return
     setProfile(current.data.profile)
-    setWorkspace(current.data.workspace)
+    setWorkspace(projectID ? (projectWorkspace ?? current.data.workspace) : current.data.workspace)
     setModel(current.data.model)
+    if (current.data.agent) setAgent(current.data.agent)
+    setExecutorOptions(current.data.executor_options || "{}")
   }, [current.data?.id, sessionID]) // ponytail: prop drives initial active session; internal setActive updates caller via onSessionChange
 
+  /* A project owns the workspace and a default executor; the composer may still
+     switch executor for the turn, but the workspace is pinned to the project so
+     chat-to-code never runs against a different tree than the project declares. */
   useEffect(() => {
+    if (!projectID) return
+    if (projectWorkspace) setWorkspace(projectWorkspace)
+    if (projectExecutor) setAgent(projectExecutor)
+    if (projectOptions) setExecutorOptions(projectOptions)
+    // Opening a project starts on a clean slate: the composer is ready and the
+    // first send creates a session bound to this project. An explicit deep link
+    // (initialSessionID) still wins.
+    if (!initialSessionID) setSessionID(undefined)
+    setSelectedRun(undefined)
+  }, [projectID, projectWorkspace, projectExecutor, projectOptions, initialSessionID])
+
+  useEffect(() => {
+    // Inside a project there is no "the" session to auto-open: the composer sits
+    // ready and the first send creates the session (see the send mutation). The
+    // auto-create/auto-select below is only for the global chat list.
+    if (projectID) return
     if (sessions.isSuccess && sessions.data?.length === 0 && !initialCreate.current) {
       initialCreate.current = true
-      void createChatSession({ title: "New chat", agent: "hermes", profile, workspace: "", model: "" }).then((created) => {
+      void createChatSession({ title: "New chat", agent, profile, workspace, model: "", executor_options: executorOptions }).then((created) => {
         setActive(created.id)
         void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
       }).catch(() => { initialCreate.current = false })
       return
     }
     if (!sessionID && sessions.data?.[0]) setActive(sessions.data[0].id)
-  }, [qc, sessionID, sessions.data, sessions.isSuccess, profile])
+  }, [qc, sessionID, sessions.data, sessions.isSuccess, profile, projectID])
 
   useEffect(() => openEventStream((event) => {
     const runId = run?.id
@@ -493,16 +517,24 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
 
   const visibleSessions = showArchived ? (archivedSessions.data ?? []) : (sessions.data ?? [])
+  // Inside a project the transcript belongs to that project, so the list is its
+  // sessions only. The rail still draws the full tree; this just scopes what
+  // "no session yet → create on send" and the empty state reason about.
+  const scopedSessions = useMemo(
+    () => (projectID ? visibleSessions.filter((item) => item.project_id === projectID) : visibleSessions),
+    [visibleSessions, projectID],
+  )
   const filteredSessions = useMemo(() => visibleSessions.filter((item) => {
     const text = `${item.title} ${item.agent} ${item.profile} ${item.workspace} ${item.model}`.toLowerCase()
     return !query || text.includes(query.toLowerCase())
   }), [query, visibleSessions])
 
-  const grouped = useMemo(() => {
-    const map: Record<GroupKey, ChatSession[]> = { today: [], yesterday: [], prev7: [], prev30: [], older: [] }
-    for (const s of filteredSessions) map[groupKeyFor(s.updated_at)].push(s)
-    return map
-  }, [filteredSessions])
+  /* The rail is a tree, not a flat time list. Pinned sessions float to the top,
+     each project is a collapsible node holding its own sessions, and everything
+     else falls into the time-grouped "Recents" bucket. A session is shown in
+     exactly one place: pinned wins, then its project, then recents — otherwise a
+     pinned session inside a project would render twice. */
+  const railTree = useMemo(() => buildRailTree(filteredSessions), [filteredSessions])
 
   const send = useMutation({
     /* No manual scroll here any more. MessageScroller follows the live edge on
@@ -515,18 +547,46 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       shouldFollowChatRef.current = true
       setShowJumpToLatest(false)
     },
-    mutationFn: () => {
+    mutationFn: async () => {
       if (uploading) throw new Error("Wait for attachment upload to finish")
-      if (model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
+      // The model roster only applies to hermes; dsh/commandcode fix their own model.
+      if (agent === "hermes" && model && modelOptions.length > 0 && !modelOptions.includes(model)) throw new Error(`model ${model} not in provider roster`)
       const ids = pendingAtts.map((a) => a.id)
-      if (!ids.length) return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model })
-      return sendChatMessage(sessionID!, { content: prompt, agent, profile, workspace, model, attachment_ids: ids })
+      const opts = agent === "hermes" ? undefined : executorOptions
+      // Enter-then-send with no session yet: create it now, bound to the project
+      // when one is open, so the user never has to click "new chat" first. The
+      // title is the prompt's opening line so the rail row is identifiable.
+      let sid = sessionID
+      if (!sid) {
+        const title = prompt.trim().slice(0, 60) || "New chat"
+        const created = await createChatSession(
+          projectID
+            ? { title, agent, profile, workspace, model: "", executor_options: executorOptions, project_id: projectID }
+            : { title, agent, profile, workspace, model, executor_options: executorOptions },
+        )
+        sid = created.id
+        setActive(sid)
+        void qc.invalidateQueries({ queryKey: ["chat-sessions"] })
+      }
+      if (!ids.length) return sendChatMessage(sid, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts })
+      return sendChatMessage(sid, { content: prompt, agent, profile, workspace, model: agent === "hermes" ? model : "", executor_options: opts, attachment_ids: ids })
     },
-    onSuccess: (data) => { setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-session", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sessionID] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
+    onSuccess: (data) => { const sid = data.run?.session_id ?? sessionID; setPrompt(""); setPendingAtts([]); setUploadErr(""); setAnalyzeResult(null); setSelectedRun(data.run); void qc.invalidateQueries({ queryKey: ["chat-messages", sid] }); void qc.invalidateQueries({ queryKey: ["chat-session", sid] }); void qc.invalidateQueries({ queryKey: ["chat-active-run", sid] }); void qc.invalidateQueries({ queryKey: ["chat-sessions"] }) },
   })
 
-  async function newChat() { const created = await createChatSession({ title: "New chat", agent, profile, workspace, model }); setActive(created.id); await qc.invalidateQueries({ queryKey: ["chat-sessions"] }) }
-  async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
+  async function newChat(project?: ChatProject) {
+    // A session opened inside a project inherits the project's binding so the
+    // first turn runs against the right workspace/executor without the user
+    // re-picking anything.
+    const payload = project
+      ? { title: "New chat", agent: project.executor, profile, workspace: project.workspace, model: "", executor_options: project.options, project_id: project.id }
+      : { title: "New chat", agent, profile, workspace, model, executor_options: executorOptions }
+    const created = await createChatSession(payload)
+    if (project) { setWorkspace(project.workspace); setAgent(project.executor); setExecutorOptions(project.options) }
+    setActive(created.id)
+    await qc.invalidateQueries({ queryKey: ["chat-sessions"] })
+  }
+  async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); if (item.agent) setAgent(item.agent); setExecutorOptions(item.executor_options || "{}"); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
   function openSessionAction(kind: SessionAction, item: ChatSession) {
     setSessionAction({ kind, session: item })
     setRenameDraft(item.title)
@@ -633,7 +693,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           control now sits on the thing it operates rather than in a bar about to
           be deleted. */}
       <div className="flex h-13 shrink-0 items-center justify-between gap-2 px-3">
-        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : "Chats"}</h1>
+        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : projectName || "Chats"}</h1>
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -651,14 +711,24 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             <TooltipContent side="bottom">{showArchived ? "Show active chats" : "Show archived chats"}</TooltipContent>
           </Tooltip>
           {!showArchived && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => void newChat()} aria-label="New chat">
-                  <Plus className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">New chat</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => setNewProject(true)} aria-label="New project">
+                    <FolderKanban className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New project</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="text-ink-3" onClick={() => void newChat()} aria-label="New chat">
+                    <Plus className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New chat</TooltipContent>
+              </Tooltip>
+            </>
           )}
           {current.data && !showArchived && (
             <SessionMenu
@@ -686,114 +756,87 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        {filteredSessions.length === 0 ? (
+        {filteredSessions.length === 0 && (projects.data ?? []).length === 0 ? (
           <div className="rounded-card border border-dashed border-line p-4 text-center text-xs text-ink-3">No chat for this filter</div>
         ) : (
-          GROUP_ORDER.map((key) => {
-            const items = grouped[key]
-            if (items.length === 0) return null
-            return (
-              <div key={key} className="mb-3 last:mb-0">
-                {/* Section label: the app's group-label treatment — 12px muted,
-                    uppercase, with the count as a quiet suffix. */}
-                <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
-                  {GROUP_LABEL[key]}
-                  <span className="tabular font-normal tracking-normal normal-case">{items.length}</span>
-                </div>
-                <div className="space-y-0.5">
-                  {items.map((item) => {
-                    const active = item.id === sessionID
-                    /* Selection signal, corrected after measurement.
+          <>
+            {railTree.pinned.length > 0 && (
+              <RailSection id="pinned" label="Pinned" count={railTree.pinned.length} collapsed={collapsed} onToggle={toggleSection}>
+                {railTree.pinned.map((item) => (
+                  <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                ))}
+              </RailSection>
+            )}
 
-                       The first attempt used `border-line bg-surface
-                       shadow-active` to match a "hairline row" reading.
-                       Measured, that was *weaker* than both the app's own active
-                       nav row (`bg-accent/10`) and this row's previous state:
-                       `border-line` on `surface` is 1.26:1 in light and 1.23:1 in
-                       dark, and the 4%-black shadow is a no-op on a near-black
-                       ground — in dark the selection was carried by a 1.23:1
-                       hairline alone, and a hovered row actually measured *more*
-                       selected than the selected one.
-
-                       So the accent tint is back, and it is the app's own
-                       treatment: `accent-tint` with `accent-text` type, the
-                       text-safe pairing the palette already defines. That is what
-                       makes this row read as the same control as the nav rows in
-                       the sidebar beside it.
-
-                       Idle rows carry `border-line` on hover rather than a fill,
-                       because `--c-raised` is `#ffffff` — identical to
-                       `--c-surface` — so `hover:bg-raised` measured as a literal
-                       no-op in light mode with no visible hover state at all. */
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          "group flex w-full items-stretch rounded-lg border transition-colors",
-                          active
-                            ? "border-line bg-accent-tint"
-                            : "border-transparent hover:border-line hover:bg-well",
-                        )}
-                      >
+            {(projects.data ?? []).length > 0 && (
+              <RailSection id="projects" label="Projects" count={(projects.data ?? []).length} collapsed={collapsed} onToggle={toggleSection}>
+                {(projects.data ?? []).map((project) => {
+                  const list = railTree.byProject.get(project.id) ?? []
+                  return (
+                    <div key={project.id} className="mb-0.5">
+                      <div className="group/proj flex items-center gap-1 rounded-lg pr-1 hover:bg-well">
                         <button
                           type="button"
-                          onClick={() => void selectSession(item)}
-                          title={item.title}
-                          aria-current={active ? "page" : undefined}
-                          className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          onClick={() => { if (onOpenProject) onOpenProject(project); setCollapsed((prev) => ({ ...prev, [`proj:${project.id}`]: false })) }}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          aria-expanded={!collapsed[`proj:${project.id}`]}
                         >
-                          <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
-                            {item.title}
-                          </div>
-                          {/* The meta line only carries what varies. Every row
-                              used to open with its workspace, and `local` is
-                              the default — so most rows rendered the same word,
-                              which is not information but noise, and it is the
-                              widest thing on the line, squeezing the model and
-                              the time out. A row now shows the workspace only
-                              when it is a real one. */}
-                          <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
-                            {item.workspace && item.workspace !== "local" && (
-                              <span className="truncate">{item.workspace.split("/").filter(Boolean).pop()}</span>
-                            )}
-                            {item.model && (
-                              <>
-                                {item.workspace && item.workspace !== "local" && <span aria-hidden>·</span>}
-                                <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
-                              </>
-                            )}
-                            {/* A lamp, not a spinner: the row already says the
-                                session is busy, and the lamp matches the rest
-                                of the app's running state. */}
-                            {activeRunBySession.has(item.id) && (
-                              <StatusLamp status="running" label="Running" size="sm" className="ml-auto shrink-0" />
-                            )}
-                          </div>
+                          <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
+                          <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || "var(--c-accent)" }} />
+                          <span className={cn("min-w-0 flex-1 truncate text-[13px]", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
+                          <span className="shrink-0 tabular text-2xs text-ink-3">{list.length}</span>
                         </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <button
                               type="button"
-                              aria-label={`Actions for ${item.title}`}
-                              className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+                              aria-label={`New chat in ${project.name}`}
+                              onClick={() => void newChat(project)}
+                              className="shrink-0 rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover/proj:opacity-100"
                             >
-                              <MoreHorizontal className="size-4" />
+                              <Plus className="size-3.5" />
                             </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="border-line bg-raised">
-                            <DropdownMenuItem onSelect={() => openSessionAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => openSessionAction(showArchived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {showArchived ? "Restore" : "Archive"}</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem variant="destructive" onSelect={() => openSessionAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">New chat in project</TooltipContent>
+                        </Tooltip>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })
+                      {!collapsed[`proj:${project.id}`] && (
+                        <div className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-1.5">
+                          {list.length === 0 ? (
+                            <p className="px-2 py-1 text-2xs text-ink-3">No chats yet</p>
+                          ) : list.map((item) => (
+                            <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </RailSection>
+            )}
+
+            <RailSection id="recents" label="Recents" collapsed={collapsed} onToggle={toggleSection}>
+              {GROUP_ORDER.map((key) => {
+                const items = railTree.recentsGrouped[key]
+                if (items.length === 0) return null
+                return (
+                  <div key={key} className="mb-3 last:mb-0">
+                    {/* Section label: the app's group-label treatment — 12px muted,
+                        uppercase, with the count as a quiet suffix. */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
+                      {GROUP_LABEL[key]}
+                      <span className="tabular font-normal tracking-normal normal-case">{items.length}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {items.map((item) => (
+                        <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </RailSection>
+          </>
         )}
       </div>
 
@@ -875,11 +918,52 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         contentClassName="mx-auto max-w-[44rem] space-y-6 pr-12"
       >
         {activeMessages.length === 0 && !run ? (
+          projectID ? (
+            /* Project landing: opening a project shows every session it holds,
+               so you pick one to continue or just type below — the composer
+               creates a new session on enter (see the send mutation). */
+            <div className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-sm font-medium text-ink">{projectName ?? "Project"}</h2>
+                <span className="text-2xs text-ink-3">{scopedSessions.length} chat{scopedSessions.length === 1 ? "" : "s"}</span>
+              </div>
+              {scopedSessions.length === 0 ? (
+                <div className="rounded-card border border-dashed border-line bg-surface p-6">
+                  <div className="text-sm font-medium text-ink">No chats yet in {projectName ?? "this project"}</div>
+                  <div className="mt-1 text-sm leading-6 text-ink-3">Type a prompt below — a new session is created and runs here automatically.</div>
+                </div>
+              ) : (
+                <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+                  {scopedSessions.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => void selectSession(item)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] text-ink">{item.title}</span>
+                          <span className="mt-0.5 block truncate text-2xs text-ink-3">
+                            {item.agent}
+                            {item.workspace && item.workspace !== "local" ? ` · ${item.workspace.split("/").filter(Boolean).pop()}` : ""}
+                            {` · ${new Date(item.updated_at * 1000).toLocaleString()}`}
+                          </span>
+                        </span>
+                        {activeRunBySession.has(item.id) && <AgentOrb state="running" size={20} className="shrink-0" label="Running" />}
+                        <ChevronRight className="size-4 shrink-0 text-ink-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
           <div className="rounded-card border border-dashed border-line bg-surface p-6">
             <div className="text-sm font-medium text-ink">Start a conversation</div>
             <div className="mt-1 text-sm leading-6 text-ink-3">Pick a prompt or type your own. Agent runs show live context activity.</div>
             <div className="mt-4 flex flex-wrap gap-1.5">{EXAMPLE_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40">{example}</button>)}</div>
           </div>
+          )
         ) : activeMessages.map((message) => (
           /* `data-slot="message"` and `data-from` are what MessageScroller's
              navigation rail queries to build its list, and it reads the row's
@@ -908,7 +992,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const msgRun = isLiveRunMessage ? run : (message.run_id ? runMap[message.run_id] : undefined)
                   const msgEvents = isLiveRunMessage ? mergeActivityEvents(events.data ?? [], liveEvents) : (message.run_id ? (runEventsMap[message.run_id] ?? []) : [])
                   const response = splitResponseText(messageStreaming ? (run?.id ? (answerBuffer[run.id] ?? "") : "") : (message.content || msgRun?.output || ""))
-                  return <><SessionNotice text={response.notice} /><StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} />{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</StreamingText></>
+                  // dsh/commandcode turns store the harness's raw stream (provenance
+                  // + JSON events + final). Render the answer as the message and
+                  // push the harness metadata to a collapsed footnote below it,
+                  // so a chat turn reads like a chat — not like a task panel.
+                  const harness = msgRun && msgRun.agent !== "hermes" ? msgRun.agent : undefined
+                  const rawOutput = message.content || msgRun?.output || ""
+                  return <><SessionNotice text={response.notice} />{harness && !messageStreaming ? (
+                    <div className="space-y-2">
+                      <HarnessChatResult text={rawOutput} executor={harness} />
+                      <div className="flex min-h-7 items-center gap-0.5 text-[var(--color-ink-3)]"><MessageFooter run={msgRun} sessionID={sessionID} isStreaming={false} messageCreatedAt={message.created_at} /></div>
+                    </div>
+                  ) : (
+                    <StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} /></StreamingText>
+                  )}{msgRun && messageStreaming && <LiveWorkerLog text={run?.id ? (streamBuffer[run.id] ?? "") : ""} active={isRunning} />}{msgRun && (!messageStreaming || !isRunning) && <ActivityContext run={msgRun} events={msgEvents} />}</>
                 })()}
                 {current.data && <div className="absolute right-0 top-0 z-10 opacity-70 hover:opacity-100"><SessionMenu session={current.data} forkMessageId={message.id} onDuplicate={() => duplicateSession(current.data!)} onFork={(session) => forkSession(session, message.id)} onDelete={() => openSessionAction("delete", current.data!)} /></div>}
               </div>
@@ -925,7 +1022,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         running={isRunning}
         phase={run?.state === "error" ? "Failed" : run?.state === "done" ? "Finished" : "Working"}
         placeholder={profile ? `Message ${profile}` : "Message the agent"}
-        disabled={!sessionID || send.isPending || uploading}
+        /* No `!sessionID` gate: with no session yet the first send creates one
+           (project landing + flat chat), so the composer must stay typeable. */
+        disabled={send.isPending || uploading}
         /* PromptInput owns the Plus menu, so the existing dropdown becomes its
            action list and the three selects move to the leading slot. Same
            behaviour and same handlers, one implementation. */
@@ -1005,6 +1104,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 the dropdowns are unchanged for keyboard and pointer users — only
                 the box is removed. `PROMPT_CHIP` is shared by all three because
                 they must not drift apart. */}
+            <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgent)}>
+              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Executor">
+                <SelectValue placeholder="Executor" />
+              </SelectTrigger>
+              <SelectContent>
+                {EXECUTORS.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select value={profile || "default"} onValueChange={setProfile}>
               <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
@@ -1031,8 +1141,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace">
+            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)} disabled={!!projectID}>
+              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace" disabled={!!projectID}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1054,33 +1164,56 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
-                <SelectValue placeholder="Default model" />
-              </SelectTrigger>
-              {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
-                    past the viewport top on short windows: Radix anchors a
-                    `position="popper"` panel to the trigger and will not push it
-                    above, so the panel has to be willing to shrink. The sticky
-                    search row above still pins inside it. */}
-              <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
-                  <Input
-                    value={modelSearch}
-                    onChange={(event) => setModelSearch(event.target.value)}
-                    placeholder="Search models"
-                    aria-label="Search models"
-                  />
-                </div>
-                <SelectItem value="__default">Default model</SelectItem>
-                {filteredModelOptions.length === 0 && (
-                  <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
-                )}
-                {filteredModelOptions.map((v) => (
-                  <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {agent === "hermes" ? (
+              <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
+                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
+                  <SelectValue placeholder="Default model" />
+                </SelectTrigger>
+                {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
+                      past the viewport top on short windows: Radix anchors a
+                      `position="popper"` panel to the trigger and will not push it
+                      above, so the panel has to be willing to shrink. The sticky
+                      search row above still pins inside it. */}
+                <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
+                  <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+                    <Input
+                      value={modelSearch}
+                      onChange={(event) => setModelSearch(event.target.value)}
+                      placeholder="Search models"
+                      aria-label="Search models"
+                    />
+                  </div>
+                  <SelectItem value="__default">Default model</SelectItem>
+                  {filteredModelOptions.length === 0 && (
+                    <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
+                  )}
+                  {filteredModelOptions.map((v) => (
+                    <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : executorDef(agent).option ? (
+              /* dsh/commandcode fix their own model, so the roster select is
+                 replaced by the executor's own knob: dsh's sandbox/approval
+                 decision, or commandcode's permission mode. */
+              <Select
+                value={optionValue(executorOptions, agent)}
+                onValueChange={(v) => setExecutorOptions((prev) => withOption(prev, agent, v))}
+              >
+                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label={executorDef(agent).option!.label}>
+                  <SelectValue placeholder={executorDef(agent).option!.label} />
+                </SelectTrigger>
+                <SelectContent>
+                  {executorDef(agent).option!.choices.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+
+            {agent !== "hermes" && isLocalWorkspace(workspace) && (
+              <span className="text-2xs text-danger-text">execution needs a remote workspace</span>
+            )}
 
             <input
               ref={fileRef}
@@ -1164,5 +1297,101 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
         </DetailSheet>
       )}
+      {newProject && (
+        <ProjectDialog
+          workspaces={workspaces}
+          onClose={() => setNewProject(false)}
+          onSaved={(p) => { setNewProject(false); if (onOpenProject) onOpenProject(p) }}
+        />
+      )}
   </div>
+}
+
+/* A collapsible rail section: the chevron + label header the Pinned, Projects
+   and Recents blocks share. Open by default (the caller's `collapsed` record
+   only holds what the user closed), so the tree reads fully the first time. */
+function RailSection({
+  id, label, count, collapsed, onToggle, children,
+}: {
+  id: string
+  label: string
+  count?: number
+  collapsed: Record<string, boolean>
+  onToggle: (id: string) => void
+  children: ReactNode
+}) {
+  const isCollapsed = !!collapsed[id]
+  return (
+    <Collapsible open={!isCollapsed} onOpenChange={() => onToggle(id)} className="mb-2 last:mb-0">
+      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-lg px-2 py-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
+        <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !isCollapsed && "rotate-90")} />
+        <span className="text-2xs font-semibold tracking-wide text-ink-3 uppercase">{label}</span>
+        {count !== undefined && <span className="tabular text-2xs font-normal text-ink-3">{count}</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-0.5 space-y-0.5">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/* One session row. Lifted out of the old inline map so Pinned, a project node
+   and Recents all render the identical control. */
+function RailRow({
+  item, active, running, archived, onSelect, onAction,
+}: {
+  item: ChatSession
+  active: boolean
+  running: boolean
+  archived: boolean
+  onSelect: (item: ChatSession) => void | Promise<void>
+  onAction: (kind: SessionAction, item: ChatSession) => void
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex w-full items-stretch rounded-lg border transition-colors",
+        active ? "border-line bg-accent-tint" : "border-transparent hover:border-line hover:bg-well",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => void onSelect(item)}
+        title={item.title}
+        aria-current={active ? "page" : undefined}
+        className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+      >
+        <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
+          {item.title}
+        </div>
+        <div className="mt-1 flex max-w-full items-center gap-1 truncate text-2xs text-ink-3">
+          {item.workspace && item.workspace !== "local" && (
+            <span className="truncate">{item.workspace.split("/").filter(Boolean).pop()}</span>
+          )}
+          {item.model && (
+            <>
+              {item.workspace && item.workspace !== "local" && <span aria-hidden>·</span>}
+              <span className="truncate font-mono text-2xs">{item.model.split("/").pop()}</span>
+            </>
+          )}
+          {running && <AgentOrb state="running" size={20} className="ml-auto shrink-0" label="Running" />}
+        </div>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Actions for ${item.title}`}
+            className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="border-line bg-raised">
+          <DropdownMenuItem onSelect={() => onAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onAction(archived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {archived ? "Restore" : "Archive"}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => onAction("delete", item)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }

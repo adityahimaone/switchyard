@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { parseHarnessResult, parseHarnessLogEvents } from "./OutputPanels"
+import { renderToStaticMarkup } from "react-dom/server"
+import { parseHarnessResult, parseHarnessLogEvents, HarnessChatResult } from "./OutputPanels"
 
 const commandCodeOutput = [
   'provenance executor=commandcode requested=commandcode bin=/usr/local/bin/cmd args=["-p"] ws=/Users/example/repo commandcode_session_id=cc-9f4e',
@@ -72,6 +73,58 @@ describe("parseHarnessResult", () => {
     const parsed = parseHarnessResult(raw, "dsh")
     expect(parsed.answer).toBe("done")
     expect(parsed.provenance?.sessionId).toBe("dsh-1")
+  })
+
+  it("extracts the answer from a real dsh chat turn, ignoring thinking/tool/status frames", () => {
+    // Verbatim from a live chat run in a project (executor dsh). The chat used
+    // to render this whole blob; it must reduce to the final answer + provenance.
+    const raw = [
+      'provenance executor=dsh requested=dsh bin=/opt/homebrew/bin/dsh args=["--profile" "headless" "--json"] ws=/Users/adityahimawan/Development/habbit-tracking-next dsh_session_id=session-853d3b4e-ad27-4c1f-9a96-43f48416ebd4 dsh_session_cwd=/Users/adityahimawan/Development/habbit-tracking-next',
+      '{"type":"session","sessionId":"session-853d3b4e-ad27-4c1f-9a96-43f48416ebd4","cwd":"/Users/adityahimawan/Development/habbit-tracking-next"}',
+      '{"type":"status","phase":"turn_start","turn":1}',
+      '{"type":"tool_call","callId":"call_01","tool":"bash","input":{"command":"echo OKE"}}',
+      '{"type":"tool_result","callId":"call_01","status":"completed","result":"OKE\\n"}',
+      '{"type":"thinking","text":"ran echo OKE"}',
+      '{"type":"text","text":"\\n\\nOKE"}',
+      '{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}',
+      '{"type":"final","text":"\\n\\nOKE"}',
+      "EXECUTOR_PROOF=dsh",
+      'provenance executor=dsh requested=dsh ws=/Users/adityahimawan/Development/habbit-tracking-next',
+    ].join("\n")
+    const parsed = parseHarnessResult(raw, "dsh")
+    expect(parsed.answer.trim()).toBe("OKE")
+    expect(parsed.provenance?.workspace).toBe("/Users/adityahimawan/Development/habbit-tracking-next")
+    expect(parsed.provenance?.cwd).toBe("/Users/adityahimawan/Development/habbit-tracking-next")
+    expect(parsed.provenance?.sessionId).toBe("session-853d3b4e-ad27-4c1f-9a96-43f48416ebd4")
+    expect(parsed.provenance?.bin).toBe("/opt/homebrew/bin/dsh")
+    // No raw JSON leaks into the answer surface.
+    expect(parsed.answer).not.toContain("{")
+  })
+})
+
+describe("HarnessChatResult", () => {
+  const raw = [
+    'provenance executor=dsh requested=dsh bin=/opt/homebrew/bin/dsh args=["--profile" "headless" "--json"] ws=/Users/adityahimawan/Development/habbit-tracking-next dsh_session_id=session-853d3b4e',
+    '{"type":"tool_call","callId":"call_01","tool":"bash","input":{"command":"echo OKE"}}',
+    '{"type":"text","text":"OKE"}',
+    '{"type":"final","text":"OKE"}',
+    "EXECUTOR_PROOF=dsh",
+  ].join("\n")
+
+  it("renders the answer as the message, not the raw JSON stream", () => {
+    const out = renderToStaticMarkup(<HarnessChatResult text={raw} executor="dsh" />)
+    expect(out).toContain("OKE")
+    expect(out).not.toContain('"type":"tool_call"')
+    expect(out).not.toContain("EXECUTOR_PROOF")
+  })
+
+  it("puts the harness metadata in a collapsed footnote (closed by default)", () => {
+    const out = renderToStaticMarkup(<HarnessChatResult text={raw} executor="dsh" />)
+    expect(out).toContain("DeepSeek Harness")
+    expect(out).toContain("habbit-tracking-next") // workspace, derived from ws=
+    // Collapsed: the provenance grid and raw trace are not rendered until opened.
+    expect(out).not.toContain("/opt/homebrew/bin/dsh")
+    expect(out).not.toContain("Session")
   })
 })
 

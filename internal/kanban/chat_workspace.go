@@ -73,10 +73,14 @@ func insertChatTags(db interface {
 }
 
 type ChatProject struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Color     string `json:"color"`
-	CreatedAt int64  `json:"created_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Workspace   string `json:"workspace"`
+	Executor    string `json:"executor"`
+	Options     string `json:"options"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
 }
 type ChatExport struct {
 	Session  ChatSession   `json:"session"`
@@ -97,13 +101,50 @@ type ChatLineage struct {
 	Source *ChatLineageSource `json:"source"`
 }
 
+// projectExecutors is the closed set of chat executors a Project may bind to.
+// hermes runs the local/remote Hermes chat path; dsh and commandcode are remote
+// harness executors whose model is fixed by their own profile, so the UI hides
+// model selection and offers their decision/mode knob instead.
+var projectExecutors = map[string]bool{"hermes": true, "dsh": true, "commandcode": true}
+
+// ValidateProjectWorkspace rejects any workspace not present in the shared
+// ~/.hermes/workspaces.json registry, so a Project can only ever target a
+// workspace the operator already onboarded.
+func ValidateProjectWorkspace(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("workspace required")
+	}
+	list, err := ListWorkspaces()
+	if err != nil {
+		return err
+	}
+	for _, w := range list {
+		if w.Path == path {
+			return nil
+		}
+	}
+	return fmt.Errorf("workspace %q is not registered", path)
+}
+
+func normalizeProjectExecutor(executor string) (string, error) {
+	executor = strings.TrimSpace(executor)
+	if executor == "" {
+		return "hermes", nil
+	}
+	if !projectExecutors[executor] {
+		return "", fmt.Errorf("unsupported executor %q", executor)
+	}
+	return executor, nil
+}
+
 func ListChatProjects() ([]ChatProject, error) {
 	db, err := ensureChatDB()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT id,name,color,created_at FROM chat_projects ORDER BY name COLLATE NOCASE`)
+	rows, err := db.Query(`SELECT id,name,color,workspace,executor,options,description,created_at FROM chat_projects ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -111,17 +152,27 @@ func ListChatProjects() ([]ChatProject, error) {
 	out := []ChatProject{}
 	for rows.Next() {
 		var p ChatProject
-		if err = rows.Scan(&p.ID, &p.Name, &p.Color, &p.CreatedAt); err != nil {
+		if err = rows.Scan(&p.ID, &p.Name, &p.Color, &p.Workspace, &p.Executor, &p.Options, &p.Description, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
 }
-func CreateChatProject(name, color string) (*ChatProject, error) {
+func CreateChatProject(name, color, workspace, executor, options, description string) (*ChatProject, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("name required")
+	}
+	if err := ValidateProjectWorkspace(workspace); err != nil {
+		return nil, err
+	}
+	executor, err := normalizeProjectExecutor(executor)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(options) == "" {
+		options = "{}"
 	}
 	db, err := ensureChatDB()
 	if err != nil {
@@ -134,21 +185,21 @@ func CreateChatProject(name, color string) (*ChatProject, error) {
 	} else if err != sql.ErrNoRows {
 		return nil, err
 	}
-	p := &ChatProject{ID: newChatID("cp"), Name: name, Color: color, CreatedAt: time.Now().Unix()}
-	if _, err = db.Exec(`INSERT INTO chat_projects(id,name,color,created_at) VALUES(?,?,?,?)`, p.ID, p.Name, p.Color, p.CreatedAt); err != nil {
+	p := &ChatProject{ID: newChatID("cp"), Name: name, Color: color, Workspace: strings.TrimSpace(workspace), Executor: executor, Options: options, Description: strings.TrimSpace(description), CreatedAt: time.Now().Unix()}
+	if _, err = db.Exec(`INSERT INTO chat_projects(id,name,color,workspace,executor,options,description,created_at) VALUES(?,?,?,?,?,?,?,?)`, p.ID, p.Name, p.Color, p.Workspace, p.Executor, p.Options, p.Description, p.CreatedAt); err != nil {
 		return nil, err
 	}
 	broadcastEvent("chat_project_created", map[string]any{"project_id": p.ID})
 	return p, nil
 }
-func UpdateChatProject(id string, name, color *string) (*ChatProject, error) {
+func UpdateChatProject(id string, name, color, workspace, executor, options, description *string) (*ChatProject, error) {
 	db, err := ensureChatDB()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 	var p ChatProject
-	if err = db.QueryRow(`SELECT id,name,color,created_at FROM chat_projects WHERE id=?`, id).Scan(&p.ID, &p.Name, &p.Color, &p.CreatedAt); err != nil {
+	if err = db.QueryRow(`SELECT id,name,color,workspace,executor,options,description,created_at FROM chat_projects WHERE id=?`, id).Scan(&p.ID, &p.Name, &p.Color, &p.Workspace, &p.Executor, &p.Options, &p.Description, &p.CreatedAt); err != nil {
 		return nil, err
 	}
 	if name != nil {
@@ -166,7 +217,30 @@ func UpdateChatProject(id string, name, color *string) (*ChatProject, error) {
 	if color != nil {
 		p.Color = *color
 	}
-	if _, err = db.Exec(`UPDATE chat_projects SET name=?,color=? WHERE id=?`, p.Name, p.Color, id); err != nil {
+	if workspace != nil {
+		if err := ValidateProjectWorkspace(*workspace); err != nil {
+			return nil, err
+		}
+		p.Workspace = strings.TrimSpace(*workspace)
+	}
+	if executor != nil {
+		ex, err := normalizeProjectExecutor(*executor)
+		if err != nil {
+			return nil, err
+		}
+		p.Executor = ex
+	}
+	if options != nil {
+		if strings.TrimSpace(*options) == "" {
+			p.Options = "{}"
+		} else {
+			p.Options = *options
+		}
+	}
+	if description != nil {
+		p.Description = strings.TrimSpace(*description)
+	}
+	if _, err = db.Exec(`UPDATE chat_projects SET name=?,color=?,workspace=?,executor=?,options=?,description=? WHERE id=?`, p.Name, p.Color, p.Workspace, p.Executor, p.Options, p.Description, id); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -278,6 +352,7 @@ func ExportChatSession(id string) (*ChatExport, error) {
 		return nil, err
 	}
 	s.HermesSessionID = ""
+	s.ExecutorSessionID = ""
 	m, err := ListChatMessages(id)
 	if err != nil {
 		return nil, err
