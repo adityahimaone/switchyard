@@ -429,10 +429,21 @@ The tier is chosen by **depth**, not taste. Three strengths:
 
 | Utility | Blur | Layer | Consumers |
 |---|---|---|---|
-| `glass` | 20px | L2 | **sidebar rail**, **top bar**, kanban column, chat rail, empty state |
+| `glass` | 18px | L2 | **sidebar rail**, **top bar**, kanban column, chat rail, empty state |
 | `glass-card` | **none** | L3 | `ui/card.tsx`, `entry-card`, flow node cards, overview/knowledge grids, **select trigger** |
-| `glass-flat` / `-strong` | none | dense | buttons, segmented tracks, dense rows |
-| `glass-strong` | 32px | L4/L5 | dialog, sheet, popover, dropdown, **select panel**, palette, toast, composer, review gate |
+| `glass-flat` / `-strong` | none | dense | buttons, segmented tracks, dense rows, inputs |
+| `glass-occlude` | 18px | sticky | **sticky bars and sticky sub-rows — anything content scrolls *under*** |
+| `glass-strong` | 30px | L4/L5 | dialog, sheet, popover, dropdown, **select panel**, palette, toast, composer, review gate |
+
+**The one rule that decides between `-flat` and `-occlude`:** does anything
+scroll *behind* it? `glass-flat` saves its compositing layer on the argument that
+a dense row sits on an opaque ground, so there is nothing worth diffusing. That
+holds for a button on a card. It does **not** hold for a sticky search row inside
+a scrolling list or a sticky bar over a page: there the backdrop is other
+components, in focus, and a tint with no blur leaves them sharp and legible
+*inside* the surface. Occluding with tint alone needs near-opacity; the blur is
+what actually does the work, and one element is one layer, so it is affordable.
+See `glass-occlude` in `index.css`.
 
 The shell is glass from the rail inward; see §0c for why the `floating`
 sidebar variant is what makes that hold up rather than reading as a plate over
@@ -450,9 +461,9 @@ keyboard-highlight fill and nothing else. Measured on the profile select:
 
 | | background | shadow | backdrop-filter |
 |---|---|---|---|
-| panel | `rgb(30 38 55 / .78)` | glass elevation | `blur(32px) saturate(1.8)` |
+| panel | `rgb(40 49 68 / .78)` | glass elevation | `blur(30px) saturate(1.6)` |
 | row (highlighted) | accent @ 14% | **none** | **none** |
-| trigger | `rgb(46 56 78 / .42)` | glass elevation | **none** |
+| trigger | `rgb(40 49 68 / .62)` | glass elevation | **none** |
 
 The trigger takes `glass-card` rather than `glass-flat`: it needs the 1px
 hairline and the radius to read as something you press, and a closed select was
@@ -460,17 +471,33 @@ otherwise a tint with no edge. It carries no blur, because a trigger sits on a
 panel that is already glass — that blur would be paid on every select on the
 page rather than only while one is open.
 
-Tokens (light block, overridden on `.dark`):
+Tokens (light block, overridden on `.dark`). **These are read by
+`scripts/contrast-glass.py`, which fails the build if any of them drops below
+4.5:1 over the worst-case backdrop — so they are not free to retune by eye:**
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `glass-tint` | `rgb(255 255 255 / .74)` | `rgb(46 56 78 / .42)` | panel + card fill |
-| `glass-tint-strong` | `rgb(255 255 255 / .84)` | `rgb(30 38 55 / .78)` | overlay fill |
-| `glass-blur` | 20px | 20px | `backdrop-filter` radius |
-| `glass-blur-strong` | 32px | 32px | overlays |
+| `glass-tint` | `rgb(255 255 255 / .74)` | `rgb(40 49 68 / .62)` | panel + card fill |
+| `glass-tint-strong` | `rgb(255 255 255 / .86)` | `rgb(40 49 68 / .78)` | overlay fill |
+| `glass-tint-occlude` | `rgb(255 255 255 / .90)` | `rgb(40 49 68 / .86)` | sticky surfaces over scrolling content |
+| `glass-blur` | 18px | 18px | `backdrop-filter` radius |
+| `glass-blur-strong` | 30px | 30px | overlays |
 | `glass-saturate` | 1.6 | 1.6 | keeps the blur from going grey |
-| `glass-edge` | `rgb(21 34 66 / .16)` | `rgb(255 255 255 / .14)` | the 1px hairline |
+| `glass-edge` | `rgb(255 255 255 / .70)` | `rgb(255 255 255 / .08)` | the hairline, where a drawn edge is still wanted |
 | `glass-lift` / `-card` / `-strong` | soft wide + inset | dark contact + wide ambient | elevation, per theme |
+
+**Light `glass-tint` is at its floor.** At the 0.66 this file used to disagree
+with (the CSS had drifted down while both the doc and the checker still said
+0.74), `danger-text` measured **4.36:1** — under the bar. 0.74 is the lowest
+value that clears every text token, at 4.52:1. Do not lower it without
+re-running the checker.
+
+**Dark uses one hue across all three tiers** (`rgb(40 49 68)`). The previous
+`rgb(46 56 78)` was the tightest choice available and got *worse* as it got more
+opaque — 4.52:1 at 0.52 falling to 4.48:1 at 0.92 — because it sits too close to
+`ink-3`'s own luminance to gain anything from more of itself. The current hue
+clears 4.86:1 at every alpha, which is what makes raising it for occlusion free
+rather than a trade.
 
 Five ingredients: **translucent fill → backdrop blur + saturate → 1px hairline →
 inset top highlight → layered shadow.** Two optional ones: `glass-sheen` (a
@@ -829,7 +856,8 @@ hover-only.
   They are **not** `raised` + `shadow-float`; that was Revision 4, and because
   `glass-strong` already carries `--glass-lift-strong`, a second shadow would
   double the elevation cue. A sticky sub-row inside one (a search field) takes
-  `glass-flat-strong`: the panel's own tint with no second blur.
+  `glass-occlude`, **not** `glass-flat-strong`: the list scrolls under it, and a
+  tint with no blur leaves menu items legible *through* the row.
 - Filter chips show the selected value ("Agent: worker"), not an empty label.
 - Tooltips: `glass-strong`, `xs`, origin-aware. They were the one surface
   deliberately left opaque, which made them read as a floating label rather than

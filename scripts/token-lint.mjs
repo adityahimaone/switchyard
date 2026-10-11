@@ -309,9 +309,21 @@ const ORB_WORST_CASE = {
   dark: { alpha: 0.32, rgb: [0x5a, 0x7f, 0xd6] },
 };
 
-// The theme blocks are flat: ":root {" is light, ".dark {" is dark.
-// Brace depth is counted so a nested block inside one of them cannot
-// end the scan early.
+// The theme blocks are flat. Brace depth is counted so a nested block inside
+// one of them cannot end the scan early.
+//
+// A theme's tokens are NOT all in one block, and that is the trap this rule
+// fell into: light's *palette* lives in the first `:root` while light's *glass
+// fills* live in `@theme inline`, and dark keeps both in `.dark`. Resolving
+// light as a single `:root` block produced no tints at all, so the light half
+// of the rule never ran and reported success. Each theme now names its palette
+// block and its glass block separately, and a miss is an error (see below).
+const THEME_SOURCES = {
+  light: { palette: ":root", glass: "@theme inline" },
+  dark: { palette: ".dark", glass: ".dark" },
+};
+const GLASS_TIERS = ["glass-tint", "glass-tint-strong", "glass-tint-occlude"];
+
 function themeBlock(text, selector) {
   const re = new RegExp("^" + selector.replace(/[.]/, "\\.") + "\\s*\\{", "m");
   const m = re.exec(text);
@@ -391,20 +403,34 @@ function checkGlassContrast(files) {
     });
     return;
   }
-  const themes = { light: themeBlock(css.text, ":root"), dark: themeBlock(css.text, ".dark") };
   const textTokens = ["c-ink", "c-ink-2", "c-ink-3", "c-accent-text", "c-success-text", "c-danger-text", "c-review-text"];
-  for (const [theme, block] of Object.entries(themes)) {
-    if (!block) continue;
-    const canvas = cssVar(block, "c-canvas");
+  for (const [theme, src] of Object.entries(THEME_SOURCES)) {
+    const palette = themeBlock(css.text, src.palette);
+    const glass = themeBlock(css.text, src.glass);
+    const canvas = palette && cssVar(palette, "c-canvas");
+    const tints = glass
+      ? GLASS_TIERS.map((t) => [t, cssVar(glass, t)]).filter(([, v]) => v)
+      : [];
+    // A missing token is an ERROR, never a skip. This rule previously resolved
+    // light as one `:root` block, which carries the palette but not the glass
+    // fills — so `panels` came out empty, the inner loop never ran, and light
+    // went unchecked while the gate still printed success.
+    if (!canvas || tints.length === 0) {
+      findings.error.push({
+        rule: "contrast",
+        file: "web/src/index.css",
+        line: 0,
+        text: `${theme}: cannot resolve ${!canvas ? `--c-canvas from \`${src.palette}\`` : `glass tints from \`${src.glass}\``}`,
+        detail: "the contrast rule reads the live palette from index.css; if a token moved block, point this rule at its new block rather than letting it skip",
+      });
+      continue;
+    }
     const orb = ORB_WORST_CASE[theme];
     const ground = compositeOver({ r: orb.rgb[0], g: orb.rgb[1], b: orb.rgb[2], a: orb.alpha }, canvas);
     const panels = {};
-    for (const tint of ["glass-tint", "glass-tint-strong"]) {
-      const fill = cssVar(block, tint);
-      if (fill) panels[tint] = compositeOver(fill, ground);
-    }
+    for (const [tint, fill] of tints) panels[tint] = compositeOver(fill, ground);
     for (const name of textTokens) {
-      const token = cssVar(block, name);
+      const token = cssVar(palette, name);
       if (!token) continue;
       for (const [tint, panel] of Object.entries(panels)) {
         const ratio = contrastRatio(token, panel);
@@ -424,8 +450,8 @@ function checkGlassContrast(files) {
     // themes. The label colour is theme-dependent by measurement —
     // white in light, near-black in dark — which is why the pair is
     // checked, not assumed.
-    const accent = cssVar(block, "c-accent");
-    const accentInk = cssVar(block, "c-accent-ink");
+    const accent = cssVar(palette, "c-accent");
+    const accentInk = cssVar(palette, "c-accent-ink");
     if (accent && accentInk) {
       const ratio = contrastRatio(accentInk, accent);
       if (ratio < CONTRAST_BAR) {
@@ -503,11 +529,16 @@ checkLegacyAliases(files);
 checkLantern(files);
 checkGlassContrast(files);
 
-const order = { error: 0, warn: 1 };
-const all = [...findings.error, ...findings.warn].sort(
-  (a, b) => order[a.rule === "raw-colour" || a.rule === "backdrop-filter" || a.rule === "lantern" ? "error" : "warn"] -
-           order[b.rule === "raw-colour" || b.rule === "backdrop-filter" || b.rule === "lantern" ? "error" : "warn"],
-);
+/* Severity comes from the array a finding was pushed into, never from a second
+   hardcoded rule list. The old list was written before the `contrast` rule
+   existed and was never updated, so a contrast failure was counted as an error
+   (it did exit 1) while being *printed* under a "warn" heading and sorted with
+   the warnings — which reads as "safe to ignore" for the one finding that means
+   text is unreadable. One source of truth: the bucket it went into. */
+const all = [
+  ...findings.error.map((f) => ({ ...f, severity: "error" })),
+  ...findings.warn.map((f) => ({ ...f, severity: "warn" })),
+].sort((a, b) => (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1));
 
 if (all.length === 0) {
   console.log("OK: token-lint found no design-token drift in web/src");
@@ -517,11 +548,7 @@ if (all.length === 0) {
 
 let current = null;
 for (const f of all) {
-  const severity =
-    f.rule === "raw-colour" || f.rule === "backdrop-filter" || f.rule === "lantern"
-      ? "error"
-      : "warn";
-  const heading = `${severity === "error" ? "FAIL" : "warn"}  ${f.rule}`;
+  const heading = `${f.severity === "error" ? "FAIL" : "warn"}  ${f.rule}`;
   if (heading !== current) {
     current = heading;
     console.log(`\n${heading}`);
@@ -532,7 +559,7 @@ for (const f of all) {
 }
 
 const errors = findings.error.length;
-const warnings = all.length - errors;
+const warnings = findings.warn.length;
 console.log(
   `\n${errors} error(s), ${warnings} warning(s).` +
     (errors ? "\nErrors are gate failures. Warnings are informational until phase 5." : ""),

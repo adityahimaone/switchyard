@@ -304,7 +304,10 @@ function ProfileForm({
                       143px off the top with the search row unreachable, which is
                       the worst instance of this bug in the app. */}
                   <SelectContent position="popper" align="start" className="max-h-[min(26rem,var(--radix-select-content-available-height))] w-72 min-w-72 max-w-72">
-                    <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
+                    {/* `glass-occlude`, not `glass-flat-strong`: the model list
+                        scrolls under this row, and a tint with no blur leaves it
+                        sharp and legible inside the strip. */}
+                    <div className="glass-occlude sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                       <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="border-line bg-well text-xs" />
                     </div>
                     <SelectItem value="__default">model default</SelectItem>

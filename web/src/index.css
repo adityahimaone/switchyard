@@ -262,15 +262,23 @@
      panel separates from its ground without either a hard rim or a heavy blur
      doing the work.
 
-     Raising the alpha is also free, where lowering it would not have been: it
-     only ever raises the luminance floor under text sitting on the panel, so
-     every measured margin improves. Re-measured at 0.52 composited over the
-     worst backdrop in the app (the 14% accent bloom on `--c-canvas`) — sidebar
-     group labels, the tightest case, since they are ink-3 at 11px on the glass
-     itself: ink 11.18:1, ink-2 7.89:1, ink-3 5.01:1. Over plain `--c-surface`
-     (the composer) ink-3 sits at 5.50:1. */
-  --glass-tint: rgb(46 56 78 / 0.52);
-  --glass-tint-strong: rgb(40 49 68 / 0.72);
+     Raised again to 0.62 here, and the hue moved from rgb(46 56 78) to
+     rgb(40 49 68) — the hue `--glass-tint-strong` already used. The old hue was
+     the tightest choice available, and it is why the old tint could not simply
+     be raised: measured over the worst backdrop (the orb peak composited on
+     `--c-canvas`, the model `scripts/contrast-glass.py` uses) it put ink-3 at
+     4.52:1 and *fell* as alpha rose — 4.48:1 by 0.92 — because rgb(46 56 78)
+     sits too close to ink-3's own luminance to gain anything from more of
+     itself. rgb(40 49 68) clears 4.86:1 at every alpha from 0.72 to 0.92, so
+     the tint can now rise for occlusion without spending contrast to pay for
+     it. One hue across all three dark tiers also removes a difference nobody
+     chose. */
+  --glass-tint: rgb(40 49 68 / 0.62);
+  --glass-tint-strong: rgb(40 49 68 / 0.78);
+  /* Lower than light's 0.90 on purpose: what has to be buried in dark is
+     light-on-dark content, which is already low-contrast through a tint, so the
+     same occlusion costs less opacity. */
+  --glass-tint-occlude: rgb(40 49 68 / 0.86);
   --glass-blur: 18px;
   --glass-blur-strong: 30px;
   /* Closed an asymmetry: this was declared only in `:root`, so dark glass was
@@ -473,16 +481,30 @@
   --shadow-active: 0 4px 7px 0 rgb(0 0 0 / 0.04);
 
   /* ---- frosted glass ----
-     One material, three strengths, so "how frosted is this" is a token choice
+     One material, four strengths, so "how frosted is this" is a token choice
      rather than a per-component decision.
 
      The tint is opaque enough to keep text readable, and the blur sits on the
      element's own `backdrop-filter` — never on content. Glass works because
      there is something behind it to diffuse: the tinted canvas, the smoke wash,
      the sidebar. Over a flat fill it would cost a compositing layer for nothing,
-     so opaque surfaces stay opaque. */
-  --glass-tint: rgb(255 255 255 / 0.66);
-  --glass-tint-strong: rgb(255 255 255 / 0.82);
+     so opaque surfaces stay opaque.
+
+     **The tint is a measured floor, not a taste call.** At 0.66 the tightest
+     text token — `danger-text` — landed at 4.36:1 over the worst backdrop, under
+     the 4.5:1 bar. `scripts/contrast-glass.py` did not catch it because the
+     script still carried the 0.74 it was written against while the CSS had
+     drifted down to 0.66. 0.74 is the value that clears every token (worst
+     4.52:1). The script now reads these declarations straight out of this file,
+     so the two cannot drift apart again. */
+  --glass-tint: rgb(255 255 255 / 0.74);
+  --glass-tint-strong: rgb(255 255 255 / 0.86);
+  /* For surfaces that sit over content scrolling *behind* them — see
+     `glass-occlude`. High enough to hide what is underneath even before the
+     blur does its work. Light needs the higher value of the two: the text it
+     has to bury is dark ink on a light ground, which is exactly the pairing
+     that stays legible through a tint. */
+  --glass-tint-occlude: rgb(255 255 255 / 0.9);
   --glass-blur: 18px;
   --glass-blur-strong: 30px;
   --glass-saturate: 1.6;
@@ -601,6 +623,26 @@
   box-shadow: var(--glass-lift);
 }
 
+/* Glass that must *occlude*.
+ *
+ * A sticky header and a sticky sub-row sit over content that scrolls behind
+ * them, so their backdrop is not the smooth canvas — it is other components, in
+ * focus. The flat variants cannot cover that: they carry no `backdrop-filter`,
+ * so whatever is behind stays sharp and reads straight through the tint. At 0.74
+ * white that leaves roughly a quarter of a sharp button, or a table row, or a
+ * word of text, sitting visibly inside the surface. That is the collision this
+ * exists to remove.
+ *
+ * This is the one place a sub-surface earns its own `backdrop-filter`: it is a
+ * single element, not four hundred, so the cost is one compositing layer rather
+ * than the 463 that made `glass-flat` worth having in the first place. The blur
+ * destroys the detail and the heavy tint seals whatever is left. */
+@utility glass-occlude {
+  background-color: var(--glass-tint-occlude);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
 /* Degradation for the two cases where frost cannot work.
  *
  * Without these, a browser with no `backdrop-filter` renders `glass` as a
@@ -612,17 +654,22 @@
  * Both land on the opaque surface token, which is what the panel would have
  * been before it became glass.
  *
- * `glass-flat` needs no fallback: it has no filter to lose. */
+ * `glass-flat` needs no fallback: it has no filter to lose. `glass-occlude`
+ * needs it more than either of the others — it exists *because* content shows
+ * through, so losing the blur without losing the transparency would be the exact
+ * failure it was written to fix. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass,
-  .glass-strong {
+  .glass-strong,
+  .glass-occlude {
     background-color: var(--c-surface);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .glass,
-  .glass-strong {
+  .glass-strong,
+  .glass-occlude {
     background-color: var(--c-surface);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

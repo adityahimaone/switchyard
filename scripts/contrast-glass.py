@@ -8,10 +8,23 @@ gamma-encode, composite in sRGB, then linearise. Compositing in linear light
 gives different (and wrong) numbers, which is the trap the first palette pass
 fell into.
 
-Run: python3 contrast-glass.py
+The tint values are READ FROM web/src/index.css, not hardcoded here. They used
+to be hardcoded and they drifted: the CSS moved to 0.66/0.82 light and
+0.52/0.72 dark while this file still checked 0.74/0.84 and 0.42/0.78. The guard
+passed the whole time, and the value it was supposed to be guarding put
+`danger-text` at 4.36:1 on light `glass` -- under the 4.5:1 bar. Parsing the
+declarations means the two cannot disagree again.
+
+Exits non-zero if any token fails, so it can act as a gate rather than as a
+report nobody reads.
+
+Run: python3 scripts/contrast-glass.py
 """
 
 import math
+import pathlib
+import re
+import sys
 
 def hex_rgb(h):
     h = h.lstrip("#")
@@ -55,10 +68,51 @@ REVIEW_TEXT  = ("#7440c4", "#c7aaf7")
 # peak over the canvas rather than a mid-blur approximation.
 ORB = {"light": (26 / 100, "#2f57c4"), "dark": (32 / 100, "#5a7fd6")}
 
-# ── glass fills (index.css, Revision 5) ───────────────────────────────────────
-TINT        = {"light": (0.74, (255, 255, 255)), "dark": (0.42, (46, 56, 78))}
-TINT_STRONG = {"light": (0.84, (255, 255, 255)), "dark": (0.78, (30, 38, 55))}
+# ── glass fills, read from index.css ──────────────────────────────────────────
+CSS = pathlib.Path(__file__).resolve().parent.parent / "web" / "src" / "index.css"
+
+def read_tints(path):
+    """Pull the three glass tiers out of the stylesheet.
+
+    The theme is decided by the tint colour, not by which declaration comes
+    first: `.dark` is declared *above* the light `:root` block in this file, so
+    position is not a reliable signal. A white tint is light; anything else is
+    dark. Exactly two of each must exist, and they must resolve to different
+    themes -- otherwise the file changed shape and this check is meaningless.
+    """
+    text = path.read_text(encoding="utf-8")
+
+    def grab(prop):
+        pat = re.compile(
+            rf"{re.escape(prop)}:\s*rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*/\s*([\d.]+)\s*\)"
+        )
+        hits = pat.findall(text)
+        if len(hits) != 2:
+            sys.exit(
+                f"{path}: expected 2 `{prop}` declarations (light, dark), found {len(hits)}"
+            )
+        out = {}
+        for r, g, b, a in hits:
+            rgb = (int(r), int(g), int(b))
+            theme = "light" if rgb == (255, 255, 255) else "dark"
+            if theme in out:
+                sys.exit(
+                    f"{path}: both `{prop}` declarations resolved to {theme} "
+                    f"-- expected one white (light) and one tinted (dark)"
+                )
+            out[theme] = (float(a), rgb)
+        return out
+
+    return (
+        grab("--glass-tint"),
+        grab("--glass-tint-strong"),
+        grab("--glass-tint-occlude"),
+    )
+
+TINT, TINT_STRONG, TINT_OCCLUDE = read_tints(CSS)
 CANVAS = {"light": CANVAS_L, "dark": CANVAS_D}
+
+FAILURES = []
 
 
 def worst_case(theme, tint):
@@ -80,7 +134,10 @@ def report(title, tint):
     for name, (lt, dk) in rows:
         rl = ratio(hex_rgb(lt), worst_case("light", tint))
         rd = ratio(hex_rgb(dk), worst_case("dark", tint))
-        flag = "  <-- FAILS 4.5" if min(rl, rd) < 4.5 else ""
+        fails = min(rl, rd) < 4.5
+        flag = "  <-- FAILS 4.5" if fails else ""
+        if fails:
+            FAILURES.append(f"{title}: {name} at {min(rl, rd):.2f}:1")
         if min(rl, rd) < worst[0]:
             worst = (min(rl, rd), name)
         print(f"{name:22}{rl:8.2f}{rd:8.2f}{flag}")
@@ -89,10 +146,15 @@ def report(title, tint):
 
 
 print("Glass contrast — worst case is an orb directly behind the panel,")
-print("not the flat canvas. Composite in sRGB, then linearise.\n")
+print("not the flat canvas. Composite in sRGB, then linearise.")
+print(f"Tints read from {CSS.relative_to(CSS.parent.parent)}")
+for label, t in (("glass-tint", TINT), ("glass-tint-strong", TINT_STRONG),
+                 ("glass-tint-occlude", TINT_OCCLUDE)):
+    print(f"  {label:20} light a={t['light'][0]:.2f}  dark a={t['dark'][0]:.2f}")
 
 report("L2/L3 panel + card  (glass / glass-card)", TINT)
 report("L4/L5 overlay      (glass-strong)", TINT_STRONG)
+report("Sticky / occluding (glass-occlude)", TINT_OCCLUDE)
 
 # ── type on a filled accent surface ────────────────────────────────────────────
 # The button gradient is `accent/85 -> accent`, so the lightest background its
@@ -111,6 +173,12 @@ ON_ACCENT = {"light": hex_rgb("#ffffff"), "dark": hex_rgb("#0b0e14")}
 ALT = {"light": hex_rgb("#0b0e14"), "dark": hex_rgb("#ffffff")}
 for name, pair in [("on-accent (used)", ON_ACCENT), ("the other way", ALT)]:
     vals = {t: ratio(pair[t], ACCENT_FILL[t]) for t in ("light", "dark")}
+    # Only the token actually in use is a gate; "the other way" is there to show
+    # why the choice is forced, and is expected to fail.
+    is_gate = name == "on-accent (used)"
+    fails = is_gate and min(vals.values()) < 4.5
+    if fails:
+        FAILURES.append(f"on-accent at {min(vals.values()):.2f}:1")
     flag = "  <-- FAILS 4.5" if min(vals.values()) < 4.5 else ""
     print(f"{name:22}{vals['light']:8.2f}{vals['dark']:8.2f}{flag}")
 print("\n  The label colour is theme-dependent BY MEASUREMENT, not by taste.")
@@ -118,3 +186,10 @@ print("  White is correct in light; near-black is correct in dark.")
 print("  Never hard-code either one at a call site — use the token.")
 
 print("\nBar is 4.5:1 for body text, 3:1 for large text and UI boundaries.")
+
+if FAILURES:
+    print(f"\nFAIL — {len(FAILURES)} token(s) below 4.5:1:")
+    for f in FAILURES:
+        print(f"  {f}")
+    sys.exit(1)
+print("\nPASS — every token clears 4.5:1 over the worst-case backdrop.")

@@ -21,7 +21,7 @@ import { Composer } from "@/components/chat/composer"
 import { useHeaderTrail } from "@/components/header-trail-context"
 import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
-import { DetailSheet } from "@/components/app/detail-sheet"
+import { PromptDialog } from "@/components/app/prompt-dialog"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatProject, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatProject, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
 import { ProjectDialog } from "@/features/projects/ProjectDialog"
@@ -1324,13 +1324,19 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                       above, so the panel has to be willing to shrink. The sticky
                       search row above still pins inside it. */}
                 <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                  {/* `glass-flat-strong`, matching the two other sticky search
-                      rows in a `SelectContent` (`AttachmentAnalysisSettings`,
-                      `ProfilesPage`). It carries the panel's own `tint-strong`
-                      with no second `backdrop-filter` — blur once per visual
-                      stack, at the panel — so the row reads as part of the menu
-                      rather than an opaque slab pasted over it. */}
-                  <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
+                  {/* `glass-occlude`, matching the two other sticky search rows
+                      in a `SelectContent` (`AttachmentAnalysisSettings`,
+                      `ProfilesPage`). This was `glass-flat-strong` with no
+                      second `backdrop-filter`, on the argument that blurring
+                      once per stack keeps the row reading as part of the menu
+                      rather than as a slab pasted over it. That reasoning missed
+                      the only thing the row actually has to do: the model list
+                      scrolls *under* it, and with no filter the list stays
+                      sharp, so a quarter of a menu item sat visibly inside the
+                      strip. A sticky row over scrolling content cannot occlude
+                      with tint alone — it needs the blur, and it is one element,
+                      so the layer is affordable. */}
+                  <div className="glass-occlude sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                     <Input
                       value={modelSearch}
                       onChange={(event) => setModelSearch(event.target.value)}
@@ -1426,10 +1432,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       )}
     </div>
       {/* One surface per intent: archive / restore / delete are *confirmations*,
-          so they use the dialog; rename is an *edit*, so it uses the sheet below.
-          Opening the dialog for rename too put a modal on top of a sheet, and
-          gave the user a second "Save title" button that could only re-save the
-          prefilled title (the dialog has no field to type in). */}
+          so they use `ConfirmDialog`; rename is an *edit*, so it uses
+          `PromptDialog`. Never both for one action — that put a modal on top of
+          a sheet and gave the user two "Save title" buttons, only one of which
+          had a field to type in. */}
       <ConfirmDialog
         open={!!sessionAction && sessionAction.kind !== "rename"}
         onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
@@ -1439,32 +1445,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         busy={actionBusy}
         onConfirm={() => void confirmSessionAction()}
       />
-      {sessionAction?.kind === "rename" && (
-        <DetailSheet
-          open
-          onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
-          title="Rename chat"
-          description="Choose a title for this room."
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setSessionAction(null)} disabled={actionBusy}>Cancel</Button>
-              <Button onClick={() => void confirmSessionAction()} disabled={actionBusy || !renameDraft.trim()}>
-                {actionBusy ? "Saving…" : "Save title"}
-              </Button>
-            </>
-          }
-        >
-          <Input
-            autoFocus
-            value={renameDraft}
-            onChange={(event) => { setRenameDraft(event.target.value); setActionError("") }}
-            onKeyDown={(event) => { if (event.key === "Enter" && renameDraft.trim()) void confirmSessionAction() }}
-            maxLength={120}
-            aria-label="Chat title"
-          />
-          {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
-        </DetailSheet>
-      )}
+      <PromptDialog
+        open={sessionAction?.kind === "rename"}
+        onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
+        title="Rename chat"
+        description="Choose a title for this room."
+        label="Chat title"
+        value={renameDraft}
+        onChange={(next) => { setRenameDraft(next); setActionError("") }}
+        onConfirm={() => void confirmSessionAction()}
+        confirmLabel="Save title"
+        busy={actionBusy}
+        error={actionError}
+        maxLength={120}
+      />
       {newProject && (
         <ProjectDialog
           workspaces={workspaces}
@@ -1481,32 +1475,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         busy={actionBusy}
         onConfirm={() => void confirmProjectAction()}
       />
-      {projectAction?.kind === "rename" && (
-        <DetailSheet
-          open
-          onOpenChange={(o) => { if (!o && !actionBusy) setProjectAction(null) }}
-          title="Rename project"
-          description="Give this project a new name. Its chats and workspace stay as they are."
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setProjectAction(null)} disabled={actionBusy}>Cancel</Button>
-              <Button onClick={() => void confirmProjectAction()} disabled={actionBusy || !projectNameDraft.trim()}>
-                {actionBusy ? "Saving…" : "Save name"}
-              </Button>
-            </>
-          }
-        >
-          <Input
-            autoFocus
-            value={projectNameDraft}
-            onChange={(event) => { setProjectNameDraft(event.target.value); setActionError("") }}
-            onKeyDown={(event) => { if (event.key === "Enter" && projectNameDraft.trim()) void confirmProjectAction() }}
-            maxLength={80}
-            aria-label="Project name"
-          />
-          {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
-        </DetailSheet>
-      )}
+      <PromptDialog
+        open={projectAction?.kind === "rename"}
+        onOpenChange={(o) => { if (!o && !actionBusy) setProjectAction(null) }}
+        title="Rename project"
+        description="Give this project a new name. Its chats and workspace stay as they are."
+        label="Project name"
+        value={projectNameDraft}
+        onChange={(next) => { setProjectNameDraft(next); setActionError("") }}
+        onConfirm={() => void confirmProjectAction()}
+        confirmLabel="Save name"
+        busy={actionBusy}
+        error={actionError}
+        maxLength={80}
+      />
   </div>
 }
 
