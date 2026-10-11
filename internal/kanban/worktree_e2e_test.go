@@ -253,7 +253,7 @@ func TestWorktreeLifecycleAgainstRealGit(t *testing.T) {
 	}
 
 	// 1. Creating the worktree.
-	wtPath, err := EnsureTaskWorktree(db, "t_wt", repo)
+	wtPath, err := EnsureTaskWorktree(db, "t_wt", repo, "")
 	if err != nil {
 		t.Fatalf("EnsureTaskWorktree: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestWorktreeLifecycleAgainstRealGit(t *testing.T) {
 	// 5. A second call reuses the worktree rather than creating another. This is
 	// the retry path: a retry must continue from the previous attempt, not start
 	// a fresh checkout and lose its work.
-	again, err := EnsureTaskWorktree(db, "t_wt", repo)
+	again, err := EnsureTaskWorktree(db, "t_wt", repo, "")
 	if err != nil {
 		t.Fatalf("second EnsureTaskWorktree: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestWorktreeSweepReclaimsOldWorktrees(t *testing.T) {
 	defer db.Close()
 
 	for _, id := range []string{"t_old", "t_recent"} {
-		if _, err := EnsureTaskWorktree(db, id, repo); err != nil {
+		if _, err := EnsureTaskWorktree(db, id, repo, ""); err != nil {
 			t.Fatalf("worktree for %s: %v", id, err)
 		}
 	}

@@ -56,11 +56,12 @@ func workerShell(workspace, title, command string) (string, int) {
 // refuses a workspace directory that does not exist. A task that is retried
 // reuses its existing worktree rather than creating a second one, so a retry
 // continues from whatever the previous attempt left behind.
-func EnsureTaskWorktree(db *sql.DB, taskID, repoPath string) (string, error) {
+func EnsureTaskWorktree(db *sql.DB, taskID, repoPath, baseBranch string) (string, error) {
 	if strings.TrimSpace(repoPath) == "" {
 		return "", fmt.Errorf("worktree isolation needs a workspace path")
 	}
 	plan := PlanWorktree(repoPath, taskID)
+	plan.BaseBranch = baseBranch
 
 	// Already bound by an earlier attempt: reuse it.
 	if _, existing, err := TaskWorktree(db, taskID); err == nil && existing != "" {

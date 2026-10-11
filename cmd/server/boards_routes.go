@@ -672,6 +672,44 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 		}
 		fail(w, http.ErrMissingFile, 404)
 	})
+	mux.HandleFunc("GET /api/workspaces/{id}/branches", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := kanban.ListWorkspaces()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		for _, e := range ws {
+			if e.ID == r.PathValue("id") {
+				branches, err := kanban.ListGitBranches(e)
+				if err != nil {
+					fail(w, err, 502)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"branches": branches})
+				return
+			}
+		}
+		fail(w, fmt.Errorf("workspace not found"), 404)
+	})
+	mux.HandleFunc("POST /api/workspaces/{id}/git-pull", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := kanban.ListWorkspaces()
+		if err != nil {
+			fail(w, err, 500)
+			return
+		}
+		for _, e := range ws {
+			if e.ID == r.PathValue("id") {
+				output, err := kanban.GitPull(e)
+				if err != nil {
+					writeJSON(w, http.StatusOK, map[string]any{"success": false, "output": output, "error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"success": true, "output": output})
+				return
+			}
+		}
+		fail(w, fmt.Errorf("workspace not found"), 404)
+	})
 
 	mux.HandleFunc("GET /api/profiles", func(w http.ResponseWriter, r *http.Request) {
 		profiles, err := kanban.ListProfiles()

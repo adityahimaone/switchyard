@@ -44,6 +44,8 @@ export interface Task {
   /** Branch and worktree path, set at dispatch for a worktree-isolated task. */
   branch?: string
   worktree_path?: string
+  /** The branch the worktree is created from. Empty means use current HEAD. */
+  base_branch?: string
   /**
    * Which verification rung applies before approval: "none" | "fast" | "ui" |
    * "e2e". Undefined means auto — routed from the diff, and recorded in
@@ -409,6 +411,8 @@ export function previewWorkspaceFile(id: string, path: string) { return api<Work
 export function saveWorkspaceFile(id: string, path: string, content: string) { return api<{ path: string; status: string }>(`/api/workspaces/${id}/files/edit`, { method: "PUT", body: JSON.stringify({ path, content }) }) }
 export function startWorkspaceTerminal(id: string, command: string) { return api<WorkspaceTerminal>(`/api/workspaces/${id}/terminal/start`, { method: "POST", body: JSON.stringify({ command }) }) }
 export function downloadWorkspaceFileURL(id: string, path: string) { return `/api/workspaces/${id}/files/download?path=${encodeURIComponent(path)}` }
+export function listWorkspaceBranches(id: string) { return api<{ branches: string[] }>(`/api/workspaces/${id}/branches`) }
+export function workspaceGitPull(id: string) { return api<{ success: boolean; output: string; error?: string }>(`/api/workspaces/${id}/git-pull`, { method: "POST" }) }
 
 export interface NodeAgent {
   node_id: string

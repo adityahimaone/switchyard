@@ -25,6 +25,8 @@ export interface CreateTaskDraft {
    * worktree and branch.
    */
   isolation: "workspace" | "worktree"
+  /** The branch to base the worktree on. Only used when isolation is "worktree". */
+  baseBranch: string
   /**
    * Which verification rung applies. "auto" means routed from the diff —
    * and is the right choice unless a human knows something the diff will
@@ -89,6 +91,8 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // Always sent: the server defaults to "workspace", but being explicit means
     // the stored value says what was chosen rather than what was assumed.
     isolation: draft.isolation,
+    // Only sent for worktree isolation with a non-empty base branch.
+    ...(draft.isolation === "worktree" && draft.baseBranch.trim() ? { base_branch: draft.baseBranch.trim() } : {}),
     // Always sent for the same reason as isolation: "" is a real choice — it is
     // how a card asks to be routed from its diff — and the stored value should
     // say the card asked, rather than leaving it indistinguishable from a card

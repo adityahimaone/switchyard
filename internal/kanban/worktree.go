@@ -48,11 +48,12 @@ const branchPrefix = "switchyard/"
 
 // WorktreePlan is the derived location for a task's worktree.
 type WorktreePlan struct {
-	Repo     string
-	Path     string
-	Branch   string
-	TaskID   string
-	Worktree bool
+	Repo       string
+	Path       string
+	Branch     string
+	BaseBranch string
+	TaskID     string
+	Worktree   bool
 }
 
 // PlanWorktree derives where a task's worktree lives.
@@ -91,12 +92,21 @@ func shellQuotePath(p string) string {
 // retry: the caller checks for an existing worktree first and reuses it, so
 // reaching this with an existing branch means something is wrong and should be
 // reported rather than silently reusing a half-finished one.
+//
+// If BaseBranch is set, the worktree is created from that branch rather than
+// HEAD, so a task can target a specific branch (e.g. a feature branch) rather
+// than whatever happens to be checked out when the dispatcher claims it.
 func gitWorktreeAddScript(p WorktreePlan) string {
-	return fmt.Sprintf("mkdir -p %s && cd %s && git worktree add --quiet -b %s %s",
+	startPoint := ""
+	if strings.TrimSpace(p.BaseBranch) != "" {
+		startPoint = shellQuotePath(strings.TrimSpace(p.BaseBranch))
+	}
+	return fmt.Sprintf("mkdir -p %s && cd %s && git worktree add --quiet -b %s %s %s",
 		shellQuotePath(path.Dir(p.Path)),
 		shellQuotePath(p.Repo),
 		shellQuotePath(p.Branch),
-		shellQuotePath(p.Path))
+		shellQuotePath(p.Path),
+		startPoint)
 }
 
 // gitWorktreeListScript lists the worktrees of a repo as "path\tbranch" lines,

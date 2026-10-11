@@ -97,7 +97,7 @@ func taskSelectCols() string {
 	        consecutive_failures, COALESCE(last_failure_error,''), COALESCE(execution_meta,''),
 	        COALESCE(paths,'[]'), COALESCE(gate_command,''), COALESCE(gate_status,''),
 	        COALESCE(gate_output,''), COALESCE(start_mode,'manual'), COALESCE(attempt,1),
-	        COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,''),
+	        COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,''), COALESCE(base_branch,''),
 	        COALESCE(verify_profile,''), COALESCE(verify_profile_effective,''),
 	        COALESCE(verify_status,''), COALESCE(verify_output,''), COALESCE(design_source,''), COALESCE(design_tool,'')`
 }
@@ -112,7 +112,7 @@ func scanTask(rows *sql.Rows) (Task, error) {
 		&t.WorkspaceKind, &t.WorkspacePath, &t.Result, &t.CreatedBy, &t.CreatedAt,
 		&started, &completed, &t.Failures, &t.LastError, &t.ExecutionMeta,
 		&pathsJSON, &t.GateCommand, &t.GateStatus, &t.GateOutput, &t.StartMode, &t.Attempt,
-		&t.Isolation, &t.Branch, &t.WorktreePath,
+		&t.Isolation, &t.Branch, &t.WorktreePath, &t.BaseBranch,
 		&t.VerifyProfile, &t.VerifyProfileEffective, &t.VerifyStatus, &t.VerifyOutput,
 		&t.DesignSource, &t.DesignTool); err != nil {
 		return t, err

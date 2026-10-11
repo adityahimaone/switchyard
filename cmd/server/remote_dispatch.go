@@ -77,6 +77,7 @@ func startRemoteDispatcher(ctx context.Context) {
 // dispatchCandidate is one card the dispatch selection surfaced.
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
+	baseBranch                                                                                                                                                     string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -89,7 +90,7 @@ type dispatchCandidate struct {
 // both rules at claim time; this keeps the poll itself from even
 // considering a card that cannot run.
 func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
-	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
+	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
 		AND NOT EXISTS (
 			SELECT 1 FROM task_dependencies d
 			LEFT JOIN tasks dt ON dt.id = d.depends_on_id
@@ -103,7 +104,7 @@ func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
 	var pending []dispatchCandidate
 	for rows.Next() {
 		var r dispatchCandidate
-		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.verifyProfile, &r.designSource, &r.designTool); err != nil {
+		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool); err != nil {
 			return nil, err
 		}
 		if r.ws != "" {
@@ -305,7 +306,7 @@ func dispatchPendingRemoteTasks() {
 			// shared checkout, so the diff belongs to this task alone.
 			workWorkspace := r.ws
 			if r.isolation == "worktree" {
-				wt, wtErr := kanban.EnsureTaskWorktree(db, r.id, r.ws)
+				wt, wtErr := kanban.EnsureTaskWorktree(db, r.id, r.ws, r.baseBranch)
 				if wtErr != nil {
 					// The worktree is the task's isolation; running it in the
 					// shared checkout instead would be a silent downgrade, so the

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import type { ExecutorSettings, Profile, VerifyProfile, Workspace } from "../../api"
-import { api, getExecutorSettings, startTask, validateTask } from "../../api"
+import { api, getExecutorSettings, listWorkspaceBranches, startTask, validateTask, workspaceGitPull } from "../../api"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -142,6 +142,7 @@ export default function TaskDialog({
   const [gateCommand, setGateCommand] = useState("")
   const [startMode, setStartMode] = useState<"manual" | "now">("manual")
   const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
+  const [baseBranch, setBaseBranch] = useState("")
   const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
   const [designSource, setDesignSource] = useState("")
   // "none" is the form's sentinel for "no pen.dev design" — Radix
@@ -167,6 +168,20 @@ export default function TaskDialog({
   })
   const visibleExecutors = useMemo(() => visibleExecutorsFor(executorSettings), [executorSettings])
 
+  // Find the workspace ID from the selected path so we can list branches.
+  const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
+
+  const { data: branchData, refetch: refetchBranches } = useQuery({
+    queryKey: ["workspace-branches", selectedWorkspace?.id],
+    queryFn: () => listWorkspaceBranches(selectedWorkspace!.id),
+    enabled: isolation === "worktree" && !!selectedWorkspace?.id,
+  })
+
+  const pullMutation = useMutation({
+    mutationFn: () => workspaceGitPull(selectedWorkspace!.id),
+    onSuccess: () => refetchBranches(),
+  })
+
   // Seed the default mode once, without stomping a user change on re-render.
   const seededMode = useRef(false)
   useEffect(() => {
@@ -189,6 +204,7 @@ export default function TaskDialog({
     gateCommand,
     startMode,
     isolation,
+    baseBranch,
     verifyProfile,
     designSource,
     designTool: designTool === "none" ? "" : designTool,
@@ -218,7 +234,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, verifyProfile, designSource, designTool, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -681,6 +697,45 @@ export default function TaskDialog({
               {issuesForField(issues, "isolation").map((i) => (
                 <FieldIssue key={i.code + i.message} issue={i} />
               ))}
+
+              {isolation === "worktree" && selectedWorkspace && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs text-ink-3">Base branch</Label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-2xs"
+                        disabled={pullMutation.isPending}
+                        onClick={() => pullMutation.mutate()}
+                      >
+                        {pullMutation.isPending ? (
+                          <Loader2 className="mr-1 size-3 animate-spin" />
+                        ) : null}
+                        Pull
+                      </Button>
+                    </div>
+                  </div>
+                  <Select value={baseBranch || "__head"} onValueChange={(v) => setBaseBranch(v === "__head" ? "" : v)}>
+                    <SelectTrigger className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__head">Current HEAD</SelectItem>
+                      {branchData?.branches.map((b) => (
+                        <SelectItem key={b} value={b} className="truncate" title={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-[11px] text-ink-3">
+                    The worktree is created from this branch. Current HEAD uses whatever is checked out now.
+                  </p>
+                </div>
+              )}
             </div>
           </CollapsibleSection>
 

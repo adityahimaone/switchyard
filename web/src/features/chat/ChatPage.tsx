@@ -1323,7 +1323,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                       `position="popper"` panel to the trigger and will not push it
                       above, so the panel has to be willing to shrink. The sticky
                       search row above still pins inside it. */}
-                <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
+                <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-60">
                   {/* `glass-occlude`, matching the two other sticky search rows
                       in a `SelectContent` (`AttachmentAnalysisSettings`,
                       `ProfilesPage`). This was `glass-flat-strong` with no
@@ -1349,7 +1349,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                     <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
                   )}
                   {filteredModelOptions.map((v) => (
-                    <SelectItem key={v} value={v} className="max-w-72 truncate" title={v}>{v}</SelectItem>
+                    <SelectItem key={v} value={v} className="max-w-60 truncate" title={v}>{v}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
