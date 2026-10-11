@@ -22,13 +22,14 @@ import { useHeaderTrail } from "@/components/header-trail-context"
 import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { DetailSheet } from "@/components/app/detail-sheet"
-import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
+import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatProject, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatProject, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
 import { ProjectDialog } from "@/features/projects/ProjectDialog"
 import { GROUP_ORDER, GROUP_LABEL, buildRailTree } from "./railTree"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void; onProjectRemoved?: (projectID: string) => void }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
+type ProjectAction = "rename" | "delete"
 
 /** Sentence case, and a name that matches what the user would say. */
 function stateLabel(state?: ChatState): string {
@@ -278,7 +279,7 @@ function SessionNotice({ text }: { text: string }) {
   </div>
 }
 
-export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectName, projectWorkspace, projectExecutor, projectOptions, onOpenProject }: Props) {
+export default function ChatPage({ profiles, workspaces, initialSessionID, onSessionChange, sidebarOpen = true, onToggleSidebar, projectID, projectName, projectWorkspace, projectExecutor, projectOptions, onOpenProject, onProjectRemoved }: Props) {
   const qc = useQueryClient()
   const [sessionID, setSessionID] = useState<string | undefined>(() => initialSessionID)
   const [query, setQuery] = useState("")
@@ -302,6 +303,8 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [newProject, setNewProject] = useState(false)
   const [sessionAction, setSessionAction] = useState<{ kind: SessionAction; session: ChatSession } | null>(null)
+  const [projectAction, setProjectAction] = useState<{ kind: ProjectAction; project: ChatProject } | null>(null)
+  const [projectNameDraft, setProjectNameDraft] = useState("")
   const [renameDraft, setRenameDraft] = useState("")
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState("")
@@ -536,6 +539,16 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
      pinned session inside a project would render twice. */
   const railTree = useMemo(() => buildRailTree(filteredSessions), [filteredSessions])
 
+  /* The rail header names what you are looking at, in that order: the open chat
+     room, then the project whose landing is up, then the plain list. Reading the
+     title off the cached session list first (before the per-session query lands)
+     keeps the header from flicking back to the project name for a frame when a
+     room is picked. */
+  const activeTitle = useMemo(
+    () => current.data?.title ?? visibleSessions.find((item) => item.id === sessionID)?.title,
+    [current.data?.title, visibleSessions, sessionID],
+  )
+
   const send = useMutation({
     /* No manual scroll here any more. MessageScroller follows the live edge on
        its own — via a ResizeObserver on the content and the scroll distance —
@@ -611,6 +624,40 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         else setSessionID(undefined)
       }
       setSessionAction(null)
+    } catch (error) {
+      setActionError((error as Error).message)
+    } finally {
+      setActionBusy(false)
+    }
+  }
+  function openProjectAction(kind: ProjectAction, project: ChatProject) {
+    setProjectAction({ kind, project })
+    setProjectNameDraft(project.name)
+    setActionError("")
+  }
+  /* Rename and delete for a project. Deleting keeps the project's chats: the
+     backend detaches them (`project_id=''`) before dropping the row, so they
+     fall back into the Recents bucket instead of vanishing with the project. */
+  async function confirmProjectAction() {
+    if (!projectAction) return
+    const { kind, project } = projectAction
+    if (kind === "rename" && !projectNameDraft.trim()) return setActionError("A project name is required.")
+    setActionBusy(true)
+    setActionError("")
+    try {
+      if (kind === "rename") await updateChatProject(project.id, { name: projectNameDraft.trim() })
+      if (kind === "delete") await deleteChatProject(project.id)
+      await qc.invalidateQueries({ queryKey: ["chat-projects"] })
+      await qc.invalidateQueries({ queryKey: ["chat-sessions"] })
+      // The open project is gone: drop its sessions and hand the shell back to
+      // the flat list, otherwise the transcript keeps rendering a project that
+      // no longer exists.
+      if (kind === "delete" && project.id === projectID) {
+        setSessionID(undefined)
+        setSelectedRun(undefined)
+        onProjectRemoved?.(project.id)
+      }
+      setProjectAction(null)
     } catch (error) {
       setActionError((error as Error).message)
     } finally {
@@ -693,7 +740,9 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           control now sits on the thing it operates rather than in a bar about to
           be deleted. */}
       <div className="flex h-13 shrink-0 items-center justify-between gap-2 px-3">
-        <h1 className="truncate text-sm font-semibold text-ink">{showArchived ? "Archived" : projectName || "Chats"}</h1>
+        <h1 className="truncate text-sm font-semibold text-ink" title={showArchived ? "Archived" : activeTitle || projectName || "Chat"}>
+          {showArchived ? "Archived" : activeTitle || projectName || "Chat"}
+        </h1>
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -774,14 +823,25 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const list = railTree.byProject.get(project.id) ?? []
                   return (
                     <div key={project.id} className="mb-0.5">
-                      <div className="group/proj flex items-center gap-1 rounded-lg pr-1 hover:bg-well">
+                      <div className="group/proj flex items-center gap-0.5 rounded-lg pr-1 hover:bg-well">
+                        {/* The chevron is its own control. It used to sit inside the
+                            "open project" button, so every click both navigated and
+                            forced the node open — the chat list under a project
+                            could never be collapsed. */}
                         <button
                           type="button"
-                          onClick={() => { if (onOpenProject) onOpenProject(project); setCollapsed((prev) => ({ ...prev, [`proj:${project.id}`]: false })) }}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          onClick={() => toggleSection(`proj:${project.id}`)}
+                          aria-label={collapsed[`proj:${project.id}`] ? `Expand ${project.name}` : `Collapse ${project.name}`}
                           aria-expanded={!collapsed[`proj:${project.id}`]}
+                          className="shrink-0 rounded-control p-1 text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
                         >
-                          <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
+                          <ChevronRight className={cn("size-3.5 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenProject?.(project)}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                        >
                           <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || "var(--c-accent)" }} />
                           <span className={cn("min-w-0 flex-1 truncate text-[13px]", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
                           <span className="shrink-0 tabular text-2xs text-ink-3">{list.length}</span>
@@ -799,6 +859,22 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                           </TooltipTrigger>
                           <TooltipContent side="bottom">New chat in project</TooltipContent>
                         </Tooltip>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Actions for ${project.name}`}
+                              className="shrink-0 rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover/proj:opacity-100 data-[state=open]:opacity-100"
+                            >
+                              <MoreHorizontal className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="border-line bg-raised">
+                            <DropdownMenuItem onSelect={() => openProjectAction("rename", project)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onSelect={() => openProjectAction("delete", project)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                       {!collapsed[`proj:${project.id}`] && (
                         <div className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-1.5">
@@ -1303,6 +1379,41 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           onClose={() => setNewProject(false)}
           onSaved={(p) => { setNewProject(false); if (onOpenProject) onOpenProject(p) }}
         />
+      )}
+      <ConfirmDialog
+        open={projectAction?.kind === "delete"}
+        onOpenChange={(o) => { if (!o && !actionBusy) setProjectAction(null) }}
+        title="Delete project"
+        description={`Delete ${projectAction?.project.name ?? "this project"}? Its chats are kept — they move back to Recents. Only the project is removed.`}
+        confirmLabel="Delete"
+        busy={actionBusy}
+        onConfirm={() => void confirmProjectAction()}
+      />
+      {projectAction?.kind === "rename" && (
+        <DetailSheet
+          open
+          onOpenChange={(o) => { if (!o && !actionBusy) setProjectAction(null) }}
+          title="Rename project"
+          description="Give this project a new name. Its chats and workspace stay as they are."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setProjectAction(null)} disabled={actionBusy}>Cancel</Button>
+              <Button onClick={() => void confirmProjectAction()} disabled={actionBusy || !projectNameDraft.trim()}>
+                {actionBusy ? "Saving…" : "Save name"}
+              </Button>
+            </>
+          }
+        >
+          <Input
+            autoFocus
+            value={projectNameDraft}
+            onChange={(event) => { setProjectNameDraft(event.target.value); setActionError("") }}
+            onKeyDown={(event) => { if (event.key === "Enter" && projectNameDraft.trim()) void confirmProjectAction() }}
+            maxLength={80}
+            aria-label="Project name"
+          />
+          {actionError && <p className="mt-2 text-sm text-danger-text" role="alert">{actionError}</p>}
+        </DetailSheet>
       )}
   </div>
 }

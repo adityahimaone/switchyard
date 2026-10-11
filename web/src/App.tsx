@@ -246,6 +246,16 @@ export default function App() {
                   projectExecutor={activeProject?.executor}
                   projectOptions={activeProject?.options}
                   onOpenProject={openProject}
+                  onProjectRemoved={(removedID) => {
+                    // Deleting the project you are standing in has to leave the
+                    // route too, or the URL keeps naming a project that is gone
+                    // and a reload would 404 into the flat list anyway.
+                    if (projectID !== removedID) return
+                    setChatRouteID(undefined)
+                    setProjectID(undefined)
+                    setPage("chat")
+                    go("/chat")
+                  }}
                   onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : pagePath("chat", id)) }}
                 />
               )}
