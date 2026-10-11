@@ -28,7 +28,7 @@ import { ProjectDialog } from "@/features/projects/ProjectDialog"
 import { useHoverCapable } from "@/lib/hooks/use-hover-capable"
 import { GROUP_ORDER, GROUP_LABEL, buildRailTree } from "./railTree"
 
-type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void; onProjectRemoved?: (projectID: string) => void }
+type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string, projectID?: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void; onProjectRemoved?: (projectID: string) => void }
 type SessionAction = "rename" | "archive" | "delete" | "restore"
 type ProjectAction = "rename" | "delete"
 
@@ -430,13 +430,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const onSessionChangeRef = useRef(onSessionChange)
   useEffect(() => { onSessionChangeRef.current = onSessionChange }, [onSessionChange])
 
-  const setActive = useCallback((id: string) => {
+  /* `sessionProjectID` is the *session's* project, not the page's. `undefined`
+     means the caller did not say, so the page's own project is kept — send and
+     new-chat always create inside it. `null` or "" means the session belongs to
+     no project, and the shell has to leave the current one: without that,
+     clicking a Recents chat while a project was open left the URL, the rail
+     title and the composer's pinned workspace all naming the project. */
+  const setActive = useCallback((id: string, sessionProjectID?: string | null) => {
     setSessionID(id)
     setSelectedRun(undefined)
     shouldFollowChatRef.current = true
     setShowJumpToLatest(false)
-    onSessionChangeRef.current?.(id)
-  }, [])
+    const target = sessionProjectID === undefined ? projectID : (sessionProjectID || undefined)
+    onSessionChangeRef.current?.(id, target)
+  }, [projectID])
 
   function toggleSection(id: string) {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -617,7 +624,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     await qc.invalidateQueries({ queryKey: ["chat-sessions"] })
   }
   const selectSession = useCallback((item: ChatSession) => {
-    setActive(item.id)
+    /* Follow the session's own project, so opening a chat that lives elsewhere
+       — another project, or Recents — moves the shell with it instead of
+       stranding you in whichever project you happened to be standing in. */
+    setActive(item.id, item.project_id || null)
     setProfile(item.profile)
     setWorkspace(item.workspace)
     setModel(item.model)
@@ -1415,12 +1425,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
         </p>
       )}
     </div>
+      {/* One surface per intent: archive / restore / delete are *confirmations*,
+          so they use the dialog; rename is an *edit*, so it uses the sheet below.
+          Opening the dialog for rename too put a modal on top of a sheet, and
+          gave the user a second "Save title" button that could only re-save the
+          prefilled title (the dialog has no field to type in). */}
       <ConfirmDialog
-        open={!!sessionAction}
+        open={!!sessionAction && sessionAction.kind !== "rename"}
         onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
-        title={sessionAction?.kind === "rename" ? "Rename chat" : sessionAction?.kind === "archive" ? "Archive chat" : sessionAction?.kind === "restore" ? "Restore chat" : "Delete chat"}
-        description={sessionAction?.kind === "rename" ? "Choose a title for this room. Renaming does not change its position in the chat list." : sessionAction?.kind === "archive" ? "This room will leave the active chat list. You can find it again from Archived chats." : sessionAction?.kind === "restore" ? "This room will return to the active chat list." : `Delete ${sessionAction?.session.title ?? "this chat"} and its message history permanently?`}
-        confirmLabel={sessionAction?.kind === "rename" ? "Save title" : sessionAction?.kind === "archive" ? "Archive" : sessionAction?.kind === "restore" ? "Restore" : "Delete"}
+        title={sessionAction?.kind === "archive" ? "Archive chat" : sessionAction?.kind === "restore" ? "Restore chat" : "Delete chat"}
+        description={sessionAction?.kind === "archive" ? "This room will leave the active chat list. You can find it again from Archived chats." : sessionAction?.kind === "restore" ? "This room will return to the active chat list." : `Delete ${sessionAction?.session.title ?? "this chat"} and its message history permanently?`}
+        confirmLabel={sessionAction?.kind === "archive" ? "Archive" : sessionAction?.kind === "restore" ? "Restore" : "Delete"}
         busy={actionBusy}
         onConfirm={() => void confirmSessionAction()}
       />
@@ -1430,6 +1445,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           onOpenChange={(o) => { if (!o && !actionBusy) setSessionAction(null) }}
           title="Rename chat"
           description="Choose a title for this room."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setSessionAction(null)} disabled={actionBusy}>Cancel</Button>
+              <Button onClick={() => void confirmSessionAction()} disabled={actionBusy || !renameDraft.trim()}>
+                {actionBusy ? "Saving…" : "Save title"}
+              </Button>
+            </>
+          }
         >
           <Input
             autoFocus

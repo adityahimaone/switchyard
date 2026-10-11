@@ -256,7 +256,15 @@ export default function App() {
                     setPage("chat")
                     go("/chat")
                   }}
-                  onSessionChange={(id) => { setChatRouteID(id); go(activeProject ? `/projects/${encodeURIComponent(activeProject.id)}/${encodeURIComponent(id)}` : pagePath("chat", id)) }}
+                  onSessionChange={(id, sessionProjectID) => {
+                    // The session's own project wins over the one on screen.
+                    // `go` only pushes history, so the state has to move too —
+                    // otherwise the URL and `projectID` disagree, and a reload
+                    // (or the rail header) lands on the wrong scope.
+                    setChatRouteID(id)
+                    setProjectID(sessionProjectID)
+                    go(sessionProjectID ? `/projects/${encodeURIComponent(sessionProjectID)}/${encodeURIComponent(id)}` : pagePath("chat", id))
+                  }}
                 />
               )}
             </div>
