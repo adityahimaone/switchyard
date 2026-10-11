@@ -77,10 +77,10 @@ function platformBadge(w: Workspace): { label: string; Icon: typeof Monitor; tin
     return { label: "windows", Icon: Laptop, tint: "border-sky-500/30 bg-sky-500/10 text-sky-300" }
   }
   if (os === "mac" || host.includes("mac") || path.startsWith("/users/aditya") || path.includes("/users/")) {
-    return { label: "mac", Icon: Apple, tint: "border-[var(--color-line)] bg-[var(--color-bg)] text-ink-2" }
+    return { label: "mac", Icon: Apple, tint: "border-[var(--c-line)] bg-[var(--c-canvas)] text-ink-2" }
   }
   if (!host || host === "localhost" || host === "127.0.0.1" || os === "linux") {
-    return { label: "vps", Icon: Monitor, tint: "border-[var(--color-line)] bg-[var(--color-inset)] text-[var(--color-ink-2)]" }
+    return { label: "vps", Icon: Monitor, tint: "border-[var(--c-line)] bg-[var(--c-well)] text-[var(--c-ink-2)]" }
   }
   return { label: "linux", Icon: HardDrive, tint: "border-amber-500/30 bg-amber-500/10 text-amber-300" }
 }
@@ -124,7 +124,7 @@ function EkgTrace({ points, live, ok, running = false, height = 64 }: { points: 
   // pre-Q4 reading and it is the one the design called for: a live workspace
   // traces green, a dead one flatlines red, and the two cannot be confused
   // because the frame changes with them.
-  const line = offline ? "var(--color-danger)" : "var(--color-success)"
+  const line = offline ? "var(--c-danger)" : "var(--c-success)"
   const BASE = height - 6, TOP = 6
   const [w, setW] = useState(EKG_W)
   const boxRef = useRef<HTMLDivElement>(null)

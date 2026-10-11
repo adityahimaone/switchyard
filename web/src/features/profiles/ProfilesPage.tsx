@@ -196,11 +196,11 @@ function ProfileForm({
 
           <DialogBody className="space-y-4">
             {editing && (
-              <section className="rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+              <section className="rounded-md border border-[var(--c-line)] bg-[var(--c-canvas)] p-3">
                 <div className="flex items-center gap-3">
                   <Avatar className="size-14 shrink-0 rounded-lg">
                     {avatarPreview ? <AvatarImage src={avatarPreview} alt={initial?.name ?? ""} /> : null}
-                    <AvatarFallback className="rounded-lg bg-[var(--color-inset)] text-sm text-[var(--color-accent)]">
+                    <AvatarFallback className="rounded-lg bg-[var(--c-well)] text-sm text-[var(--c-accent)]">
                       {initial?.name.slice(0, 2).toUpperCase() ?? "AG"}
                     </AvatarFallback>
                   </Avatar>
@@ -327,7 +327,7 @@ function ProfileForm({
                   <span className="text-[11px] tabular-nums text-ink-3">{selectedSkills.length} selected</span>
                 )}
               </div>
-              <div className="mt-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-bg)] p-2">
+              <div className="mt-1.5 rounded-md border border-[var(--c-line)] bg-[var(--c-canvas)] p-2">
                 {selectedSkills.length > 0 && (
                   <div
                     className="max-h-28 overflow-y-auto"
@@ -342,7 +342,7 @@ function ProfileForm({
                             type="button"
                             aria-label={`Remove ${skill}`}
                             onClick={() => removeSkill(skill)}
-                            className="flex size-3.5 items-center justify-center rounded-sm outline-none hover:bg-[var(--color-line)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+                            className="flex size-3.5 items-center justify-center rounded-sm outline-none hover:bg-[var(--c-line)] focus-visible:ring-1 focus-visible:ring-[var(--c-accent)]"
                           >
                             <X className="size-2.5" aria-hidden="true" />
                           </button>
@@ -375,7 +375,7 @@ function ProfileForm({
                         key={skill.name}
                         type="button"
                         onClick={() => addSkill(skill.name)}
-                        className="block w-full rounded-sm px-2 py-1.5 text-left text-xs text-ink-2 outline-none hover:bg-[var(--color-line)] focus-visible:bg-[var(--color-accent-tint)]"
+                        className="block w-full rounded-sm px-2 py-1.5 text-left text-xs text-ink-2 outline-none hover:bg-[var(--c-line)] focus-visible:bg-[var(--c-accent-tint)]"
                       >
                         {skill.name}
                       </button>
@@ -400,7 +400,7 @@ function ProfileForm({
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={12}
                 placeholder="You are an expert full-stack developer…"
-                className="mt-1.5 max-h-64 min-h-40 shrink-0 resize-y overflow-y-auto border-[var(--color-line)] bg-[var(--color-bg)] font-mono text-xs leading-relaxed field-sizing-fixed"
+                className="mt-1.5 max-h-64 min-h-40 shrink-0 resize-y overflow-y-auto border-[var(--c-line)] bg-[var(--c-canvas)] font-mono text-xs leading-relaxed field-sizing-fixed"
               />
               <p className="mt-1.5 text-[11px] text-ink-3">
                 Prepended to every run for this agent. Leave empty to inherit the executor default.
@@ -416,7 +416,7 @@ function ProfileForm({
               type="submit"
               size="sm"
               disabled={!canSubmit}
-              className="bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent)]/90"
+              className="bg-[var(--c-accent)] text-[var(--c-accent-ink)] hover:bg-[var(--c-accent)]/90"
             >
               {busy && <Loader2 className="size-3.5 animate-spin" />}
               {editing ? "Save changes" : "Create profile"}

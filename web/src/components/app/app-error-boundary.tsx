@@ -39,20 +39,20 @@ export default class AppErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] p-6">
-        <div className="w-full max-w-lg rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-6">
-          <h1 className="text-base font-semibold text-[var(--color-ink)]">Terjadi kesalahan saat memuat tampilan</h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--color-ink-3)]">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--c-canvas)] p-6">
+        <div className="w-full max-w-lg rounded-xl border border-[var(--c-line)] bg-[var(--c-surface)] p-6">
+          <h1 className="text-base font-semibold text-[var(--c-ink)]">Terjadi kesalahan saat memuat tampilan</h1>
+          <p className="mt-2 text-sm leading-6 text-[var(--c-ink-3)]">
             Halaman ini gagal dirender. Data di server tidak berubah. Coba muat ulang tampilan, atau kembali ke board.
           </p>
-          <pre className="mt-4 max-h-40 overflow-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-inset)] p-3 text-xs leading-5 text-[var(--color-ink-2)]">
+          <pre className="mt-4 max-h-40 overflow-auto rounded-lg border border-[var(--c-line)] bg-[var(--c-well)] p-3 text-xs leading-5 text-[var(--c-ink-2)]">
             {error.message || String(error)}
           </pre>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button
               size="sm"
               onClick={this.reset}
-              className="bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent)]/90"
+              className="bg-[var(--c-accent)] text-[var(--c-accent-ink)] hover:bg-[var(--c-accent)]/90"
             >
               Coba lagi
             </Button>

@@ -814,12 +814,27 @@ hover-only.
 
 ### Inputs and menus
 
-- Inputs: `well` fill, 1px `line-strong`, `radius-control`, 32px tall. Focus:
-  focus outline. Placeholder: `ink-3`.
-- Selects and dropdowns use `raised` with `shadow-float`. Item height 28,
-  `radius-control`.
+- Inputs: `glass-flat` — the glass tint plus an inset shadow, and deliberately no
+  `backdrop-filter`. An input is small and always sits on a panel that is already
+  blurred, so a second filter would diffuse nothing while adding a compositing
+  layer per field; the inset shadow is what makes it read as a well you type
+  *into*. `radius-control`, 32px tall. Placeholder `ink-3`. Focus is a real border
+  change **and** the ring, never the ring alone — a glow on its own is a colour cue.
+- The icon-plus-addon variant is an `InputGroup`: `surface` fill, 0.8px `line`
+  darkening to `line-strong` on hover and on `focus-within`, `radius-control`. The
+  `focus-within` ring belongs on the shell, not on the inner input, which is
+  borderless and shadowless inside the group.
+- **Selects and dropdowns are L4 overlays: `glass-strong`** (§0b), with
+  `glass-sheen` on menus attached to a trigger. Item height 28, `radius-control`.
+  They are **not** `raised` + `shadow-float`; that was Revision 4, and because
+  `glass-strong` already carries `--glass-lift-strong`, a second shadow would
+  double the elevation cue. A sticky sub-row inside one (a search field) takes
+  `glass-flat-strong`: the panel's own tint with no second blur.
 - Filter chips show the selected value ("Agent: worker"), not an empty label.
-- Tooltips: `raised`, `xs`, no blur, origin-aware.
+- Tooltips: `glass-strong`, `xs`, origin-aware. They were the one surface
+  deliberately left opaque, which made them read as a floating label rather than
+  as part of the page, so they take the smallest blur tier instead — at most one
+  is on screen, so the filter is cheap.
 
 ### Tables and lists
 

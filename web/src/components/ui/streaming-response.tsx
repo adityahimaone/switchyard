@@ -49,7 +49,7 @@ export function StreamingResponse({
         </Button>}
         {onRetry && <Button variant="ghost" size="icon-xs" onClick={onRetry} aria-label="Retry" title="Retry"><RotateCcw className="size-3" /></Button>}
         {footer}
-        {isStreaming && <span className="ml-auto text-[11px] text-[var(--color-ink-3)] thinking-shimmer">Streaming...</span>}
+        {isStreaming && <span className="ml-auto text-[11px] text-[var(--c-ink-3)] thinking-shimmer">Streaming...</span>}
       </div>}
     </div>
   )

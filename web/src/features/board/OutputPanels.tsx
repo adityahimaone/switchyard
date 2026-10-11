@@ -120,7 +120,7 @@ function workerHint(line: string) {
   if (/(^|\W)(error|fail|failed|exception|panic|fatal)(\W|$)/.test(l) || line.includes("✗") || line.includes("×")) return "text-danger-text"
   if (/(warn|warning)/.test(l)) return "text-warning"
   if (/(success|successful|completed|passed|pass|done|ok)\b/.test(l) || /[✓✔]/.test(line)) return "text-success-text"
-  if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-[var(--color-info)]"
+  if (/^\s*(\$|>|›|→|•)/.test(line) || /^(npm|pnpm|go |cargo |hermes |git )/i.test(line.trim())) return "text-[var(--c-st-ready)]"
   if (/\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}/.test(line)) return "text-ink-3"
   return ""
 }
@@ -133,7 +133,7 @@ function ResultSpans({ line }: { line: string }) {
       {parts.map((p, i) => {
         if (/^`[^`]+`$/.test(p)) {
           return (
-            <span key={i} className="rounded border border-[var(--c-line)] bg-[var(--c-line)]/40 px-1 font-mono text-meta text-[var(--color-info)]">
+            <span key={i} className="rounded border border-[var(--c-line)] bg-[var(--c-line)]/40 px-1 font-mono text-meta text-[var(--c-st-ready)]">
               {p.slice(1, -1)}
             </span>
           )
@@ -150,7 +150,7 @@ function ResultSpans({ line }: { line: string }) {
                     href={u}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
-                    className="text-[var(--color-info)] underline decoration-[var(--c-line-strong)] underline-offset-2"
+                    className="text-[var(--c-st-ready)] underline decoration-[var(--c-line-strong)] underline-offset-2"
                   >
                     {u}
                   </a>
@@ -180,7 +180,7 @@ function resultLineClass(line: string) {
   if (/^(✔|✓|✅|🎉|✨)/.test(t) || (/success|completed|done/i.test(t) && /[✓✔]/.test(line))) return "text-success-text"
   if (/^(✗|×|❌|fail|error)/i.test(t) || /error:/i.test(line)) return "text-danger-text"
   if (/^warn/i.test(t)) return "text-warning"
-  if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-[var(--color-info)]"
+  if (/^╭─.*HERMES/.test(t) || /─{3,}/.test(t)) return "text-[var(--c-st-ready)]"
   if (/^[\+\-]{3}|^diff --/.test(t)) {
     return t.startsWith("+")
       ? "text-success-text"

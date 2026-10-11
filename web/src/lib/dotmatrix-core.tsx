@@ -26,9 +26,18 @@ const DOT_MATRIX_COLOR_PRESETS: Record<
     glow: string;
   }
 > = {
+  /* Was `var(--color-dot-on)`, which is defined nowhere — so this preset's dots
+     would have resolved to no fill at all and painted black. That is the exact
+     failure `scripts/check-undefined-css-vars.py` exists to catch (see the ring
+     charts it was written for).
+
+     Currently unreachable: no call site passes `colorPreset`, so
+     `resolveDmxColorTokens` always falls through to the `color` argument — which
+     `board-loader.tsx` sets to `var(--c-accent)`. Pointed at the same token so
+     the preset means what its name says the moment anyone wires it up. */
   "solid-theme": {
-    fill: "var(--color-dot-on)",
-    glow: "var(--color-dot-on)"
+    fill: "var(--c-accent)",
+    glow: "var(--c-accent)"
   },
   "solid-mint": {
     fill: "#34d399",

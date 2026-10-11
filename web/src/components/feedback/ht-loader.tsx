@@ -17,7 +17,7 @@ export function HtLoader({ size = 96, label = "Loading" }: { size?: number; labe
       fill="none"
       role="img"
       aria-label={label}
-      style={{ color: "var(--color-ink)" } as React.CSSProperties}
+      style={{ color: "var(--c-ink)" } as React.CSSProperties}
     >
       <defs>
         <clipPath id={disc}>

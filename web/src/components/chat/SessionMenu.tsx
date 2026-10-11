@@ -36,7 +36,10 @@ export function SessionMenu({ session, forkMessageId, onDuplicate, onFork, onDel
   }
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" disabled={busy} aria-label={`Actions for ${session.title}`} className="size-7"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+    {/* `glass-strong` default, same as every other overlay in the app. This had
+        `border-line bg-raised` on it, which replaced the translucent tint with an
+        opaque fill — design.md §0c, the last overlay still doing it. */}
+    <DropdownMenuContent align="end">
       <DropdownMenuItem onSelect={() => void run(onDuplicate)}><Copy className="size-3.5" /> Duplicate</DropdownMenuItem>
       <DropdownMenuItem disabled={!forkMessageId || !onFork} onSelect={() => { if (forkMessageId && onFork) void run(() => onFork(session)) }}><GitFork className="size-3.5" /> Fork from message</DropdownMenuItem>
       <DropdownMenuSeparator />

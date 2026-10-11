@@ -95,7 +95,7 @@ export interface FunnelChartProps {
     | {
         /** Show alternating background bands behind each segment. Default true */
         bands?: boolean;
-        /** Color of the background bands. Default "var(--color-muted)" */
+        /** Color of the background bands. Default "var(--c-raised)" */
         bandColor?: string;
         /** Show grid lines at each gap between segments. Default true */
         lines?: boolean;
@@ -826,7 +826,7 @@ export function FunnelChart({
   const gridEnabled = gridProp !== false;
   const gridCfg = typeof gridProp === "object" ? gridProp : {};
   const showBands = gridEnabled && (gridCfg.bands ?? true);
-  const bandColor = gridCfg.bandColor ?? "var(--color-muted)";
+  const bandColor = gridCfg.bandColor ?? "var(--c-raised)";
   const showGridLines = gridEnabled && (gridCfg.lines ?? true);
   const gridLineColor = gridCfg.lineColor ?? "var(--chart-grid)";
   const gridLineOpacity = gridCfg.lineOpacity ?? 1;

@@ -587,7 +587,7 @@ export default function TaskDialog({
                   {deps.map((id) => (
                     <span
                       key={id}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-xs"
+                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)] px-2 py-1 text-xs"
                     >
                       {candidates.find((c) => c.id === id)?.title ?? id}
                       <button

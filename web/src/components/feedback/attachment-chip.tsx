@@ -7,7 +7,7 @@ export function AttachmentChip({ att, onRemove, showPreview = false }: { att: At
   const isImage = att.mime.startsWith("image/")
   const [view, setView] = useState<LightboxAttachment | null>(null)
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-xs">
+    <div className="flex items-center gap-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)] px-2 py-1 text-xs">
       {isImage ? (
         <button
           type="button"

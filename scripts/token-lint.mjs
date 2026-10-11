@@ -100,6 +100,7 @@ const RADIUS_SCALE = new Set([
 const RADIUS_DETAIL = new Set([
   "rounded-[1px]", // AgentStatus dot
   "rounded-[2px]", // chart.tsx legend swatch
+  "rounded-[4px]", // filter-token-bar multi-select checkbox, 14px square
   "rounded-[5px]", // settings-parts switch track
   "rounded-[6px]", // theme-switch thumb
   "rounded-[10px]", // streaming-text citation block

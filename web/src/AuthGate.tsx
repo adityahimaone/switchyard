@@ -24,7 +24,7 @@ export default function AuthGate() {
 
   if (state === null) {
     return (
-      <div className="flex min-h-screen bg-[var(--color-bg)]">
+      <div className="flex min-h-screen bg-[var(--c-canvas)]">
         <LoadingState label="Memeriksa sesi" description="Menyiapkan akses ke workspace." />
       </div>
     )

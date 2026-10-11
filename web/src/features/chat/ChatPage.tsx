@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Archive, Check, ChevronRight, FileImage, FolderKanban, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Input, InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -274,8 +274,12 @@ function splitResponseText(text: string) {
 
 function SessionNotice({ text }: { text: string }) {
   if (!text) return null
-  return <div className="mb-3 flex max-w-full items-start gap-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-well)] px-3 py-2 text-2xs text-[var(--c-ink-3)]">
-    <span aria-hidden className="mt-0.5 text-[var(--c-accent)]">↻</span>
+  /* `rounded-card` + the token classes rather than raw `var()` reads: the values
+     were already the right tokens, but reading them through `var()` bypasses the
+     `@theme inline` mapping, so the callout could not follow a theme swap the way
+     every other surface does. */
+  return <div className="mb-3 flex max-w-full items-start gap-2 rounded-card border border-line bg-well px-3 py-2 text-2xs text-ink-3">
+    <span aria-hidden className="mt-0.5 text-accent">↻</span>
     <span className="min-w-0 whitespace-pre-wrap break-words font-mono leading-5">{text.replace(/^↻\s*/, "")}</span>
   </div>
 }
@@ -812,18 +816,25 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
       </div>
 
       {/* Search sits on the panel with its own padding rather than in a bordered
-          strip, which put two hairlines 32px apart around one control. */}
+          strip, which put two hairlines 32px apart around one control.
+
+          `InputGroup` rather than an absolutely-positioned icon over a plain
+          `Input`: the shared shell already carries the icon slot, the gap and the
+          `focus-within` ring, so the field stops hand-rolling a layout the
+          design system provides — and the ring now lands on the shell instead of
+          fighting the input's own inset shadow. */}
       <div className="shrink-0 px-3 py-2">
-        <div className="relative">
-          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-          <Input
+        <InputGroup>
+          <InputGroupAddon>
+            <Search aria-hidden className="size-3.5 text-ink-3" />
+          </InputGroupAddon>
+          <InputGroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search chats"
             aria-label="Search chats"
-            className="h-8 pl-7 text-xs"
           />
-        </div>
+        </InputGroup>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
@@ -1129,7 +1140,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   return <><SessionNotice text={response.notice} />{harness && !messageStreaming ? (
                     <div className="space-y-2">
                       <HarnessChatResult text={rawOutput} executor={harness} />
-                      <div className="flex min-h-7 items-center gap-0.5 text-[var(--color-ink-3)]"><MessageFooter run={msgRun} sessionID={sessionID} isStreaming={false} messageCreatedAt={message.created_at} /></div>
+                      <div className="flex min-h-7 items-center gap-0.5 text-[var(--c-ink-3)]"><MessageFooter run={msgRun} sessionID={sessionID} isStreaming={false} messageCreatedAt={message.created_at} /></div>
                     </div>
                   ) : (
                     <StreamingText status={messageStreaming ? "streaming" : "complete"} copyText={response.text} footer={<MessageFooter run={msgRun} sessionID={sessionID} isStreaming={messageStreaming} messageCreatedAt={message.created_at} />}><AgentMarkdown text={response.text} /></StreamingText>
@@ -1303,7 +1314,13 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                       above, so the panel has to be willing to shrink. The sticky
                       search row above still pins inside it. */}
                 <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-72">
-                  <div className="sticky top-0 z-10 bg-raised p-1" onKeyDown={(event) => event.stopPropagation()}>
+                  {/* `glass-flat-strong`, matching the two other sticky search
+                      rows in a `SelectContent` (`AttachmentAnalysisSettings`,
+                      `ProfilesPage`). It carries the panel's own `tint-strong`
+                      with no second `backdrop-filter` — blur once per visual
+                      stack, at the panel — so the row reads as part of the menu
+                      rather than an opaque slab pasted over it. */}
+                  <div className="glass-flat-strong sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
                     <Input
                       value={modelSearch}
                       onChange={(event) => setModelSearch(event.target.value)}

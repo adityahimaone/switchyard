@@ -183,8 +183,8 @@ export default function CommandPalette({
           aria-modal="true"
           aria-label="Command palette"
         >
-          <div className="relative flex items-center gap-2 border-b border-[var(--color-line)] px-3 py-1">
-            <Search className="pointer-events-none size-4 shrink-0 text-[var(--color-ink-3)]" />
+          <div className="relative flex items-center gap-2 border-b border-[var(--c-line)] px-3 py-1">
+            <Search className="pointer-events-none size-4 shrink-0 text-[var(--c-ink-3)]" />
             <Input
               ref={inputRef}
               value={q}
@@ -198,7 +198,7 @@ export default function CommandPalette({
               className="my-1 h-7 flex-1 border-0 bg-transparent px-0 py-0 text-sm leading-none shadow-none focus-visible:ring-0 focus-visible:border-0"
             />
             <span className="hidden items-center gap-1 sm:flex">
-              <Kbd className="h-6 border-[var(--color-line)] bg-[var(--color-inset)] px-1.5 text-[10px]">ESC</Kbd>
+              <Kbd className="h-6 border-[var(--c-line)] bg-[var(--c-well)] px-1.5 text-[10px]">ESC</Kbd>
             </span>
             <button
               aria-label="Close"
@@ -211,7 +211,7 @@ export default function CommandPalette({
 
           <div ref={listRef} className="max-h-[52vh] overflow-y-auto p-2">
             {empty ? (
-              <p className="px-3 py-10 text-center text-sm text-[var(--color-ink-3)]">{emptyMessage}</p>
+              <p className="px-3 py-10 text-center text-sm text-[var(--c-ink-3)]">{emptyMessage}</p>
             ) : (
               <div className="space-y-4">
                 {filtered.commands.length > 0 && (
@@ -276,15 +276,15 @@ export default function CommandPalette({
                 )}
 
                 {!needle && (
-                  <p className="px-2 pb-1 pt-1 text-center text-[11px] text-[var(--color-ink-4)]">
-                    Type to filter · <span className="text-[var(--color-ink-3)]">↑↓</span> navigate · <span className="text-[var(--color-ink-3)]">↵</span> select
+                  <p className="px-2 pb-1 pt-1 text-center text-[11px] text-[var(--c-ink-4)]">
+                    Type to filter · <span className="text-[var(--c-ink-3)]">↑↓</span> navigate · <span className="text-[var(--c-ink-3)]">↵</span> select
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-[var(--color-line)] bg-[color-mix(in_srgb,var(--color-inset)_45%,transparent)] px-3 py-2 text-[11px] text-[var(--color-ink-4)]">
+          <div className="flex items-center justify-between border-t border-[var(--c-line)] bg-[color-mix(in_srgb,var(--c-well)_45%,transparent)] px-3 py-2 text-[11px] text-[var(--c-ink-4)]">
             <span className="inline-flex items-center gap-1.5">
               <Command className="size-3" /> {flat.length}{" "}
               {flat.length === 1 ? "result" : "results"}
@@ -304,7 +304,7 @@ export default function CommandPalette({
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-4)]">{label}</p>
+      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--c-ink-4)]">{label}</p>
       <div className="space-y-1">{children}</div>
     </div>
   )
@@ -336,25 +336,25 @@ function Row({
       onClick={onClick}
       className={cn(
         "relative flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition-colors",
-        active ? "text-[var(--color-ink)]" : "text-[var(--color-ink-2)] hover:text-[var(--color-ink)]"
+        active ? "text-[var(--c-ink)]" : "text-[var(--c-ink-2)] hover:text-[var(--c-ink)]"
       )}
     >
       {active && (
         <motion.div
           layoutId="cmd-active"
-          className="absolute inset-0 rounded-xl border border-[var(--color-line-strong)] bg-[color-mix(in_srgb,var(--color-accent-tint)_78%,var(--color-surface-raised))] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
+          className="absolute inset-0 rounded-xl border border-[var(--c-line-strong)] bg-[color-mix(in_srgb,var(--c-accent-tint)_78%,var(--c-raised))] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
           transition={{ type: "spring", stiffness: 420, damping: 30 }}
         />
       )}
       <span className="relative flex min-w-0 flex-1 items-center gap-2.5">
-        {icon && <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg border bg-[var(--color-inset)] text-[var(--color-ink-3)]", active && "border-[var(--color-line-strong)] text-[var(--color-ink)]")}>{icon}</span>}
+        {icon && <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg border bg-[var(--c-well)] text-[var(--c-ink-3)]", active && "border-[var(--c-line-strong)] text-[var(--c-ink)]")}>{icon}</span>}
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">{label}</span>
-        {meta && <span className="hidden shrink-0 font-mono text-[11px] text-[var(--color-ink-4)] sm:inline">{meta}</span>}
-        {right && <span className="shrink-0 rounded-full border border-[var(--color-line)] bg-[var(--color-inset)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-3)]">{right}</span>}
+        {meta && <span className="hidden shrink-0 font-mono text-[11px] text-[var(--c-ink-4)] sm:inline">{meta}</span>}
+        {right && <span className="shrink-0 rounded-full border border-[var(--c-line)] bg-[var(--c-well)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-3)]">{right}</span>}
       </span>
       {hint && (
         <span className="relative hidden shrink-0 sm:inline-flex">
-          <Kbd className={cn("h-6 border-[var(--color-line)] px-1.5 text-[10px]", active && "border-[var(--color-line-strong)] bg-[var(--color-surface-raised)]")}>{hint}</Kbd>
+          <Kbd className={cn("h-6 border-[var(--c-line)] px-1.5 text-[10px]", active && "border-[var(--c-line-strong)] bg-[var(--c-raised)]")}>{hint}</Kbd>
         </span>
       )}
     </button>

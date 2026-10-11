@@ -188,7 +188,7 @@ export const TONE_TEXT: Record<EventTone, string> = {
   warning: "text-warning",
   danger: "text-danger-text",
   neutral: "text-ink-2",
-  info: "text-[var(--color-info)]",
+  info: "text-[var(--c-st-ready)]",
 }
 
 export const TONE_BORDER: Record<EventTone, string> = {

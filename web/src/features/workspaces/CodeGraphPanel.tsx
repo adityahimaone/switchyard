@@ -175,7 +175,7 @@ export function CodeGraphPanel({ ws, open, onToggle }: { ws: Workspace; open: bo
         </span>
       </div>
       {open && (
-        <div className="border-t border-[var(--color-line)]/60 px-3 py-2">
+        <div className="border-t border-[var(--c-line)]/60 px-3 py-2">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[10px] text-ink-4">folder tree · only folders with own .codegraph index are listed · auto-scan depth 3</span>
             <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-ink-3" onClick={() => report.refetch()} disabled={report.isFetching} title="Rescan workspace (depth 3)">
@@ -257,14 +257,14 @@ function CGTreeBranch({ nodes, depth, collapsed, jobs, onToggleCollapse, onReind
               <button type="button" onClick={() => onToggleCollapse(node.path)} className="cg-tree-label group" style={{ paddingLeft: `${depth * 14}px` }}>
                 <span className="cg-tree-indent" aria-hidden="true">{Array.from({ length: depth }).map((_, d) => <span key={d} className="cg-tree-guide" />)}</span>
                 <ChevronRight className={`cg-tree-chevron transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                {isOpen ? <FolderOpen className="size-3.5 text-[var(--color-info)]" /> : <Folder className="size-3.5 text-[var(--color-info)]" />}
+                {isOpen ? <FolderOpen className="size-3.5 text-[var(--c-st-ready)]" /> : <Folder className="size-3.5 text-[var(--c-st-ready)]" />}
                 <span className="truncate text-[11px] font-medium text-ink" title={node.path}>{node.name}</span>
                 <span className="cg-tree-count">{node.children.length}</span>
               </button>
             ) : node.app ? (
               <div className="cg-tree-label" style={{ paddingLeft: `${depth * 14}px` }}>
                 <span className="cg-tree-indent" aria-hidden="true">{Array.from({ length: depth }).map((_, d) => <span key={d} className="cg-tree-guide" />)}</span>
-                <span className="cg-tree-leaf-slot"><FileCode2 className="size-3.5 text-[var(--color-accent)]" /></span>
+                <span className="cg-tree-leaf-slot"><FileCode2 className="size-3.5 text-[var(--c-accent)]" /></span>
                 <CodeGraphAppInline app={node.app} job={Object.values(jobs).find((j) => j.path === node.path && (j.state === "queued" || j.state === "running" || j.state === "failed"))} onReindex={() => onReindex(node.path)} onHide={() => onHide(node.path, !!node.app!.manual)} />
               </div>
             ) : null}

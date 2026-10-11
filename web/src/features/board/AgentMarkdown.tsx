@@ -117,7 +117,7 @@ const components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="text-[var(--color-info)] underline decoration-[var(--c-line-strong)] underline-offset-2 transition-colors hover:decoration-[var(--c-accent)]"
+      className="text-[var(--c-st-ready)] underline decoration-[var(--c-line-strong)] underline-offset-2 transition-colors hover:decoration-[var(--c-accent)]"
     >
       {children}
     </a>

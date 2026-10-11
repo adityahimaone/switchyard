@@ -283,7 +283,7 @@ export function AgentTaskStatus({ task, events }: { task: Task; events: TaskEven
               type="button"
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
-              className="-mx-1 mt-2 inline-flex h-7 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--c-line)]/50"
+              className="-mx-1 mt-2 inline-flex h-7 items-center rounded px-1 text-2xs text-[var(--c-st-ready)] hover:bg-[var(--c-line)]/50"
             >
               {expanded ? "Show latest 6" : `Show full timeline (${rows.length})`}
             </button>

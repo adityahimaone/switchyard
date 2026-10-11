@@ -36,7 +36,7 @@ function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        className="-mb-1 ml-1 inline-flex h-6 items-center rounded px-1 text-2xs text-[var(--color-info)] hover:bg-[var(--c-line)]/50"
+        className="-mb-1 ml-1 inline-flex h-6 items-center rounded px-1 text-2xs text-[var(--c-st-ready)] hover:bg-[var(--c-line)]/50"
       >
         {expanded ? "Show less" : "Show more"}
       </button>
