@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Archive, Check, ChevronRight, FileImage, FolderKanban, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import { DetailSheet } from "@/components/app/detail-sheet"
 import { analyzeAttachment, api, archiveChatSession, createChatSession, deleteChatProject, deleteChatSession, duplicateChatSession, forkChatSession, getChatActiveRun, getChatRun, listChatMessages, listChatProjects, listChatRunEvents, listChatSessions, listActiveChatRuns, listProviders, listSkills, openEventStream, sendChatMessage, stopChatRun, toastGlobal, unarchiveChatSession, updateChatProject, updateChatSession, uploadAttachment, type Attachment, type ChatAgent, type ChatMessage, type ChatProject, type ChatRun, type ChatRunEvent, type ChatSession, type ChatState, type Profile, type Workspace } from "@/api"
 import { EXECUTORS, executorDef, optionValue, withOption } from "@/features/projects/executors"
 import { ProjectDialog } from "@/features/projects/ProjectDialog"
+import { useHoverCapable } from "@/lib/hooks/use-hover-capable"
 import { GROUP_ORDER, GROUP_LABEL, buildRailTree } from "./railTree"
 
 type Props = { profiles: Profile[]; workspaces: Workspace[]; initialSessionID?: string; onSessionChange?: (sessionID: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void; projectID?: string; projectName?: string; projectWorkspace?: string; projectExecutor?: ChatAgent; projectOptions?: string; onOpenProject?: (project: ChatProject) => void; onProjectRemoved?: (projectID: string) => void }
@@ -410,13 +411,28 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     return modelOptions.filter((option) => option.toLowerCase().includes(needle))
   }, [modelOptions, modelSearch])
 
-  function setActive(id: string) {
+  /* Touch devices never fire a real hover, so the rail's row actions — which
+     rest at `opacity-0` until hover — would be permanently invisible on a
+     phone: still in the DOM, still tappable, but unseen. Read once here rather
+     than per row, because fifty `matchMedia` listeners for one media query is
+     waste. */
+  const canHover = useHoverCapable()
+
+  /* `onSessionChange` arrives as an inline arrow from App, so it has a fresh
+     identity every render. Holding it in a ref keeps `setActive` — and with it
+     the rail's row handlers — stable, which is what lets `RailRow` be memoized.
+     The rail is static while a response streams, and without this every stream
+     delta re-rendered every row in the list. */
+  const onSessionChangeRef = useRef(onSessionChange)
+  useEffect(() => { onSessionChangeRef.current = onSessionChange }, [onSessionChange])
+
+  const setActive = useCallback((id: string) => {
     setSessionID(id)
     setSelectedRun(undefined)
     shouldFollowChatRef.current = true
     setShowJumpToLatest(false)
-    if (onSessionChange) onSessionChange(id)
-  }
+    onSessionChangeRef.current?.(id)
+  }, [])
 
   function toggleSection(id: string) {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -539,15 +555,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
      pinned session inside a project would render twice. */
   const railTree = useMemo(() => buildRailTree(filteredSessions), [filteredSessions])
 
-  /* The rail header names what you are looking at, in that order: the open chat
-     room, then the project whose landing is up, then the plain list. Reading the
-     title off the cached session list first (before the per-session query lands)
-     keeps the header from flicking back to the project name for a frame when a
-     room is picked. */
-  const activeTitle = useMemo(
-    () => current.data?.title ?? visibleSessions.find((item) => item.id === sessionID)?.title,
-    [current.data?.title, visibleSessions, sessionID],
-  )
+  /* The rail header names the scope you are in, not the room you are reading: a
+     project when the open room belongs to one, otherwise the plain chat list.
+     Naming the room here duplicated the breadcrumb two rows above it; naming the
+     project is the thing the rail cannot otherwise tell you, because the rail
+     lists every scope at once. */
+  const railTitle = showArchived ? "Archived" : projectID ? (projectName || "Project") : "Chat"
 
   const send = useMutation({
     /* No manual scroll here any more. MessageScroller follows the live edge on
@@ -599,12 +612,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     setActive(created.id)
     await qc.invalidateQueries({ queryKey: ["chat-sessions"] })
   }
-  async function selectSession(item: ChatSession) { setActive(item.id); setProfile(item.profile); setWorkspace(item.workspace); setModel(item.model); if (item.agent) setAgent(item.agent); setExecutorOptions(item.executor_options || "{}"); void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined) }
-  function openSessionAction(kind: SessionAction, item: ChatSession) {
+  const selectSession = useCallback((item: ChatSession) => {
+    setActive(item.id)
+    setProfile(item.profile)
+    setWorkspace(item.workspace)
+    setModel(item.model)
+    if (item.agent) setAgent(item.agent)
+    setExecutorOptions(item.executor_options || "{}")
+    void getChatActiveRun(item.id).then((next) => setSelectedRun(next ?? undefined)).catch(() => undefined)
+  }, [setActive])
+  const openSessionAction = useCallback((kind: SessionAction, item: ChatSession) => {
     setSessionAction({ kind, session: item })
     setRenameDraft(item.title)
     setActionError("")
-  }
+  }, [])
   async function confirmSessionAction() {
     if (!sessionAction) return
     const { kind, session: item } = sessionAction
@@ -728,7 +749,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           onClick={() => onToggleSidebar?.()}
           className="absolute inset-0 z-20 bg-canvas/60 backdrop-blur-[2px] lg:hidden"
         />
-        <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-line bg-surface shadow-float lg:static lg:z-auto lg:w-[min(280px,85vw)] lg:shadow-none">
+        <aside
+          aria-label="Chats"
+          className="absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] shrink-0 flex-col border-r border-line bg-surface shadow-float lg:static lg:z-auto lg:w-[min(280px,85vw)] lg:shadow-none"
+        >
       {/* No `border-b`. The rail is one solid surface with a single rule on its
           right edge, and a line under its header meant two rules framing the
           same column. `h-13` matches the shell header, so the two rows stay
@@ -740,9 +764,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
           control now sits on the thing it operates rather than in a bar about to
           be deleted. */}
       <div className="flex h-13 shrink-0 items-center justify-between gap-2 px-3">
-        <h1 className="truncate text-sm font-semibold text-ink" title={showArchived ? "Archived" : activeTitle || projectName || "Chat"}>
-          {showArchived ? "Archived" : activeTitle || projectName || "Chat"}
-        </h1>
+        <h1 className="truncate text-sm font-semibold text-ink" title={railTitle}>{railTitle}</h1>
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -806,13 +828,23 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {filteredSessions.length === 0 && (projects.data ?? []).length === 0 ? (
-          <div className="rounded-card border border-dashed border-line p-4 text-center text-xs text-ink-3">No chat for this filter</div>
+          /* Empty states say what is true and what to do, in that order. The old
+             single line ("No chat for this filter") named a filter the user may
+             not have set and left them with no next step. */
+          <div className="rounded-card border border-dashed border-line p-4 text-center">
+            <p className="text-xs text-ink-2">{query ? "No chats match that search" : "No chats yet"}</p>
+            <p className="mt-1 text-2xs leading-4 text-ink-3">
+              {query
+                ? "Try a shorter search, or clear it to see everything again."
+                : "Type in the composer below to start one, or create a project to group your work."}
+            </p>
+          </div>
         ) : (
           <>
             {railTree.pinned.length > 0 && (
               <RailSection id="pinned" label="Pinned" count={railTree.pinned.length} collapsed={collapsed} onToggle={toggleSection}>
                 {railTree.pinned.map((item) => (
-                  <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                  <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} canHover={canHover} onSelect={selectSession} onAction={openSessionAction} />
                 ))}
               </RailSection>
             )}
@@ -823,7 +855,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const list = railTree.byProject.get(project.id) ?? []
                   return (
                     <div key={project.id} className="mb-0.5">
-                      <div className="group/proj flex items-center gap-0.5 rounded-lg pr-1 hover:bg-well">
+                      <div className="group/proj flex items-center gap-0.5 rounded-card pr-1 hover:bg-well">
                         {/* The chevron is its own control. It used to sit inside the
                             "open project" button, so every click both navigated and
                             forced the node open — the chat list under a project
@@ -833,14 +865,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                           onClick={() => toggleSection(`proj:${project.id}`)}
                           aria-label={collapsed[`proj:${project.id}`] ? `Expand ${project.name}` : `Collapse ${project.name}`}
                           aria-expanded={!collapsed[`proj:${project.id}`]}
-                          className="shrink-0 rounded-control p-1 text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
                         >
                           <ChevronRight className={cn("size-3.5 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
                         </button>
                         <button
                           type="button"
                           onClick={() => onOpenProject?.(project)}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-card px-1 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
                         >
                           <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || "var(--c-accent)" }} />
                           <span className={cn("min-w-0 flex-1 truncate text-[13px]", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
@@ -852,7 +884,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                               type="button"
                               aria-label={`New chat in ${project.name}`}
                               onClick={() => void newChat(project)}
-                              className="shrink-0 rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover/proj:opacity-100"
+                              className={cn(
+                                "inline-flex size-6 shrink-0 items-center justify-center rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40",
+                                canHover ? "opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100" : "opacity-100",
+                              )}
                             >
                               <Plus className="size-3.5" />
                             </button>
@@ -864,12 +899,18 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                             <button
                               type="button"
                               aria-label={`Actions for ${project.name}`}
-                              className="shrink-0 rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover/proj:opacity-100 data-[state=open]:opacity-100"
+                              className={cn(
+                                "inline-flex size-6 shrink-0 items-center justify-center rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40",
+                                canHover ? "opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100" : "opacity-100",
+                              )}
                             >
                               <MoreHorizontal className="size-3.5" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="border-line bg-raised">
+                          {/* `glass-strong` default, same as the session-row
+                              menu: `raised` + `shadow-float` here predated the
+                              overlay tier and contradicted it. */}
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => openProjectAction("rename", project)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem variant="destructive" onSelect={() => openProjectAction("delete", project)}><Trash2 className="size-3.5" /> Delete</DropdownMenuItem>
@@ -879,9 +920,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                       {!collapsed[`proj:${project.id}`] && (
                         <div className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-1.5">
                           {list.length === 0 ? (
-                            <p className="px-2 py-1 text-2xs text-ink-3">No chats yet</p>
+                            /* What is true, then the one next step. A bare "No chats
+                               yet" under an expanded project was a dead end. */
+                            <div className="px-2 py-1">
+                              <p className="text-2xs text-ink-3">No chats yet</p>
+                              <button
+                                type="button"
+                                onClick={() => void newChat(project)}
+                                className="mt-0.5 rounded-control text-2xs font-medium text-accent-text outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                              >
+                                Start one
+                              </button>
+                            </div>
                           ) : list.map((item) => (
-                            <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                            <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} canHover={canHover} onSelect={selectSession} onAction={openSessionAction} />
                           ))}
                         </div>
                       )}
@@ -905,7 +957,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                     </div>
                     <div className="space-y-0.5">
                       {items.map((item) => (
-                        <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} onSelect={selectSession} onAction={openSessionAction} />
+                        <RailRow key={item.id} item={item} active={item.id === sessionID} running={activeRunBySession.has(item.id)} archived={showArchived} canHover={canHover} onSelect={selectSession} onAction={openSessionAction} />
                       ))}
                     </div>
                   </div>
@@ -1434,7 +1486,12 @@ function RailSection({
   const isCollapsed = !!collapsed[id]
   return (
     <Collapsible open={!isCollapsed} onOpenChange={() => onToggle(id)} className="mb-2 last:mb-0">
-      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-lg px-2 py-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
+      {/* `rounded-control`, not `rounded-lg`: this trigger is a button, and §5
+          gives buttons 8px. `rounded-lg` is 10px and is on no role's row in the
+          scale, which is how a corner drifts without anyone choosing it.
+          Deliberately not memoized — its `children` are fresh JSX every render,
+          so a shallow compare would never hit. */}
+      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-control px-2 py-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
         <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !isCollapsed && "rotate-90")} />
         <span className="text-2xs font-semibold tracking-wide text-ink-3 uppercase">{label}</span>
         {count !== undefined && <span className="tabular text-2xs font-normal text-ink-3">{count}</span>}
@@ -1445,21 +1502,30 @@ function RailSection({
 }
 
 /* One session row. Lifted out of the old inline map so Pinned, a project node
-   and Recents all render the identical control. */
-function RailRow({
-  item, active, running, archived, onSelect, onAction,
+   and Recents all render the identical control.
+ *
+ * Memoized, and it earns it: the rail is static while a response streams, but
+ * every stream delta re-rendered the whole list because the row's handlers were
+ * inline arrows. With `onSelect` / `onAction` now stable (`useCallback` in the
+ * page) and every other prop a primitive, the default shallow compare is the
+ * correct one — no custom comparator, which would be the thing to get wrong. */
+const RailRow = memo(function RailRow({
+  item, active, running, archived, canHover, onSelect, onAction,
 }: {
   item: ChatSession
   active: boolean
   running: boolean
   archived: boolean
+  canHover: boolean
   onSelect: (item: ChatSession) => void | Promise<void>
   onAction: (kind: SessionAction, item: ChatSession) => void
 }) {
   return (
     <div
       className={cn(
-        "group flex w-full items-stretch rounded-lg border transition-colors",
+        /* `radius-card`: §5 gives list rows 12px, not the 10px `rounded-lg`
+           happened to be. */
+        "group flex w-full items-stretch rounded-card border transition-colors",
         active ? "border-line bg-accent-tint" : "border-transparent hover:border-line hover:bg-well",
       )}
     >
@@ -1468,7 +1534,7 @@ function RailRow({
         onClick={() => void onSelect(item)}
         title={item.title}
         aria-current={active ? "page" : undefined}
-        className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+        className="min-w-0 flex-1 rounded-card px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
       >
         <div className={cn("max-w-full truncate text-[13px] leading-none", active ? "font-medium text-accent-text" : "text-ink-2")}>
           {item.title}
@@ -1491,12 +1557,23 @@ function RailRow({
           <button
             type="button"
             aria-label={`Actions for ${item.title}`}
-            className="mr-1.5 self-center rounded-control p-1 text-ink-3 opacity-0 transition-opacity outline-none hover:bg-well hover:text-ink focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-focus/40 group-hover:opacity-100 data-[state=open]:opacity-100"
+            className={cn(
+              /* The row actions rest invisible until hover — but a touch device
+                 never fires a real hover, so at `opacity-0` these were controls
+                 that existed, were tappable, and could not be seen. Gate the
+                 reveal on a pointer that can actually hover. */
+              "mr-1.5 inline-flex size-6 shrink-0 items-center justify-center self-center rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40 data-[state=open]:opacity-100",
+              canHover ? "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" : "opacity-100",
+            )}
           >
             <MoreHorizontal className="size-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="border-line bg-raised">
+        {/* No `bg-raised` / `border-line` override. `DropdownMenuContent` already
+            defaults to `glass-strong glass-sheen` — an opaque `raised` fill on a
+            glass overlay is the §0c "hole, not a control" problem, and it was the
+            one overlay in the app still doing it. */}
+        <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => onAction("rename", item)}><Pencil className="size-3.5" /> Rename</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onAction(archived ? "restore" : "archive", item)}><Archive className="size-3.5" /> {archived ? "Restore" : "Archive"}</DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -1505,4 +1582,4 @@ function RailRow({
       </DropdownMenu>
     </div>
   )
-}
+})
