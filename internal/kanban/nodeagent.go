@@ -226,6 +226,17 @@ type NodeArtifact struct {
 
 var dshSessionProof = regexp.MustCompile(`(?i)(?:dsh_session_id|commandcode_session_id|omp_session_id|session_id|sessionId|Session)(?:[:=])[[:space:]]*([^[:space:]]+)`)
 
+// proofSessionID pulls the session id a harness printed in its provenance
+// block. Shared by every continuity-capable executor so a result that carries
+// no structured session field still yields the id the worker proved it used.
+func proofSessionID(output string) string {
+	match := dshSessionProof.FindStringSubmatch(output)
+	if len(match) == 2 {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
+}
+
 // HarnessContinuityEnabled reports whether an executor keeps durable per-card
 // session identity. dsh, commandcode, claude and omp do; the other executors are
 // stateless one-shot spawns and must never carry a binding or a cursor.
@@ -422,11 +433,17 @@ func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult
 		if sessionID == "" {
 			sessionID = strings.TrimSpace(result.SessionID)
 		}
+		if sessionID == "" {
+			sessionID = proofSessionID(result.Output)
+		}
 		returnedSession = sessionID != ""
 	case "omp":
 		sessionID = strings.TrimSpace(result.OMPSessionID)
 		if sessionID == "" {
 			sessionID = strings.TrimSpace(result.SessionID)
+		}
+		if sessionID == "" {
+			sessionID = proofSessionID(result.Output)
 		}
 		returnedSession = sessionID != ""
 	default:
@@ -435,10 +452,7 @@ func resolveDSHResultIdentity(req NodeDispatchRequest, result NodeDispatchResult
 			sessionID = strings.TrimSpace(result.SessionID)
 		}
 		if sessionID == "" {
-			match := dshSessionProof.FindStringSubmatch(result.Output)
-			if len(match) == 2 {
-				sessionID = strings.TrimSpace(match[1])
-			}
+			sessionID = proofSessionID(result.Output)
 		}
 		returnedSession = sessionID != ""
 	}
