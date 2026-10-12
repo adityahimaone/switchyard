@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { playOutcome } from "@/lib/sound"
-import { api, downloadWorkspaceFileURL, listWorkspaceFiles, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type Task, type Workspace, type WorkspaceFile } from "@/api"
+import { api, downloadWorkspaceFileURL, getPowerTargets, listWorkspaceFiles, powerStreamUrl, previewWorkspaceFile, saveWorkspaceFile, type PingPoint, type PowerTarget, type Task, type Workspace, type WorkspaceFile } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,7 +24,7 @@ import { PageHeader, SectionHeader } from "@/components/app/page-header"
 import { cn } from "@/lib/utils"
 import {
   Apple, ChevronRight, Download, FileCode2, Folder, FolderGit2, FolderOpen, HardDrive,
-  Laptop, Loader2, Monitor, MoreHorizontal, Pencil, Plus, Radio, RefreshCw, ScrollText, Trash2,
+  Laptop, Loader2, Monitor, MoreHorizontal, Pencil, Plus, Power, PowerOff, Radio, RefreshCw, RotateCw, ScrollText, Trash2,
 } from "lucide-react"
 import LoadingState from "@/components/feedback/loading-state"
 import { CodeGraphPanel } from "./CodeGraphPanel"
@@ -449,6 +449,89 @@ function LogsDialog({ ws, onClose }: { ws: Workspace; onClose: () => void }) {
 }
 
 
+/**
+ * Live boot log for a power action. Opens an EventSource against the streaming
+ * endpoint, which relays the power script's output line by line, so the operator
+ * watches the machine come up (plug cycle -> boot -> Tailscale -> SSH) instead of
+ * staring at a spinner. Auto-scrolls and closes the stream on `done`.
+ */
+function BootLogDialog({
+  nodeID,
+  label,
+  action,
+  onClose,
+  onSettled,
+}: {
+  nodeID: string
+  label: string
+  action: string
+  onClose: () => void
+  onSettled: () => void
+}) {
+  const [lines, setLines] = useState<string[]>([])
+  const [status, setStatus] = useState<"running" | "ok" | "error">("running")
+  const endRef = useRef<HTMLDivElement>(null)
+  const settledRef = useRef(false)
+  // Keep the latest callback without re-subscribing the stream on every render.
+  const onSettledRef = useRef(onSettled)
+  onSettledRef.current = onSettled
+
+  useEffect(() => {
+    const es = new EventSource(powerStreamUrl(nodeID, action))
+    es.onmessage = (e) => setLines((l) => [...l, e.data])
+    es.addEventListener("done", (e) => {
+      const data = (e as MessageEvent).data as string
+      if (data !== "ok") setLines((l) => [...l, data])
+      setStatus(data === "ok" ? "ok" : "error")
+      settledRef.current = true
+      onSettledRef.current()
+      es.close()
+    })
+    es.onerror = () => {
+      es.close()
+      if (!settledRef.current) {
+        settledRef.current = true
+        setStatus("error")
+        setLines((l) => [...l, "connection closed before the action finished"])
+        onSettledRef.current()
+      }
+    }
+    return () => es.close()
+  }, [nodeID, action])
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" })
+  }, [lines])
+
+  const tone =
+    status === "running" ? "text-accent-text" : status === "ok" ? "text-success-text" : "text-danger-text"
+  const verb = action === "on" ? "Power on" : action === "off" ? "Power off" : action === "cycle" ? "Power cycle" : "Power"
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Power className="size-4" /> {verb} — {label}
+          </DialogTitle>
+          <DialogDescription className="flex items-center gap-2 font-mono text-2xs">
+            {status === "running" && <Loader2 className="size-3 animate-spin text-accent-text" />}
+            <span className={tone}>
+              {status === "running" ? "running…" : status === "ok" ? "done" : "failed"}
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <pre className="max-h-[60vh] min-h-[8rem] overflow-auto rounded-control border border-line bg-well p-3 font-mono text-2xs leading-relaxed whitespace-pre-wrap break-all text-ink-2">
+            {lines.length === 0 ? "starting…" : lines.join("\n")}
+            <div ref={endRef} />
+          </pre>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function FileBrowser({ ws }: { ws: Workspace }) {
   const [openDialog, setOpenDialog] = useState(false)
   const [path, setPath] = useState(".")
@@ -613,6 +696,7 @@ export default function WorkspacesPage() {
   const [platform, setPlatform] = useState<PlatformKey | "all">("all")
   const [q, setQ] = useState("")
   const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null)
+  const [bootLog, setBootLog] = useState<{ nodeID: string; label: string; action: string } | null>(null)
   const { pingMs } = useSettings()
   const [autoPing, setAutoPing] = useState(true)
   const pingingRef = useRef(false)
@@ -715,6 +799,38 @@ export default function WorkspacesPage() {
     },
     refetchInterval: 5_000,
   })
+
+  /*
+   * Remote power control. Targets are declared server-side
+   * (~/.hermes/kanban/power-targets.json) and name the workspace SSH hosts they
+   * power, so a card whose host matches gets on/off/cycle buttons. Node health
+   * decides which button is live: a reachable node cannot be "powered on" and an
+   * offline one cannot be "powered off".
+   */
+  const powerTargets = useQuery({
+    queryKey: ["power-targets"],
+    queryFn: getPowerTargets,
+    refetchInterval: 60_000,
+  })
+  const nodeHealth = useQuery({
+    queryKey: ["nodes"],
+    queryFn: () => api<{ status?: string; nodes?: { node_id: string; status: string }[] }>("/api/nodes"),
+    refetchInterval: 15_000,
+  })
+  const nodeOnline = useMemo(() => {
+    const m = new Map<string, boolean>()
+    for (const n of nodeHealth.data?.nodes ?? []) {
+      m.set(n.node_id, ["up", "online", "idle", "busy"].includes((n.status || "").toLowerCase()))
+    }
+    return m
+  }, [nodeHealth.data])
+  const powerByHost = useMemo(() => {
+    const m = new Map<string, PowerTarget>()
+    for (const t of powerTargets.data?.targets ?? []) {
+      for (const h of t.hosts ?? []) m.set(h.toLowerCase(), t)
+    }
+    return m
+  }, [powerTargets.data])
 
   const save = useMutation({
     mutationFn: (ws: Workspace) =>
@@ -841,7 +957,10 @@ export default function WorkspacesPage() {
                     description={`${list.length} ${list.length === 1 ? "host" : "hosts"}`}
                   />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {list.map((ws) => (
+                    {list.map((ws) => {
+                      const target = ws.host ? powerByHost.get(ws.host.toLowerCase()) : undefined
+                      const online = target ? nodeOnline.get(target.node_id) ?? false : false
+                      return (
                       <WorkspaceCard
                         key={ws.id}
                         ws={ws}
@@ -850,13 +969,17 @@ export default function WorkspacesPage() {
                         anyPinging={pinging != null}
                         running={runningWorkspaces.data?.has(ws.path) || runningWorkspaces.data?.has(ws.id) || false}
                         codeGraphOpen={!!codeGraphOpen[ws.id]}
+                        powerTarget={target}
+                        nodeOnline={online}
+                        onPower={(action) => target && setBootLog({ nodeID: target.node_id, label: target.label, action })}
                         onToggleCodeGraph={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))}
                         onPing={() => void pingOne(ws)}
                         onEdit={() => setForm({ open: true, edit: ws })}
                         onLogs={() => setLogsFor(ws)}
                         onDelete={() => setPendingDelete(ws)}
                       />
-                    ))}
+                      )
+                    })}
                   </div>
                 </section>
               )
@@ -889,6 +1012,15 @@ export default function WorkspacesPage() {
         />
       )}
       {logsFor && <LogsDialog ws={logsFor} onClose={() => setLogsFor(null)} />}
+      {bootLog && (
+        <BootLogDialog
+          nodeID={bootLog.nodeID}
+          label={bootLog.label}
+          action={bootLog.action}
+          onClose={() => setBootLog(null)}
+          onSettled={() => qc.invalidateQueries({ queryKey: ["nodes"] })}
+        />
+      )}
     </div>
   )
 }
@@ -905,7 +1037,10 @@ function WorkspaceCard({
   anyPinging,
   running,
   codeGraphOpen,
+  powerTarget,
+  nodeOnline,
   onToggleCodeGraph,
+  onPower,
   onPing,
   onEdit,
   onLogs,
@@ -918,7 +1053,12 @@ function WorkspaceCard({
   /** A task is running on this workspace right now. */
   running: boolean
   codeGraphOpen: boolean
+  /** Power control for this workspace's host, when configured server-side. */
+  powerTarget?: PowerTarget
+  /** Whether the node behind this workspace is currently reachable. */
+  nodeOnline: boolean
   onToggleCodeGraph: () => void
+  onPower: (action: string) => void
   onPing: () => void
   onEdit: () => void
   onLogs: () => void
@@ -960,6 +1100,37 @@ function WorkspaceCard({
       <FileBrowser ws={ws} />
 
       <footer className="mt-1 flex flex-wrap items-center gap-1.5">
+        {powerTarget && (
+          <>
+            {powerTarget.actions.includes("on") && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onPower("on")}
+                disabled={nodeOnline}
+                title={nodeOnline ? "Already running — power on disabled" : "Power on"}
+              >
+                <Power className="size-3.5" /> On
+              </Button>
+            )}
+            {powerTarget.actions.includes("cycle") && (
+              <Button variant="secondary" size="sm" onClick={() => onPower("cycle")} title="Power cycle (off then on)">
+                <RotateCw className="size-3.5" /> Cycle
+              </Button>
+            )}
+            {powerTarget.actions.includes("off") && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onPower("off")}
+                disabled={!nodeOnline}
+                title={nodeOnline ? "Power off" : "Already off — power off disabled"}
+              >
+                <PowerOff className="size-3.5" /> Off
+              </Button>
+            )}
+          </>
+        )}
         <Button variant="secondary" size="sm" onClick={onPing} loading={anyPinging} disabled={anyPinging && !pinging}>
           <RefreshCw className="size-3.5" /> Ping
         </Button>

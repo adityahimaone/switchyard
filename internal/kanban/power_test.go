@@ -1,6 +1,7 @@
 package kanban
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ func writePowerConfig(t *testing.T, body string) {
 
 func TestPowerTargetsListsConfiguredActions(t *testing.T) {
 	writePowerConfig(t, `{"targets":[
-		{"node_id":"windows","label":"Windows PC","on":"~/bin/pc-on","off":"~/bin/pc-off","cycle":"~/bin/pc-cycle","status":"~/bin/win-status"},
+		{"node_id":"windows","label":"Windows PC","hosts":["windows-tailscale"],"on":"~/bin/pc-on","off":"~/bin/pc-off","cycle":"~/bin/pc-cycle","status":"~/bin/win-status"},
 		{"node_id":"empty","label":"Nothing"}
 	]}`)
 	targets, err := PowerTargets()
@@ -39,6 +40,9 @@ func TestPowerTargetsListsConfiguredActions(t *testing.T) {
 	}
 	if len(got.Actions) != 4 {
 		t.Fatalf("want 4 actions, got %v", got.Actions)
+	}
+	if len(got.Hosts) != 1 || got.Hosts[0] != "windows-tailscale" {
+		t.Fatalf("want hosts surfaced, got %v", got.Hosts)
 	}
 }
 
@@ -95,5 +99,42 @@ func TestPowerActionRunsScriptAndReturnsOutput(t *testing.T) {
 	}
 	if got := out; got == "" || !strings.Contains(got, "POWER_ON_OK") {
 		t.Fatalf("want script output, got %q", got)
+	}
+}
+
+func TestPowerActionStreamRelaysLinesInOrder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	dir := filepath.Join(home, "kanban")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(home, "fake-boot")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho boot 1\necho boot 2\necho boot 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"targets":[{"node_id":"windows","cycle":"` + script + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "power-targets.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	if err := PowerActionStream(context.Background(), "windows", "cycle", func(l string) { lines = append(lines, l) }); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"boot 1", "boot 2", "boot 3"}
+	if len(lines) != len(want) {
+		t.Fatalf("want %d lines, got %d: %v", len(want), len(lines), lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Fatalf("line %d: want %q got %q", i, want[i], lines[i])
+		}
+	}
+}
+
+func TestPowerActionStreamUnknownActionErrors(t *testing.T) {
+	writePowerConfig(t, `{"targets":[{"node_id":"windows","on":"~/bin/pc-on"}]}`)
+	if err := PowerActionStream(context.Background(), "windows", "cycle", func(string) {}); err == nil {
+		t.Fatal("expected error for unconfigured action")
 	}
 }

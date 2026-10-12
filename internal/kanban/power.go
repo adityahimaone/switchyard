@@ -1,6 +1,7 @@
 package kanban
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -24,15 +25,19 @@ type PowerTarget struct {
 	NodeID  string   `json:"node_id"`
 	Label   string   `json:"label"`
 	Actions []string `json:"actions"`
+	// Hosts are the workspace SSH hosts (e.g. "windows-tailscale") this target
+	// powers, so the Workspaces page can attach buttons to the right card.
+	Hosts []string `json:"hosts,omitempty"`
 }
 
 type powerTargetCfg struct {
-	NodeID string `json:"node_id"`
-	Label  string `json:"label"`
-	On     string `json:"on"`
-	Off    string `json:"off"`
-	Cycle  string `json:"cycle"`
-	Status string `json:"status"`
+	NodeID string   `json:"node_id"`
+	Label  string   `json:"label"`
+	Hosts  []string `json:"hosts"`
+	On     string   `json:"on"`
+	Off    string   `json:"off"`
+	Cycle  string   `json:"cycle"`
+	Status string   `json:"status"`
 }
 
 type powerConfig struct {
@@ -82,7 +87,7 @@ func PowerTargets() ([]PowerTarget, error) {
 		if len(actions) == 0 {
 			continue
 		}
-		out = append(out, PowerTarget{NodeID: t.NodeID, Label: t.Label, Actions: actions})
+		out = append(out, PowerTarget{NodeID: t.NodeID, Label: t.Label, Actions: actions, Hosts: t.Hosts})
 	}
 	return out, nil
 }
@@ -91,9 +96,8 @@ func PowerTargets() ([]PowerTarget, error) {
 // ~180s, so the cycle path needs the long leash.
 const powerTimeout = 240 * time.Second
 
-// PowerAction runs the configured script for nodeID+action and returns its
-// combined output.
-func PowerAction(nodeID, action string) (string, error) {
+// resolvePowerScript maps nodeID+action to the fixed script path from config.
+func resolvePowerScript(nodeID, action string) (string, error) {
 	cfg, err := loadPowerConfig()
 	if err != nil {
 		return "", err
@@ -124,8 +128,16 @@ func PowerAction(nodeID, action string) (string, error) {
 	if script == "" {
 		return "", fmt.Errorf("power action %q not configured for node %q", action, nodeID)
 	}
-	script = expandHome(script)
+	return expandHome(script), nil
+}
 
+// PowerAction runs the configured script for nodeID+action and returns its
+// combined output.
+func PowerAction(nodeID, action string) (string, error) {
+	script, err := resolvePowerScript(nodeID, action)
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), powerTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, script)
@@ -141,6 +153,46 @@ func PowerAction(nodeID, action string) (string, error) {
 		return out.String(), err
 	}
 	return out.String(), nil
+}
+
+// PowerActionStream runs the configured script and calls onLine for every line
+// of its combined stdout+stderr as it is produced, so a caller can relay a live
+// boot log. It returns the terminal error, if any, once the script exits.
+func PowerActionStream(ctx context.Context, nodeID, action string, onLine func(string)) error {
+	script, err := resolvePowerScript(nodeID, action)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, powerTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, script)
+	cmd.Env = os.Environ()
+
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	if err := cmd.Start(); err != nil {
+		pr.Close()
+		pw.Close()
+		return err
+	}
+	// Close our write end so the reader sees EOF when the child exits.
+	pw.Close()
+
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		onLine(sc.Text())
+	}
+	pr.Close()
+
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func expandHome(p string) string {
