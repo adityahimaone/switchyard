@@ -725,6 +725,13 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
     { label: "Current", value: live.current_a.toFixed(2), unit: "A" },
     { label: "Today", value: data.today_kwh.toFixed(2), unit: "kWh", tone: "text-success-text" },
   ]
+  const first = data.series[0]
+  const last = data.series[data.series.length - 1]
+  // The requested window is a ceiling, not a promise: Tuya only keeps a few
+  // hours of cur_power history on this plan, so report the span actually
+  // covered instead of repeating the window we asked for.
+  const spanH = first && last ? (last.t - first.t) / 3600 : 0
+  const range = first && last ? `${plugClock.format(new Date(first.t * 1000))}–${plugClock.format(new Date(last.t * 1000))}` : "—"
   const bucketMin = Math.round(data.bucket_seconds / 60)
   return (
     <section className="glass-card p-4">
@@ -751,13 +758,13 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
         ))}
       </div>
 
-      <div className="mt-4 min-h-[180px]">
+      <div className="mt-4 min-h-[190px]">
         {chartData.length < 2 ? (
           <p className="text-xs text-ink-3">
-            Not enough readings yet — the plug logs about three hours of history, so the draw chart fills in as it runs.
+            Not enough readings yet — the plug keeps only a few hours of history, so the draw chart fills in as it runs.
           </p>
         ) : (
-          <BarChart data={chartData} xDataKey="bucket" aspectRatio="3 / 1" margin={{ top: 8, right: 8, bottom: 24, left: 36 }} status="ready">
+          <BarChart data={chartData} xDataKey="bucket" aspectRatio="3 / 1" margin={{ top: 8, right: 8, bottom: 44, left: 36 }} status="ready">
             <Grid horizontal />
             <Bar dataKey="watts" fill="var(--c-accent)" lineCap={2} />
             <BarXAxis maxLabels={6} />
@@ -773,7 +780,10 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-ink-3">
         <span>
-          Last {data.window_days}d <b className="font-mono text-ink-2">{data.total_kwh.toFixed(2)} kWh</b>
+          {range} <b className="font-mono text-ink-2">{spanH.toFixed(1)}h</b> logged
+        </span>
+        <span>
+          Total <b className="font-mono text-ink-2">{data.total_kwh.toFixed(2)} kWh</b>
         </span>
         <span>
           Peak <b className="font-mono text-ink-2">{data.peak_w.toFixed(0)} W</b>
