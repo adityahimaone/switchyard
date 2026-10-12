@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { INTEGRATIONS as KNOWLEDGE_INTEGRATIONS } from "@/components/ui/integration-card"
-import type { IntegrationDevice } from "./OverviewPage"
-import { integrationDeviceState, integrationDevices } from "./OverviewPage"
+import { INTEGRATIONS as KNOWLEDGE_INTEGRATIONS, INTEGRATION_CATEGORIES } from "@/components/ui/integration-card"
+import type { IntegrationDevice } from "./integrationHealth"
+import { integrationDeviceState, integrationDevices, integrationGroupHealth, integrationGroups } from "./integrationHealth"
 import { filterHeatmapTicksByLabelWidth } from "@/components/charts/heatmap"
 import { formatHeatmapYAxisLabel, getHeatmapDayLabels } from "@/components/charts/heatmap"
 
@@ -149,5 +149,79 @@ describe("integrationDeviceState", () => {
       const node = device({ node_id: "windows", versions: { tailscale: `1.80.0 (${state})` } })
       expect(integrationDeviceState(node, "tailscale")).toEqual({ ok: false, status: "not connected", version: `1.80.0 (${state})` })
     }
+  })
+})
+
+describe("integrationGroups", () => {
+  const groups = integrationGroups(KNOWLEDGE_INTEGRATIONS, INTEGRATION_CATEGORIES)
+
+  it("groups the catalog by role, in the order the categories declare", () => {
+    expect(groups.map(({ category }) => category.id)).toEqual(INTEGRATION_CATEGORIES.map(({ id }) => id))
+    expect(groups.map(({ category }) => category.label)).toEqual([
+      "Execution & models",
+      "Design",
+      "Context",
+      "Verification",
+      "Source control",
+      "Transport & workers",
+    ])
+  })
+
+  it("files the five harnesses under execution and pen.dev under design", () => {
+    const members = (id: string) => groups.find(({ category }) => category.id === id)?.integrations.map(({ id: i }) => i)
+    expect(members("execution")).toEqual(["commandcode", "hermes", "deepseek", "codex", "omp"])
+    expect(members("design")).toEqual(["pen-dev"])
+    expect(members("verification")).toEqual(["e2e"])
+    expect(members("context")).toEqual(["codegraph"])
+    expect(members("source-control")).toEqual(["git"])
+    expect(members("transport")).toEqual(["node-agent", "tailscale"])
+  })
+
+  it("places every integration in exactly one group", () => {
+    const grouped = groups.flatMap(({ integrations }) => integrations.map(({ id }) => id))
+    expect(grouped.slice().sort()).toEqual(KNOWLEDGE_INTEGRATIONS.map(({ id }) => id).slice().sort())
+    expect(grouped).toHaveLength(KNOWLEDGE_INTEGRATIONS.length)
+  })
+
+  it("drops a group that has no members rather than leaving a bare heading", () => {
+    const onlyDesign = KNOWLEDGE_INTEGRATIONS.filter(({ category }) => category === "design")
+    expect(integrationGroups(onlyDesign, INTEGRATION_CATEGORIES).map(({ category }) => category.id)).toEqual(["design"])
+  })
+})
+
+describe("integrationGroupHealth", () => {
+  const execution = KNOWLEDGE_INTEGRATIONS.filter(({ category }) => category === "execution")
+  const devices = (...nodes: IntegrationDevice[]) => integrationDevices(nodes)
+
+  it("counts a tool only when every registered worker reports it", () => {
+    // mac has all five; windows is missing omp, so the group cannot be green.
+    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    const health = integrationGroupHealth(
+      devices(
+        device({ node_id: "mac", versions: allFive }),
+        device({ node_id: "windows", versions: { ...allFive, omp: "" } }),
+      ),
+      execution,
+    )
+    expect(health).toEqual({ healthy: 4, total: 5, workers: 2 })
+  })
+
+  it("is green only when the tool is present on every worker", () => {
+    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    expect(
+      integrationGroupHealth(devices(device({ node_id: "mac", versions: allFive })), execution),
+    ).toEqual({ healthy: 5, total: 5, workers: 1 })
+  })
+
+  it("scores zero when no worker has registered", () => {
+    expect(integrationGroupHealth(devices(), execution)).toEqual({ healthy: 0, total: 5, workers: 0 })
+    expect(integrationGroupHealth(devices(device({ node_id: "mac" })), execution, false)).toEqual({ healthy: 0, total: 5, workers: 1 })
+  })
+
+  it("scores zero for every group while the agent is unavailable", () => {
+    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    expect(
+      integrationGroupHealth(devices(device({ node_id: "mac", versions: allFive })), execution, true),
+    ).toEqual({ healthy: 0, total: 5, workers: 1 })
   })
 })

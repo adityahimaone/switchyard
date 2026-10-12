@@ -28,7 +28,19 @@ import { Gauge } from "@/components/charts/gauge"
 import { RingChart } from "@/components/charts/ring-chart"
 import { Ring } from "@/components/charts/ring"
 import { RingCenter } from "@/components/charts/ring-center"
-import { INTEGRATIONS as KNOWLEDGE_INTEGRATIONS, IntegrationGlyph } from "@/components/ui/integration-card"
+import {
+  INTEGRATIONS as KNOWLEDGE_INTEGRATIONS,
+  INTEGRATION_CATEGORIES,
+  IntegrationGlyph,
+  type Integration,
+} from "@/components/ui/integration-card"
+import {
+  integrationDeviceState,
+  integrationDevices,
+  integrationGroupHealth,
+  integrationGroups,
+  type IntegrationState,
+} from "./integrationHealth"
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -257,73 +269,110 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
 }
 
 // ── integration health ────────────────────────────────────────────
+//
+// The model behind this card — what a worker reports, what that means, and how
+// the catalog rolls up into role groups — lives in `integrationHealth.ts`. It is
+// pure and has no brand assets or motion in its graph, so it can be exercised on
+// its own.
 
-// One registered worker device, as /api/nodes reports it.
-export interface IntegrationDevice {
-  node_id: string
-  hostname?: string
-  status: string
-  versions?: Record<string, string>
+/**
+ * One integration across every device column.
+ *
+ * Split out of the card because the grouping moved the row two levels deeper;
+ * keeping it inline would have put the per-device verdict logic inside a map
+ * inside a map, where the three-state cell is the hardest thing to read and the
+ * last thing anyone would find.
+ */
+function IntegrationRow({
+  integration,
+  devices,
+  agentDown,
+}: {
+  integration: Integration
+  devices: ReturnType<typeof integrationDevices>
+  agentDown: boolean
+}) {
+  return (
+    <div className="grid gap-2 rounded-control border border-line bg-well/45 px-3 py-2 sm:grid-cols-[minmax(0,1.1fr)_repeat(2,minmax(0,1fr))] sm:items-center">
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent-text">
+          <IntegrationGlyph integration={integration} className="size-3" />
+        </span>
+        <span className="truncate text-xs font-medium text-ink-2">{integration.label}</span>
+      </span>
+      {devices.map((device) => {
+        const state: IntegrationState = agentDown
+          ? { ok: false, status: "agent unavailable", version: "" }
+          : integrationDeviceState(device.node, integration.id)
+        return (
+          <span
+            key={device.key}
+            className="flex min-w-0 items-center gap-2 sm:justify-center"
+            title={`${device.label} · ${integration.label}: ${state.status}${state.version ? ` · ${state.version}` : ""}`}
+          >
+            <span
+              aria-hidden
+              className={`size-2 shrink-0 rounded-full ${state.ok ? "bg-success" : "bg-danger"}`}
+              style={state.ok ? { boxShadow: "0 0 10px var(--c-success)" } : undefined}
+            />
+            <span className="font-mono text-[9px] text-ink-3 sm:hidden">{device.label}</span>
+            <span className={`truncate font-mono text-[10px] ${state.ok ? "text-success-text" : "text-ink-3"}`}>{state.status}</span>
+            {state.version && <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.version}</span>}
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
-// The node agent normalizes its hostname to "mac" or "windows"
-// at startup, so a substring match resolves the device column
-// even when NODE_AGENT_ID was overridden with a longer name.
-export function integrationDevices(nodes: IntegrationDevice[] | undefined) {
-  const list = nodes ?? []
-  const find = (platform: "mac" | "windows") => list.find((node) => {
-    const identity = `${node.node_id} ${node.hostname ?? ""}`.toLowerCase()
-    return platform === "mac"
-      ? identity.includes("mac") || identity.includes("darwin")
-      : identity.includes("win")
-  })
-  return [
-    { key: "mac", label: "mac", node: find("mac") },
-    { key: "windows", label: "windows", node: find("windows") },
-  ]
-}
-
-// What one integration reads as on one device: the verdict word the card
-// prints, the release behind it when there is one, and whether the pair
-// counts as healthy. Installed and reachable reads as "connected" with the
-// version the agent probed at registration; anything else reads red with the
-// reason beside it.
-export interface IntegrationState {
-  ok: boolean
-  status: string
-  version: string
-}
-
-export function integrationDeviceState(node: IntegrationDevice | undefined, integrationId: string): IntegrationState {
-  if (!node) {
-    return { ok: false, status: "worker not registered", version: "" }
-  }
-  if (node.status === "offline" || node.status === "down") {
-    return { ok: false, status: "worker offline", version: "" }
-  }
-  const raw = (node.versions?.[integrationId] ?? "").trim()
-  if (!raw) {
-    return { ok: false, status: "not installed", version: "" }
-  }
-  // A tool that answers with prose instead of a release comes back as
-  // `probe failed: <reason>`; the dot goes red and the reason is what the
-  // tooltip explains, because "it printed something" is not health.
-  if (raw === "probe failed") {
-    return { ok: false, status: "probe failed", version: "" }
-  }
-  if (raw.startsWith("probe failed:")) {
-    return { ok: false, status: "probe failed", version: raw.slice("probe failed:".length).trim() }
-  }
-  // `--version` output can span lines; the first is the release.
-  const version = raw.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? raw
-  // tailscale's probe carries its tailnet state in parentheses;
-  // only a Running backend means the node is actually on the
-  // tailnet, so any other state reads as unhealthy even
-  // though the binary is installed.
-  if (integrationId === "tailscale" && !/\(running\)$/i.test(version)) {
-    return { ok: false, status: "not connected", version }
-  }
-  return { ok: true, status: "connected", version }
+/**
+ * A group heading and its verdict lamp.
+ *
+ * Three states, not two: a category where *some* tools are missing is neither
+ * healthy nor down, and calling it either would send the reader to the wrong
+ * place. `warning` is the app's existing token for exactly that middle case.
+ */
+function IntegrationGroupHeading({
+  label,
+  description,
+  healthy,
+  total,
+  workers,
+}: {
+  label: string
+  description: string
+  healthy: number
+  total: number
+  workers: number
+}) {
+  const tone = healthy === total ? "ok" : healthy === 0 ? "down" : "partial"
+  const dot = tone === "ok" ? "bg-success" : tone === "partial" ? "bg-warning" : "bg-danger"
+  const text = tone === "ok" ? "text-success-text" : tone === "partial" ? "text-warning-text" : "text-ink-3"
+  return (
+    <div className="flex items-center justify-between gap-2 px-3">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h3 className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-2">{label}</h3>
+        <p className="hidden min-w-0 truncate text-[10px] text-ink-3 sm:block">{description}</p>
+      </div>
+      <span
+        className="flex shrink-0 items-center gap-1.5"
+        title={
+          workers > 0
+            ? `${label}: ${healthy} of ${total} available on all ${workers} registered worker${workers === 1 ? "" : "s"}`
+            : `${label}: no worker registered`
+        }
+      >
+        <span
+          aria-hidden
+          className={`size-1.5 rounded-full ${dot}`}
+          style={tone === "ok" ? { boxShadow: "0 0 8px var(--c-success)" } : undefined}
+        />
+        <span className={`font-mono text-[10px] tabular-nums ${text}`}>
+          {healthy}/{total}
+        </span>
+      </span>
+    </div>
+  )
 }
 
 function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { nodes?: NodeHealth; loading: boolean; unavailable: boolean; appVersion: string }) {
@@ -386,38 +435,31 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
             <span className="text-center">mac</span>
             <span className="text-center">windows</span>
           </div>
-          <div className="mt-2 space-y-2">
-            {KNOWLEDGE_INTEGRATIONS.map((integration) => (
-              <div key={integration.id} className="grid gap-2 rounded-control border border-line bg-well/45 px-3 py-2 sm:grid-cols-[minmax(0,1.1fr)_repeat(2,minmax(0,1fr))] sm:items-center">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent-text">
-                    <IntegrationGlyph integration={integration} className="size-3" />
-                  </span>
-                  <span className="truncate text-xs font-medium text-ink-2">{integration.label}</span>
-                </span>
-                {devices.map((device) => {
-                  const state: IntegrationState = agentDown
-                    ? { ok: false, status: "agent unavailable", version: "" }
-                    : integrationDeviceState(device.node, integration.id)
-                  return (
-                    <span
-                      key={device.key}
-                      className="flex min-w-0 items-center gap-2 sm:justify-center"
-                      title={`${device.label} · ${integration.label}: ${state.status}${state.version ? ` · ${state.version}` : ""}`}
-                    >
-                      <span
-                        aria-hidden
-                        className={`size-2 shrink-0 rounded-full ${state.ok ? "bg-success" : "bg-danger"}`}
-                        style={state.ok ? { boxShadow: "0 0 10px var(--c-success)" } : undefined}
+          <div className="mt-2 space-y-4">
+            {integrationGroups(KNOWLEDGE_INTEGRATIONS, INTEGRATION_CATEGORIES).map(({ category, integrations }) => {
+              const health = integrationGroupHealth(devices, integrations, agentDown)
+              return (
+                <section key={category.id}>
+                  <IntegrationGroupHeading
+                    label={category.label}
+                    description={category.description}
+                    healthy={health.healthy}
+                    total={health.total}
+                    workers={health.workers}
+                  />
+                  <div className="mt-1.5 space-y-2">
+                    {integrations.map((integration) => (
+                      <IntegrationRow
+                        key={integration.id}
+                        integration={integration}
+                        devices={devices}
+                        agentDown={agentDown}
                       />
-                      <span className="font-mono text-[9px] text-ink-3 sm:hidden">{device.label}</span>
-                      <span className={`truncate font-mono text-[10px] ${state.ok ? "text-success-text" : "text-ink-3"}`}>{state.status}</span>
-                      {state.version && <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.version}</span>}
-                    </span>
-                  )
-                })}
-              </div>
-            ))}
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
           </div>
           <p className="mt-3 text-[10px] text-ink-3">
             {devices.map((device, i) => `${device.label} ${connected[i]} of ${KNOWLEDGE_INTEGRATIONS.length}`).join(" · ")}
