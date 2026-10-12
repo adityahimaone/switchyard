@@ -19,6 +19,9 @@ import {
   type HeatmapBin,
 } from "@/components/charts/heatmap"
 import { AreaChart } from "@/components/charts/area-chart"
+import { BarChart } from "@/components/charts/bar-chart"
+import { Bar } from "@/components/charts/bar"
+import { BarXAxis } from "@/components/charts/bar-x-axis"
 import { Area } from "@/components/charts/area"
 import { Grid } from "@/components/charts/grid"
 import { XAxis } from "@/components/charts/x-axis"
@@ -695,7 +698,24 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
  * VPS, so this card is the only place the board talks to the plug for anything
  * other than a power action.
  */
+const plugClock = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Jakarta", // the plug's own clock, not the viewer's
+})
+
 function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string }) {
+  // Bars are the mean draw per bucket, so the chart answers "when was the
+  // machine actually working" — the metric a cumulative total cannot show.
+  const chartData = useMemo(
+    () => (data?.series ?? []).map((s) => ({
+      bucket: plugClock.format(new Date(s.t * 1000)),
+      watts: s.w,
+      kwh: s.kwh,
+    })),
+    [data?.series],
+  )
+
   if (loading) return <section className="glass-card p-4"><LoadingState label="Reading plug" /></section>
   if (unavailable || !data) return null
   const live = data.live
@@ -705,7 +725,7 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
     { label: "Current", value: live.current_a.toFixed(2), unit: "A" },
     { label: "Today", value: data.today_kwh.toFixed(2), unit: "kWh", tone: "text-success-text" },
   ]
-  const maxKwh = Math.max(...data.daily.map((d) => d.kwh), 0.0001)
+  const bucketMin = Math.round(data.bucket_seconds / 60)
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -731,18 +751,25 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
         ))}
       </div>
 
-      {data.daily.length > 1 && (
-        <div className="mt-3 flex items-end gap-1" role="img" aria-label={`Daily energy, last ${data.window_days} days`}>
-          {data.daily.map((d) => (
-            <div
-              key={d.date}
-              title={`${d.date}: ${d.kwh.toFixed(2)} kWh`}
-              className="min-h-0.5 flex-1 rounded-t-[2px] bg-accent/45"
-              style={{ height: `${Math.max((d.kwh / maxKwh) * 40, 2)}px` }}
+      <div className="mt-4 min-h-[180px]">
+        {chartData.length < 2 ? (
+          <p className="text-xs text-ink-3">
+            Not enough readings yet — the plug logs about three hours of history, so the draw chart fills in as it runs.
+          </p>
+        ) : (
+          <BarChart data={chartData} xDataKey="bucket" aspectRatio="3 / 1" margin={{ top: 8, right: 8, bottom: 24, left: 36 }} status="ready">
+            <Grid horizontal />
+            <Bar dataKey="watts" fill="var(--c-accent)" lineCap={2} />
+            <BarXAxis maxLabels={6} />
+            <ChartTooltip
+              rows={(point) => [
+                { color: "var(--c-accent)", label: "Avg draw", value: `${Number(point.watts).toFixed(0)} W` },
+                { color: "var(--c-accent)", label: "Energy", value: `${Number(point.kwh).toFixed(3)} kWh` },
+              ]}
             />
-          ))}
-        </div>
-      )}
+          </BarChart>
+        )}
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-ink-3">
         <span>
@@ -752,7 +779,7 @@ function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMe
           Peak <b className="font-mono text-ink-2">{data.peak_w.toFixed(0)} W</b>
         </span>
         <span>
-          Samples <b className="font-mono text-ink-2">{data.samples}</b>
+          {bucketMin}m buckets · <b className="font-mono text-ink-2">{data.samples}</b> reports
         </span>
       </div>
     </section>

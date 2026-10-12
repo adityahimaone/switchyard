@@ -511,6 +511,9 @@ export interface PowerMetrics {
   total_kwh: number
   today_kwh: number
   daily: { date: string; kwh: number }[]
+  /** Time-weighted mean draw per bucket, for the power-draw chart. */
+  series: { t: number; w: number; kwh: number }[]
+  bucket_seconds: number
   samples: number
   peak_w: number
 }
