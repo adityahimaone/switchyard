@@ -496,6 +496,22 @@ export function savedIntegrations() { return api<SavedIntegrations>("/api/nodes/
  */
 export function refreshNodeVersions() { return api<RefreshResult>("/api/nodes/refresh", { method: "POST" }) }
 
+/** Nodes that expose remote power control (smart plug / Wake-on-LAN relay). */
+export interface PowerTarget { node_id: string; label: string; actions: string[] }
+export function getPowerTargets() { return api<{ targets: PowerTarget[] }>("/api/power/targets") }
+
+/**
+ * Power a worker node on/off, cycle it, or read its power status. The board
+ * server runs the configured script; a cycle can take ~100s while the machine
+ * cold-boots, so callers should show a busy state.
+ */
+export function nodePower(id: string, action: string) {
+  return api<{ ok: boolean; output: string }>(`/api/nodes/${encodeURIComponent(id)}/power`, {
+    method: "POST",
+    body: JSON.stringify({ action }),
+  })
+}
+
 export interface CodeGraphEntry {
   path: string
   name: string

@@ -214,6 +214,8 @@ var expectedRoutes = map[string]bool{
 	"GET /api/nodes":                                                  true,
 	"GET /api/nodes/integrations":                                     true,
 	"POST /api/nodes/refresh":                                         true,
+	"POST /api/nodes/{id}/power":                                      true,
+	"GET /api/power/targets":                                          true,
 	"GET /api/notifications":                                          true,
 	"GET /api/overview":                                               true,
 	"GET /api/overview/activity":                                      true,

@@ -207,6 +207,7 @@ func buildMux(dist string) *http.ServeMux {
 	registerWorkspaceIdentityRoutes(mux)
 	registerSettingsRoutes(mux)
 	registerRuntimeRoutes(mux)
+	registerPowerRoutes(mux)
 	registerOverviewRoutes(mux)
 	registerCronRoutes(mux)
 	registerKnowledgeRoutes(mux)
