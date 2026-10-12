@@ -96,8 +96,25 @@ function formatDuration(seconds: number): string {
 
 // ── bklit heatmap data transform ───────────────────────────────────────────
 
+/** Sun-first weekday count — matches `HeatmapBin.bin` and `HeatmapWeekStartDay`. */
+const HEATMAP_DAYS_PER_WEEK = 7
+
+/** DST-safe day offset — `setDate` rolls the calendar, `+ n * 86400000` does not. */
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
 function activityToHeatmap(data: ActivityDay[]): HeatmapColumn[] {
-  // group days into week columns, bin 0=Sun, 1=Mon, ... 6=Sat
+  // Group days into week columns, bin 0=Sun, 1=Mon, ... 6=Sat.
+  //
+  // Every column is emitted as a *dense* 7-bin array. `HeatmapRect` derives each
+  // cell's row from the array index (`yScale(cell.row)`) — not from `bin.bin` —
+  // so a short column collapses the grid. The backend returns a contiguous
+  // window, leaving the first and last weeks partial; before padding, a 4-day
+  // first week made `rowCount` 4 while `HeatmapYAxis` still labelled rows 1/3/5,
+  // pushing "Sat" (row 5) a full 1.5 rows below the grid and outside the card.
   const byWeek = new Map<string, HeatmapBin[]>()
   const weekOrder: string[] = []
   for (const d of data) {
@@ -107,8 +124,20 @@ function activityToHeatmap(data: ActivityDay[]): HeatmapColumn[] {
     const weekStart = new Date(date)
     weekStart.setDate(weekStart.getDate() - weekStart.getDay() + (weekStart.getDay() === 0 ? -6 : 1))
     const wk = weekStart.toISOString().slice(0, 10)
-    if (!byWeek.has(wk)) { byWeek.set(wk, []); weekOrder.push(wk) }
-    byWeek.get(wk)!.push({ bin: dayOfWeek, count: d.total, date })
+    let bins = byWeek.get(wk)
+    if (!bins) {
+      // Bins are Sun-first but the week key is the Monday, so bin `b` sits at
+      // `weekStart + (b + 6) % 7` (b=0 -> Sun, b=1 -> Mon, ... b=6 -> Sat).
+      // Placeholder bins carry a real date: the ghost-cell range check reads it.
+      bins = Array.from({ length: HEATMAP_DAYS_PER_WEEK }, (_, bin) => ({
+        bin,
+        count: 0,
+        date: addDays(weekStart, (bin + HEATMAP_DAYS_PER_WEEK - 1) % HEATMAP_DAYS_PER_WEEK),
+      }))
+      byWeek.set(wk, bins)
+      weekOrder.push(wk)
+    }
+    bins[dayOfWeek] = { bin: dayOfWeek, count: d.total, date }
   }
   return weekOrder.map((_, i) => ({
     bin: i,
