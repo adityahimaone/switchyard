@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Power, PowerOff, Radio, RefreshCw, RotateCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
-import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerTargets, nodePower, refreshNodeVersions, savedIntegrations } from "@/api"
-import type { ActivityDay, PowerTarget, QueueTrendPoint, ReviewMetrics } from "@/api"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Radio, RefreshCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, refreshNodeVersions, savedIntegrations } from "@/api"
+import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
@@ -243,32 +243,7 @@ function HealthCard({ icon: Icon, label, status, detail }: { icon: typeof Activi
 
 function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolean }) {
   const list = nodes?.nodes ?? []
-  const queryClient = useQueryClient()
   const isOnline = (status: string) => ["up", "online", "idle", "busy"].includes(status.toLowerCase())
-  // Which nodes expose remote power control; nodes without an entry get no buttons.
-  const targets = useQuery({ queryKey: ["power-targets"], queryFn: getPowerTargets, refetchInterval: 60_000 })
-  const powerByNode = useMemo(() => {
-    const m = new Map<string, PowerTarget>()
-    for (const t of targets.data?.targets ?? []) m.set(t.node_id, t)
-    return m
-  }, [targets.data])
-  // Track which node+action is in flight and the last result, so a long cold
-  // boot (~100s) shows progress instead of a dead button.
-  const [busy, setBusy] = useState<string | null>(null)
-  const [notice, setNotice] = useState<{ node: string; text: string; ok: boolean } | null>(null)
-  const power = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => nodePower(id, action),
-    onMutate: ({ id, action }) => { setBusy(`${id}:${action}`); setNotice(null) },
-    onSuccess: (res, { id }) => {
-      setNotice({ node: id, text: res.output?.trim() || "done", ok: true })
-      queryClient.invalidateQueries({ queryKey: ["nodes"] })
-    },
-    onError: (err: Error, { id }) => setNotice({ node: id, text: err.message, ok: false }),
-    onSettled: () => setBusy(null),
-  })
-
-  const runPower = (id: string, action: string) => power.mutate({ id, action })
-
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -290,9 +265,6 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
             const dh = n.dsh_health
             const hasDsh = !!dh
             const dshOk = hasDsh && dh.ok
-            const target = powerByNode.get(n.node_id)
-            const has = (a: string) => !!target?.actions.includes(a)
-            const isBusy = (a: string) => busy === `${n.node_id}:${a}`
             return (
               <div key={n.node_id} className="flex items-center gap-3 rounded-control border border-line bg-well/45 px-3 py-2">
                 <span className={`size-2 shrink-0 rounded-full ${isUp ? "bg-success" : "bg-danger"}`} />
@@ -312,49 +284,7 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
                       {dh.error && !dshOk && <span className="text-danger-text">{dh.error}</span>}
                     </div>
                   )}
-                  {notice?.node === n.node_id && (
-                    <p className={`mt-1 truncate font-mono text-[10px] ${notice.ok ? "text-success-text" : "text-danger-text"}`} title={notice.text}>
-                      {notice.text}
-                    </p>
-                  )}
                 </div>
-                {target && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    {has("on") && (
-                      <button
-                        type="button"
-                        title="Power on"
-                        disabled={isBusy("on")}
-                        onClick={() => runPower(n.node_id, "on")}
-                        className="rounded-control border border-line p-1 text-ink-3 hover:border-accent/40 hover:text-accent-text disabled:opacity-50"
-                      >
-                        {isBusy("on") ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />}
-                      </button>
-                    )}
-                    {has("cycle") && (
-                      <button
-                        type="button"
-                        title="Power cycle"
-                        disabled={isBusy("cycle")}
-                        onClick={() => runPower(n.node_id, "cycle")}
-                        className="rounded-control border border-line p-1 text-ink-3 hover:border-accent/40 hover:text-accent-text disabled:opacity-50"
-                      >
-                        {isBusy("cycle") ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
-                      </button>
-                    )}
-                    {has("off") && (
-                      <button
-                        type="button"
-                        title="Power off"
-                        disabled={isBusy("off")}
-                        onClick={() => runPower(n.node_id, "off")}
-                        className="rounded-control border border-line p-1 text-ink-3 hover:border-danger/40 hover:text-danger-text disabled:opacity-50"
-                      >
-                        {isBusy("off") ? <Loader2 className="size-3.5 animate-spin" /> : <PowerOff className="size-3.5" />}
-                      </button>
-                    )}
-                  </div>
-                )}
                 <span className={`shrink-0 font-mono text-[10px] ${isUp ? "text-success-text" : "text-danger-text"}`}>{n.status}</span>
               </div>
             )

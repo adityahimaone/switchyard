@@ -497,7 +497,7 @@ export function savedIntegrations() { return api<SavedIntegrations>("/api/nodes/
 export function refreshNodeVersions() { return api<RefreshResult>("/api/nodes/refresh", { method: "POST" }) }
 
 /** Nodes that expose remote power control (smart plug / Wake-on-LAN relay). */
-export interface PowerTarget { node_id: string; label: string; actions: string[] }
+export interface PowerTarget { node_id: string; label: string; actions: string[]; hosts?: string[] }
 export function getPowerTargets() { return api<{ targets: PowerTarget[] }>("/api/power/targets") }
 
 /**
@@ -510,6 +510,15 @@ export function nodePower(id: string, action: string) {
     method: "POST",
     body: JSON.stringify({ action }),
   })
+}
+
+/**
+ * SSE URL for a live power/boot log. The endpoint streams the script's output
+ * line by line as `data:` frames and ends with `event: done`. Used with
+ * EventSource, so the browser attaches the session cookie automatically.
+ */
+export function powerStreamUrl(id: string, action: string) {
+  return `/api/nodes/${encodeURIComponent(id)}/power/stream?action=${encodeURIComponent(action)}`
 }
 
 export interface CodeGraphEntry {
