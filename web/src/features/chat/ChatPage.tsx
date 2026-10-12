@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { SessionMenu } from "@/components/chat/SessionMenu"
 import { Composer } from "@/components/chat/composer"
+import { BranchPicker } from "@/components/git/branch-picker"
 import { useHeaderTrail } from "@/components/header-trail-context"
 import { AgentMarkdown } from "@/features/board/AgentMarkdown"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
@@ -365,6 +366,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   // The rail's tree reads projects from the shared cache the create dialog
   // writes, so a project created here shows up immediately without a refetch dance.
   const projects = useQuery({ queryKey: ["chat-projects"], queryFn: listChatProjects })
+  /* The composer picks a workspace by path — that is what a chat session stores —
+     while the git endpoints address one by id. Resolving it here is what lets the
+     branch chip appear for a registered workspace and stay away for the local
+     sentinel (""), which has no checkout to talk about. */
+  const activeWorkspaceID = useMemo(
+    () => workspaces.find((w) => w.path === workspace)?.id ?? "",
+    [workspaces, workspace],
+  )
   const archivedSessions = useQuery({ queryKey: ["chat-sessions", true], queryFn: () => listChatSessions(true), enabled: showArchived })
   const current = useQuery({ queryKey: ["chat-session", sessionID], queryFn: () => api<ChatSession>(`/api/chat/sessions/${sessionID}`), enabled: !!sessionID })
   const messages = useQuery({ queryKey: ["chat-messages", sessionID], queryFn: () => listChatMessages(sessionID!), enabled: !!sessionID })
@@ -1312,6 +1321,23 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 })}
               </SelectContent>
             </Select>
+
+            {/* Branch + pull for the selected workspace, on the same metadata
+                line as the workspace it belongs to. Picking a branch checks it
+                out — a chat turn edits the workspace, so the chip has to say
+                where those edits land. Absent for the local sentinel, which has
+                no checkout. Results go to a toast: this row is already five
+                controls wide and has no room for a second line of text. */}
+            <BranchPicker
+              workspaceId={activeWorkspaceID}
+              mode="switch"
+              compact
+              feedback="toast"
+              triggerClassName={PROMPT_CHIP}
+              /* Switching branches under a live turn would move the tree the
+                 agent is editing, so the control is held while one runs. */
+              disabled={isRunning}
+            />
 
             {agent === "hermes" ? (
               <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>

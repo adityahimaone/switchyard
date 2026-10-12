@@ -406,13 +406,20 @@ export interface WorkspaceFile { name: string; path: string; is_dir: boolean; si
 export interface WorkspacePreview { path: string; mime: string; body?: string; bytes: number; truncated?: boolean; is_binary?: boolean }
 export interface WorkspaceFilesResponse { workspace_id: string; transport: string; files: WorkspaceFile[] }
 export interface WorkspaceTerminal { session_id: string; transport: string; host?: string }
+/** Local branches of a workspace, plus the one currently checked out. */
+export interface WorkspaceBranches {
+  branches: string[]
+  /** Empty when HEAD is detached — there is no branch name to show. */
+  current: string
+}
 export function listWorkspaceFiles(id: string, path = ".") { return api<WorkspaceFilesResponse>(`/api/workspaces/${id}/files?path=${encodeURIComponent(path)}`) }
 export function previewWorkspaceFile(id: string, path: string) { return api<WorkspacePreview>(`/api/workspaces/${id}/files/preview?path=${encodeURIComponent(path)}`) }
 export function saveWorkspaceFile(id: string, path: string, content: string) { return api<{ path: string; status: string }>(`/api/workspaces/${id}/files/edit`, { method: "PUT", body: JSON.stringify({ path, content }) }) }
 export function startWorkspaceTerminal(id: string, command: string) { return api<WorkspaceTerminal>(`/api/workspaces/${id}/terminal/start`, { method: "POST", body: JSON.stringify({ command }) }) }
 export function downloadWorkspaceFileURL(id: string, path: string) { return `/api/workspaces/${id}/files/download?path=${encodeURIComponent(path)}` }
-export function listWorkspaceBranches(id: string) { return api<{ branches: string[] }>(`/api/workspaces/${id}/branches`) }
-export function workspaceGitPull(id: string) { return api<{ success: boolean; output: string; error?: string }>(`/api/workspaces/${id}/git-pull`, { method: "POST" }) }
+export function listWorkspaceBranches(id: string) { return api<WorkspaceBranches>(`/api/workspaces/${encodeURIComponent(id)}/branches`) }
+export function workspaceGitPull(id: string) { return api<{ success: boolean; output: string; error?: string }>(`/api/workspaces/${encodeURIComponent(id)}/git-pull`, { method: "POST" }) }
+export function workspaceGitCheckout(id: string, branch: string) { return api<{ success: boolean; output: string; error?: string }>(`/api/workspaces/${encodeURIComponent(id)}/git-checkout`, { method: "POST", body: JSON.stringify({ branch }) }) }
 
 export interface NodeAgent {
   node_id: string

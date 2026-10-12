@@ -673,42 +673,54 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 		fail(w, http.ErrMissingFile, 404)
 	})
 	mux.HandleFunc("GET /api/workspaces/{id}/branches", func(w http.ResponseWriter, r *http.Request) {
-		ws, err := kanban.ListWorkspaces()
+		ws, err := kanban.FindWorkspace(r.PathValue("id"))
 		if err != nil {
-			fail(w, err, 500)
+			fail(w, err, 404)
 			return
 		}
-		for _, e := range ws {
-			if e.ID == r.PathValue("id") {
-				branches, err := kanban.ListGitBranches(e)
-				if err != nil {
-					fail(w, err, 502)
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]any{"branches": branches})
-				return
-			}
+		branches, err := kanban.ListGitBranches(*ws)
+		if err != nil {
+			fail(w, err, 502)
+			return
 		}
-		fail(w, fmt.Errorf("workspace not found"), 404)
+		writeJSON(w, http.StatusOK, branches)
 	})
 	mux.HandleFunc("POST /api/workspaces/{id}/git-pull", func(w http.ResponseWriter, r *http.Request) {
-		ws, err := kanban.ListWorkspaces()
+		ws, err := kanban.FindWorkspace(r.PathValue("id"))
 		if err != nil {
-			fail(w, err, 500)
+			fail(w, err, 404)
 			return
 		}
-		for _, e := range ws {
-			if e.ID == r.PathValue("id") {
-				output, err := kanban.GitPull(e)
-				if err != nil {
-					writeJSON(w, http.StatusOK, map[string]any{"success": false, "output": output, "error": err.Error()})
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]any{"success": true, "output": output})
-				return
-			}
+		output, err := kanban.GitPull(*ws)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"success": false, "output": output, "error": err.Error()})
+			return
 		}
-		fail(w, fmt.Errorf("workspace not found"), 404)
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "output": output})
+	})
+	// Switching branches is a real mutation of the operator's checkout, so it is
+	// its own verb rather than a side effect of listing. A refusal (dirty tree,
+	// unknown branch) comes back as 200 + success:false with git's own message,
+	// which is what the picker renders next to the control.
+	mux.HandleFunc("POST /api/workspaces/{id}/git-checkout", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := kanban.FindWorkspace(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, 404)
+			return
+		}
+		var req struct {
+			Branch string `json:"branch"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		output, err := kanban.GitCheckout(*ws, req.Branch)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"success": false, "output": output, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "output": output})
 	})
 
 	mux.HandleFunc("GET /api/profiles", func(w http.ResponseWriter, r *http.Request) {

@@ -310,6 +310,7 @@ var expectedRoutes = map[string]bool{
 	"POST /api/workspaces/{id}/files/rename":                          true,
 	"POST /api/workspaces/{id}/files/upload":                          true,
 	"POST /api/workspaces/{id}/git-pull":                              true,
+	"POST /api/workspaces/{id}/git-checkout":                          true,
 	"PUT /api/profiles/{name}":                                        true,
 	"PUT /api/profiles/{name}/avatar-url":                             true,
 	"PUT /api/profiles/{profile}/memory/{scope}":                      true,

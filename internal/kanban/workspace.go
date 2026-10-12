@@ -113,6 +113,104 @@ func saveWorkspaces(f *workspaceFile) error {
 	return os.Rename(tmp, workspacesPath())
 }
 
+// hydrateWorkspaceIdentity gives path-only registry entries a stable id and a
+// display name.
+//
+// ~/.hermes/workspaces.json is shared with the hermes CLI, which writes entries
+// carrying nothing but a path. Those entries are otherwise unaddressable: every
+// /api/workspaces/{id}/... route matches on id, the UI renders w.name, and React
+// keys on w.id — so an empty id means blank rows, colliding keys, one shared
+// entry in the ping history, and a branch picker that cannot name the workspace
+// it is asking about.
+//
+// Derivation is deterministic (same file order in, same ids out) and never
+// overwrites an id or name the entry already declares.
+func hydrateWorkspaceIdentity(list []Workspace) {
+	used := map[string]bool{}
+	for i := range list {
+		if id := strings.ToLower(strings.TrimSpace(list[i].ID)); id != "" {
+			used[id] = true
+		}
+	}
+	for i := range list {
+		w := &list[i]
+		name := workspaceDisplayName(w.Path)
+		if strings.TrimSpace(w.Name) == "" {
+			w.Name = name
+		}
+		if strings.TrimSpace(w.ID) != "" {
+			continue
+		}
+		base := workspaceSlug(name)
+		id := base
+		for n := 2; used[id]; n++ {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		used[id] = true
+		w.ID = id
+	}
+}
+
+// workspaceDisplayName is the last path segment — what the operator would call
+// the workspace out loud.
+func workspaceDisplayName(path string) string {
+	p := strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
+	if base := filepath.Base(p); base != "" && base != "." && base != "/" {
+		return base
+	}
+	return "workspace"
+}
+
+// workspaceSlug reduces a display name to the charset an id may use, matching
+// SaveWorkspace's rule that an id carries no slash, backslash or space.
+func workspaceSlug(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	if slug := strings.Trim(b.String(), "-._"); slug != "" {
+		return slug
+	}
+	return "workspace"
+}
+
+// FindWorkspace resolves a workspace by id, then by path, then by name.
+//
+// The path fallback matters because a path-only registry entry has no id to
+// address it by until hydrateWorkspaceIdentity has run — and a caller holding a
+// stale list may still be sending the path.
+func FindWorkspace(idOrPath string) (*Workspace, error) {
+	key := strings.TrimSpace(idOrPath)
+	if key == "" {
+		return nil, fmt.Errorf("workspace id required")
+	}
+	list, err := ListWorkspaces()
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].ID == key {
+			return &list[i], nil
+		}
+	}
+	for i := range list {
+		if list[i].Path == key {
+			return &list[i], nil
+		}
+	}
+	for i := range list {
+		if strings.EqualFold(list[i].Name, key) {
+			return &list[i], nil
+		}
+	}
+	return nil, fmt.Errorf("workspace %q not found", key)
+}
+
 func localWorkspacePath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "~" || strings.HasPrefix(path, "~/") {
@@ -143,6 +241,7 @@ func ListWorkspaces() ([]Workspace, error) {
 	// hydrate from history (best-effort, ignore errors)
 	hist, _ := loadPingMap()
 	out := f.Workspaces
+	hydrateWorkspaceIdentity(out)
 	for i := range out {
 		w := &out[i]
 		if w.Host == "" || w.Host == "localhost" || w.Host == "127.0.0.1" {

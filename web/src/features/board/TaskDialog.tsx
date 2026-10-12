@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import type { ExecutorSettings, Profile, VerifyProfile, Workspace } from "../../api"
-import { api, getExecutorSettings, listWorkspaceBranches, startTask, validateTask, workspaceGitPull } from "../../api"
+import { api, getExecutorSettings, startTask, validateTask } from "../../api"
+import { BranchPicker } from "@/components/git/branch-picker"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -170,17 +171,6 @@ export default function TaskDialog({
 
   // Find the workspace ID from the selected path so we can list branches.
   const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
-
-  const { data: branchData, refetch: refetchBranches } = useQuery({
-    queryKey: ["workspace-branches", selectedWorkspace?.id],
-    queryFn: () => listWorkspaceBranches(selectedWorkspace!.id),
-    enabled: isolation === "worktree" && !!selectedWorkspace?.id,
-  })
-
-  const pullMutation = useMutation({
-    mutationFn: () => workspaceGitPull(selectedWorkspace!.id),
-    onSuccess: () => refetchBranches(),
-  })
 
   // Seed the default mode once, without stomping a user change on re-render.
   const seededMode = useRef(false)
@@ -356,6 +346,10 @@ export default function TaskDialog({
 
   const selCls =
     "w-full border-[var(--c-line)] bg-[var(--c-canvas)] text-sm data-[size=default]:h-9"
+  /* The branch control shares its row with the Pull button, so the trigger takes
+     the leftover width instead of `w-full`, which would push the button out. */
+  const branchSelCls =
+    "min-w-0 flex-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm data-[size=default]:h-9"
   const pathIssues = issuesForField(issues, "paths")
   const depOptions = candidates.filter((c) => !deps.includes(c.id))
   const submitReady = canSubmit(issues, { title, body, paths, gateCommand })
@@ -529,6 +523,34 @@ export default function TaskDialog({
             </div>
           </div>
 
+          {/* Branch lives with the workspace, not inside Scope & safety: it is a
+              property of where the work runs, and burying it under a collapsed
+              section behind a second "Worktree" switch is why the Pull button
+              went unfound. Pull is live either way — the checkout has to be
+              current before the card is dispatched — while choosing a branch
+              only means something for a worktree, so the list locks itself
+              under Workspace isolation rather than offering a choice that
+              would be dropped from the payload. */}
+          {selectedWorkspace && (
+            <div className="mt-3">
+              <Label className="block text-xs text-ink-3">Branch</Label>
+              <BranchPicker
+                className="mt-1 w-full"
+                workspaceId={selectedWorkspace.id}
+                mode="base"
+                value={baseBranch}
+                onChange={setBaseBranch}
+                selectDisabled={isolation !== "worktree"}
+                triggerClassName={branchSelCls}
+              />
+              <p className="mt-1 text-[11px] text-ink-3">
+                {isolation === "worktree"
+                  ? "The worktree is created from this branch. Current HEAD uses whatever is checked out now."
+                  : "This card runs on whatever is checked out. Pull to bring it up to date, or switch to Worktree isolation to start from a specific branch."}
+              </p>
+            </div>
+          )}
+
           {executor === "shell" && (
             <div className="mt-3 rounded-lg border border-warning/30 bg-warning-tint p-3">
               <p className="text-xs font-medium text-warning">Autonomous shell access</p>
@@ -697,45 +719,6 @@ export default function TaskDialog({
               {issuesForField(issues, "isolation").map((i) => (
                 <FieldIssue key={i.code + i.message} issue={i} />
               ))}
-
-              {isolation === "worktree" && selectedWorkspace && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs text-ink-3">Base branch</Label>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-2xs"
-                        disabled={pullMutation.isPending}
-                        onClick={() => pullMutation.mutate()}
-                      >
-                        {pullMutation.isPending ? (
-                          <Loader2 className="mr-1 size-3 animate-spin" />
-                        ) : null}
-                        Pull
-                      </Button>
-                    </div>
-                  </div>
-                  <Select value={baseBranch || "__head"} onValueChange={(v) => setBaseBranch(v === "__head" ? "" : v)}>
-                    <SelectTrigger className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__head">Current HEAD</SelectItem>
-                      {branchData?.branches.map((b) => (
-                        <SelectItem key={b} value={b} className="truncate" title={b}>
-                          {b}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="mt-1 text-[11px] text-ink-3">
-                    The worktree is created from this branch. Current HEAD uses whatever is checked out now.
-                  </p>
-                </div>
-              )}
             </div>
           </CollapsibleSection>
 
