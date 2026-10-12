@@ -260,6 +260,51 @@ function StatusChip({ ws }: { ws: Workspace }) {
   )
 }
 
+/**
+ * The one power control, kept in the card header next to the host it powers
+ * instead of three footer buttons on every card. A single trigger opens a menu
+ * whose items are health-gated: a reachable node cannot be "powered on", an
+ * unreachable one cannot be "powered off". Only cards whose host has a configured
+ * power target render it at all.
+ */
+function PowerMenu({ target, nodeOnline, onAction }: { target: PowerTarget; nodeOnline: boolean; onAction: (action: string) => void }) {
+  const can = (a: string) => target.actions.includes(a)
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Power control for ${target.label}`}
+          title={nodeOnline ? `${target.label}: running` : `${target.label}: off`}
+          className={cn(
+            "rounded-full border border-line/60 text-ink-3",
+            "transition-[color,border-color,transform] duration-150 ease-out",
+            "hover:border-accent/40 hover:text-accent-text active:scale-95",
+          )}
+        >
+          <Power className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem disabled={!can("on") || nodeOnline} onSelect={() => onAction("on")}>
+          <Power className="size-3.5" /> Power on
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!can("cycle")} onSelect={() => onAction("cycle")}>
+          <RotateCw className="size-3.5" /> Power cycle
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={!can("off") || !nodeOnline}
+          onSelect={() => onAction("off")}
+        >
+          <PowerOff className="size-3.5" /> Power off
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function WorkspaceForm({
   initial,
   onClose,
@@ -1069,7 +1114,16 @@ function WorkspaceCard({
   const live = ws.status === "connected" || ws.status === "local"
 
   return (
-    <EntryCard density="identity" title={ws.name} state={<StatusChip ws={ws} />}>
+    <EntryCard
+      density="identity"
+      title={ws.name}
+      state={
+        <div className="flex items-center gap-1.5">
+          <StatusChip ws={ws} />
+          {powerTarget && <PowerMenu target={powerTarget} nodeOnline={nodeOnline} onAction={onPower} />}
+        </div>
+      }
+    >
       <div className="flex items-center gap-2">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-well">
           <FolderGit2 className="size-4 text-ink-3" aria-hidden />
@@ -1100,37 +1154,6 @@ function WorkspaceCard({
       <FileBrowser ws={ws} />
 
       <footer className="mt-1 flex flex-wrap items-center gap-1.5">
-        {powerTarget && (
-          <>
-            {powerTarget.actions.includes("on") && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onPower("on")}
-                disabled={nodeOnline}
-                title={nodeOnline ? "Already running — power on disabled" : "Power on"}
-              >
-                <Power className="size-3.5" /> On
-              </Button>
-            )}
-            {powerTarget.actions.includes("cycle") && (
-              <Button variant="secondary" size="sm" onClick={() => onPower("cycle")} title="Power cycle (off then on)">
-                <RotateCw className="size-3.5" /> Cycle
-              </Button>
-            )}
-            {powerTarget.actions.includes("off") && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onPower("off")}
-                disabled={!nodeOnline}
-                title={nodeOnline ? "Power off" : "Already off — power off disabled"}
-              >
-                <PowerOff className="size-3.5" /> Off
-              </Button>
-            )}
-          </>
-        )}
         <Button variant="secondary" size="sm" onClick={onPing} loading={anyPinging} disabled={anyPinging && !pinging}>
           <RefreshCw className="size-3.5" /> Ping
         </Button>
