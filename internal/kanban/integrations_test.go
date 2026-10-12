@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -181,5 +182,62 @@ func TestRecordPingStoresOutcome(t *testing.T) {
 	}
 	if view.LastPing.Message == "" {
 		t.Fatal("last ping must carry a message for the UI tooltip")
+	}
+}
+
+// The button is a UI action: an unreachable node-agent must come back as a
+// result the Overview prints, not an opaque 502, and the run must be recorded.
+func TestNodeAgentRefreshUnreachableIsReportedNotFailed(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	t.Setenv("KANBAN_NODE_AGENT", "http://127.0.0.1:1") // closed port
+	res, err := NodeAgentRefresh(time.Second)
+	if err != nil {
+		t.Fatalf("unreachable node-agent must be a reported result, not an error: %v", err)
+	}
+	if res == nil || res.OK || res.Message == "" {
+		t.Fatalf("res = %+v, want OK=false with a message", res)
+	}
+	if !strings.Contains(res.Message, "unreachable") {
+		t.Fatalf("message = %q, want it to name the unreachable agent", res.Message)
+	}
+	view, err := SavedIntegrations()
+	if err != nil {
+		t.Fatalf("SavedIntegrations: %v", err)
+	}
+	if view.LastPing == nil || view.LastPing.OK {
+		t.Fatalf("last ping = %+v, want a recorded failure", view.LastPing)
+	}
+}
+
+// With nothing registered there is no heartbeat to ride, so the button returns
+// at once instead of blocking the full wait.
+func TestNodeAgentRefreshNoWorkersReturnsImmediately(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/nodes/refresh":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "requested": 0})
+		case r.Method == http.MethodGet && r.URL.Path == "/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "nodes": []any{}})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("KANBAN_NODE_AGENT", srv.URL)
+
+	started := time.Now()
+	res, err := NodeAgentRefresh(20 * time.Second)
+	if err != nil {
+		t.Fatalf("NodeAgentRefresh: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("elapsed = %v, want an immediate return when no worker is registered", elapsed)
+	}
+	if !res.OK || res.Requested != 0 || res.Saved != 0 {
+		t.Fatalf("res = %+v, want OK requested=0 saved=0", res)
+	}
+	if !strings.Contains(res.Message, "no worker registered") {
+		t.Fatalf("message = %q", res.Message)
 	}
 }

@@ -335,8 +335,24 @@ func NodeAgentRefresh(wait time.Duration) (*RefreshResult, error) {
 	}
 	requested, err := requestVersionRefresh()
 	if err != nil {
-		recordPing(started, time.Now(), 0, 0, false, "node-agent unreachable: "+err.Error())
-		return nil, err
+		// The button is a UI action, so an unreachable node-agent is reported
+		// as a result the Overview can print, not an opaque 502: the grid keeps
+		// showing the versions it already saved.
+		msg := "node-agent unreachable: " + err.Error()
+		recordPing(started, time.Now(), 0, 0, false, msg)
+		return &RefreshResult{OK: false, ElapsedMs: time.Since(started).Milliseconds(), Message: msg}, nil
+	}
+	// Nothing is registered, so there is no heartbeat to ride and nothing to
+	// wait for: return at once instead of blocking the button for the full wait.
+	if requested == 0 {
+		res := &RefreshResult{OK: true, Requested: 0, ElapsedMs: time.Since(started).Milliseconds()}
+		if st, err := fetchNodeAgentHealth(); err == nil && st != nil {
+			res.Nodes = len(st.Nodes)
+			res.Status = st
+		}
+		res.Message = "no worker registered — nothing to probe"
+		recordPing(started, time.Now(), res.Nodes, 0, true, res.Message)
+		return res, nil
 	}
 	deadline := time.Now().Add(wait)
 	var last *NodeAgentStatus

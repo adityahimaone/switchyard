@@ -120,3 +120,140 @@ export function integrationGroupHealth(
   ).length
   return { healthy, total: integrations.length, workers: workers.length }
 }
+
+// ── persisted-snapshot fallback ────────────────────────────────────────────
+//
+// The live fleet is one source and the database is another. A worker that is
+// not registered right now — because node-agent restarted, the agent is
+// unreachable, or the host is asleep — must not blank its column: the version
+// it last reported is stored, and the grid keeps showing it until the next
+// "ping all versions" writes a new one.
+//
+// The database already stores the rendered verdict per device/integration
+// (`integrationRowState` in internal/kanban/integrations.go is kept in parity
+// with `integrationDeviceState` above), so the fallback reads ok/status/version
+// straight back instead of re-deriving them from a raw probe string.
+
+// One stored device/integration verdict, as /api/nodes/integrations returns it.
+export interface SavedIntegrationItem {
+  node_id: string
+  integration_id: string
+  version: string
+  status: string
+  ok: boolean
+  checked_at: number
+}
+
+export interface SavedIntegrationNode {
+  node_id: string
+  hostname: string
+  status: string
+  last_seen: string
+  connected: number
+  total: number
+}
+
+export interface SavedSnapshot {
+  saved_at: number
+  nodes: SavedIntegrationNode[]
+  items: SavedIntegrationItem[]
+}
+
+// The same two device columns as `integrationDevices`, resolved from the
+// stored snapshot. The node is narrowed to the fields a column renders, so the
+// live and stored columns share one shape.
+export function savedIntegrationDevices(snapshot: SavedSnapshot | undefined) {
+  const list = snapshot?.nodes ?? []
+  const find = (platform: "mac" | "windows") => list.find((node) => {
+    const identity = `${node.node_id} ${node.hostname ?? ""}`.toLowerCase()
+    return platform === "mac"
+      ? identity.includes("mac") || identity.includes("darwin")
+      : identity.includes("win")
+  })
+  const toDevice = (node?: SavedIntegrationNode): IntegrationDevice | undefined =>
+    node ? { node_id: node.node_id, hostname: node.hostname, status: node.status } : undefined
+  return [
+    { key: "mac", label: "mac", node: toDevice(find("mac")) },
+    { key: "windows", label: "windows", node: toDevice(find("windows")) },
+  ]
+}
+
+// One stored verdict. A missing worker reads as unregistered and a missing row
+// as not installed — the same words the live column would have shown.
+export function savedIntegrationState(
+  snapshot: SavedSnapshot | undefined,
+  nodeId: string | undefined,
+  integrationId: string,
+): IntegrationState {
+  if (!nodeId) {
+    return { ok: false, status: "worker not registered", version: "" }
+  }
+  const item = snapshot?.items.find((i) => i.node_id === nodeId && i.integration_id === integrationId)
+  if (!item) {
+    return { ok: false, status: "not installed", version: "" }
+  }
+  return { ok: item.ok, status: item.status, version: item.version }
+}
+
+// A device column with the source its verdict comes from. Live wins when the
+// worker is registered; otherwise the column falls back to the stored snapshot;
+// with neither, there is nothing to show.
+export interface IntegrationColumn {
+  key: string
+  label: string
+  node?: IntegrationDevice
+  source: "live" | "saved" | "none"
+}
+
+export function integrationColumns(
+  live: IntegrationDevice[] | undefined,
+  saved: SavedSnapshot | undefined,
+): IntegrationColumn[] {
+  const liveDevices = integrationDevices(live)
+  const savedDevices = savedIntegrationDevices(saved)
+  return liveDevices.map((device, i) => {
+    if (device.node) {
+      return { key: device.key, label: device.label, node: device.node, source: "live" as const }
+    }
+    const stored = savedDevices[i].node
+    if (stored) {
+      return { key: device.key, label: device.label, node: stored, source: "saved" as const }
+    }
+    return { key: device.key, label: device.label, source: "none" as const }
+  })
+}
+
+// The verdict for one column, read from whichever source it resolved to.
+export function integrationColumnState(
+  column: IntegrationColumn,
+  saved: SavedSnapshot | undefined,
+  integrationId: string,
+  agentDown: boolean,
+): IntegrationState {
+  switch (column.source) {
+    case "live":
+      return integrationDeviceState(column.node, integrationId)
+    case "saved":
+      return savedIntegrationState(saved, column.node?.node_id, integrationId)
+    default:
+      return { ok: false, status: agentDown ? "agent unavailable" : "worker not registered", version: "" }
+  }
+}
+
+// A group's verdict across the resolved columns: the same strict "healthy on
+// every worker" rule, applied to live and stored columns alike.
+export function integrationGroupHealthFromColumns(
+  columns: IntegrationColumn[],
+  saved: SavedSnapshot | undefined,
+  integrations: Integration[],
+  agentDown: boolean,
+): { healthy: number; total: number; workers: number } {
+  const workers = columns.filter((column) => column.source !== "none")
+  if (workers.length === 0) {
+    return { healthy: 0, total: integrations.length, workers: 0 }
+  }
+  const healthy = integrations.filter((integration) =>
+    workers.every((column) => integrationColumnState(column, saved, integration.id, agentDown).ok),
+  ).length
+  return { healthy, total: integrations.length, workers: workers.length }
+}

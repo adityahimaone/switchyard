@@ -35,10 +35,11 @@ import {
   type Integration,
 } from "@/components/ui/integration-card"
 import {
-  integrationDeviceState,
-  integrationDevices,
-  integrationGroupHealth,
+  integrationColumnState,
+  integrationColumns,
+  integrationGroupHealthFromColumns,
   integrationGroups,
+  type IntegrationColumn,
   type IntegrationState,
 } from "./integrationHealth"
 
@@ -314,12 +315,12 @@ function NodeFleetCard({ nodes, loading }: { nodes?: NodeHealth; loading: boolea
  */
 function IntegrationRow({
   integration,
-  devices,
-  agentDown,
+  columns,
+  stateFor,
 }: {
   integration: Integration
-  devices: ReturnType<typeof integrationDevices>
-  agentDown: boolean
+  columns: IntegrationColumn[]
+  stateFor: (column: IntegrationColumn, integrationId: string) => IntegrationState
 }) {
   return (
     <div className="grid gap-2 rounded-control border border-line bg-well/45 px-3 py-2 sm:grid-cols-[minmax(0,1.1fr)_repeat(2,minmax(0,1fr))] sm:items-center">
@@ -329,22 +330,20 @@ function IntegrationRow({
         </span>
         <span className="truncate text-xs font-medium text-ink-2">{integration.label}</span>
       </span>
-      {devices.map((device) => {
-        const state: IntegrationState = agentDown
-          ? { ok: false, status: "agent unavailable", version: "" }
-          : integrationDeviceState(device.node, integration.id)
+      {columns.map((column) => {
+        const state = stateFor(column, integration.id)
         return (
           <span
-            key={device.key}
+            key={column.key}
             className="flex min-w-0 items-center gap-2 sm:justify-center"
-            title={`${device.label} · ${integration.label}: ${state.status}${state.version ? ` · ${state.version}` : ""}`}
+            title={`${column.label} · ${integration.label}: ${state.status}${state.version ? ` · ${state.version}` : ""}${column.source === "saved" ? " (saved)" : ""}`}
           >
             <span
               aria-hidden
               className={`size-2 shrink-0 rounded-full ${state.ok ? "bg-success" : "bg-danger"}`}
               style={state.ok ? { boxShadow: "0 0 10px var(--c-success)" } : undefined}
             />
-            <span className="font-mono text-[9px] text-ink-3 sm:hidden">{device.label}</span>
+            <span className="font-mono text-[9px] text-ink-3 sm:hidden">{column.label}</span>
             <span className={`truncate font-mono text-[10px] ${state.ok ? "text-success-text" : "text-ink-3"}`}>{state.status}</span>
             {state.version && <span className={`truncate font-mono text-[10px] ${state.ok ? "text-ink-2" : "text-ink-3"}`}>{state.version}</span>}
           </span>
@@ -405,12 +404,17 @@ function IntegrationGroupHeading({
 }
 
 function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { nodes?: NodeHealth; loading: boolean; unavailable: boolean; appVersion: string }) {
-  const devices = integrationDevices(nodes?.nodes)
-  const agentDown = unavailable || nodes?.status === "down"
-  const connected = devices.map((device) => KNOWLEDGE_INTEGRATIONS.filter((integration) => integrationDeviceState(device.node, integration.id).ok).length)
-  // Versions live in SQLite as well as on screen, so the footnote can show
-  // when they were last stored even while node-agent is answering from memory.
+  // Versions live in SQLite as well as on screen. The stored snapshot is read
+  // first because the grid falls back to it for any worker that is not
+  // registered live — the last version a device reported must stay on screen
+  // until the next "ping all versions" writes a new one.
   const saved = useQuery({ queryKey: ["nodes-integrations"], queryFn: savedIntegrations, refetchInterval: 60_000 })
+  const agentDown = unavailable || nodes?.status === "down"
+  const columns = integrationColumns(nodes?.nodes, saved.data)
+  const stateFor = (column: IntegrationColumn, integrationId: string) =>
+    integrationColumnState(column, saved.data, integrationId, agentDown)
+  const connected = columns.map((column) => KNOWLEDGE_INTEGRATIONS.filter((integration) => stateFor(column, integration.id).ok).length)
+  const showingSaved = columns.some((column) => column.source === "saved")
   const queryClient = useQueryClient()
   const [pinging, setPinging] = useState(false)
   const [pingMsg, setPingMsg] = useState("")
@@ -452,6 +456,12 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
           <Plug className="size-4 text-accent-text" />
         </div>
       </div>
+      {showingSaved && (
+        <p className="mt-2 text-[10px] text-warning-text">
+          not every worker is live — showing the versions last saved
+          {saved.data?.saved_at ? ` (${new Date(saved.data.saved_at * 1000).toLocaleString()})` : ""}; press “ping all versions” to re-probe.
+        </p>
+      )}
       {loading ? (
         <p className="mt-6 text-xs text-ink-3">Checking integrations…</p>
       ) : (
@@ -466,7 +476,7 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
           </div>
           <div className="mt-2 space-y-4">
             {integrationGroups(KNOWLEDGE_INTEGRATIONS, INTEGRATION_CATEGORIES).map(({ category, integrations }) => {
-              const health = integrationGroupHealth(devices, integrations, agentDown)
+              const health = integrationGroupHealthFromColumns(columns, saved.data, integrations, agentDown)
               return (
                 <section key={category.id}>
                   <IntegrationGroupHeading
@@ -481,8 +491,8 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
                       <IntegrationRow
                         key={integration.id}
                         integration={integration}
-                        devices={devices}
-                        agentDown={agentDown}
+                        columns={columns}
+                        stateFor={stateFor}
                       />
                     ))}
                   </div>
@@ -491,7 +501,7 @@ function IntegrationHealthCard({ nodes, loading, unavailable, appVersion }: { no
             })}
           </div>
           <p className="mt-3 text-[10px] text-ink-3">
-            {devices.map((device, i) => `${device.label} ${connected[i]} of ${KNOWLEDGE_INTEGRATIONS.length}`).join(" · ")}
+            {columns.map((column, i) => `${column.label} ${connected[i]} of ${KNOWLEDGE_INTEGRATIONS.length}${column.source === "saved" ? " (saved)" : ""}`).join(" · ")}
             {nodes?.error ? ` — ${nodes.error}` : ""}
           </p>
           {pingMsg && <p className="mt-1 text-[10px] text-accent-text">{pingMsg}</p>}

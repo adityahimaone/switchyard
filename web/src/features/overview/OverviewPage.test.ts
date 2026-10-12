@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest"
 import { INTEGRATIONS as KNOWLEDGE_INTEGRATIONS, INTEGRATION_CATEGORIES } from "@/components/ui/integration-card"
 import type { IntegrationDevice } from "./integrationHealth"
-import { integrationDeviceState, integrationDevices, integrationGroupHealth, integrationGroups } from "./integrationHealth"
+import {
+  integrationColumnState,
+  integrationColumns,
+  integrationDeviceState,
+  integrationDevices,
+  integrationGroupHealth,
+  integrationGroupHealthFromColumns,
+  integrationGroups,
+  savedIntegrationState,
+  type SavedSnapshot,
+} from "./integrationHealth"
 import { filterHeatmapTicksByLabelWidth } from "@/components/charts/heatmap"
 import { formatHeatmapYAxisLabel, getHeatmapDayLabels } from "@/components/charts/heatmap"
 
@@ -224,5 +234,63 @@ describe("integrationGroupHealth", () => {
     expect(
       integrationGroupHealth(devices(device({ node_id: "mac", versions: allSix })), execution, true),
     ).toEqual({ healthy: 0, total: 6, workers: 1 })
+  })
+})
+
+describe("integration snapshot fallback", () => {
+  const snapshot = (over: Partial<SavedSnapshot> = {}): SavedSnapshot => ({
+    saved_at: 1_700_000_000,
+    nodes: [
+      { node_id: "mac", hostname: "Adityas-MacBook-Pro.local", status: "idle", last_seen: "", connected: 1, total: 2 },
+      { node_id: "windows", hostname: "adityahimaone", status: "idle", last_seen: "", connected: 1, total: 2 },
+    ],
+    items: [
+      { node_id: "mac", integration_id: "codex", version: "codex-cli 0.155.1", status: "connected", ok: true, checked_at: 1 },
+      { node_id: "mac", integration_id: "hermes", version: "probe failed", status: "probe failed", ok: false, checked_at: 1 },
+      { node_id: "windows", integration_id: "codex", version: "codex-cli 0.154.0", status: "connected", ok: true, checked_at: 1 },
+      { node_id: "windows", integration_id: "hermes", version: "probe failed", status: "probe failed", ok: false, checked_at: 1 },
+    ],
+    ...over,
+  })
+
+  it("falls back to the saved snapshot for a worker that is not registered live", () => {
+    // mac is live, windows is not: mac reads live, windows reads stored.
+    const columns = integrationColumns([device({ node_id: "mac", versions: { codex: "codex-cli 9.9.9" } })], snapshot())
+    expect(columns.map((c) => [c.key, c.source])).toEqual([["mac", "live"], ["windows", "saved"]])
+    expect(integrationColumnState(columns[0], snapshot(), "codex", false)).toEqual({ ok: true, status: "connected", version: "codex-cli 9.9.9" })
+    expect(integrationColumnState(columns[1], snapshot(), "codex", false)).toEqual({ ok: true, status: "connected", version: "codex-cli 0.154.0" })
+  })
+
+  it("keeps the last saved version while the agent is unavailable", () => {
+    // No live workers at all: both columns read from the snapshot instead of
+    // blanking every cell to "agent unavailable".
+    const columns = integrationColumns(undefined, snapshot())
+    expect(columns.map((c) => c.source)).toEqual(["saved", "saved"])
+    expect(integrationColumnState(columns[0], snapshot(), "codex", true)).toEqual({ ok: true, status: "connected", version: "codex-cli 0.155.1" })
+  })
+
+  it("reports agent unavailable only when neither source has a worker", () => {
+    const columns = integrationColumns(undefined, { saved_at: 0, nodes: [], items: [] })
+    expect(columns.map((c) => c.source)).toEqual(["none", "none"])
+    expect(integrationColumnState(columns[0], undefined, "codex", true)).toEqual({ ok: false, status: "agent unavailable", version: "" })
+    expect(integrationColumnState(columns[0], undefined, "codex", false)).toEqual({ ok: false, status: "worker not registered", version: "" })
+  })
+
+  it("scores a group across live and stored columns with the same strict rule", () => {
+    const execution = KNOWLEDGE_INTEGRATIONS.filter(({ category }) => category === "execution")
+    const snap = snapshot({
+      items: [
+        { node_id: "mac", integration_id: "commandcode", version: "1.79.2", status: "connected", ok: true, checked_at: 1 },
+        { node_id: "windows", integration_id: "commandcode", version: "1.79.2", status: "connected", ok: true, checked_at: 1 },
+      ],
+    })
+    const columns = integrationColumns([device({ node_id: "mac", versions: { commandcode: "1.79.2" } })], snap)
+    // windows is stored-only; commandcode is healthy on both, the rest nowhere.
+    expect(integrationGroupHealthFromColumns(columns, snap, execution, false)).toEqual({ healthy: 1, total: 6, workers: 2 })
+  })
+
+  it("treats a missing stored row as not installed", () => {
+    expect(savedIntegrationState(snapshot(), "mac", "claude")).toEqual({ ok: false, status: "not installed", version: "" })
+    expect(savedIntegrationState(snapshot(), undefined, "claude")).toEqual({ ok: false, status: "worker not registered", version: "" })
   })
 })
