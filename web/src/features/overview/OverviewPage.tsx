@@ -704,7 +704,7 @@ const plugClock = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jakarta", // the plug's own clock, not the viewer's
 })
 
-function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string }) {
+export function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string }) {
   // Bars are the mean draw per bucket, so the chart answers "when was the
   // machine actually working" — the metric a cumulative total cannot show.
   const chartData = useMemo(
@@ -817,8 +817,17 @@ export default function OverviewPage() {
 
   const heatmapData = useMemo(() => activity.data ? activityToHeatmap(activity.data) : [], [activity.data])
 
-  if (overview.isLoading) return <LoadingState label="Loading overview" />
-  if (overview.isError || !data) return <LoadingState label="Could not load overview" description={(overview.error as Error)?.message} />
+  // Render from the last good payload and let the polls update it in place. A
+  // failed poll sets `isError` even while cached data is still present — query-
+  // core's error reducer assigns `status: "error"` unconditionally — so gating
+  // on it here swapped the whole page for a loading screen on a single blipped
+  // request, and at a 5s poll that happened often. Only missing data is fatal:
+  // once loaded, a stale payload beats a blank page.
+  if (!data) {
+    return overview.isError
+      ? <LoadingState label="Could not load overview" description={(overview.error as Error)?.message} />
+      : <LoadingState label="Loading overview" />
+  }
 
   const memoryPct = data.metrics.memory_total_mb > 0 ? (data.metrics.memory_used_mb / data.metrics.memory_total_mb) * 100 : 0
   const finished = data.completed_tasks + data.failed_tasks
@@ -946,10 +955,15 @@ export default function OverviewPage() {
 
         {/* ── Plug energy: live draw + kWh for the powered node ── */}
         <div className="mt-3">
+          {/* A skeleton only for the FIRST read. A background refetch keeps the
+              last chart on screen, and a transient metrics failure must not
+              blank the card either: the route shells out to the Tuya cloud, and
+              React Query holds `data` cached through the error, so `isError` is
+              not a reason to hide what we already have. */}
           <PowerEnergyCard
             data={power.data}
-            loading={!!plug && power.isLoading}
-            unavailable={!plug || power.isError}
+            loading={!!plug && !power.data}
+            unavailable={!plug}
             label={plug?.label ?? ""}
           />
         </div>
@@ -963,7 +977,7 @@ export default function OverviewPage() {
         {/* ── Integration health: what each worker device has
               installed, read from the fleet's registration-time
               version probe ── */}
-        <IntegrationHealthCard nodes={nodes.data} loading={nodes.isLoading} unavailable={nodes.isError} appVersion={data.app_version ?? "unknown"} />
+        <IntegrationHealthCard nodes={nodes.data} loading={nodes.isLoading} unavailable={nodes.isError && !nodes.data} appVersion={data.app_version ?? "unknown"} />
 
         {/* ── Review gate metrics ── */}
         <ReviewGateCard data={review.data} loading={review.isLoading} />
