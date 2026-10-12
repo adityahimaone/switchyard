@@ -261,47 +261,74 @@ function StatusChip({ ws }: { ws: Workspace }) {
 }
 
 /**
- * The one power control, kept in the card header next to the host it powers
- * instead of three footer buttons on every card. A single trigger opens a menu
- * whose items are health-gated: a reachable node cannot be "powered on", an
- * unreachable one cannot be "powered off". Only cards whose host has a configured
- * power target render it at all.
+ * Power control for one host, shown once per platform section instead of on
+ * every card. Power belongs to the host, so a group of workspaces sharing a
+ * machine must not repeat the same three buttons N times — the section header
+ * carries a single panel. Actions are health-gated: a reachable host cannot be
+ * "powered on", an unreachable one cannot be "powered off".
  */
-function PowerMenu({ target, nodeOnline, onAction }: { target: PowerTarget; nodeOnline: boolean; onAction: (action: string) => void }) {
-  const can = (a: string) => target.actions.includes(a)
+function HostPowerControl({
+  targets,
+  nodeOnline,
+  onAction,
+}: {
+  targets: PowerTarget[]
+  nodeOnline: Map<string, boolean>
+  onAction: (target: PowerTarget, action: string) => void
+}) {
+  if (!targets.length) return null
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Power control for ${target.label}`}
-          title={nodeOnline ? `${target.label}: running` : `${target.label}: off`}
-          className={cn(
-            "rounded-full border border-line/60 text-ink-3",
-            "transition-[color,border-color,transform] duration-150 ease-out",
-            "hover:border-accent/40 hover:text-accent-text active:scale-95",
-          )}
-        >
-          <Power className="size-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem disabled={!can("on") || nodeOnline} onSelect={() => onAction("on")}>
-          <Power className="size-3.5" /> Power on
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled={!can("cycle")} onSelect={() => onAction("cycle")}>
-          <RotateCw className="size-3.5" /> Power cycle
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          variant="destructive"
-          disabled={!can("off") || !nodeOnline}
-          onSelect={() => onAction("off")}
-        >
-          <PowerOff className="size-3.5" /> Power off
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex items-center gap-2">
+      {targets.map((t) => {
+        const online = nodeOnline.get(t.node_id) ?? false
+        const can = (a: string) => t.actions.includes(a)
+        return (
+          <div
+            key={t.node_id}
+            className="inline-flex items-center gap-0.5 rounded-control border border-line/60 bg-well/60 p-0.5"
+          >
+            {can("on") && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onAction(t, "on")}
+                disabled={online}
+                aria-label={`Power on ${t.label}`}
+                title={online ? `${t.label}: already running` : `Power on ${t.label}`}
+                className="rounded-control text-ink-3 hover:text-accent-text disabled:opacity-40"
+              >
+                <Power />
+              </Button>
+            )}
+            {can("cycle") && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onAction(t, "cycle")}
+                aria-label={`Power cycle ${t.label}`}
+                title={`Power cycle ${t.label} (off, then on)`}
+                className="rounded-control text-ink-3 hover:text-accent-text"
+              >
+                <RotateCw />
+              </Button>
+            )}
+            {can("off") && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onAction(t, "off")}
+                disabled={!online}
+                aria-label={`Power off ${t.label}`}
+                title={online ? `Power off ${t.label}` : `${t.label}: already off`}
+                className="rounded-control text-ink-3 hover:text-danger-text disabled:opacity-40"
+              >
+                <PowerOff />
+              </Button>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -995,16 +1022,31 @@ export default function WorkspacesPage() {
           <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-8 p-4 md:p-6">
             {shownGroups.map(([key, list]) => {
               const meta = PLATFORM_META[key] ?? PLATFORM_META.other
+              // One power panel per host in this section, not per card: several
+              // workspaces can share a machine, and they must not each repeat it.
+              const groupTargets = Array.from(
+                new Map(
+                  list
+                    .map((ws) => (ws.host ? powerByHost.get(ws.host.toLowerCase()) : undefined))
+                    .filter((t): t is PowerTarget => !!t)
+                    .map((t) => [t.node_id, t] as const),
+                ).values(),
+              )
               return (
                 <section key={key} className="flex flex-col gap-3">
                   <SectionHeader
                     title={meta.label}
                     description={`${list.length} ${list.length === 1 ? "host" : "hosts"}`}
+                    actions={
+                      <HostPowerControl
+                        targets={groupTargets}
+                        nodeOnline={nodeOnline}
+                        onAction={(t, action) => setBootLog({ nodeID: t.node_id, label: t.label, action })}
+                      />
+                    }
                   />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     {list.map((ws) => {
-                      const target = ws.host ? powerByHost.get(ws.host.toLowerCase()) : undefined
-                      const online = target ? nodeOnline.get(target.node_id) ?? false : false
                       return (
                       <WorkspaceCard
                         key={ws.id}
@@ -1014,9 +1056,6 @@ export default function WorkspacesPage() {
                         anyPinging={pinging != null}
                         running={runningWorkspaces.data?.has(ws.path) || runningWorkspaces.data?.has(ws.id) || false}
                         codeGraphOpen={!!codeGraphOpen[ws.id]}
-                        powerTarget={target}
-                        nodeOnline={online}
-                        onPower={(action) => target && setBootLog({ nodeID: target.node_id, label: target.label, action })}
                         onToggleCodeGraph={() => setCodeGraphOpen((old) => ({ ...old, [ws.id]: !old[ws.id] }))}
                         onPing={() => void pingOne(ws)}
                         onEdit={() => setForm({ open: true, edit: ws })}
@@ -1082,10 +1121,7 @@ function WorkspaceCard({
   anyPinging,
   running,
   codeGraphOpen,
-  powerTarget,
-  nodeOnline,
   onToggleCodeGraph,
-  onPower,
   onPing,
   onEdit,
   onLogs,
@@ -1098,12 +1134,7 @@ function WorkspaceCard({
   /** A task is running on this workspace right now. */
   running: boolean
   codeGraphOpen: boolean
-  /** Power control for this workspace's host, when configured server-side. */
-  powerTarget?: PowerTarget
-  /** Whether the node behind this workspace is currently reachable. */
-  nodeOnline: boolean
   onToggleCodeGraph: () => void
-  onPower: (action: string) => void
   onPing: () => void
   onEdit: () => void
   onLogs: () => void
@@ -1114,16 +1145,7 @@ function WorkspaceCard({
   const live = ws.status === "connected" || ws.status === "local"
 
   return (
-    <EntryCard
-      density="identity"
-      title={ws.name}
-      state={
-        <div className="flex items-center gap-1.5">
-          <StatusChip ws={ws} />
-          {powerTarget && <PowerMenu target={powerTarget} nodeOnline={nodeOnline} onAction={onPower} />}
-        </div>
-      }
-    >
+    <EntryCard density="identity" title={ws.name} state={<StatusChip ws={ws} />}>
       <div className="flex items-center gap-2">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-well">
           <FolderGit2 className="size-4 text-ink-3" aria-hidden />
