@@ -10,7 +10,7 @@ function device(partial: Partial<IntegrationDevice> & { node_id: string }): Inte
 }
 
 describe("integrationDevices", () => {
-  it("uses the complete eleven-entry Knowledge integration catalog", () => {
+  it("uses the complete twelve-entry Knowledge integration catalog", () => {
     expect(KNOWLEDGE_INTEGRATIONS.map(({ id }) => id)).toEqual([
       "commandcode",
       "pen-dev",
@@ -23,6 +23,7 @@ describe("integrationDevices", () => {
       "codex",
       "omp",
       "tailscale",
+      "claude",
     ])
   })
 
@@ -167,9 +168,9 @@ describe("integrationGroups", () => {
     ])
   })
 
-  it("files the five harnesses under execution and pen.dev under design", () => {
+  it("files the six harnesses under execution and pen.dev under design", () => {
     const members = (id: string) => groups.find(({ category }) => category.id === id)?.integrations.map(({ id: i }) => i)
-    expect(members("execution")).toEqual(["commandcode", "hermes", "deepseek", "codex", "omp"])
+    expect(members("execution")).toEqual(["commandcode", "hermes", "deepseek", "codex", "omp", "claude"])
     expect(members("design")).toEqual(["pen-dev"])
     expect(members("verification")).toEqual(["e2e"])
     expect(members("context")).toEqual(["codegraph"])
@@ -194,34 +195,34 @@ describe("integrationGroupHealth", () => {
   const devices = (...nodes: IntegrationDevice[]) => integrationDevices(nodes)
 
   it("counts a tool only when every registered worker reports it", () => {
-    // mac has all five; windows is missing omp, so the group cannot be green.
-    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    // mac has all six; windows is missing omp, so the group cannot be green.
+    const allSix = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0", claude: "1.0.0" }
     const health = integrationGroupHealth(
       devices(
-        device({ node_id: "mac", versions: allFive }),
-        device({ node_id: "windows", versions: { ...allFive, omp: "" } }),
+        device({ node_id: "mac", versions: allSix }),
+        device({ node_id: "windows", versions: { ...allSix, omp: "" } }),
       ),
       execution,
     )
-    expect(health).toEqual({ healthy: 4, total: 5, workers: 2 })
+    expect(health).toEqual({ healthy: 5, total: 6, workers: 2 })
   })
 
   it("is green only when the tool is present on every worker", () => {
-    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    const allSix = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0", claude: "1.0.0" }
     expect(
-      integrationGroupHealth(devices(device({ node_id: "mac", versions: allFive })), execution),
-    ).toEqual({ healthy: 5, total: 5, workers: 1 })
+      integrationGroupHealth(devices(device({ node_id: "mac", versions: allSix })), execution),
+    ).toEqual({ healthy: 6, total: 6, workers: 1 })
   })
 
   it("scores zero when no worker has registered", () => {
-    expect(integrationGroupHealth(devices(), execution)).toEqual({ healthy: 0, total: 5, workers: 0 })
-    expect(integrationGroupHealth(devices(device({ node_id: "mac" })), execution, false)).toEqual({ healthy: 0, total: 5, workers: 1 })
+    expect(integrationGroupHealth(devices(), execution)).toEqual({ healthy: 0, total: 6, workers: 0 })
+    expect(integrationGroupHealth(devices(device({ node_id: "mac" })), execution, false)).toEqual({ healthy: 0, total: 6, workers: 1 })
   })
 
   it("scores zero for every group while the agent is unavailable", () => {
-    const allFive = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0" }
+    const allSix = { commandcode: "1.0.0", hermes: "1.0.0", deepseek: "1.0.0", codex: "1.0.0", omp: "1.0.0", claude: "1.0.0" }
     expect(
-      integrationGroupHealth(devices(device({ node_id: "mac", versions: allFive })), execution, true),
-    ).toEqual({ healthy: 0, total: 5, workers: 1 })
+      integrationGroupHealth(devices(device({ node_id: "mac", versions: allSix })), execution, true),
+    ).toEqual({ healthy: 0, total: 6, workers: 1 })
   })
 })

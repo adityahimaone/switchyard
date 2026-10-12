@@ -1,4 +1,4 @@
-import { BookOpen, BrainCircuit, CheckCircle2, Command, Fingerprint, GitBranch, KeyRound, MessageSquare, Terminal, Workflow, XCircle } from "lucide-react"
+import { BookOpen, BrainCircuit, CheckCircle2, Command, Fingerprint, GitBranch, KeyRound, MessageSquare, Sparkles, Terminal, Workflow, XCircle } from "lucide-react"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
 import { Integration, IntegrationCard } from "@/components/ui/integration-card"
@@ -45,6 +45,7 @@ const kanbanMatrix = [
   ["dsh", "dsh --profile headless --json", "health check + CodeGraph"],
   ["commandcode", "cmd -p --yolo --output-format json", "binary probe"],
   ["omp", "omp -p --auto-approve --mode json", "binary probe"],
+  ["claude", "claude -p --output-format json --permission-mode bypassPermissions", "binary probe + account auth"],
   ["shell", "planner → bash -lc", "read-only plan + bounded iterations"],
   ["auto", "Hermes first; fallback", "Resolved executor decides"],
 ]
@@ -75,12 +76,12 @@ const commandCodeContinuity = [
 ]
 
 const continuityFences = [
-  ["workspace identity", "required", "not required", "not required", "only dsh keys its session store by workspace"],
-  ["turn cursor", "last_turn_seq checked", "not returned", "not returned", "commandcode and omp have no stale-turn rejection"],
-  ["session id on success", "required", "required", "required", "mismatch → identity_rejected, card blocked"],
-  ["session id on failure", "required", "may be omitted", "may be omitted", "a failed first run legitimately has none"],
-  ["home isolation", "isolated DSH_HOME", "none", "none", "no daemon write-handle contention"],
-  ["stale-result guard", "turn seq + run fence", "run fence only", "run fence only", "current_run_id drops a superseded result"],
+  ["workspace identity", "required", "not required", "not required", "not required", "only dsh keys its session store by workspace"],
+  ["turn cursor", "last_turn_seq checked", "not returned", "not returned", "not returned", "only dsh can reject a stale turn"],
+  ["session id on success", "required", "required", "required", "required", "mismatch → identity_rejected, card blocked"],
+  ["session id on failure", "required", "may be omitted", "may be omitted", "may be omitted", "a failed first run legitimately has none"],
+  ["home isolation", "isolated DSH_HOME", "none", "none", "none", "dsh alone takes a daemon session lock"],
+  ["stale-result guard", "turn seq + run fence", "run fence only", "run fence only", "run fence only", "current_run_id drops a superseded result"],
 ]
 
 const ompContinuity = [
@@ -90,6 +91,15 @@ const ompContinuity = [
   ["continuation", "--resume <bound id>", "same session, never cold"],
   ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
   ["binary", "omp / omp.exe", "no alias; probed directly on each host"],
+]
+
+const claudeContinuity = [
+  ["harness_kind", "claude", "binds one card to one Claude Code session"],
+  ["session id", "switchyard-claude-<hash>", "deterministic, minted by Switchyard"],
+  ["first run", "empty claude_session_id", "the CLI mints the real id and returns session_id"],
+  ["continuation", "--resume <bound id>", "same session, never cold"],
+  ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
+  ["worker home", "none required", "the CLI session lives in the worker account's own config dir"],
 ]
 
 const commandCodeIdentity = [
@@ -113,6 +123,7 @@ export default function KnowledgePage() {
             <a href="#dsh" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">dsh-harness.md</a>
             <a href="#commandcode" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">commandcode-executor.md</a>
             <a href="#omp" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">omp-executor.md</a>
+            <a href="#claude" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">claude-code-executor.md</a>
             <a href="#chat" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">chat-flow.md</a>
           </div>
         </PageHeader>
@@ -122,7 +133,7 @@ export default function KnowledgePage() {
         <IntegrationCard
           visual={<Integration />}
           title="Switchyard Integrations"
-          description="CodeGraph feeds every executor its context, pen.dev designs the canvas before a line of code, e2e verifies the flow — and hermes, codex, deepseek, omp and commandcode carry each card from intent to done over the node agent and git."
+          description="CodeGraph feeds every executor its context, pen.dev designs the canvas before a line of code, e2e verifies the flow — and hermes, codex, deepseek, omp, commandcode and Claude Code carry each card from intent to done over the node agent and git."
           url="#full-reference"
           ctaLabel="Full reference"
         />
@@ -131,9 +142,9 @@ export default function KnowledgePage() {
           <div className="flex items-center gap-2"><Workflow className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Kanban Board Flow — end to end</h2></div>
           <p className="mt-1 text-[11px] text-ink-3">Intent → board/task → validate → exact workspace → dispatcher → node-agent → planner → shell+RTK → bounded decision loop → diff/provenance review → approve.</p>
           <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | dsh | commandcode | shell</div><div className="pl-4">↓ read-only plan → RTK shell → worker output</div><div className="pl-4">↓ bounded retry / complete / blocked decision</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div>
+            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | dsh | commandcode | claude | omp | shell</div><div className="pl-4">↓ read-only plan → RTK shell → worker output</div><div className="pl-4">↓ bounded retry / complete / blocked decision</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div>
           </div>
-          <p className="mt-3 text-[11px] leading-5 text-ink-3">The <span className="font-mono text-accent-text">dsh</span> and <span className="font-mono text-accent-text">commandcode</span> executors have one extra layer the others lack: <strong className="font-medium text-ink-2">session continuity</strong>. Both bind one card to one session through <span className="font-mono">harness_bindings</span>, so the Nth review round continues in the same session rather than cold starting. The other executors are stateless: every run is a new conversation.</p>
+          <p className="mt-3 text-[11px] leading-5 text-ink-3">The <span className="font-mono text-accent-text">dsh</span>, <span className="font-mono text-accent-text">commandcode</span>, <span className="font-mono text-accent-text">claude</span> and <span className="font-mono text-accent-text">omp</span> executors have one extra layer the others lack: <strong className="font-medium text-ink-2">session continuity</strong>. All four bind one card to one session through <span className="font-mono">harness_bindings</span>, so the Nth review round continues in the same session rather than cold starting. The other executors are stateless: every run is a new conversation.</p>
         </section>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -169,12 +180,23 @@ export default function KnowledgePage() {
               <li className="flex gap-1.5"><span className="text-accent-text">→</span><span><span className="font-mono">--auto-approve</span> permits edits and shell without prompting; trusted nodes only.</span></li>
             </ul>
           </section>
+
+          <section className="glass-card p-4">
+            <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-text" /><h3 className="text-xs font-semibold">claude — Claude Code CLI</h3></div>
+            <p className="mt-2 text-[11px] leading-5 text-ink-3">Runs <span className="font-mono">claude -p --output-format json --permission-mode bypassPermissions [--resume &lt;id&gt;]</span> in the host workspace. The binary is <span className="font-mono">claude</span>; it is explicit-only and never part of the <span className="font-mono">auto</span> fallback.</p>
+            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-ink-3">
+              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It has no workspace identity, so resuming does not need a workspace id.</span></li>
+              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The terminal JSON must return <span className="font-mono">session_id</span>; Switchyard binds it per card and rejects a mismatch.</span></li>
+              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>Because there is no turn cursor there is <strong className="font-medium text-ink-2">no stale-turn rejection</strong>; the only fence is <span className="font-mono">current_run_id</span>.</span></li>
+              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The CLI must be installed and authenticated as the same OS account that runs node-agent.</span></li>
+            </ul>
+          </section>
         </div>
 
         <section className="mt-3 glass-card p-4">
           <h2 className="text-sm font-semibold">Continuity fence matrix</h2>
-          <p className="mt-1 text-[11px] text-ink-3">All three use the same binding table and resolver; only <span className="font-mono">harness_kind</span> and the three checks below differ.</p>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Fence</th><th className="pb-2">dsh</th><th className="pb-2">commandcode</th><th className="pb-2">omp</th><th className="pb-2">Effect</th></tr></thead><tbody>{continuityFences.map(([fence, dsh, cc, ompv, effect]) => <tr key={fence} className="border-t border-line"><td className="py-2 text-ink-2">{fence}</td><td className="py-2 font-mono text-ink-3">{dsh}</td><td className="py-2 font-mono text-accent-text">{cc}</td><td className="py-2 font-mono text-accent-text">{ompv}</td><td className="py-2 text-ink-3">{effect}</td></tr>)}</tbody></table></div>
+          <p className="mt-1 text-[11px] text-ink-3">All four use the same binding table and resolver; only <span className="font-mono">harness_kind</span> and the checks below differ.</p>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Fence</th><th className="pb-2">dsh</th><th className="pb-2">commandcode</th><th className="pb-2">claude</th><th className="pb-2">omp</th><th className="pb-2">Effect</th></tr></thead><tbody>{continuityFences.map(([fence, dsh, cc, cl, ompv, effect]) => <tr key={fence} className="border-t border-line"><td className="py-2 text-ink-2">{fence}</td><td className="py-2 font-mono text-ink-3">{dsh}</td><td className="py-2 font-mono text-accent-text">{cc}</td><td className="py-2 font-mono text-accent-text">{cl}</td><td className="py-2 font-mono text-accent-text">{ompv}</td><td className="py-2 text-ink-3">{effect}</td></tr>)}</tbody></table></div>
         </section>
 
         <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -241,6 +263,16 @@ export default function KnowledgePage() {
           <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{ompContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
         </section>
 
+        <section id="claude" className="mt-6 glass-card p-4">
+          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Claude Code Executor — session continuity</h2></div>
+          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">The <span className="font-mono text-accent-text">claude</span> executor uses the same harness mechanism as DSH, Command Code and omp. Claude Code resumes with its own CLI <span className="font-mono">--resume</span> session id and, like Command Code and omp, reports no workspace identity and no turn cursor. The binding is stored in <span className="font-mono">harness_bindings</span> with <span className="font-mono">harness_kind=claude</span>. It is explicit-only: <span className="font-mono">auto</span> never selects it.</p>
+          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
+            <div>card executor claude → HarnessContinuityEnabled</div><div className="pl-4">↓ resolve binding: session id empty (first run) → the CLI mints</div><div className="pl-4">↓ POST /api/dispatch · harness_kind=claude · claude_session_id</div><div className="pl-4">↓ worker: claude -p --output-format json --permission-mode bypassPermissions [--resume &lt;id&gt;]</div><div className="pl-4">↓ result frame: session_id + terminal JSON</div><div className="pl-4">↓ identity check: session mismatch rejected → claude_identity_rejected</div><div className="pl-4">↓ binding updated → review | todo (new comment) | blocked</div><div className="pl-4">↓ review comment → todo → running → --resume the same session</div>
+          </div>
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{claudeContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
+          <p className="mt-3 text-[11px] leading-5 text-ink-3">Claude Code needs a trusted worker: <span className="font-mono">--permission-mode bypassPermissions</span> permits unattended file edits and shell, and the CLI must be installed and authenticated as the same OS account that runs node-agent. A successful run that returns no <span className="font-mono">session_id</span> fails deterministically with <span className="font-mono">claude_session_missing:</span> and is never retried.</p>
+        </section>
+
         <section className="grid gap-3 md:grid-cols-2">
           <section className="glass-card p-4">
             <div className="flex items-center gap-2"><Fingerprint className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Identity fence</h2></div>
@@ -289,6 +321,7 @@ export default function KnowledgePage() {
               <li><span className="text-accent-text">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>
               <li><span className="text-accent-text">docs/features/dsh-harness.md</span> — DSH session continuity</li>
               <li><span className="text-accent-text">docs/features/commandcode-executor.md</span> — CommandCode execution</li>
+              <li><span className="text-accent-text">docs/features/claude-code-executor.md</span> — Claude Code execution</li>
               <li><span className="text-accent-text">docs/features/omp-executor.md</span> — omp execution</li>
               <li><span className="text-accent-text">docs/features/chat-flow.md</span> — Chat A–Z</li>
               <li><span className="text-accent-text">docs/features/chat-flow-architecture.md</span> — Current chat internals</li>
