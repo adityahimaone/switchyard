@@ -63,6 +63,9 @@ export interface PromptInputProps extends Omit<
   minRows?: number;
   maxRows?: number;
   leadingAction?: ReactNode;
+  /** Persistent controls for the prompt — executor, profile, workspace, branch,
+   *  model. Rendered on their own row below the textarea, above the action row. */
+  meta?: ReactNode;
   className?: string;
 }
 
@@ -82,6 +85,7 @@ export function PromptInput({
   minRows = 2,
   maxRows = 8,
   leadingAction,
+  meta,
   className,
   disabled,
   placeholder = "Ask the agent to do something…",
@@ -197,6 +201,25 @@ export function PromptInput({
         onKeyDown={handleKeyDown}
         className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent pt-1.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/55"
       />
+
+      {/* The metadata row, on its own line under the textarea.
+          It used to share the action row with the send button, and that is what
+          broke: measured at 900px and 768px, five chips competing with the
+          primary action in one 32px row squeezed the send button down to 16x32 —
+          a primary action rendered narrower than its own icon.
+
+          `flex-wrap` is the collision guarantee, not a nicety. A single
+          non-wrapping row can only resolve "too many controls" by shrinking or
+          clipping, and shrinking is what produced the 16x32 button. Wrapping
+          moves the overflow to a second line instead, so nothing is ever
+          compressed to nothing. Each chip additionally caps its own width and
+          truncates, so a long model id or branch name ellipsises rather than
+          widening the row — which is what keeps the wrap rare in practice. */}
+      {meta ? (
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
+          {meta}
+        </div>
+      ) : null}
 
       <div className="mt-1 flex min-h-8 items-center gap-1">
         {actions.length ? (
@@ -321,11 +344,11 @@ export function PromptInput({
           disabled={loading ? !onStop : !canSubmit}
           aria-label={loading ? "Stop generating" : "Send prompt"}
           onClick={loading ? onStop : undefined}
-          /* `shrink-0` is load-bearing, not decoration: measured at 900px and
-             768px viewports, the three toolbar selects competing for ~200px
-             squeezed this button down to 16x32 — a primary action rendered
-             narrower than its own icon. The icon needs `shrink-0` too for the
-             same reason. */
+          /* `shrink-0` is a guard now, not a fix. It was load-bearing when the
+             toolbar selects shared this row — measured at 900px and 768px they
+             squeezed this button to 16x32, narrower than its own icon. Those
+             selects have their own row above, so nothing here competes with it;
+             the icon keeps `shrink-0` against a future occupant of the slot. */
           className="ml-auto size-8 shrink-0 rounded-full"
         >
           <AnimatePresence initial={false} mode="popLayout">

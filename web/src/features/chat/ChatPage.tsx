@@ -206,23 +206,56 @@ function progressLabelForEvents(events: ChatRunEvent[], runState?: ChatState) {
 }
 const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task status", "Help me plan next step"]
 
-/* Agent / workspace / model triggers in the composer, reduced to text.
+/* One metadata chip in the composer's meta row.
  *
- * `SelectTrigger` ships a `glass-flat` fill and a `shadow-xs`. In a page toolbar
- * that is right — it matches `Input` sitting beside it — but inside the composer
- * it would stack three more bounded surfaces inside a glass box, in a row only
- * 36px tall. Removed, they read as a single line of metadata.
+ * `SelectTrigger` ships `glass-flat` + `shadow-xs` + 14px text and an `h-8` sm
+ * step. In a page toolbar that is right — it matches `Input` sitting beside it —
+ * but the composer's meta row is five of them on one line, and five bounded
+ * surfaces inside the composer's own glass box read as a control panel bolted
+ * onto a text field. Stripped to text plus a chevron they read as one metadata
+ * line, and the composer keeps a single edge.
  *
- * The overrides are `!`-prefixed because both the fill and the shadow come from
- * the utility class on the trigger's own base string, and `cn` does not resolve
- * that conflict on its own — without the important flag the tint wins and the
- * chips keep their boxes.
+ * They stay real `<button>`s with the trigger's own focus ring, so the dropdowns
+ * are unchanged for keyboard and pointer users — only the box is removed.
+ * `PROMPT_CHIP` is shared by every chip because they must not drift apart.
  *
- * `shadow-xs` is neutralised rather than removed so the open/close state still
- * has something to transition from; `max-w-40` is kept from before so a long
- * workspace path truncates rather than pushing the send button off the row. */
+ * `h-7` / 12px / 8px inset is what makes five chips fit a 46rem composer on one
+ * line; at the trigger's own `h-8` and 14px they did not, and the overflow was
+ * taken out of the send button (see `prompt-input.tsx`).
+ *
+ * The height override is `!`-prefixed because the trigger's `data-[size=sm]:h-8`
+ * is a *variant* utility, and `cn`/tailwind-merge does not treat it as
+ * conflicting with a plain `h-7` — both survive and the variant would win on
+ * specificity. The fill and shadow are `!`-prefixed for the same reason: they
+ * come from the trigger's base string and `glass-flat`, neither of which
+ * tailwind-merge can resolve against a later `bg-*` / `shadow-*`.
+ *
+ * `max-w-*` deliberately does NOT live here. Each chip caps itself at the call
+ * site, because the right cap follows the content — a model id needs 144px, an
+ * executor name 96px — and one shared cap would either clip the model or waste
+ * 48px on the executor. */
 const PROMPT_CHIP =
-  "max-w-40 !bg-transparent !shadow-xs hover:!bg-accent-tint focus-visible:!bg-accent-tint data-[state=open]:!bg-accent-tint text-ink-2 hover:text-ink"
+  "!h-7 !rounded-control gap-1 px-2 text-xs [&_svg]:!size-3.5 !bg-transparent !shadow-xs hover:!bg-accent-tint focus-visible:!bg-accent-tint data-[state=open]:!bg-accent-tint text-ink-2 hover:text-ink"
+
+/* The disclosure chevron's box, shared by the rail's two disclosure levels: a
+ * section header ("Projects", "Recents") and a project row inside one.
+ *
+ * Both used to be sized independently — a bare 14px glyph in the header, a 24px
+ * button in the project row — and that is why the two did not line up. The header
+ * put its glyph's centre at 15px from the rail's edge; the project row put it at
+ * 12px, and because the project chevron sits *inside* a button while the header's
+ * does not, no single padding value could reconcile them. The column looked
+ * kinked exactly at the level where the tree changes depth.
+ *
+ * A fixed 24px box fixes it structurally rather than by arithmetic: both levels
+ * now render the same box at the same inset, so the chevrons share an x by
+ * construction and a future third level inherits it instead of re-deriving it.
+ * 24px is also the smallest hit target WCAG 2.5.8 accepts, which the bare glyph
+ * was not.
+ *
+ * Box at 4px (`pl-1`) + 24px = 28px, then `gap-1` → the label column at 32px,
+ * which is also the project colour dot's column. */
+const RAIL_CHEVRON = "grid size-6 shrink-0 place-items-center"
 
 const CHAT_COMMANDS = [
   { command: "/clear", label: "Clear draft", description: "Remove the text in the composer." },
@@ -885,7 +918,19 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                   const list = railTree.byProject.get(project.id) ?? []
                   return (
                     <div key={project.id} className="mb-0.5">
-                      <div className="group/proj flex items-center gap-0.5 rounded-card pr-1 hover:bg-well">
+                      {/* One indent system, three columns: the chevron column at
+                          4px, the label/dot column at 32px, and the name column
+                          at 48px. The row used to be `gap-0.5` off a 24px chevron
+                          button, which put the chevron's centre 3px left of the
+                          section header's and the name 14px right of the dot —
+                          the kink the header comment on `RAIL_CHEVRON` describes.
+
+                          The `gap` is gone rather than reduced because the two
+                          buttons must abut for the name to land on 48px, and
+                          nothing is lost by it: the row and both buttons fill with
+                          the same `well` on hover, so the seam between them is not
+                          a visible edge. */}
+                      <div className="group/proj flex items-center rounded-card pr-1 pl-1 hover:bg-well">
                         {/* The chevron is its own control. It used to sit inside the
                             "open project" button, so every click both navigated and
                             forced the node open — the chat list under a project
@@ -895,7 +940,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                           onClick={() => toggleSection(`proj:${project.id}`)}
                           aria-label={collapsed[`proj:${project.id}`] ? `Expand ${project.name}` : `Collapse ${project.name}`}
                           aria-expanded={!collapsed[`proj:${project.id}`]}
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40"
+                          className={cn(RAIL_CHEVRON, "rounded-control text-ink-3 outline-none hover:bg-well hover:text-ink focus-visible:ring-[3px] focus-visible:ring-focus/40")}
                         >
                           <ChevronRight className={cn("size-3.5 transition-transform", !collapsed[`proj:${project.id}`] && "rotate-90")} />
                         </button>
@@ -905,7 +950,15 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-card px-1 py-1.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
                         >
                           <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || "var(--c-accent)" }} />
-                          <span className={cn("min-w-0 flex-1 truncate text-[13px]", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
+                          {/* `leading-5` (20px) rather than the inherited
+                              `normal`: it makes this button exactly 32px tall, so
+                              the 24px chevron beside it centres on the same line
+                              the name's own em box does. Left to `normal` the line
+                              box was a fraction taller than the chevron's optical
+                              centre and the two sat ~1px apart — small, but it is
+                              the same class of misalignment as the 3px column
+                              kink, and this one costs nothing to remove. */}
+                          <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", project.id === projectID ? "font-medium text-accent-text" : "text-ink-2")}>{project.name}</span>
                           <span className="shrink-0 tabular text-2xs text-ink-3">{list.length}</span>
                         </button>
                         <Tooltip>
@@ -948,11 +1001,17 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                         </DropdownMenu>
                       </div>
                       {!collapsed[`proj:${project.id}`] && (
-                        <div className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-1.5">
+                        /* The rule hangs at 32px — the colour-dot column — and the
+                           rows are inset so their titles land on 48px, the same
+                           column as the project name above them. They used to sit
+                           at 28px, which put a project's chats *left* of the
+                           project's own name: the one alignment in the rail that
+                           read as a bug rather than a style choice. */
+                        <div className="mt-0.5 ml-8 space-y-0.5 border-l border-line pl-1.5">
                           {list.length === 0 ? (
                             /* What is true, then the one next step. A bare "No chats
                                yet" under an expanded project was a dead end. */
-                            <div className="px-2 py-1">
+                            <div className="px-2.5 py-1">
                               <p className="text-2xs text-ink-3">No chats yet</p>
                               <button
                                 type="button"
@@ -1245,25 +1304,18 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </>
           ) : undefined
         }
-        controls={
+        /* The chips live on the meta row under the textarea, not in the action
+           row beside the send button. Five chips and a primary action sharing one
+           32px row is what squeezed the send button to 16x32 at 768px; the meta
+           row wraps instead, so running out of width costs a line rather than a
+           control. `PROMPT_CHIP` carries the reasoning for the chip's own shape.
+
+           This is the only metadata surface on the page: the chat title bar that
+           used to repeat agent/workspace/model is gone. */
+        meta={
           <>
-            {/* These three are chips, not fields.
-                `SelectTrigger` carries a `glass-flat` fill and a `shadow-xs`,
-                which is right for a select sitting in a page toolbar next to an
-                input — but here it would be a second bounded surface inside the
-                composer's own glass, three boxes stacked in one 36px row.
-
-                Stripped back to text and a chevron, they read as one metadata
-                line and the composer keeps a single edge. This is the only
-                metadata surface on the page now: the chat title bar that used to
-                repeat agent/workspace/model is gone.
-
-                They stay real `<button>`s with the trigger's own focus ring, so
-                the dropdowns are unchanged for keyboard and pointer users — only
-                the box is removed. `PROMPT_CHIP` is shared by all three because
-                they must not drift apart. */}
             <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgent)}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Executor">
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-24")} aria-label="Executor">
                 <SelectValue placeholder="Executor" />
               </SelectTrigger>
               <SelectContent>
@@ -1274,7 +1326,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={profile || "default"} onValueChange={setProfile}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Agent profile">
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-28")} aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1300,7 +1352,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)} disabled={!!projectID}>
-              <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Workspace" disabled={!!projectID}>
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-32")} aria-label="Workspace" disabled={!!projectID}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">
@@ -1323,7 +1375,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
             </Select>
 
             {/* Branch + pull for the selected workspace, on the same metadata
-                line as the workspace it belongs to. Picking a branch checks it
+                row as the workspace it belongs to. Picking a branch checks it
                 out — a chat turn edits the workspace, so the chip has to say
                 where those edits land. Absent for the local sentinel, which has
                 no checkout. Results go to a toast: this row is already five
@@ -1333,7 +1385,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               mode="switch"
               compact
               feedback="toast"
-              triggerClassName={PROMPT_CHIP}
+              triggerClassName={cn(PROMPT_CHIP, "max-w-28")}
               /* Switching branches under a live turn would move the tree the
                  agent is editing, so the control is held while one runs. */
               disabled={isRunning}
@@ -1341,7 +1393,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
 
             {agent === "hermes" ? (
               <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label="Model">
+                <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-36")} aria-label="Model">
                   <SelectValue placeholder="Default model" />
                 </SelectTrigger>
                 {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
@@ -1387,7 +1439,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 value={optionValue(executorOptions, agent)}
                 onValueChange={(v) => setExecutorOptions((prev) => withOption(prev, agent, v))}
               >
-                <SelectTrigger size="sm" className={PROMPT_CHIP} aria-label={executorDef(agent).option!.label}>
+                <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-28")} aria-label={executorDef(agent).option!.label}>
                   <SelectValue placeholder={executorDef(agent).option!.label} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1398,10 +1450,20 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </Select>
             ) : null}
 
+            {/* This warning is a statement about the two chips beside it — the
+                executor and the workspace — so it belongs on this row rather
+                than in the action row. `w-full` drops it onto its own line
+                instead of letting it squeeze the chips it is talking about. */}
             {agent !== "hermes" && isLocalWorkspace(workspace) && (
-              <span className="text-2xs text-danger-text">execution needs a remote workspace</span>
+              <span className="w-full text-2xs text-danger-text">execution needs a remote workspace</span>
             )}
-
+          </>
+        }
+        /* Transient, not metadata. The Analyze button and the upload/analyze
+           status exist only while the draft carries attachments, so they take
+           the action row beside Plus instead of holding a chip slot open. */
+        controls={
+          <>
             <input
               ref={fileRef}
               type="file"
@@ -1539,8 +1601,12 @@ function RailSection({
           scale, which is how a corner drifts without anyone choosing it.
           Deliberately not memoized — its `children` are fresh JSX every render,
           so a shallow compare would never hit. */}
-      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-control px-2 py-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
-        <ChevronRight className={cn("size-3.5 shrink-0 text-ink-3 transition-transform", !isCollapsed && "rotate-90")} />
+      <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-control pr-2 pl-1 text-left outline-none hover:bg-well focus-visible:ring-[3px] focus-visible:ring-focus/40">
+        {/* The chevron goes in the shared box rather than standing alone, so it
+            shares a column with the project chevrons nested below it. */}
+        <span className={RAIL_CHEVRON}>
+          <ChevronRight className={cn("size-3.5 text-ink-3 transition-transform", !isCollapsed && "rotate-90")} />
+        </span>
         <span className="text-2xs font-semibold tracking-wide text-ink-3 uppercase">{label}</span>
         {count !== undefined && <span className="tabular text-2xs font-normal text-ink-3">{count}</span>}
       </CollapsibleTrigger>

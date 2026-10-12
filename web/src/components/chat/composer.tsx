@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils"
  * come from the component. What stays app-specific is everything around it: the
  * slash-command and skill autocomplete (which needs to sit *above* the box and
  * intercept clicks without stealing focus), the running-state status lamp, the
- * attachment tray, and the existing profile/workspace/model toolbar.
+ * attachment tray, and the executor/profile/workspace/branch/model chips — those
+ * last ones handed to `meta`, so they get a row of their own under the textarea
+ * instead of competing with the send button for one.
  *
  * `PromptInput` takes its own model list and its own action popover. This app
  * already has working equivalents for both — a searchable model dropdown and an
@@ -30,7 +32,11 @@ export function Composer({
   /** The existing Plus menu, rendered by PromptInput's action popover. */
   actions,
   onAction,
-  /** Profile, workspace and model selects, rendered in the toolbar row. */
+  /** Executor / profile / workspace / branch / model chips, on their own row
+   *  below the textarea. */
+  meta,
+  /** Transient controls for the action row: the Analyze button, upload and
+   *  analyze status. Not metadata — it comes and goes with the draft. */
   controls,
   attachments,
   autocomplete,
@@ -47,7 +53,9 @@ export function Composer({
   /** Entries for the component's built-in action popover. */
   actions?: PromptAction[]
   onAction?: (action: string) => void
-  /** Toolbar controls for the leading action slot. */
+  /** The prompt's persistent metadata, on the row below the textarea. */
+  meta?: ReactNode
+  /** Transient controls for the action row, beside Plus. */
   controls?: ReactNode
   attachments?: ReactNode
   /** Slash-command and skill suggestions, rendered above the box. */
@@ -125,6 +133,7 @@ export function Composer({
             aria-label={placeholder}
             actions={actions}
             onAction={onAction}
+            meta={meta}
             leadingAction={controls}
             minRows={2}
             maxRows={8}

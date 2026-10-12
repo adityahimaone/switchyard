@@ -203,7 +203,11 @@ export function BranchPicker({
           size="sm"
           className={cn(
             "shrink-0 gap-1 text-2xs",
-            compact ? "size-8 rounded-full p-0" : "h-7 px-2",
+            /* `size-7` in compact mode, not `size-8`: the composer's chip row is
+               28px tall (`PROMPT_CHIP`'s `h-7`), and a 32px round button in it
+               made the whole row 32px and left the pull sitting proud of the
+               branch chip it belongs to. */
+            compact ? "size-7 rounded-full p-0" : "h-7 px-2",
           )}
           disabled={disabled || busy}
           onClick={() => {
