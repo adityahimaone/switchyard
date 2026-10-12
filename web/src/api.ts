@@ -501,6 +501,24 @@ export interface PowerTarget { node_id: string; label: string; actions: string[]
 export function getPowerTargets() { return api<{ targets: PowerTarget[] }>("/api/power/targets") }
 
 /**
+ * Live readings and energy totals from the smart plug behind a node. `today_kwh`
+ * and `total_kwh` are integrated from the plug's own power reports, not from its
+ * `add_ele` counter (which resets).
+ */
+export interface PowerMetrics {
+  live: { switch: boolean | null; power_w: number; voltage_v: number; current_a: number; add_ele_raw: number | null }
+  window_days: number
+  total_kwh: number
+  today_kwh: number
+  daily: { date: string; kwh: number }[]
+  samples: number
+  peak_w: number
+}
+export function getPowerMetrics(id: string) {
+  return api<PowerMetrics>(`/api/nodes/${encodeURIComponent(id)}/power/metrics`)
+}
+
+/**
  * Power a worker node on/off, cycle it, or read its power status. The board
  * server runs the configured script; a cycle can take ~100s while the machine
  * cold-boots, so callers should show a busy state.

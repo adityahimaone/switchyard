@@ -2,6 +2,7 @@ package kanban
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,5 +137,77 @@ func TestPowerActionStreamUnknownActionErrors(t *testing.T) {
 	writePowerConfig(t, `{"targets":[{"node_id":"windows","on":"~/bin/pc-on"}]}`)
 	if err := PowerActionStream(context.Background(), "windows", "cycle", func(string) {}); err == nil {
 		t.Fatal("expected error for unconfigured action")
+	}
+}
+
+func TestPowerMetricsReturnsValidJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	dir := filepath.Join(home, "kanban")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(home, "fake-metrics")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho '{\"live\":{\"power_w\":184.2},\"today_kwh\":0.65}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"targets":[{"node_id":"windows","metrics":"` + script + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "power-targets.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := PowerMetrics("windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Live struct {
+			PowerW float64 `json:"power_w"`
+		} `json:"live"`
+		TodayKWh float64 `json:"today_kwh"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("metrics payload not JSON: %v (%s)", err, raw)
+	}
+	if got.Live.PowerW != 184.2 || got.TodayKWh != 0.65 {
+		t.Fatalf("unexpected payload: %s", raw)
+	}
+}
+
+// A metrics script that prints junk must fail, not hand the browser invalid JSON.
+func TestPowerMetricsRejectsNonJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	dir := filepath.Join(home, "kanban")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(home, "broken-metrics")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho not-json\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"targets":[{"node_id":"windows","metrics":"` + script + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "power-targets.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PowerMetrics("windows"); err == nil {
+		t.Fatal("expected error for non-JSON metrics output")
+	}
+}
+
+// Metrics is read-only: it must not appear in the action list the UI gates
+// buttons on, or the Workspaces panel would grow a button that does nothing.
+func TestPowerTargetsExcludesMetricsFromActions(t *testing.T) {
+	writePowerConfig(t, `{"targets":[{"node_id":"windows","label":"Windows PC","on":"~/bin/pc-on","metrics":"~/bin/plug-energy"}]}`)
+	targets, err := PowerTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("want 1 target, got %+v", targets)
+	}
+	for _, a := range targets[0].Actions {
+		if a == "metrics" {
+			t.Fatalf("metrics leaked into actions: %v", targets[0].Actions)
+		}
 	}
 }

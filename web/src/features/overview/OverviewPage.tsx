@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Radio, RefreshCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
-import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, refreshNodeVersions, savedIntegrations } from "@/api"
-import type { ActivityDay, QueueTrendPoint, ReviewMetrics } from "@/api"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerMetrics, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
+import type { ActivityDay, PowerMetrics, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
@@ -689,6 +689,76 @@ function QueueTrendChart({ data, loading }: { data?: QueueTrendPoint[]; loading:
 
 // ── main page ──────────────────────────────────────────────────────────────
 
+/**
+ * Live draw and energy for the smart plug behind a powered node. Every reading
+ * comes from one API call that shells out to the plug's metrics script on the
+ * VPS, so this card is the only place the board talks to the plug for anything
+ * other than a power action.
+ */
+function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string }) {
+  if (loading) return <section className="glass-card p-4"><LoadingState label="Reading plug" /></section>
+  if (unavailable || !data) return null
+  const live = data.live
+  const stats: { label: string; value: string; unit: string; tone?: string }[] = [
+    { label: "Draw", value: live.power_w.toFixed(1), unit: "W", tone: live.power_w > 0 ? "text-accent-text" : undefined },
+    { label: "Voltage", value: live.voltage_v.toFixed(1), unit: "V" },
+    { label: "Current", value: live.current_a.toFixed(2), unit: "A" },
+    { label: "Today", value: data.today_kwh.toFixed(2), unit: "kWh", tone: "text-success-text" },
+  ]
+  const maxKwh = Math.max(...data.daily.map((d) => d.kwh), 0.0001)
+  return (
+    <section className="glass-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium text-accent-text">Energy</p>
+          <h2 className="mt-1 text-sm font-semibold">{label} · smart plug</h2>
+        </div>
+        <span className="flex items-center gap-1.5 rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink-3">
+          <i aria-hidden className={`size-1.5 rounded-full ${live.switch ? "bg-success" : "bg-ink-3"}`} />
+          {live.switch ? "outlet on" : "outlet off"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-control border border-line bg-well/45 p-3">
+            <p className="text-[10px] text-ink-3">{s.label}</p>
+            <p className={`mt-1 font-mono text-lg ${s.tone ?? "text-ink"}`}>
+              {s.value}
+              <span className="ml-1 text-[10px] text-ink-3">{s.unit}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {data.daily.length > 1 && (
+        <div className="mt-3 flex items-end gap-1" role="img" aria-label={`Daily energy, last ${data.window_days} days`}>
+          {data.daily.map((d) => (
+            <div
+              key={d.date}
+              title={`${d.date}: ${d.kwh.toFixed(2)} kWh`}
+              className="min-h-0.5 flex-1 rounded-t-[2px] bg-accent/45"
+              style={{ height: `${Math.max((d.kwh / maxKwh) * 40, 2)}px` }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-ink-3">
+        <span>
+          Last {data.window_days}d <b className="font-mono text-ink-2">{data.total_kwh.toFixed(2)} kWh</b>
+        </span>
+        <span>
+          Peak <b className="font-mono text-ink-2">{data.peak_w.toFixed(0)} W</b>
+        </span>
+        <span>
+          Samples <b className="font-mono text-ink-2">{data.samples}</b>
+        </span>
+      </div>
+    </section>
+  )
+}
+
 export default function OverviewPage() {
   const overview = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/api/overview"), refetchInterval: 5000 })
   const daemon = useQuery({ queryKey: ["chat-daemon-health"], queryFn: () => api<DaemonHealth>("/api/chat/daemon-health"), refetchInterval: 10_000 })
@@ -696,6 +766,16 @@ export default function OverviewPage() {
   const activity = useQuery({ queryKey: ["overview-activity"], queryFn: () => getOverviewActivity(180), refetchInterval: 60_000 })
   const review = useQuery({ queryKey: ["overview-review"], queryFn: () => getOverviewReview(), refetchInterval: 30_000 })
   const queueTrend = useQuery({ queryKey: ["overview-queue-trend"], queryFn: () => getOverviewQueueTrend(30), refetchInterval: 60_000 })
+  // The plug behind the first powered node, if any. `enabled` keeps the card
+  // from firing a VPS shell-out on installs with no power targets at all.
+  const powerTargets = useQuery({ queryKey: ["power-targets"], queryFn: getPowerTargets, refetchInterval: 300_000 })
+  const plug = powerTargets.data?.targets[0]
+  const power = useQuery({
+    queryKey: ["power-metrics", plug?.node_id],
+    queryFn: () => getPowerMetrics(plug!.node_id),
+    refetchInterval: 30_000,
+    enabled: !!plug,
+  })
   const data = overview.data
 
   const heatmapData = useMemo(() => activity.data ? activityToHeatmap(activity.data) : [], [activity.data])
@@ -825,6 +905,16 @@ export default function OverviewPage() {
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <StatCard icon={Users} label="Agent profiles" value={data.profiles} note="Configured execution profiles" tone="accent" />
           <StatCard icon={Server} label="Workspaces" value={data.workspaces} note="Connected execution targets" tone="info" />
+        </div>
+
+        {/* ── Plug energy: live draw + kWh for the powered node ── */}
+        <div className="mt-3">
+          <PowerEnergyCard
+            data={power.data}
+            loading={!!plug && power.isLoading}
+            unavailable={!plug || power.isError}
+            label={plug?.label ?? ""}
+          />
         </div>
 
         {/* ── Hermes daemon + Node fleet ── */}

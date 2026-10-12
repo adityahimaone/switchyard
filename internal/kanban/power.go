@@ -31,13 +31,17 @@ type PowerTarget struct {
 }
 
 type powerTargetCfg struct {
-	NodeID string   `json:"node_id"`
-	Label  string   `json:"label"`
-	Hosts  []string `json:"hosts"`
-	On     string   `json:"on"`
-	Off    string   `json:"off"`
-	Cycle  string   `json:"cycle"`
-	Status string   `json:"status"`
+	NodeID  string   `json:"node_id"`
+	Label   string   `json:"label"`
+	Hosts   []string `json:"hosts"`
+	On      string   `json:"on"`
+	Off     string   `json:"off"`
+	Cycle   string   `json:"cycle"`
+	Status  string   `json:"status"`
+	// Metrics is an optional script printing one JSON blob of live readings and
+	// energy totals (see `~/bin/plug-energy`). Read-only, so it is not part of
+	// the action list the UI gates buttons on.
+	Metrics string `json:"metrics"`
 }
 
 type powerConfig struct {
@@ -122,6 +126,8 @@ func resolvePowerScript(nodeID, action string) (string, error) {
 		script = target.Cycle
 	case "status":
 		script = target.Status
+	case "metrics":
+		script = target.Metrics
 	default:
 		return "", fmt.Errorf("unknown power action %q", action)
 	}
@@ -193,6 +199,22 @@ func PowerActionStream(ctx context.Context, nodeID, action string, onLine func(s
 		return err
 	}
 	return nil
+}
+
+// PowerMetrics returns the raw JSON metrics blob for a node's plug (live
+// voltage/current/power plus energy totals). It reuses the power script runner
+// but validates the payload so a broken script surfaces as an error rather than
+// invalid JSON in the browser.
+func PowerMetrics(nodeID string) (json.RawMessage, error) {
+	out, err := PowerAction(nodeID, "metrics")
+	if err != nil {
+		return nil, err
+	}
+	raw := json.RawMessage(strings.TrimSpace(out))
+	if !json.Valid(raw) {
+		return nil, fmt.Errorf("metrics script for node %q did not print JSON", nodeID)
+	}
+	return raw, nil
 }
 
 func expandHome(p string) string {

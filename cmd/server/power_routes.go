@@ -36,6 +36,16 @@ func registerPowerRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "output": out})
 	})
+	mux.HandleFunc("GET /api/nodes/{id}/power/metrics", func(w http.ResponseWriter, r *http.Request) {
+		raw, err := kanban.PowerMetrics(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+	})
 	// Streaming variant: relays the script's output line by line as SSE so the
 	// boot log animates. Each line is a `data:` frame; the terminal frame is an
 	// `event: done` carrying the exit status.
