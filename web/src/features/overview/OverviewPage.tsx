@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Radio, RefreshCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
-import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerMetrics, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
-import type { ActivityDay, PowerMetrics, QueueTrendPoint, ReviewMetrics } from "@/api"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerMetrics, getPowerRemote, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
+import type { ActivityDay, PowerMetrics, PowerRemote, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
@@ -704,7 +704,18 @@ const plugClock = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jakarta", // the plug's own clock, not the viewer's
 })
 
-export function PowerEnergyCard({ data, loading, unavailable, label }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string }) {
+// Remote-access verdict for the badge on the plug card: reachable with RDP open
+// reads green ("connect now"), reachable with RDP closed reads amber (the host
+// is up but something is off — service down or firewall), unreachable reads grey
+// (the machine is simply off). `null` means no remote check is configured.
+export function remoteAccessState(remote?: PowerRemote): { label: string; tone: string; detail: string } | null {
+  if (!remote) return null
+  if (!remote.reachable) return { label: "PC off", tone: "bg-ink-3", detail: "No response over the fabric — power it on to connect" }
+  if (remote.rdp) return { label: "RDP ready", tone: "bg-success", detail: "Reachable, remote desktop port open" }
+  return { label: "RDP closed", tone: "bg-warning", detail: "Host answers but the remote desktop port is not open" }
+}
+
+export function PowerEnergyCard({ data, loading, unavailable, label, remote }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string; remote?: PowerRemote }) {
   // Bars are the mean draw per bucket, so the chart answers "when was the
   // machine actually working" — the metric a cumulative total cannot show.
   const chartData = useMemo(
@@ -733,6 +744,7 @@ export function PowerEnergyCard({ data, loading, unavailable, label }: { data?: 
   const spanH = first && last ? (last.t - first.t) / 3600 : 0
   const range = first && last ? `${plugClock.format(new Date(first.t * 1000))}–${plugClock.format(new Date(last.t * 1000))}` : "—"
   const bucketMin = Math.round(data.bucket_seconds / 60)
+  const remoteBadge = remoteAccessState(remote)
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -740,10 +752,18 @@ export function PowerEnergyCard({ data, loading, unavailable, label }: { data?: 
           <p className="text-[11px] font-medium text-accent-text">Energy</p>
           <h2 className="mt-1 text-sm font-semibold">{label} · smart plug</h2>
         </div>
-        <span className="flex items-center gap-1.5 rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink-3">
-          <i aria-hidden className={`size-1.5 rounded-full ${live.switch ? "bg-success" : "bg-ink-3"}`} />
-          {live.switch ? "outlet on" : "outlet off"}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {remoteBadge && (
+            <span title={remoteBadge.detail} className="flex items-center gap-1.5 rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink-3">
+              <i aria-hidden className={`size-1.5 rounded-full ${remoteBadge.tone}`} />
+              {remoteBadge.label}
+            </span>
+          )}
+          <span className="flex items-center gap-1.5 rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink-3">
+            <i aria-hidden className={`size-1.5 rounded-full ${live.switch ? "bg-success" : "bg-ink-3"}`} />
+            {live.switch ? "outlet on" : "outlet off"}
+          </span>
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -810,6 +830,15 @@ export default function OverviewPage() {
   const power = useQuery({
     queryKey: ["power-metrics", plug?.node_id],
     queryFn: () => getPowerMetrics(plug!.node_id),
+    refetchInterval: 30_000,
+    enabled: !!plug,
+  })
+  // Remote-access readiness for the same node, so the card can say whether it
+  // can be connected to right now. Gated on a target for the same reason as the
+  // metrics query: no target, no shell-out.
+  const remote = useQuery({
+    queryKey: ["power-remote", plug?.node_id],
+    queryFn: () => getPowerRemote(plug!.node_id),
     refetchInterval: 30_000,
     enabled: !!plug,
   })
@@ -965,6 +994,7 @@ export default function OverviewPage() {
             loading={!!plug && !power.data}
             unavailable={!plug}
             label={plug?.label ?? ""}
+            remote={remote.data}
           />
         </div>
 

@@ -211,3 +211,73 @@ func TestPowerTargetsExcludesMetricsFromActions(t *testing.T) {
 		}
 	}
 }
+
+func TestPowerRemoteReturnsValidJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	dir := filepath.Join(home, "kanban")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(home, "fake-remote")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho '{\"reachable\":true,\"rdp\":true,\"tailscale\":true}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"targets":[{"node_id":"windows","remote":"` + script + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "power-targets.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := PowerRemote("windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Reachable bool `json:"reachable"`
+		RDP       bool `json:"rdp"`
+		Tailscale bool `json:"tailscale"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("remote payload not JSON: %v (%s)", err, raw)
+	}
+	if !got.Reachable || !got.RDP || !got.Tailscale {
+		t.Fatalf("unexpected payload: %s", raw)
+	}
+}
+
+// A remote script that prints junk must fail, not hand the browser invalid JSON.
+func TestPowerRemoteRejectsNonJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	dir := filepath.Join(home, "kanban")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(home, "broken-remote")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho not-json\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"targets":[{"node_id":"windows","remote":"` + script + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "power-targets.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PowerRemote("windows"); err == nil {
+		t.Fatal("expected error for non-JSON remote output")
+	}
+}
+
+// Remote is read-only too: it must not grow a Workspaces button.
+func TestPowerTargetsExcludesRemoteFromActions(t *testing.T) {
+	writePowerConfig(t, `{"targets":[{"node_id":"windows","label":"Windows PC","on":"~/bin/pc-on","remote":"~/bin/win-remote"}]}`)
+	targets, err := PowerTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("want 1 target, got %+v", targets)
+	}
+	for _, a := range targets[0].Actions {
+		if a == "remote" {
+			t.Fatalf("remote leaked into actions: %v", targets[0].Actions)
+		}
+	}
+}

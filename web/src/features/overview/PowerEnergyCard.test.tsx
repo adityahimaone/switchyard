@@ -10,8 +10,8 @@ vi.mock("@visx/responsive", () => ({
     children({ width: 600, height: 200 }),
 }))
 
-import type { PowerMetrics } from "@/api"
-import { PowerEnergyCard } from "./OverviewPage"
+import type { PowerMetrics, PowerRemote } from "@/api"
+import { PowerEnergyCard, remoteAccessState } from "./OverviewPage"
 
 const metrics: PowerMetrics = {
   live: { switch: true, power_w: 175.6, voltage_v: 220.3, current_a: 0.868, add_ele_raw: 101 },
@@ -62,5 +62,42 @@ describe("PowerEnergyCard", () => {
     const empty = { ...metrics, series: [], samples: 0 }
     const html = render({ data: empty })
     expect(html).toContain("Not enough readings yet")
+  })
+})
+
+/**
+ * Remote-access badge: the card is the Windows PC's, so it doubles as the
+ * "can I connect right now" readout. Reachable + RDP open is the green path;
+ * a host that answers but has no RDP is the amber one; silence is just off.
+ */
+describe("remote access badge", () => {
+  const remote = (over: Partial<PowerRemote> = {}): PowerRemote =>
+    ({ reachable: true, rdp: true, tailscale: true, ...over })
+
+  it("renders no badge when no remote check is configured", () => {
+    const html = render({ remote: undefined })
+    expect(html).not.toContain("RDP ready")
+    expect(html).not.toContain("PC off")
+    expect(html).not.toContain("RDP closed")
+  })
+
+  it("reads ready when the host answers and RDP is open", () => {
+    expect(render({ remote: remote() })).toContain("RDP ready")
+  })
+
+  it("reads closed when the host answers but RDP is not open", () => {
+    expect(render({ remote: remote({ rdp: false }) })).toContain("RDP closed")
+  })
+
+  it("reads off when the host does not answer", () => {
+    const html = render({ remote: remote({ reachable: false, rdp: false }) })
+    expect(html).toContain("PC off")
+  })
+
+  it("maps each state to its own tone", () => {
+    expect(remoteAccessState(remote())).toMatchObject({ label: "RDP ready", tone: "bg-success" })
+    expect(remoteAccessState(remote({ rdp: false }))).toMatchObject({ label: "RDP closed", tone: "bg-warning" })
+    expect(remoteAccessState(remote({ reachable: false }))).toMatchObject({ label: "PC off", tone: "bg-ink-3" })
+    expect(remoteAccessState(undefined)).toBeNull()
   })
 })

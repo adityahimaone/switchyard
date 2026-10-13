@@ -42,6 +42,10 @@ type powerTargetCfg struct {
 	// energy totals (see `~/bin/plug-energy`). Read-only, so it is not part of
 	// the action list the UI gates buttons on.
 	Metrics string `json:"metrics"`
+	// Remote is an optional script printing one JSON blob of remote-access
+	// readiness (reachable / rdp / tailscale; see `~/bin/win-remote`). Read-only
+	// like Metrics, so it is not part of the action list either.
+	Remote string `json:"remote"`
 }
 
 type powerConfig struct {
@@ -128,6 +132,8 @@ func resolvePowerScript(nodeID, action string) (string, error) {
 		script = target.Status
 	case "metrics":
 		script = target.Metrics
+	case "remote":
+		script = target.Remote
 	default:
 		return "", fmt.Errorf("unknown power action %q", action)
 	}
@@ -202,17 +208,28 @@ func PowerActionStream(ctx context.Context, nodeID, action string, onLine func(s
 }
 
 // PowerMetrics returns the raw JSON metrics blob for a node's plug (live
-// voltage/current/power plus energy totals). It reuses the power script runner
-// but validates the payload so a broken script surfaces as an error rather than
-// invalid JSON in the browser.
+// voltage/current/power plus energy totals).
 func PowerMetrics(nodeID string) (json.RawMessage, error) {
-	out, err := PowerAction(nodeID, "metrics")
+	return powerScriptJSON(nodeID, "metrics")
+}
+
+// PowerRemote returns the raw JSON remote-access blob for a node (whether the
+// host answers and whether its RDP port is open), so the Overview can show at a
+// glance whether the machine is reachable and connectable right now.
+func PowerRemote(nodeID string) (json.RawMessage, error) {
+	return powerScriptJSON(nodeID, "remote")
+}
+
+// powerScriptJSON runs a read-only script action and validates its payload, so a
+// broken script surfaces as an error rather than invalid JSON in the browser.
+func powerScriptJSON(nodeID, action string) (json.RawMessage, error) {
+	out, err := PowerAction(nodeID, action)
 	if err != nil {
 		return nil, err
 	}
 	raw := json.RawMessage(strings.TrimSpace(out))
 	if !json.Valid(raw) {
-		return nil, fmt.Errorf("metrics script for node %q did not print JSON", nodeID)
+		return nil, fmt.Errorf("%s script for node %q did not print JSON", action, nodeID)
 	}
 	return raw, nil
 }

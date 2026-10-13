@@ -522,6 +522,21 @@ export function getPowerMetrics(id: string) {
 }
 
 /**
+ * Remote-access readiness for a node: whether it answers over the fabric
+ * (`reachable`) and whether its remote-desktop port is open (`rdp`), so the
+ * Overview can say "connect now" without the operator probing by hand.
+ */
+export interface PowerRemote {
+  reachable: boolean
+  rdp: boolean
+  tailscale: boolean
+  checked_at?: number
+}
+export function getPowerRemote(id: string) {
+  return api<PowerRemote>(`/api/nodes/${encodeURIComponent(id)}/power/remote`)
+}
+
+/**
  * Power a worker node on/off, cycle it, or read its power status. The board
  * server runs the configured script; a cycle can take ~100s while the machine
  * cold-boots, so callers should show a busy state.
