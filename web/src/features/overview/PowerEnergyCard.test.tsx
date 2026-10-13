@@ -10,8 +10,8 @@ vi.mock("@visx/responsive", () => ({
     children({ width: 600, height: 200 }),
 }))
 
-import type { PowerMetrics, PowerRemote } from "@/api"
-import { PowerEnergyCard, remoteAccessState } from "./OverviewPage"
+import type { PowerEnergy, PowerMetrics, PowerRemote } from "@/api"
+import { PowerEnergyCard, energyBounds, remoteAccessState, shiftISODate, wibToday } from "./OverviewPage"
 
 const metrics: PowerMetrics = {
   live: { switch: true, power_w: 175.6, voltage_v: 220.3, current_a: 0.868, add_ele_raw: 101 },
@@ -27,6 +27,22 @@ const metrics: PowerMetrics = {
   bucket_seconds: 364,
   samples: 67,
   peak_w: 358.7,
+}
+
+const energy: PowerEnergy = {
+  node_id: "windows",
+  from: 100,
+  to: 200,
+  tariff_per_kwh: 1444.7,
+  total_kwh: 4.329,
+  total_rp: 6254,
+  days: 3,
+  avg_kwh_per_day: 1.443,
+  avg_rp_per_day: 2085,
+  daily: [],
+  samples: 155,
+  span_seconds: 100800,
+  coverage_from: 0,
 }
 
 const render = (props: Partial<Parameters<typeof PowerEnergyCard>[0]> = {}) =>
@@ -62,6 +78,65 @@ describe("PowerEnergyCard", () => {
     const empty = { ...metrics, series: [], samples: 0 }
     const html = render({ data: empty })
     expect(html).toContain("Not enough readings yet")
+  })
+})
+
+/**
+ * Range dashboard: the point is kWh AND rupiah for a chosen window, with
+ * per-day averages, plus a custom date picker.
+ */
+describe("PowerEnergyCard range dashboard", () => {
+  it("shows the range total, its cost, and the per-day averages", () => {
+    const html = render({ energy })
+    expect(html).toContain("4.33 kWh") // total
+    expect(html).toContain("6.254") // rupiah total (id-ID grouping)
+    expect(html).toContain("1.44 kWh") // avg/day
+    expect(html).toContain("2.085") // avg rupiah/day
+    expect(html).toContain("Rp 1.444,7/kWh")
+  })
+
+  it("marks the active preset and renders all four", () => {
+    const html = render({ preset: "7d" })
+    for (const label of ["1D", "7D", "30D", "Custom"]) expect(html).toContain(label)
+    expect(html).toMatch(/aria-pressed="true"[^>]*>7D/)
+  })
+
+  it("reveals the date pickers only for the custom preset", () => {
+    expect(render({ preset: "1d" })).not.toContain('type="date"')
+    const html = render({ preset: "custom", from: "2026-10-01", to: "2026-10-03" })
+    expect(html).toContain('type="date"')
+    expect(html).toContain('value="2026-10-01"')
+    expect(html).toContain('value="2026-10-03"')
+  })
+
+  it("warns when the range starts before the first stored sample", () => {
+    const short = { ...energy, from: 100, coverage_from: 200 }
+    expect(render({ energy: short })).toContain("data starts")
+    expect(render({ energy: { ...energy, coverage_from: 0 } })).not.toContain("data starts")
+  })
+
+  it("shows a placeholder rather than a wrong number while the range loads", () => {
+    const html = render({ energy: undefined, energyLoading: true })
+    expect(html).toContain("…")
+    expect(html).not.toContain("0.00 kWh")
+  })
+})
+
+describe("energyBounds", () => {
+  it("maps presets to WIB calendar days ending today", () => {
+    const today = wibToday()
+    expect(energyBounds("1d", "", "")).toEqual({ from: today, to: today })
+    expect(energyBounds("7d", "", "")).toEqual({ from: shiftISODate(today, -6), to: today })
+    expect(energyBounds("30d", "", "")).toEqual({ from: shiftISODate(today, -29), to: today })
+  })
+
+  it("passes a custom range straight through", () => {
+    expect(energyBounds("custom", "2026-10-01", "2026-10-03")).toEqual({ from: "2026-10-01", to: "2026-10-03" })
+  })
+
+  it("shifts dates across month boundaries without drift", () => {
+    expect(shiftISODate("2026-10-01", -1)).toBe("2026-09-30")
+    expect(shiftISODate("2026-02-28", 1)).toBe("2026-03-01")
   })
 })
 

@@ -46,6 +46,17 @@ func registerPowerRoutes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(raw)
 	})
+	// Energy over a chosen range, integrated from our own sampler store rather
+	// than Tuya (which keeps only ~28h). `from`/`to` are unix seconds or
+	// YYYY-MM-DD in WIB; both default to the last 24h.
+	mux.HandleFunc("GET /api/nodes/{id}/power/energy", func(w http.ResponseWriter, r *http.Request) {
+		out, err := kanban.PowerEnergy(r.PathValue("id"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+		if err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	// Remote-access readiness for a node: whether it answers and whether its
 	// remote-desktop port is open. Read-only, same shape as the metrics route.
 	mux.HandleFunc("GET /api/nodes/{id}/power/remote", func(w http.ResponseWriter, r *http.Request) {

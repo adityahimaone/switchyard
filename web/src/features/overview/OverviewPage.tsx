@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge as GaugeIcon, GitPullRequest, Layers3, Loader2, MemoryStick, Minus, Plug, Radio, RefreshCw, Server, Terminal, Users, Workflow, XCircle } from "lucide-react"
-import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerMetrics, getPowerRemote, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
-import type { ActivityDay, PowerMetrics, PowerRemote, QueueTrendPoint, ReviewMetrics } from "@/api"
+import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerEnergy, getPowerMetrics, getPowerRemote, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
+import type { ActivityDay, PowerEnergy, PowerMetrics, PowerRemote, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
@@ -715,7 +715,51 @@ export function remoteAccessState(remote?: PowerRemote): { label: string; tone: 
   return { label: "RDP closed", tone: "bg-warning", detail: "Host answers but the remote desktop port is not open" }
 }
 
-export function PowerEnergyCard({ data, loading, unavailable, label, remote }: { data?: PowerMetrics; loading: boolean; unavailable: boolean; label: string; remote?: PowerRemote }) {
+export type EnergyPreset = "1d" | "7d" | "30d" | "custom"
+
+/** The plug is in Jakarta; the range dates the UI sends are WIB calendar days. */
+const WIB_TZ = "Asia/Jakarta"
+const rupiah = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })
+
+export function wibToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: WIB_TZ }).format(new Date())
+}
+
+/** Shift a YYYY-MM-DD by whole days in UTC, so the calendar math never drifts. */
+export function shiftISODate(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** The from/to the energy query should ask for, given the preset. */
+export function energyBounds(preset: EnergyPreset, customFrom: string, customTo: string): { from: string; to: string } {
+  if (preset === "custom") return { from: customFrom, to: customTo }
+  const today = wibToday()
+  const back = preset === "1d" ? 0 : preset === "7d" ? 6 : 29
+  return { from: shiftISODate(today, -back), to: today }
+}
+
+const ENERGY_PRESETS: [EnergyPreset, string][] = [["1d", "1D"], ["7d", "7D"], ["30d", "30D"], ["custom", "Custom"]]
+
+export function PowerEnergyCard({
+  data, loading, unavailable, label, remote,
+  energy, energyLoading, preset = "1d", onPreset, from = "", to = "", onFrom, onTo,
+}: {
+  data?: PowerMetrics
+  loading: boolean
+  unavailable: boolean
+  label: string
+  remote?: PowerRemote
+  energy?: PowerEnergy
+  energyLoading?: boolean
+  preset?: EnergyPreset
+  onPreset?: (p: EnergyPreset) => void
+  from?: string
+  to?: string
+  onFrom?: (v: string) => void
+  onTo?: (v: string) => void
+}) {
   // Bars are the mean draw per bucket, so the chart answers "when was the
   // machine actually working" — the metric a cumulative total cannot show.
   const chartData = useMemo(
@@ -730,12 +774,17 @@ export function PowerEnergyCard({ data, loading, unavailable, label, remote }: {
   if (loading) return <section className="glass-card p-4"><LoadingState label="Reading plug" /></section>
   if (unavailable || !data) return null
   const live = data.live
-  const stats: { label: string; value: string; unit: string; tone?: string }[] = [
+  const liveStats: { label: string; value: string; unit: string; tone?: string }[] = [
     { label: "Draw", value: live.power_w.toFixed(1), unit: "W", tone: live.power_w > 0 ? "text-accent-text" : undefined },
     { label: "Voltage", value: live.voltage_v.toFixed(1), unit: "V" },
     { label: "Current", value: live.current_a.toFixed(2), unit: "A" },
-    { label: "Today", value: data.today_kwh.toFixed(2), unit: "kWh", tone: "text-success-text" },
   ]
+  // A range that starts before our first stored sample has no readings for its
+  // early days: say so instead of letting a low total read as a real figure.
+  const coverageStart = energy && energy.coverage_from > 0
+    ? new Intl.DateTimeFormat("en-CA", { timeZone: WIB_TZ }).format(new Date(energy.coverage_from * 1000))
+    : ""
+  const predatesData = !!energy && energy.coverage_from > 0 && energy.from < energy.coverage_from
   const first = data.series[0]
   const last = data.series[data.series.length - 1]
   // The requested window is a ceiling, not a promise: Tuya only keeps a few
@@ -745,6 +794,7 @@ export function PowerEnergyCard({ data, loading, unavailable, label, remote }: {
   const range = first && last ? `${plugClock.format(new Date(first.t * 1000))}–${plugClock.format(new Date(last.t * 1000))}` : "—"
   const bucketMin = Math.round(data.bucket_seconds / 60)
   const remoteBadge = remoteAccessState(remote)
+  const dash = energyLoading ? "…" : "—"
   return (
     <section className="glass-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -766,8 +816,63 @@ export function PowerEnergyCard({ data, loading, unavailable, label, remote }: {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {stats.map((s) => (
+      {/* Range picker: presets plus a custom pair of date inputs. */}
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        {ENERGY_PRESETS.map(([p, lbl]) => (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={preset === p}
+            onClick={() => onPreset?.(p)}
+            className={`rounded-control border px-2 py-1 text-[10px] transition-[color,border-color,background-color] duration-150 ease-out ${
+              preset === p
+                ? "border-accent/40 bg-accent-tint text-accent-text"
+                : "border-line bg-well/45 text-ink-3 hover:border-accent/40 hover:text-accent-text"
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+        {preset === "custom" && (
+          <span className="flex flex-wrap items-center gap-1.5 text-[10px] text-ink-3">
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => onFrom?.(e.target.value)}
+              aria-label="From date"
+              className="rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+            />
+            <span aria-hidden>–</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => onTo?.(e.target.value)}
+              aria-label="To date"
+              className="rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+            />
+          </span>
+        )}
+      </div>
+
+      {/* Range totals and per-day averages, priced in rupiah. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <EnergyStat label="Total" value={energy ? `${energy.total_kwh.toFixed(2)} kWh` : dash} tone="text-success-text" />
+        <EnergyStat label="Cost" value={energy ? rupiah.format(energy.total_rp) : dash} tone="text-success-text" />
+        <EnergyStat label="Avg / day" value={energy ? `${energy.avg_kwh_per_day.toFixed(2)} kWh` : dash} />
+        <EnergyStat label="Avg cost / day" value={energy ? rupiah.format(energy.avg_rp_per_day) : dash} />
+      </div>
+      {energy && (
+        <p className="mt-2 text-[10px] text-ink-3">
+          {energy.days} day{energy.days === 1 ? "" : "s"} · {energy.samples} readings · Rp{" "}
+          {energy.tariff_per_kwh.toLocaleString("id-ID")}/kWh
+          {predatesData && <> · <span className="text-warning-text">data starts {coverageStart}</span></>}
+        </p>
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {liveStats.map((s) => (
           <div key={s.label} className="rounded-control border border-line bg-well/45 p-3">
             <p className="text-[10px] text-ink-3">{s.label}</p>
             <p className={`mt-1 font-mono text-lg ${s.tone ?? "text-ink"}`}>
@@ -816,6 +921,15 @@ export function PowerEnergyCard({ data, loading, unavailable, label, remote }: {
   )
 }
 
+function EnergyStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-control border border-line bg-well/45 p-3">
+      <p className="text-[10px] text-ink-3">{label}</p>
+      <p className={`mt-1 font-mono text-lg ${tone ?? "text-ink"}`}>{value}</p>
+    </div>
+  )
+}
+
 export default function OverviewPage() {
   const overview = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/api/overview"), refetchInterval: 5000 })
   const daemon = useQuery({ queryKey: ["chat-daemon-health"], queryFn: () => api<DaemonHealth>("/api/chat/daemon-health"), refetchInterval: 10_000 })
@@ -841,6 +955,20 @@ export default function OverviewPage() {
     queryFn: () => getPowerRemote(plug!.node_id),
     refetchInterval: 30_000,
     enabled: !!plug,
+  })
+  // Energy over the chosen range, integrated from the board's own sampler store
+  // (Tuya only keeps ~28h). Presets resolve to WIB calendar days here so the
+  // query key changes exactly when the window does.
+  const [energyPreset, setEnergyPreset] = useState<EnergyPreset>("1d")
+  const [customFrom, setCustomFrom] = useState("")
+  const [customTo, setCustomTo] = useState("")
+  const bounds = energyBounds(energyPreset, customFrom, customTo)
+  const energyReady = !!plug && !!bounds.from && !!bounds.to
+  const energy = useQuery({
+    queryKey: ["power-energy", plug?.node_id, bounds.from, bounds.to],
+    queryFn: () => getPowerEnergy(plug!.node_id, bounds.from, bounds.to),
+    refetchInterval: 60_000,
+    enabled: energyReady,
   })
   const data = overview.data
 
@@ -995,6 +1123,14 @@ export default function OverviewPage() {
             unavailable={!plug}
             label={plug?.label ?? ""}
             remote={remote.data}
+            energy={energy.data}
+            energyLoading={energyReady && !energy.data}
+            preset={energyPreset}
+            onPreset={setEnergyPreset}
+            from={bounds.from}
+            to={bounds.to}
+            onFrom={setCustomFrom}
+            onTo={setCustomTo}
           />
         </div>
 

@@ -162,6 +162,9 @@ func main() {
 	// row solely when that exact token is presented again, which never happens
 	// for a token the user has discarded.
 	kanban.StartSessionJanitor(dispatcherCtx, 1*time.Hour)
+	// Persist the plug's draw every minute so the Overview's energy card can
+	// report ranges longer than Tuya's ~28h retention. A no-op without a plug.
+	go kanban.StartPowerSampler(dispatcherCtx, 1*time.Minute)
 	log.Printf("kanban-board listening on %s (dist=%s)", addr, dist)
 
 	srv := newServer(addr, securityHeaders(sameOriginGuard(authHandler(mux))))

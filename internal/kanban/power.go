@@ -42,6 +42,15 @@ type powerTargetCfg struct {
 	// energy totals (see `~/bin/plug-energy`). Read-only, so it is not part of
 	// the action list the UI gates buttons on.
 	Metrics string `json:"metrics"`
+	// Sample is an optional script printing one JSON blob with a `power_w`
+	// reading (see `~/bin/plug-live`). The background sampler runs it every
+	// minute to persist the draw for ranges beyond Tuya's ~28h retention.
+	// Read-only like Metrics, so not part of the action list either.
+	Sample string `json:"sample"`
+	// TariffPerKWh is the electricity price used to turn kWh into rupiah for
+	// the energy dashboard. Per-target, because a second plug could sit on a
+	// different tariff.
+	TariffPerKWh float64 `json:"tariff_per_kwh"`
 	// Remote is an optional script printing one JSON blob of remote-access
 	// readiness (reachable / rdp / tailscale; see `~/bin/win-remote`). Read-only
 	// like Metrics, so it is not part of the action list either.
@@ -132,6 +141,8 @@ func resolvePowerScript(nodeID, action string) (string, error) {
 		script = target.Status
 	case "metrics":
 		script = target.Metrics
+	case "sample":
+		script = target.Sample
 	case "remote":
 		script = target.Remote
 	default:

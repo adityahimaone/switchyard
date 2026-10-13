@@ -522,6 +522,36 @@ export function getPowerMetrics(id: string) {
 }
 
 /**
+ * Energy over a chosen range, integrated from the board's own sampler store
+ * (`power.db`) rather than Tuya, which keeps only ~28h of history. `from`/`to`
+ * are `YYYY-MM-DD` (WIB, inclusive) or unix seconds; omit for the last 24h.
+ * `coverage_from` is the earliest sample ever stored, so the UI can tell the
+ * user when the requested range predates the data.
+ */
+export interface PowerEnergy {
+  node_id: string
+  from: number
+  to: number
+  tariff_per_kwh: number
+  total_kwh: number
+  total_rp: number
+  days: number
+  avg_kwh_per_day: number
+  avg_rp_per_day: number
+  daily: { date: string; kwh: number; rp: number }[]
+  samples: number
+  span_seconds: number
+  coverage_from: number
+}
+export function getPowerEnergy(id: string, from?: string, to?: string) {
+  const q = new URLSearchParams()
+  if (from) q.set("from", from)
+  if (to) q.set("to", to)
+  const qs = q.toString()
+  return api<PowerEnergy>(`/api/nodes/${encodeURIComponent(id)}/power/energy${qs ? `?${qs}` : ""}`)
+}
+
+/**
  * Remote-access readiness for a node: whether it answers over the fabric
  * (`reachable`) and whether its remote-desktop port is open (`rdp`), so the
  * Overview can say "connect now" without the operator probing by hand.
