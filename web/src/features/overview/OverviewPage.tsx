@@ -4,6 +4,7 @@ import { Activity, Check, CheckCircle2, Copy, Cpu, Database, Eye, EyeOff, Gauge 
 import { api, getNodeAgentSetup, getOverviewActivity, getOverviewQueueTrend, getOverviewReview, getPowerEnergy, getPowerMetrics, getPowerRemote, getPowerTargets, refreshNodeVersions, savedIntegrations } from "@/api"
 import type { ActivityDay, PowerEnergy, PowerMetrics, PowerRemote, QueueTrendPoint, ReviewMetrics } from "@/api"
 import LoadingState from "@/components/feedback/loading-state"
+import { DatePicker } from "@/components/ui/date-picker"
 import { PageHeader } from "@/components/app/page-header"
 import { CollectionBody } from "@/components/app/collection"
 import {
@@ -834,23 +835,19 @@ export function PowerEnergyCard({
           </button>
         ))}
         {preset === "custom" && (
-          <span className="flex flex-wrap items-center gap-1.5 text-[10px] text-ink-3">
-            <input
-              type="date"
+          <span className="flex flex-wrap items-center gap-1.5">
+            <DatePicker
               value={from}
+              onChange={(v) => onFrom?.(v)}
               max={to || undefined}
-              onChange={(e) => onFrom?.(e.target.value)}
-              aria-label="From date"
-              className="rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+              ariaLabel="From date"
             />
-            <span aria-hidden>–</span>
-            <input
-              type="date"
+            <span aria-hidden className="text-[10px] text-ink-3">–</span>
+            <DatePicker
               value={to}
+              onChange={(v) => onTo?.(v)}
               min={from || undefined}
-              onChange={(e) => onTo?.(e.target.value)}
-              aria-label="To date"
-              className="rounded-control border border-line bg-well/45 px-2 py-1 text-[10px] text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-focus/40"
+              ariaLabel="To date"
             />
           </span>
         )}

@@ -101,12 +101,14 @@ describe("PowerEnergyCard range dashboard", () => {
     expect(html).toMatch(/aria-pressed="true"[^>]*>7D/)
   })
 
-  it("reveals the date pickers only for the custom preset", () => {
-    expect(render({ preset: "1d" })).not.toContain('type="date"')
+  it("reveals the shadcn date pickers only for the custom preset", () => {
+    expect(render({ preset: "1d" })).not.toContain("From date")
     const html = render({ preset: "custom", from: "2026-10-01", to: "2026-10-03" })
-    expect(html).toContain('type="date"')
-    expect(html).toContain('value="2026-10-01"')
-    expect(html).toContain('value="2026-10-03"')
+    expect(html).toContain('aria-label="From date"')
+    expect(html).toContain('aria-label="To date"')
+    // The trigger prints the chosen day, so the range reads without opening it.
+    expect(html).toContain("01 Oct 2026")
+    expect(html).toContain("03 Oct 2026")
   })
 
   it("warns when the range starts before the first stored sample", () => {
