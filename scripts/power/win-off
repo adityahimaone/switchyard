@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Full shutdown of the Windows PC (WOL-able from S5).
+set -euo pipefail
+exec "$(dirname "$0")/winps" 'shutdown.exe /s /t 0 /f'

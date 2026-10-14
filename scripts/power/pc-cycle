@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Power-cycle the Windows PC from anywhere: graceful off (outlet verified OFF),
+# then a plug cycle to boot it back (BIOS "Restore on AC Power Loss -> Power On").
+# Emits progress lines so the Kanban boot-log can stream it live.
+# Usage: pc-cycle
+set -uo pipefail
+d="$(dirname "$0")"
+
+# Fail closed: if the outlet cannot be verified OFF, do NOT power it back on —
+# that would just leave a live machine reported as freshly cycled.
+"$d/pc-off" || { echo "ERROR: power-off phase failed — not rebooting."; exit 1; }
+exec "$d/pc-on"

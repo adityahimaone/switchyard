@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Bardi smart plug control (Tuya Cloud). Usage: plug on|off|toggle|status|devices
+#
+# Runs plug.py under a dedicated venv: the board server (PM2) has a different
+# PATH than an interactive shell, and its `python3` has no tinytuya, so never
+# rely on `python3` from PATH here.
+set -euo pipefail
+PY="$HOME/.local/share/plug-venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+exec "$PY" "$(dirname "$0")/plug.py" "$@"

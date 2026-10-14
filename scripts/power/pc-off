@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Take the Windows PC fully off from anywhere: graceful shutdown when reachable,
+# then cut the smart plug so the outlet itself is OFF (matches the Tuya plug's
+# own on/off state). Usage: pc-off
+#
+# The exit status describes the OUTLET, not the OS. A PC that refuses to shut
+# down is still forced off at the plug — that is the whole point of the plug —
+# so the action only reports failure when the outlet cannot be verified OFF.
+set -uo pipefail
+d="$(dirname "$0")"
+ts() { date +%H:%M:%S; }
+say() { echo "[$(ts)] $*"; }
+up() { ssh -o ConnectTimeout=6 -o BatchMode=yes windows-tailscale "echo up" >/dev/null 2>&1; }
+
+# wait_down <seconds>: 0 once the OS stops answering SSH, 1 if it is still up.
+wait_down() {
+  local limit="$1" waited=0
+  while [ "$waited" -lt "$limit" ]; do
+    if ! up; then say "  -> OS down after ~${waited}s."; return 0; fi
+    sleep 3; waited=$((waited + 3))
+    say "  t+${waited}s  still up (waiting for shutdown)"
+  done
+  return 1
+}
+
+if up; then
+  say "PC reachable — sending graceful shutdown."
+  "$d/win-off" >/dev/null 2>&1 || say "  (shutdown command returned non-zero; continuing)"
+  say "Waiting up to 30s for the OS to go down..."
+  if ! wait_down 30; then
+    say "Shutdown NOT confirmed after 30s — forcing shutdown again (15s grace)."
+    "$d/win-off" >/dev/null 2>&1 || true
+    wait_down 15 || say "  OS still up — cutting the plug anyway (the outlet is the guarantee)."
+  fi
+else
+  say "PC not reachable (already off)."
+fi
+
+say "Cutting smart plug — outlet OFF."
+if ! "$d/plug-force" off; then
+  say "ERROR: plug could not be verified OFF."
+  exit 1
+fi
+say "Plug is OFF. PC fully powered down."

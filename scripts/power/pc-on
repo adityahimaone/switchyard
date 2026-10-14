@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Bring the Windows PC up from anywhere (works when the Mac relay is away).
+# Cycles the Tuya plug so BIOS "Restore on AC Power Loss -> Power On" boots the PC.
+# Emits one progress line per step so the Kanban boot-log can stream it live.
+# Usage: pc-on
+#
+# The exit status describes the MACHINE, not just SSH. A booted PC whose
+# Tailscale has not finished connecting is still ON, and is reported as such
+# (the plug's draw proves it) instead of as a failure.
+set -uo pipefail
+d="$(dirname "$0")"
+ts() { date +%H:%M:%S; }
+say() { echo "[$(ts)] $*"; }
+up() { ssh -o ConnectTimeout=5 -o BatchMode=yes windows-tailscale "echo up" >/dev/null 2>&1; }
+draw() { "$d/plug" live 2>/dev/null | sed -n 's/.*"power_w": *\([0-9.]*\).*/\1/p' | head -1; }
+ON_WATTS=30   # above plug standby (~2-3W); a booted/idle PC draws far more
+
+if up; then
+  say "PC already reachable via Tailscale — nothing to do."
+  exit 0
+fi
+
+say "PC is down. Cycling smart plug (off 5s, then on)."
+say "  -> plug OFF"
+"$d/plug-force" off >/dev/null 2>&1 || say "  (plug already off)"
+sleep 5
+say "  -> plug ON (power restored; BIOS should boot the PC)"
+if ! "$d/plug-force" on; then
+  say "ERROR: plug could not be verified ON — cannot boot the PC."
+  exit 1
+fi
+
+say "Waiting for the PC to boot and Tailscale to come up..."
+for i in $(seq 1 60); do
+  el=$((i*3))
+  if up; then
+    say "Tailscale reachable — PC UP after ~${el}s."
+    say "SSH to windows-tailscale is ready."
+    exit 0
+  fi
+  state=$(tailscale status 2>/dev/null | grep -iE 'aditya-rtx|windows' | head -1)
+  case "$state" in
+    *"active"*)  ts_state="online (tailscale active)" ;;
+    *"idle"*)    ts_state="idle" ;;
+    *"offline"*) ts_state="offline — PC still booting" ;;
+    *)           ts_state="not seen yet" ;;
+  esac
+  say "  t+${el}s  tailscale: ${ts_state}"
+  sleep 3
+done
+
+# SSH can lag a genuine boot (Tailscale connects after login on some builds).
+# The plug's draw is the machine-level truth: standby ~2-3W, booted 100W+.
+say "SSH not up after 180s — checking the plug draw for a booted PC."
+w="$(draw)"
+if [ -n "${w:-}" ] && awk -v w="$w" -v t="$ON_WATTS" 'BEGIN{exit !(w >= t)}'; then
+  say "Plug is drawing ${w}W — the PC IS powered on; Tailscale/SSH has not connected yet."
+  say "Re-check shortly with: win-status  (or pc-rdp to connect)."
+  exit 0
+fi
+say "ERROR: PC not reachable after 180s and plug draw is ${w:-unknown}W (standby)."
+say "Check: BIOS AC-restore=Power On, Tailscale unattended mode, plug power draw."
+exit 1

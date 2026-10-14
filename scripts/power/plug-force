@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Set the smart plug to on|off and VERIFY the outlet actually reached that state.
+#
+# Tuya's sendcommand can answer `success:false` (or accept a no-op) while the
+# relay never moves, and plug.py exits 0 in that case — so the command's exit
+# code is NOT proof the outlet switched. Read the DP back instead and retry.
+# Exit 0 only when the read-back matches the request.
+# Usage: plug-force on|off
+set -uo pipefail
+d="$(dirname "$0")"
+want="${1:-}"
+case "$want" in on|off) ;; *) echo "usage: plug-force on|off" >&2; exit 2 ;; esac
+
+state() { "$d/plug" live 2>/dev/null | sed -n 's/.*"switch": *\(true\|false\).*/\1/p' | head -1; }
+want_v=true; [ "$want" = off ] && want_v=false
+
+for i in 1 2 3 4 5; do
+  "$d/plug" "$want" >/dev/null 2>&1 || true
+  sleep 2
+  got="$(state)"
+  if [ "$got" = "$want_v" ]; then echo "plug is ${want^^} (verified)"; exit 0; fi
+  echo "  plug-force: attempt $i -> switch=${got:-unknown}, retrying" >&2
+done
+echo "ERROR: plug did not reach $want (last switch=${got:-unknown})" >&2
+exit 1
