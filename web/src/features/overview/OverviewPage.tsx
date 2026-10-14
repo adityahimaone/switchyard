@@ -46,6 +46,7 @@ import {
   type IntegrationColumn,
   type IntegrationState,
 } from "./integrationHealth"
+import { brandMark } from "./brand-marks"
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -805,9 +806,21 @@ export function PowerEnergyCard({
           <p className="text-[11px] font-medium text-accent-text">Energy</p>
           <h2 className="mt-1 text-sm font-semibold">{label} · smart plug</h2>
           {/* What the plug is attached to. Muted and single-line: it is
-              context for the numbers below, not a reading of its own. */}
+              context for the numbers below, not a reading of its own. A part
+              with a recognisable vendor gets its mark; the rest stays text. */}
           {spec && spec.length > 0 && (
-            <p className="mt-1 text-[10px] text-ink-3">{spec.join(" · ")}</p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink-3">
+              {spec.map((item, i) => {
+                const Mark = brandMark(item)
+                return (
+                  <span key={item} className="flex items-center gap-1">
+                    {i > 0 && <span aria-hidden>·</span>}
+                    {Mark && <Mark className="size-3 shrink-0 fill-current" />}
+                    {item}
+                  </span>
+                )
+              })}
+            </p>
           )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
