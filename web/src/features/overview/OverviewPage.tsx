@@ -744,13 +744,15 @@ export function energyBounds(preset: EnergyPreset, customFrom: string, customTo:
 const ENERGY_PRESETS: [EnergyPreset, string][] = [["1d", "1D"], ["7d", "7D"], ["30d", "30D"], ["custom", "Custom"]]
 
 export function PowerEnergyCard({
-  data, loading, unavailable, label, remote,
+  data, loading, unavailable, label, spec, remote,
   energy, energyLoading, preset = "1d", onPreset, from = "", to = "", onFrom, onTo,
 }: {
   data?: PowerMetrics
   loading: boolean
   unavailable: boolean
   label: string
+  /** Hardware behind the plug, from the target's config. Display only. */
+  spec?: string[]
   remote?: PowerRemote
   energy?: PowerEnergy
   energyLoading?: boolean
@@ -802,6 +804,11 @@ export function PowerEnergyCard({
         <div>
           <p className="text-[11px] font-medium text-accent-text">Energy</p>
           <h2 className="mt-1 text-sm font-semibold">{label} · smart plug</h2>
+          {/* What the plug is attached to. Muted and single-line: it is
+              context for the numbers below, not a reading of its own. */}
+          {spec && spec.length > 0 && (
+            <p className="mt-1 text-[10px] text-ink-3">{spec.join(" · ")}</p>
+          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {remoteBadge && (
@@ -1119,6 +1126,7 @@ export default function OverviewPage() {
             loading={!!plug && !power.data}
             unavailable={!plug}
             label={plug?.label ?? ""}
+            spec={plug?.spec}
             remote={remote.data}
             energy={energy.data}
             energyLoading={energyReady && !energy.data}

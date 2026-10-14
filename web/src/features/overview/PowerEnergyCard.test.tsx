@@ -74,6 +74,17 @@ describe("PowerEnergyCard", () => {
     expect(render({ unavailable: true })).toBe("")
   })
 
+  it("lists the hardware behind the plug when the target declares a spec", () => {
+    const html = render({ spec: ["Ryzen 5 7500F", "RTX 4070 Super", "32GB DDR5"] })
+    expect(html).toContain("Ryzen 5 7500F · RTX 4070 Super · 32GB DDR5")
+  })
+
+  it("omits the spec line entirely when there is none", () => {
+    const html = render()
+    expect(html).toContain("Windows PC · smart plug")
+    expect(html).not.toContain("· RTX")
+  })
+
   it("does not throw when a poll comes back with no usable buckets", () => {
     const empty = { ...metrics, series: [], samples: 0 }
     const html = render({ data: empty })
