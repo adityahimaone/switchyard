@@ -12,6 +12,7 @@ vi.mock("@visx/responsive", () => ({
 
 import type { PowerEnergy, PowerMetrics, PowerRemote } from "@/api"
 import { PowerEnergyCard, energyBounds, remoteAccessState, shiftISODate, wibToday } from "./OverviewPage"
+import { AmdMark, NvidiaMark, brandMark } from "./brand-marks"
 
 const metrics: PowerMetrics = {
   live: { switch: true, power_w: 175.6, voltage_v: 220.3, current_a: 0.868, add_ele_raw: 101 },
@@ -76,19 +77,49 @@ describe("PowerEnergyCard", () => {
 
   it("lists the hardware behind the plug when the target declares a spec", () => {
     const html = render({ spec: ["Ryzen 5 7500F", "RTX 4070 Super", "32GB DDR5"] })
-    expect(html).toContain("Ryzen 5 7500F · RTX 4070 Super · 32GB DDR5")
+    for (const part of ["Ryzen 5 7500F", "RTX 4070 Super", "32GB DDR5"]) expect(html).toContain(part)
+    // Each vendor mark is its own inline svg; a part with no known vendor has none.
+    expect(html.match(/<svg viewBox="0 0 24 24" aria-hidden="true"/g) ?? []).toHaveLength(2)
   })
 
   it("omits the spec line entirely when there is none", () => {
     const html = render()
     expect(html).toContain("Windows PC · smart plug")
-    expect(html).not.toContain("· RTX")
+    expect(html).not.toContain("RTX 4070 Super")
+    expect(html).not.toContain("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"")
   })
 
   it("does not throw when a poll comes back with no usable buckets", () => {
     const empty = { ...metrics, series: [], samples: 0 }
     const html = render({ data: empty })
     expect(html).toContain("Not enough readings yet")
+  })
+})
+
+/**
+ * Matching is by model line, because a part name never spells out its vendor:
+ * "Ryzen 5 7500F" and "RTX 4070 Super" have to resolve to their marks on their
+ * own, and anything unrecognised must fall through to plain text.
+ */
+describe("brandMark", () => {
+  it("recognises the model lines of both vendors", () => {
+    for (const part of ["AMD Ryzen 5 7500F", "Ryzen 7 9800X3D", "Radeon RX 7800 XT"]) {
+      expect(brandMark(part)).toBe(AmdMark)
+    }
+    for (const part of ["NVIDIA GeForce RTX 4070 Super", "RTX 4090", "GTX 1080 Ti"]) {
+      expect(brandMark(part)).toBe(NvidiaMark)
+    }
+  })
+
+  it("leaves a part with no known vendor as plain text", () => {
+    for (const part of ["32GB DDR5", "2TB NVMe SSD", "Corsair RM750e"]) {
+      expect(brandMark(part)).toBeNull()
+    }
+  })
+
+  it("does not match a vendor token inside an unrelated word", () => {
+    expect(brandMark("Rtxless bracket")).toBeNull()
+    expect(brandMark("Amdahl limit")).toBeNull()
   })
 })
 
