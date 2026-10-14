@@ -28,6 +28,11 @@ type PowerTarget struct {
 	// Hosts are the workspace SSH hosts (e.g. "windows-tailscale") this target
 	// powers, so the Workspaces page can attach buttons to the right card.
 	Hosts []string `json:"hosts,omitempty"`
+	// Spec is the machine's hardware, one item per line ("Ryzen 5 7500F",
+	// "RTX 4070 Super"). Display only: it lets the Overview card say what the
+	// plug is attached to, and it lives in config rather than the UI so
+	// swapping a part is a config edit, not a rebuild.
+	Spec []string `json:"spec,omitempty"`
 }
 
 type powerTargetCfg struct {
@@ -55,6 +60,8 @@ type powerTargetCfg struct {
 	// readiness (reachable / rdp / tailscale; see `~/bin/win-remote`). Read-only
 	// like Metrics, so it is not part of the action list either.
 	Remote string `json:"remote"`
+	// Spec is display-only hardware detail for the Overview plug card.
+	Spec []string `json:"spec"`
 }
 
 type powerConfig struct {
@@ -104,7 +111,7 @@ func PowerTargets() ([]PowerTarget, error) {
 		if len(actions) == 0 {
 			continue
 		}
-		out = append(out, PowerTarget{NodeID: t.NodeID, Label: t.Label, Actions: actions, Hosts: t.Hosts})
+		out = append(out, PowerTarget{NodeID: t.NodeID, Label: t.Label, Actions: actions, Hosts: t.Hosts, Spec: t.Spec})
 	}
 	return out, nil
 }

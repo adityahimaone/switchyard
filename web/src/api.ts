@@ -497,7 +497,7 @@ export function savedIntegrations() { return api<SavedIntegrations>("/api/nodes/
 export function refreshNodeVersions() { return api<RefreshResult>("/api/nodes/refresh", { method: "POST" }) }
 
 /** Nodes that expose remote power control (smart plug / Wake-on-LAN relay). */
-export interface PowerTarget { node_id: string; label: string; actions: string[]; hosts?: string[] }
+export interface PowerTarget { node_id: string; label: string; actions: string[]; hosts?: string[]; spec?: string[] }
 export function getPowerTargets() { return api<{ targets: PowerTarget[] }>("/api/power/targets") }
 
 /**
