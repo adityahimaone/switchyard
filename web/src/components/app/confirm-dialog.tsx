@@ -49,7 +49,7 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" loading={busy} onClick={onConfirm}>
+          <Button variant={variant} loading={busy} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </DialogFooter>
