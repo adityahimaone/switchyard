@@ -261,13 +261,55 @@ function StatusChip({ ws }: { ws: Workspace }) {
 }
 
 /**
+ * What each power action does, in the words the operator needs before it runs.
+ * Kept beside the panel rather than inside it so the confirm dialog, the button
+ * label and the boot-log title all read the same verb, and so the copy can be
+ * asserted without rendering.
+ */
+export const POWER_ACTIONS: Record<
+  string,
+  { verb: string; Icon: typeof Power; variant: "signal" | "destructive"; note: (label: string) => string }
+> = {
+  on: {
+    verb: "Power on",
+    Icon: Power,
+    variant: "signal",
+    note: (label) =>
+      `${label} gets a Wake-on-LAN packet through the Mac relay, then boots and joins Tailscale. Usually a minute or two. The boot log opens next.`,
+  },
+  cycle: {
+    verb: "Restart",
+    Icon: RotateCw,
+    variant: "destructive",
+    note: (label) =>
+      `${label} loses power, waits, then powers back on. Anything running on that machine stops immediately.`,
+  },
+  off: {
+    verb: "Power off",
+    Icon: PowerOff,
+    variant: "destructive",
+    note: (label) => `${label} shuts down. Agents working on that host lose their session.`,
+  },
+}
+
+export function powerActionMeta(action: string) {
+  return POWER_ACTIONS[action] ?? POWER_ACTIONS.off
+}
+
+/**
  * Power control for one host, shown once per platform section instead of on
  * every card. Power belongs to the host, so a group of workspaces sharing a
  * machine must not repeat the same three buttons N times — the section header
- * carries a single panel. Actions are health-gated: a reachable host cannot be
- * "powered on", an unreachable one cannot be "powered off".
+ * carries a single console.
+ *
+ * It is a console rather than a row of icons: the host name and its live state
+ * are the point, so the actions sit beside them with their verbs spelled out
+ * and the panel reads without hovering. Actions are health-gated (a reachable
+ * host cannot be "powered on", an offline one cannot be "powered off") and
+ * every action asks for confirmation first — these commands reach a physical
+ * machine, and two of the three cut power to work in progress.
  */
-function HostPowerControl({
+export function HostPowerControl({
   targets,
   nodeOnline,
   onAction,
@@ -278,53 +320,68 @@ function HostPowerControl({
 }) {
   if (!targets.length) return null
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {targets.map((t) => {
         const online = nodeOnline.get(t.node_id) ?? false
         const can = (a: string) => t.actions.includes(a)
+        const state = online ? "running" : "off"
         return (
           <div
             key={t.node_id}
-            className="inline-flex items-center gap-0.5 rounded-control border border-line/60 bg-well/60 p-0.5"
+            role="group"
+            aria-label={`Power controls for ${t.label}`}
+            className="flex items-center gap-2 rounded-control border border-line/60 bg-well/50 py-1 pl-2.5 pr-1"
           >
-            {can("on") && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onAction(t, "on")}
-                disabled={online}
-                aria-label={`Power on ${t.label}`}
-                title={online ? `${t.label}: already running` : `Power on ${t.label}`}
-                className="rounded-control text-ink-3 hover:text-accent-text disabled:opacity-40"
-              >
-                <Power />
-              </Button>
-            )}
-            {can("cycle") && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onAction(t, "cycle")}
-                aria-label={`Power cycle ${t.label}`}
-                title={`Power cycle ${t.label} (off, then on)`}
-                className="rounded-control text-ink-3 hover:text-accent-text"
-              >
-                <RotateCw />
-              </Button>
-            )}
-            {can("off") && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onAction(t, "off")}
-                disabled={!online}
-                aria-label={`Power off ${t.label}`}
-                title={online ? `Power off ${t.label}` : `${t.label}: already off`}
-                className="rounded-control text-ink-3 hover:text-danger-text disabled:opacity-40"
-              >
-                <PowerOff />
-              </Button>
-            )}
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-xs font-medium text-ink">{t.label}</span>
+              <HealthLamp
+                tone={online ? "text-success-text" : "text-ink-3"}
+                live={online}
+                size="sm"
+                label={<span className="text-2xs font-normal">{state}</span>}
+              />
+            </span>
+            <span aria-hidden className="h-6 w-px bg-line/60" />
+            <div className="flex items-center gap-1">
+              {can("on") && (
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => onAction(t, "on")}
+                  disabled={online}
+                  aria-label={`Power on ${t.label}`}
+                  title={online ? `${t.label} already running — power on disabled` : `Power on ${t.label}`}
+                >
+                  <Power />
+                  <span className="hidden sm:inline">Power on</span>
+                </Button>
+              )}
+              {can("cycle") && (
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => onAction(t, "cycle")}
+                  aria-label={`Restart ${t.label}`}
+                  title={`Restart ${t.label} (power off, then on)`}
+                >
+                  <RotateCw />
+                  <span className="hidden sm:inline">Restart</span>
+                </Button>
+              )}
+              {can("off") && (
+                <Button
+                  variant="destructive"
+                  size="xs"
+                  onClick={() => onAction(t, "off")}
+                  disabled={!online}
+                  aria-label={`Power off ${t.label}`}
+                  title={online ? `Power off ${t.label}` : `${t.label} already off — power off disabled`}
+                >
+                  <PowerOff />
+                  <span className="hidden sm:inline">Power off</span>
+                </Button>
+              )}
+            </div>
           </div>
         )
       })}
@@ -577,7 +634,7 @@ function BootLogDialog({
 
   const tone =
     status === "running" ? "text-accent-text" : status === "ok" ? "text-success-text" : "text-danger-text"
-  const verb = action === "on" ? "Power on" : action === "off" ? "Power off" : action === "cycle" ? "Power cycle" : "Power"
+  const verb = powerActionMeta(action).verb
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -769,6 +826,9 @@ export default function WorkspacesPage() {
   const [q, setQ] = useState("")
   const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null)
   const [bootLog, setBootLog] = useState<{ nodeID: string; label: string; action: string } | null>(null)
+  // The action waits here until the operator confirms it. Power commands reach a
+  // physical machine, so nothing is dispatched straight off a button click.
+  const [pendingPower, setPendingPower] = useState<{ target: PowerTarget; action: string } | null>(null)
   const { pingMs } = useSettings()
   const [autoPing, setAutoPing] = useState(true)
   const pingingRef = useRef(false)
@@ -1041,7 +1101,7 @@ export default function WorkspacesPage() {
                       <HostPowerControl
                         targets={groupTargets}
                         nodeOnline={nodeOnline}
-                        onAction={(t, action) => setBootLog({ nodeID: t.node_id, label: t.label, action })}
+                        onAction={(t, action) => setPendingPower({ target: t, action })}
                       />
                     }
                   />
@@ -1087,6 +1147,36 @@ export default function WorkspacesPage() {
           if (pendingDelete) del.mutate(pendingDelete.id)
         }}
       />
+
+      {pendingPower &&
+        (() => {
+          const meta = powerActionMeta(pendingPower.action)
+          const Icon = meta.Icon
+          return (
+            <ConfirmDialog
+              open
+              onOpenChange={(o) => !o && setPendingPower(null)}
+              icon={
+                <Icon
+                  className={cn(
+                    "size-4",
+                    meta.variant === "destructive" ? "text-danger-text" : "text-accent-text",
+                  )}
+                  aria-hidden
+                />
+              }
+              variant={meta.variant}
+              title={`${meta.verb} ${pendingPower.target.label}?`}
+              description={meta.note(pendingPower.target.label)}
+              confirmLabel={meta.verb}
+              onConfirm={() => {
+                const { target, action } = pendingPower
+                setPendingPower(null)
+                setBootLog({ nodeID: target.node_id, label: target.label, action })
+              }}
+            />
+          )
+        })()}
 
       {form.open && (
         <WorkspaceForm
