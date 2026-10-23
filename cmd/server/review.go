@@ -910,6 +910,12 @@ func extractFinalAnswerText(raw string) string {
 		if strings.HasPrefix(trimmed, "{") {
 			var obj map[string]any
 			if json.Unmarshal([]byte(trimmed), &obj) == nil {
+				if typ, _ := obj["type"].(string); typ == "final" || typ == "text" {
+					if txt, ok := obj["text"].(string); ok && strings.TrimSpace(txt) != "" {
+						lastText = strings.TrimSpace(txt)
+						continue
+					}
+				}
 				if ft, ok := obj["finalText"].(string); ok && strings.TrimSpace(ft) != "" {
 					lastText = strings.TrimSpace(ft)
 					continue
