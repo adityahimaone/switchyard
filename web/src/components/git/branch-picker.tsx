@@ -48,6 +48,7 @@ export function BranchPicker({
   open,
   onOpenChange,
   modal = false,
+  side,
   className,
 }: {
   /** The workspace whose checkout this control reads. Renders nothing without one. */
@@ -58,6 +59,7 @@ export function BranchPicker({
   open?: boolean
   onOpenChange?: (open: boolean) => void
   modal?: boolean
+  side?: "top" | "bottom" | "left" | "right"
   mode?: BranchPickerMode
   /**
    * Where pull/checkout results go. "toast" is for the composer, whose chip row
@@ -191,6 +193,7 @@ export function BranchPicker({
           open={open}
           onOpenChange={onOpenChange}
           modal={modal}
+          side={side}
           disabled={disabled || selectDisabled || busy || !branchesQuery.data}
           onValueChange={(next) => {
             setNote(null)

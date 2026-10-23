@@ -236,7 +236,7 @@ const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task statu
  * executor name 96px — and one shared cap would either clip the model or waste
  * 48px on the executor. */
 const PROMPT_CHIP =
-  "!h-7 !rounded-control gap-1.5 px-2.5 text-xs font-normal tracking-[-0.01em] border border-line/60 bg-surface/50 hover:bg-surface/90 hover:border-line-strong/80 dark:bg-well/40 dark:hover:bg-well/70 text-ink-2 hover:text-ink data-[state=open]:border-accent/50 data-[state=open]:bg-accent-tint data-[state=open]:text-accent shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-[border-color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97] [&_svg]:!size-3.5"
+  "!h-7 !rounded-control gap-1.5 px-2.5 text-xs font-medium tracking-[-0.01em] border border-line/60 bg-surface/60 hover:bg-surface/90 hover:border-line-strong/80 dark:bg-well/50 dark:hover:bg-well/80 text-ink/90 hover:text-ink data-[state=open]:border-accent/50 data-[state=open]:bg-accent-tint data-[state=open]:text-accent shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-[border-color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97] [&_svg]:!size-3.5 whitespace-nowrap overflow-hidden [&>span]:truncate"
 
 /* The disclosure chevron's box, shared by the rail's two disclosure levels: a
  * section header ("Projects", "Recents") and a project row inside one.
@@ -1332,10 +1332,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               value={agent}
               onValueChange={(v) => setAgent(v as ChatAgent)}
             >
-              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-24")} aria-label="Executor">
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-36")} aria-label="Executor">
                 <SelectValue placeholder="Executor" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent side="top" position="popper" sideOffset={6}>
                 {EXECUTORS.map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
                 ))}
@@ -1348,10 +1348,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               value={profile || "default"}
               onValueChange={setProfile}
             >
-              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-28")} aria-label="Agent profile">
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-36")} aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
               </SelectTrigger>
-              <SelectContent className="max-w-80">
+              <SelectContent side="top" position="popper" sideOffset={6} className="max-w-80">
                 {profiles.map((item) => (
                   <SelectItem key={item.name} value={item.name} disabled={!item.valid}>
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -1380,10 +1380,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}
               disabled={!!projectID}
             >
-              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-32")} aria-label="Workspace" disabled={!!projectID}>
+              <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-36")} aria-label="Workspace" disabled={!!projectID}>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="max-w-80">
+              <SelectContent side="top" position="popper" sideOffset={6} className="max-w-80">
                 <SelectItem value="__local">local</SelectItem>
                 {workspaces.map((v) => {
                   const live = isLive(v);
@@ -1413,13 +1413,14 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               mode="switch"
               compact
               feedback="toast"
-              triggerClassName={cn(PROMPT_CHIP, "max-w-28")}
+              triggerClassName={cn(PROMPT_CHIP, "max-w-36")}
               /* Switching branches under a live turn would move the tree the
                  agent is editing, so the control is held while one runs. */
               disabled={isRunning}
               open={openPromptSelect === "branch"}
               onOpenChange={(o) => setOpenPromptSelect(o ? "branch" : null)}
               modal={false}
+              side="top"
             />
 
             {agent === "hermes" ? (
@@ -1432,9 +1433,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 open={openPromptSelect === "model"}
                 onOpenChange={(o) => setOpenPromptSelect(o ? "model" : null)}
                 modal={false}
+                side="top"
                 size="sm"
                 className="w-auto"
-                triggerClassName={cn(PROMPT_CHIP, "max-w-40")}
+                triggerClassName={cn(PROMPT_CHIP, "max-w-44")}
                 ariaLabel="Model"
               />
             ) : executorDef(agent).option ? (
@@ -1447,10 +1449,10 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
                 value={optionValue(executorOptions, agent)}
                 onValueChange={(v) => setExecutorOptions((prev) => withOption(prev, agent, v))}
               >
-                <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-28")} aria-label={executorDef(agent).option!.label}>
+                <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-52")} aria-label={executorDef(agent).option!.label}>
                   <SelectValue placeholder={executorDef(agent).option!.label} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent side="top" position="popper" sideOffset={6}>
                   {executorDef(agent).option!.choices.map((c) => (
                     <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                   ))}

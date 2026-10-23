@@ -19,6 +19,10 @@ export interface SearchSelectProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   modal?: boolean
+  side?: "top" | "bottom" | "left" | "right"
+  align?: "start" | "center" | "end"
+  sideOffset?: number
+  showTriggerBadge?: boolean
   options: SearchSelectOption[]
   placeholder?: string
   searchPlaceholder?: string
@@ -40,6 +44,10 @@ export function SearchSelect({
   open: controlledOpen,
   onOpenChange,
   modal = false,
+  side = "bottom",
+  align = "start",
+  sideOffset = 6,
+  showTriggerBadge = false,
   options,
   placeholder = "Select an option…",
   searchPlaceholder = "Search…",
@@ -155,21 +163,21 @@ export function SearchSelect({
               triggerClassName
             )}
           >
-            <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-left">
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-left whitespace-nowrap">
               {selectedOption ? (
                 <>
                   {selectedOption.icon && (
-                    <span className="shrink-0 text-ink-3">{selectedOption.icon}</span>
+                    <span className="shrink-0 text-ink-3 [&_svg]:size-3.5">{selectedOption.icon}</span>
                   )}
                   <span className="truncate">{selectedOption.label}</span>
-                  {selectedOption.badge && (
+                  {showTriggerBadge && selectedOption.badge && (
                     <span className="shrink-0 rounded bg-well px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
                       {selectedOption.badge}
                     </span>
                   )}
                 </>
               ) : (
-                <span className="text-ink-4">{placeholder}</span>
+                <span className="truncate text-ink-4">{placeholder}</span>
               )}
             </span>
             <ChevronDown
@@ -183,14 +191,19 @@ export function SearchSelect({
 
         <PopoverPrimitive.Portal>
           <PopoverPrimitive.Content
-            align="start"
-            sideOffset={4}
+            side={side}
+            align={align}
+            sideOffset={sideOffset}
+            collisionPadding={12}
+            avoidCollisions
             className={cn(
-              "fixed z-[110] flex w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-panel",
-              "border border-line/60 bg-raised/95 text-ink shadow-float backdrop-blur-2xl saturate-150 dark:bg-raised/90",
+              "z-[110] flex w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-panel",
+              "border border-line/60 bg-raised/95 text-ink shadow-float backdrop-blur-2xl saturate-150 dark:bg-raised/90 outline-none",
               "transition-[opacity,transform] duration-180 ease-[var(--ease-out-expo)]",
               "data-[state=closed]:scale-[0.97] data-[state=closed]:opacity-0",
               "data-[state=open]:scale-100 data-[state=open]:opacity-100",
+              "data-[side=bottom]:data-[state=closed]:translate-y-[-4px] data-[side=bottom]:data-[state=open]:translate-y-0",
+              "data-[side=top]:data-[state=closed]:translate-y-[4px] data-[side=top]:data-[state=open]:translate-y-0",
               contentClassName
             )}
           >
