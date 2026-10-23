@@ -43,7 +43,7 @@ export function SearchSelect({
   onValueChange,
   open: controlledOpen,
   onOpenChange,
-  modal = false,
+  modal = true,
   side = "bottom",
   align = "start",
   sideOffset = 6,
@@ -65,6 +65,10 @@ export function SearchSelect({
   const [internalValue, setInternalValue] = React.useState(defaultValue ?? "")
   const [query, setQuery] = React.useState("")
   const [activeIndex, setActiveIndex] = React.useState(0)
+
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const itemRefs = React.useRef<(HTMLDivElement | null)[]>([])
+  const inputRef = React.useRef<HTMLInputElement>(null)
 
   const isControlledOpen = controlledOpen !== undefined
   const open = isControlledOpen ? controlledOpen : internalOpen
@@ -105,30 +109,92 @@ export function SearchSelect({
     }
   }, [open, value])
 
+  // Automatically scroll active item into view when activeIndex changes or popover opens
+  React.useEffect(() => {
+    if (!open || filteredOptions.length === 0) return
+    const frame = requestAnimationFrame(() => {
+      const el = itemRefs.current[activeIndex]
+      if (el) {
+        el.scrollIntoView({ block: "nearest", inline: "nearest" })
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [activeIndex, open, filteredOptions.length])
+
   const selectOption = React.useCallback(
     (val: string) => {
       if (!isControlled) setInternalValue(val)
       onValueChange?.(val)
       setOpen(false)
     },
-    [isControlled, onValueChange]
+    [isControlled, onValueChange, setOpen]
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open) {
-      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
         e.preventDefault()
         setOpen(true)
       }
       return
     }
 
+    if (filteredOptions.length === 0) {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setOpen(false)
+      }
+      return
+    }
+
     if (e.key === "ArrowDown") {
       e.preventDefault()
-      setActiveIndex((prev) => (prev < filteredOptions.length - 1 ? prev + 1 : 0))
+      let next = activeIndex + 1
+      while (next < filteredOptions.length && filteredOptions[next]?.disabled) {
+        next++
+      }
+      if (next >= filteredOptions.length) {
+        next = 0
+        while (next < activeIndex && filteredOptions[next]?.disabled) {
+          next++
+        }
+      }
+      if (next < filteredOptions.length && !filteredOptions[next]?.disabled) {
+        setActiveIndex(next)
+      }
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      setActiveIndex((prev) => (prev > 0 ? prev - 1 : filteredOptions.length - 1))
+      let prev = activeIndex - 1
+      while (prev >= 0 && filteredOptions[prev]?.disabled) {
+        prev--
+      }
+      if (prev < 0) {
+        prev = filteredOptions.length - 1
+        while (prev > activeIndex && filteredOptions[prev]?.disabled) {
+          prev--
+        }
+      }
+      if (prev >= 0 && !filteredOptions[prev]?.disabled) {
+        setActiveIndex(prev)
+      }
+    } else if (e.key === "PageDown") {
+      e.preventDefault()
+      const target = Math.min(filteredOptions.length - 1, activeIndex + 6)
+      let next = target
+      while (next < filteredOptions.length && filteredOptions[next]?.disabled) {
+        next++
+      }
+      if (next >= filteredOptions.length) next = target
+      if (!filteredOptions[next]?.disabled) setActiveIndex(next)
+    } else if (e.key === "PageUp") {
+      e.preventDefault()
+      const target = Math.max(0, activeIndex - 6)
+      let prev = target
+      while (prev >= 0 && filteredOptions[prev]?.disabled) {
+        prev--
+      }
+      if (prev < 0) prev = target
+      if (!filteredOptions[prev]?.disabled) setActiveIndex(prev)
     } else if (e.key === "Enter") {
       e.preventDefault()
       const current = filteredOptions[activeIndex]
@@ -196,8 +262,11 @@ export function SearchSelect({
             sideOffset={sideOffset}
             collisionPadding={12}
             avoidCollisions
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onKeyDown={handleKeyDown}
             className={cn(
-              "z-[110] flex w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-panel",
+              "z-[110] flex w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] max-h-[min(26rem,calc(100dvh-5rem))] flex-col overflow-hidden rounded-panel",
               "border border-line/60 bg-raised/95 text-ink shadow-float backdrop-blur-2xl saturate-150 dark:bg-raised/90 outline-none",
               "transition-[opacity,transform] duration-180 ease-[var(--ease-out-expo)]",
               "data-[state=closed]:scale-[0.97] data-[state=closed]:opacity-0",
@@ -208,9 +277,10 @@ export function SearchSelect({
             )}
           >
             {/* Apple inline search header */}
-            <div className="relative flex items-center border-b border-line/50 bg-well/30 px-2.5 py-2">
+            <div className="relative flex shrink-0 items-center border-b border-line/50 bg-well/30 px-2.5 py-2">
               <Search className="size-3.5 shrink-0 text-ink-4" aria-hidden />
               <input
+                ref={inputRef}
                 type="text"
                 value={query}
                 onChange={(e) => {
@@ -220,6 +290,9 @@ export function SearchSelect({
                 onKeyDown={handleKeyDown}
                 placeholder={searchPlaceholder}
                 autoFocus
+                aria-activedescendant={
+                  filteredOptions[activeIndex] ? `search-select-opt-${activeIndex}` : undefined
+                }
                 className="ml-2 w-full bg-transparent text-xs text-ink placeholder:text-ink-4 outline-none"
               />
               {query && (
@@ -228,6 +301,7 @@ export function SearchSelect({
                   onClick={() => {
                     setQuery("")
                     setActiveIndex(0)
+                    inputRef.current?.focus()
                   }}
                   className="rounded-full p-0.5 text-ink-4 hover:bg-well hover:text-ink"
                   aria-label="Clear search"
@@ -239,8 +313,13 @@ export function SearchSelect({
 
             {/* Options list */}
             <div
+              ref={listRef}
               role="listbox"
-              className="max-h-60 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line-strong/30"
+              tabIndex={-1}
+              onWheel={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+              style={{ touchAction: "pan-y" }}
+              className="max-h-64 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin] scrollbar-thumb-line-strong/40 hover:scrollbar-thumb-line-strong/70 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line-strong/40 hover:[&::-webkit-scrollbar-thumb]:bg-line-strong/70"
             >
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-ink-3">
@@ -253,6 +332,10 @@ export function SearchSelect({
                   return (
                     <div
                       key={opt.value}
+                      id={`search-select-opt-${idx}`}
+                      ref={(el) => {
+                        itemRefs.current[idx] = el
+                      }}
                       role="option"
                       aria-selected={isSelected}
                       aria-disabled={opt.disabled}

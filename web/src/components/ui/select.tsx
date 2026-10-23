@@ -53,14 +53,17 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  position = "popper",
+  align = "start",
+  sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         data-slot="select-content"
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
         className={cn(
           // Apple Translucent Glass Popover Material.
           // z-[110] guarantees the dropdown floats comfortably above modal dialogs (z-overlay = 100).
@@ -78,12 +81,16 @@ function SelectContent({
         )}
         position={position}
         align={align}
+        sideOffset={sideOffset}
         {...props}
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          onWheel={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          style={{ touchAction: "pan-y" }}
           className={cn(
-            "min-h-0 max-h-[min(300px,var(--radix-select-content-available-height))] overflow-y-auto p-1.5 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line-strong/30",
+            "min-h-0 max-h-[min(300px,var(--radix-select-content-available-height))] overflow-y-auto overscroll-contain p-1.5 [scrollbar-width:thin] scrollbar-thumb-line-strong/40 hover:scrollbar-thumb-line-strong/70 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line-strong/40 hover:[&::-webkit-scrollbar-thumb]:bg-line-strong/70",
             position === "popper" &&
               "w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
           )}
