@@ -308,6 +308,19 @@
   --glass-lift-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 8px 20px -8px rgb(0 0 0 / 0.3),
     inset 0 1px 0 0 rgb(255 255 255 / 0.06);
 
+  /* Modal overlay & surface (Apple Design, dark) */
+  --scrim: rgb(0 0 0 / 0.68);
+  --scrim-fallback: rgb(0 0 0 / 0.85);
+  --scrim-blur: 8px;
+  --dialog-bloom: color-mix(in srgb, var(--c-accent) 18%, transparent);
+
+  --glass-tint-dialog: rgb(22 26 38 / 0.95);
+  --glass-blur-dialog: 32px;
+  --glass-saturate-dialog: 1.6;
+  --glass-edge-dialog: rgb(255 255 255 / 0.1);
+  --glass-lift-dialog: 0 1px 2px rgb(0 0 0 / 0.4), 0 32px 72px -12px rgb(0 0 0 / 0.65),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.12);
+
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
   --c-heat-2: #1d4ed8;
@@ -518,6 +531,19 @@
     inset 0 1px 0 0 rgb(255 255 255 / 0.75);
   --glass-lift-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 6px 16px -6px rgb(16 24 40 / 0.1),
     inset 0 1px 0 0 rgb(255 255 255 / 0.6);
+
+  /* ---- modal overlay & surface (Apple Design) ---- */
+  --scrim: rgb(15 23 42 / 0.45);
+  --scrim-fallback: rgb(15 23 42 / 0.65);
+  --scrim-blur: 8px;
+  --dialog-bloom: color-mix(in srgb, var(--c-accent) 14%, transparent);
+
+  --glass-tint-dialog: rgb(255 255 255 / 0.96);
+  --glass-blur-dialog: 32px;
+  --glass-saturate-dialog: 1.8;
+  --glass-edge-dialog: var(--c-line);
+  --glass-lift-dialog: 0 1px 2px rgb(16 24 40 / 0.08), 0 24px 56px -12px rgb(16 24 40 / 0.22),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.9);
   /* The dark-mode values live on `.dark` below. */
 
   /* ---- motion ---- */
@@ -565,6 +591,45 @@
   backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
   box-shadow: var(--glass-lift-strong);
+}
+
+/* Dialog / Modal surface — Apple Thick Material.
+ *
+ * A modal requires substantial occlusion (95-96% opacity) so text, inputs,
+ * and controls inside are 100% sharp and comfortable to read without background
+ * content clashing through, while still delivering Apple's physical frosted
+ * depth, specular inset catchlight, and ambient drop shadow. */
+@utility glass-dialog {
+  background-color: var(--glass-tint-dialog);
+  backdrop-filter: blur(var(--glass-blur-dialog)) saturate(var(--glass-saturate-dialog));
+  -webkit-backdrop-filter: blur(var(--glass-blur-dialog)) saturate(var(--glass-saturate-dialog));
+  box-shadow: var(--glass-lift-dialog);
+  border: 1px solid var(--glass-edge-dialog);
+}
+
+/* Modal overlay scrim.
+ *
+ * Dims and softens the background so context recedes and focus stays
+ * on the modal task (Apple Design §12: "Dim to focus, separate to keep flow"). */
+@utility scrim {
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  backdrop-filter: blur(var(--scrim-blur));
+}
+
+/* Accent ambient illumination behind the top of a modal. */
+@utility dialog-bloom {
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -15% -10% auto;
+    height: 200px;
+    border-radius: 9999px;
+    background: radial-gradient(closest-side, var(--dialog-bloom), transparent);
+    filter: blur(50px);
+    pointer-events: none;
+    z-index: -1;
+  }
 }
 
 /* Glass that is also a card: radius comes with it, so a panel cannot end up
@@ -661,16 +726,26 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass,
   .glass-strong,
-  .glass-occlude {
+  .glass-occlude,
+  .glass-dialog {
     background-color: var(--c-surface);
+  }
+  .scrim {
+    background: var(--scrim-fallback);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .glass,
   .glass-strong,
-  .glass-occlude {
+  .glass-occlude,
+  .glass-dialog {
     background-color: var(--c-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .scrim {
+    background: var(--scrim-fallback);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

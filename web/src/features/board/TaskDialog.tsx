@@ -8,6 +8,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -388,10 +389,11 @@ export default function TaskDialog({
           }}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <DialogHeader className="py-3.5">
-            <DialogTitle id="task-dialog-title" className="text-sm font-semibold">
-              New Task
-            </DialogTitle>
+          <DialogHeader>
+            <DialogTitle id="task-dialog-title">New Task</DialogTitle>
+            <DialogDescription>
+              Configure workspace, branch, and execution settings for the agent.
+            </DialogDescription>
           </DialogHeader>
 
           <DialogBody className="flex flex-col">
