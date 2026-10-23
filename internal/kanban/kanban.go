@@ -727,15 +727,23 @@ func newTaskID() string {
 // Valid marks whether the worker CLI would actually start with this profile —
 // an unrecognized provider (e.g. "custom:host.name" typo) means every spawned
 // task crashes with "Unknown provider" (protocol_violation loop).
+const DefaultAgentModel = "deepseek-v4.1-flash"
+
 // ProfileModel returns model bound to Switchyard profile. DSH receives this
 // exact ID, keeping profile/model switching 1:1 across both apps.
 func ProfileModel(name string) (string, error) {
+	if strings.TrimSpace(name) == "" {
+		name = "default"
+	}
 	p, err := GetProfile(name)
 	if err != nil {
+		if name == "default" {
+			return DefaultAgentModel, nil
+		}
 		return "", err
 	}
 	if strings.TrimSpace(p.Model) == "" {
-		return "", fmt.Errorf("profile %q has no model", name)
+		return DefaultAgentModel, nil
 	}
 	return p.Model, nil
 }
@@ -769,6 +777,9 @@ func ListProfiles() ([]Profile, error) {
 	def := Profile{Name: "default", Active: active == "default"}
 	if raw, err := os.ReadFile(filepath.Join(hermesHome(), "config.yaml")); err == nil {
 		def.Model, def.Provider, def.BaseURL = parseModelYAML(string(raw))
+	}
+	if strings.TrimSpace(def.Model) == "" {
+		def.Model = DefaultAgentModel
 	}
 	def.Valid = profileValid(def.Provider)
 	if hasAvatar("default") {

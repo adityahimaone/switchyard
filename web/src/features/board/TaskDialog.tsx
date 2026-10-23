@@ -134,14 +134,14 @@ export default function TaskDialog({
   const [body, setBody] = useState("")
   const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
-  const [executor, setExecutor] = useState("auto")
+  const [executor, setExecutor] = useState("dsh")
   const [executionMode, setExecutionMode] = useState<"direct" | "agentic">("direct")
   const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")
   const [pathsRaw, setPathsRaw] = useState("")
   const [deps, setDeps] = useState<string[]>([])
   const [gateCommand, setGateCommand] = useState("")
-  const [startMode, setStartMode] = useState<"manual" | "now">("manual")
+  const [startMode, setStartMode] = useState<"manual" | "now">("now")
   const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
   const [baseBranch, setBaseBranch] = useState("")
   const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
@@ -177,8 +177,11 @@ export default function TaskDialog({
   useEffect(() => {
     if (seededMode.current || !executorSettings) return
     setExecutionMode(executorSettings.default_execution_mode)
+    if (!visibleExecutors.includes(executor)) {
+      setExecutor(visibleExecutors[0] ?? "auto")
+    }
     seededMode.current = true
-  }, [executorSettings])
+  }, [executorSettings, visibleExecutors, executor])
 
   const draft: CreateTaskDraft = {
     title,
@@ -536,17 +539,17 @@ export default function TaskDialog({
               <Label className="block text-xs text-ink-3">Branch</Label>
               <BranchPicker
                 className="mt-1 w-full"
-                workspaceId={selectedWorkspace.id}
-                mode="base"
+                workspaceId={selectedWorkspace.id || selectedWorkspace.path}
+                mode={isolation === "worktree" ? "base" : "switch"}
                 value={baseBranch}
                 onChange={setBaseBranch}
-                selectDisabled={isolation !== "worktree"}
+                selectDisabled={false}
                 triggerClassName={branchSelCls}
               />
               <p className="mt-1 text-[11px] text-ink-3">
                 {isolation === "worktree"
                   ? "The worktree is created from this branch. Current HEAD uses whatever is checked out now."
-                  : "This card runs on whatever is checked out. Pull to bring it up to date, or switch to Worktree isolation to start from a specific branch."}
+                  : "Pick a branch to switch the workspace checkout before running, or click Pull to fast-forward the current branch."}
               </p>
             </div>
           )}

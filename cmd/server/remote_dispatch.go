@@ -265,6 +265,7 @@ func dispatchPendingRemoteTasks() {
 				Acceptance:          strings.TrimSpace(r.title + "\n" + r.body),
 				DSHWorkspaceID:      binding.HarnessWorkspaceID,
 				DSHSessionID:        dshSessionID,
+				DSHPermissionMode:   "danger-full-access",
 				SessionContinuation: sessionContinuation,
 			}
 			if continuity {

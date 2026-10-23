@@ -139,6 +139,80 @@ func TestWorkspaceRepoRootDoesNotEscapeTheWorkspace(t *testing.T) {
 	}
 }
 
+func TestListGitBranchesIncludesOriginRemoteBranchesAndChecksThemOut(t *testing.T) {
+	origin := gitFixture(t)
+	if out, err := exec.Command("git", "-C", origin, "branch", "dev").CombinedOutput(); err != nil {
+		t.Fatalf("branch dev: %v\n%s", err, out)
+	}
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", origin, clone).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v\n%s", err, out)
+	}
+	ws := Workspace{ID: "habit-tracking", Name: "Habit Tracking", Path: clone, Host: "mac-tailscale"}
+	got, err := ListGitBranches(ws)
+	if err != nil {
+		t.Fatalf("ListGitBranches: %v", err)
+	}
+	if got.Current != "main" {
+		t.Errorf("Current = %q, want main", got.Current)
+	}
+	if !branchListContains(got.Branches, "main") || !branchListContains(got.Branches, "dev") {
+		t.Errorf("Branches = %v, want main and remote-tracking dev", got.Branches)
+	}
+	if branchListContains(got.Branches, "HEAD") {
+		t.Errorf("Branches = %v, must not include origin/HEAD", got.Branches)
+	}
+	if _, err := GitCheckout(ws, "dev"); err != nil {
+		t.Fatalf("GitCheckout(dev): %v", err)
+	}
+	after, err := ListGitBranches(ws)
+	if err != nil {
+		t.Fatalf("ListGitBranches after checkout: %v", err)
+	}
+	if after.Current != "dev" {
+		t.Errorf("Current after checkout = %q, want dev", after.Current)
+	}
+}
+
+func TestStripShellProvenance(t *testing.T) {
+	raw := "provenance executor=shell bin=\"bash\" args=[\"-lc\" \"git branch\"]\nrefs/heads/main\nrefs/remotes/origin/dev\nEXECUTOR_PROOF=shell\nprovenance executor=shell exit=0\n"
+	got := stripShellProvenance(raw)
+	want := "refs/heads/main\nrefs/remotes/origin/dev"
+	if got != want {
+		t.Errorf("stripShellProvenance = %q, want %q", got, want)
+	}
+}
+
+func TestHabitTrackingMacWorkspaceBranchListing(t *testing.T) {
+	const habitPath = "/Users/adityahimawan/Development/habbit-tracking-next"
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	if _, err := filepath.Abs(habitPath); err != nil {
+		t.Skip("invalid path")
+	}
+	if out, err := exec.Command("git", "-C", habitPath, "rev-parse", "--git-dir").CombinedOutput(); err != nil || len(out) == 0 {
+		t.Skip("habit-tracking-next repo not present on this host")
+	}
+	ws := Workspace{
+		ID:   "habit-tracking",
+		Name: "Habit Tracking",
+		Host: "mac-tailscale",
+		OS:   "mac",
+		Path: habitPath,
+	}
+	got, err := ListGitBranches(ws)
+	if err != nil {
+		t.Fatalf("ListGitBranches(habit-tracking): %v", err)
+	}
+	if got.Current == "" {
+		t.Errorf("Current branch is empty")
+	}
+	if !branchListContains(got.Branches, "main") || !branchListContains(got.Branches, "dev") {
+		t.Errorf("Branches = %v, want both main and dev", got.Branches)
+	}
+}
+
 func branchListContains(list []string, want string) bool {
 	for _, v := range list {
 		if v == want {

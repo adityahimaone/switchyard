@@ -115,16 +115,27 @@ func gitWorktreeListScript(repo string) string {
 	return fmt.Sprintf("cd %s && git worktree list --porcelain", shellQuotePath(repo))
 }
 
+func normalizeWorktreePath(p string) string {
+	n := normalizePath(p)
+	if strings.HasPrefix(n, "/private/var/") || strings.HasPrefix(n, "/private/tmp/") {
+		return strings.TrimPrefix(n, "/private")
+	}
+	if strings.HasPrefix(n, "private/var/") || strings.HasPrefix(n, "private/tmp/") {
+		return strings.TrimPrefix(n, "private/")
+	}
+	return n
+}
+
 // WorktreeExists reports whether the planned worktree is already registered with
 // the repo. A retry reuses it rather than creating a second one.
 func WorktreeExists(listOutput, worktreePath string) bool {
-	want := normalizePath(worktreePath)
+	want := normalizeWorktreePath(worktreePath)
 	for _, line := range strings.Split(listOutput, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "worktree ") {
 			continue
 		}
-		if normalizePath(strings.TrimPrefix(trimmed, "worktree ")) == want {
+		if normalizeWorktreePath(strings.TrimPrefix(trimmed, "worktree ")) == want {
 			return true
 		}
 	}
@@ -133,14 +144,14 @@ func WorktreeExists(listOutput, worktreePath string) bool {
 
 // BranchOnWorktree reads the branch checked out in a worktree, or "".
 func BranchOnWorktree(listOutput, worktreePath string) string {
-	want := normalizePath(worktreePath)
+	want := normalizeWorktreePath(worktreePath)
 	lines := strings.Split(listOutput, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "worktree ") {
 			continue
 		}
-		if normalizePath(strings.TrimPrefix(trimmed, "worktree ")) != want {
+		if normalizeWorktreePath(strings.TrimPrefix(trimmed, "worktree ")) != want {
 			continue
 		}
 		// The branch line follows the worktree line, possibly after a HEAD and

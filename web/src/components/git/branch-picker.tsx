@@ -135,16 +135,15 @@ export function BranchPicker({
   const current = branchesQuery.data?.current ?? ""
   const busy = pull.isPending || checkout.isPending
   const loadError = branchesQuery.error ? (branchesQuery.error as Error).message : ""
-  // Radix Select items need non-empty values, so a detached HEAD needs a
-  // sentinel — switch mode has no item for it (every choice there is a real
-  // branch), and base mode's "Current HEAD" item *is* that sentinel.
-  //
-  // In base mode the trigger reports the branch the work will actually start
-  // from: an explicit pick wins, otherwise the checked-out branch. Showing
-  // "Current HEAD" as a literal label would hide the one fact the control
-  // exists to convey.
-  const selected =
-    mode === "switch" ? current || "__detached" : value || current || "__head"
+  // Radix SelectValue only renders its placeholder when value is "" (or
+  // undefined). Passing a sentinel with no mounted SelectItem leaves the
+  // trigger completely blank while loading, on error, or on detached HEAD.
+  const hasHeadSentinel = mode === "base" && !selectDisabled
+  const selected = !branchesQuery.data
+    ? ""
+    : mode === "switch"
+      ? current || ""
+      : value || current || (hasHeadSentinel ? "__head" : "")
   const placeholder =
     !branchesQuery.data
       ? branchesQuery.isLoading
@@ -152,7 +151,9 @@ export function BranchPicker({
         : loadError
           ? "Branches unavailable"
           : "No branches"
-      : "Detached HEAD"
+      : branches.length === 0
+        ? "No branches"
+        : "Detached HEAD"
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-1", className)}>
