@@ -129,8 +129,6 @@ export function BranchPicker({
     onError: (e) => report({ kind: "err", text: (e as Error).message }),
   })
 
-  if (!workspaceId) return null
-
   const branches = branchesQuery.data?.branches ?? []
   const current = branchesQuery.data?.current ?? ""
   const busy = pull.isPending || checkout.isPending
@@ -156,6 +154,7 @@ export function BranchPicker({
         : "Detached HEAD"
 
   const branchOptions = useMemo<SearchSelectOption[]>(() => {
+    if (!workspaceId) return []
     const list: SearchSelectOption[] = []
     if (mode === "base" && !selectDisabled) {
       list.push({
@@ -174,7 +173,9 @@ export function BranchPicker({
       })
     }
     return list
-  }, [branches, current, mode, selectDisabled])
+  }, [branches, current, mode, selectDisabled, workspaceId])
+
+  if (!workspaceId) return null
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-1", className)}>
