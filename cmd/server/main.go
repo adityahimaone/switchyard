@@ -209,6 +209,7 @@ func buildMux(dist string) *http.ServeMux {
 	registerProfilesRoutes(mux)
 	registerWorkspaceIdentityRoutes(mux)
 	registerSettingsRoutes(mux)
+	registerModelsRoutes(mux)
 	registerRuntimeRoutes(mux)
 	registerPowerRoutes(mux)
 	registerOverviewRoutes(mux)

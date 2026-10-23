@@ -9,6 +9,7 @@ export interface SearchSelectOption {
   sublabel?: string
   badge?: string
   icon?: React.ReactNode
+  pinned?: boolean
   disabled?: boolean
 }
 

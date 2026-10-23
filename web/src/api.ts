@@ -978,3 +978,21 @@ export interface NodeAgentSetup {
   update_windows: string
 }
 export function getNodeAgentSetup() { return api<NodeAgentSetup>("/api/node-agent/setup") }
+
+export interface DynamicModelOption {
+  value: string
+  label: string
+  sublabel?: string
+  badge?: string
+  pinned?: boolean
+  disabled?: boolean
+}
+
+export interface ModelsResponse {
+  executor: string
+  models: DynamicModelOption[]
+}
+
+export function listExecutorModels(executor: string) {
+  return api<ModelsResponse>(`/api/models?executor=${encodeURIComponent(executor)}`)
+}

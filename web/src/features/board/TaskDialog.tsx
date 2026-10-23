@@ -47,104 +47,11 @@ const EXECUTOR_LABELS: Record<string, string> = {
   shell: "Shell agent (workspace access)",
 }
 
-export const DSH_MODEL_OPTIONS: SearchSelectOption[] = [
-  { value: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", badge: "default · fast" },
-  { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro", badge: "reasoning" },
-  { value: "adit-9router/premium", label: "9Router · Premium", badge: "combo" },
-  { value: "adit-9router/cheap", label: "9Router · Cheap", badge: "combo" },
-  { value: "adit-9router/codex", label: "9Router · Codex", badge: "combo" },
-  { value: "adit-9router/claude-office", label: "9Router · Claude Office", badge: "combo" },
-  { value: "adit-9router/god", label: "9Router · God", badge: "combo" },
-  { value: "adit-9router/f8", label: "9Router · F8", badge: "combo" },
-  { value: "adit-9router/kiro-cheap-combo-2", label: "9Router · Kiro Cheap Combo 2", badge: "combo" },
-  { value: "adit-9router/nvidia/deepseek-ai/deepseek-v4-flash", label: "NVIDIA · DeepSeek V4 Flash", badge: "9router" },
-  { value: "adit-9router/nvidia/deepseek-ai/deepseek-v4-pro", label: "NVIDIA · DeepSeek V4 Pro", badge: "9router" },
-  { value: "adit-9router/ollama/deepseek-v4.1-flash:cloud", label: "Ollama Cloud · DeepSeek V4.1 Flash", badge: "9router" },
-  { value: "adit-9router/gemini/gemini-3.8-flash", label: "Gemini 3.8 Flash", badge: "9router" },
-  { value: "adit-9router/openai/gpt-5.5", label: "OpenAI · GPT-5.5", badge: "9router" },
-  { value: "adit-9router/kr/claude-sonnet-5", label: "KR · Claude Sonnet 5", badge: "9router" },
-  { value: "adit-9router/kr/claude-opus-5.5", label: "KR · Claude Opus 5.5", badge: "9router" },
-]
-
-export const COMMANDCODE_MODEL_OPTIONS: SearchSelectOption[] = [
-  // Open Source (Qwen / DeepSeek / Moonshot / Zhipu / MiniMax / Xiaomi / etc.)
-  { value: "qwen/qwen3.8-omni-flash", label: "Qwen 3.8 Omni Flash", badge: "omni-modal" },
-  { value: "qwen/qwen3.8-max-prime", label: "Qwen 3.8 Max Prime (locked)", badge: "1.5-2x faster" },
-  { value: "qwen/qwen3.8-max-0902", label: "Qwen 3.8 Max 0902", badge: "stronger coding" },
-  { value: "qwen/qwen3.8-max", label: "Qwen 3.8 Max", badge: "autonomous" },
-  { value: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B", badge: "vision-lang" },
-  { value: "qwen/qwen3.8-flash", label: "Qwen 3.8 Flash", badge: "fast · low cost" },
-  { value: "qwen/qwen3.7-max", label: "Qwen 3.7 Max", badge: "frontier" },
-  { value: "qwen/qwen3.7-plus", label: "Qwen 3.7 Plus", badge: "agentic" },
-  { value: "qwen/qwen3.7-flash", label: "Qwen 3.7 Flash", badge: "fast · low cost" },
-  { value: "qwen/qwen3.6-max-preview", label: "Qwen 3.6 Max Preview", badge: "vibe coding" },
-  { value: "qwen/qwen3.6-plus", label: "Qwen 3.6 Plus", badge: "agentic" },
-  { value: "meituan/longcat-2.0", label: "LongCat 2.0", badge: "1M context" },
-  { value: "stepfun/step-5-preview", label: "Step 5 Preview", badge: "600B sparse-MoE" },
-  { value: "stepfun/step-3.7-flash", label: "Step 3.7 Flash", badge: "multimodal" },
-  { value: "stepfun/step-3.5-flash", label: "Step 3.5 Flash", badge: "fast reasoning" },
-  { value: "tencent/hy3-paid", label: "Tencent Hy3", badge: "sparse-MoE" },
-  { value: "tencent/hy4-preview", label: "Tencent Hy4 Preview", badge: "agentic" },
-  { value: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra", badge: "autonomous" },
-  { value: "nvidia/nemotron-3.5-super-vl", label: "Nemotron 3.5 Super VL", badge: "vision-lang" },
-  { value: "thinkingmachines/inkling", label: "Inkling", badge: "MoE reasoning" },
-  { value: "thinkingmachines/inkling-small", label: "Inkling Small", badge: "lightweight" },
-  { value: "reflection/beam:free", label: "Beam 1.0", badge: "free" },
-  { value: "poolside/laguna-s-2.1-free", label: "Laguna S 2.1", badge: "free" },
-  { value: "inclusionai/ling-3.1-flash", label: "Ling 3.1 Flash", badge: "hybrid-MoE" },
-  { value: "mistral/mistral-large-4", label: "Mistral Large 4", badge: "frontier" },
-  { value: "stealth/glyph-cluster:free", label: "Glyph Cluster", badge: "free" },
-
-  // Anthropic
-  { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (locked)", badge: "recommended" },
-  { value: "claude-sonnet-5", label: "Claude Sonnet 5 (locked)", badge: "fast & capable" },
-  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (locked)", badge: "older Sonnet" },
-  { value: "claude-fable-5-1", label: "Claude Fable 5.1 (locked)", badge: "reasoning" },
-  { value: "claude-fable-5", label: "Claude Fable 5 (locked)", badge: "prev Fable" },
-  { value: "claude-opus-5-5", label: "Claude Opus 5.5 (locked)", badge: "most intelligent" },
-  { value: "claude-opus-5", label: "Claude Opus 5 (locked)", badge: "prev flagship" },
-  { value: "claude-opus-4-8", label: "Claude Opus 4.8 (locked)", badge: "older Opus" },
-  { value: "claude-opus-4-7", label: "Claude Opus 4.7 (locked)", badge: "older Opus" },
-  { value: "claude-haiku-5-5", label: "Claude Haiku 5.5 (locked)", badge: "fastest" },
-  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5 (locked)", badge: "prev Haiku" },
-
-  // OpenAI
-  { value: "gpt-6-astra", label: "GPT-6 Astra (locked)", badge: "demanding" },
-  { value: "gpt-6.1-sol", label: "GPT-6.1 Sol (locked)", badge: "near-Astra" },
-  { value: "gpt-6-sol", label: "GPT-6 Sol (locked)", badge: "complex coding" },
-  { value: "gpt-6-luna", label: "GPT-6 Luna", badge: "efficient · active" },
-  { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", badge: "frontier" },
-  { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", badge: "cost-balanced" },
-  { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", badge: "cost-sensitive" },
-  { value: "gpt-5.5", label: "GPT-5.5", badge: "complex work" },
-  { value: "gpt-5.4", label: "GPT-5.4", badge: "frontier" },
-  { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", badge: "frontier coding" },
-  { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", badge: "everyday tasks" },
-
-  // DeepSeek & Kimi & GLM & MiniMax
-  { value: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", badge: "default · fast" },
-  { value: "deepseek/deepseek-v4.1-flash-fast", label: "DeepSeek V4.1 Flash Fast", badge: "high throughput" },
-  { value: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash", badge: "fast reasoning" },
-  { value: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro", badge: "hybrid reasoning" },
-  { value: "moonshotai/kimi-k3", label: "Kimi K3", badge: "1M context" },
-  { value: "moonshotai/kimi-k2.7-code", label: "Kimi K2.7 Code", badge: "coding vision" },
-  { value: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash", badge: "1M context" },
-  { value: "zai-org/glm-5.3", label: "GLM 5.3", badge: "frontier coding" },
-  { value: "minimaxai/minimax-m3", label: "MiniMax M3", badge: "frontier agents" },
-  { value: "xiaomi/mimo-v2.6-pro", label: "MiMo V2.6 Pro", badge: "1M context" },
-
-  // Google
-  { value: "google/gemini-4-argon", label: "Gemini 4 Argon", badge: "multimodal" },
-  { value: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash", badge: "newest Flash" },
-  { value: "google/gemini-3.7-flash", label: "Gemini 3.7 Flash", badge: "higher quality" },
-  { value: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", badge: "fast & capable" },
-
-  // xAI & Meta
-  { value: "xai/grok-4.7", label: "Grok 4.7", badge: "multi-hour tasks" },
-  { value: "xai/grok-4.6", label: "Grok 4.6", badge: "frontier coding" },
-  { value: "meta/muse-spark-1.3", label: "Muse Spark 1.3", badge: "multimodal" },
-  { value: "meta/muse-spark-open", label: "Muse Spark Open", badge: "open-weight" },
-]
+export {
+  FALLBACK_DSH_MODELS as DSH_MODEL_OPTIONS,
+  FALLBACK_COMMANDCODE_MODELS as COMMANDCODE_MODEL_OPTIONS,
+} from "./modelCatalog"
+import { useExecutorModels } from "./modelCatalog"
 
 export const DSH_EFFORT_OPTIONS = [
   { value: "auto", label: "Auto (default)" },
@@ -291,7 +198,20 @@ export default function TaskDialog({
   const [wsUserEdited, setWsUserEdited] = useState(false)
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState("dsh")
-  const [model, setModel] = useState("deepseek-v4.1-flash")
+  const [dshModel, setDshModel] = useState("adit-9router/premium")
+  const [cmdModel, setCmdModel] = useState("qwen/qwen3.8-omni-flash")
+  const { models: dynamicModels } = useExecutorModels(executor)
+
+  const activeModel = executor === "dsh" ? dshModel : cmdModel
+  const handleModelChange = (v: string) => {
+    if (!v) return
+    if (executor === "dsh") {
+      setDshModel(v)
+    } else if (executor === "commandcode") {
+      setCmdModel(v)
+    }
+  }
+
   const [effort, setEffort] = useState("auto")
   const [commandCodeMode, setCommandCodeMode] = useState("yolo")
   const [executionMode, setExecutionMode] = useState<"direct" | "agentic">("direct")
@@ -343,20 +263,14 @@ export default function TaskDialog({
     }
   }, [workspaces, boardTasks, slug, ws, wsUserEdited])
 
-  // Keep default model aligned when switching between dsh and commandcode.
+  // Switch executor and ensure reasoning effort defaults are aligned.
   function handleExecutorChange(nextExec: string) {
     setExecutor(nextExec)
     if (nextExec === "dsh") {
-      if (!DSH_MODEL_OPTIONS.some((o) => o.value === model)) {
-        setModel("deepseek-v4.1-flash")
-      }
       if (!DSH_EFFORT_OPTIONS.some((o) => o.value === effort)) {
         setEffort("auto")
       }
     } else if (nextExec === "commandcode") {
-      if (!COMMANDCODE_MODEL_OPTIONS.some((o) => o.value === model)) {
-        setModel("deepseek/deepseek-v4.1-flash")
-      }
       if (!COMMANDCODE_EFFORT_OPTIONS.some((o) => o.value === effort)) {
         setEffort("auto")
       }
@@ -395,7 +309,7 @@ export default function TaskDialog({
     verifyProfile,
     designSource,
     designTool: designTool === "none" ? "" : designTool,
-    model: executor === "dsh" || executor === "commandcode" ? model : undefined,
+    model: executor === "dsh" ? dshModel : executor === "commandcode" ? cmdModel : undefined,
     effort: executor === "dsh" || executor === "commandcode" ? effort : undefined,
     commandCodeMode: executor === "commandcode" ? commandCodeMode : undefined,
   }
@@ -424,7 +338,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, model, effort, commandCodeMode, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, dshModel, cmdModel, effort, commandCodeMode, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -746,9 +660,9 @@ export default function TaskDialog({
                   <SlidersHorizontal className="size-3 text-ink-3" />
                   <span>
                     {executor === "dsh"
-                      ? `dsh · ${DSH_MODEL_OPTIONS.find((m) => m.value === model)?.label ?? model}`
+                      ? `dsh · ${dynamicModels.find((m) => m.value === dshModel)?.label ?? dshModel}`
                       : executor === "commandcode"
-                        ? `cmd · ${COMMANDCODE_MODEL_OPTIONS.find((m) => m.value === model)?.label ?? model}`
+                        ? `cmd · ${dynamicModels.find((m) => m.value === cmdModel)?.label ?? cmdModel}`
                         : (EXECUTOR_LABELS[executor] ?? executor)}
                   </span>
                   {(executor === "dsh" || executor === "commandcode") && effort !== "auto" && (
@@ -850,9 +764,9 @@ export default function TaskDialog({
                         Model ({executor === "dsh" ? "DSH / 9Router" : "Command Code"})
                       </Label>
                       <SearchSelect
-                        value={model}
-                        onValueChange={(v) => v && setModel(v)}
-                        options={executor === "dsh" ? DSH_MODEL_OPTIONS : COMMANDCODE_MODEL_OPTIONS}
+                        value={activeModel}
+                        onValueChange={handleModelChange}
+                        options={dynamicModels}
                         placeholder="Select model…"
                         searchPlaceholder="Search models…"
                         emptyMessage="No matching model"
