@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import type { ExecutorSettings, Profile, VerifyProfile, Workspace } from "../../api"
+import type { ExecutorSettings, Profile, Task, VerifyProfile, Workspace } from "../../api"
 import { api, getExecutorSettings, startTask, validateTask } from "../../api"
 import { BranchPicker } from "@/components/git/branch-picker"
 import { Button } from "@/components/ui/button"
@@ -47,6 +47,68 @@ const EXECUTOR_LABELS: Record<string, string> = {
   shell: "Shell agent (workspace access)",
 }
 
+export const DSH_MODEL_OPTIONS: SearchSelectOption[] = [
+  { value: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", badge: "default · fast" },
+  { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro", badge: "reasoning" },
+  { value: "adit-9router/premium", label: "9Router · Premium", badge: "combo" },
+  { value: "adit-9router/cheap", label: "9Router · Cheap", badge: "combo" },
+  { value: "adit-9router/codex", label: "9Router · Codex", badge: "combo" },
+  { value: "adit-9router/claude-office", label: "9Router · Claude Office", badge: "combo" },
+  { value: "adit-9router/god", label: "9Router · God", badge: "combo" },
+  { value: "adit-9router/f8", label: "9Router · F8", badge: "combo" },
+  { value: "adit-9router/kiro-cheap-combo-2", label: "9Router · Kiro Cheap Combo 2", badge: "combo" },
+  { value: "adit-9router/nvidia/deepseek-ai/deepseek-v4-flash", label: "NVIDIA · DeepSeek V4 Flash", badge: "9router" },
+  { value: "adit-9router/nvidia/deepseek-ai/deepseek-v4-pro", label: "NVIDIA · DeepSeek V4 Pro", badge: "9router" },
+  { value: "adit-9router/ollama/deepseek-v4.1-flash:cloud", label: "Ollama Cloud · DeepSeek V4.1 Flash", badge: "9router" },
+  { value: "adit-9router/gemini/gemini-3.8-flash", label: "Gemini 3.8 Flash", badge: "9router" },
+  { value: "adit-9router/openai/gpt-5.5", label: "OpenAI · GPT-5.5", badge: "9router" },
+  { value: "adit-9router/kr/claude-sonnet-5", label: "KR · Claude Sonnet 5", badge: "9router" },
+  { value: "adit-9router/kr/claude-opus-5.5", label: "KR · Claude Opus 5.5", badge: "9router" },
+]
+
+export const COMMANDCODE_MODEL_OPTIONS: SearchSelectOption[] = [
+  { value: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", badge: "default · fast" },
+  { value: "deepseek/deepseek-v4.1-flash-fast", label: "DeepSeek V4.1 Flash Fast", badge: "deepseek" },
+  { value: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro", badge: "reasoning" },
+  { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", badge: "anthropic" },
+  { value: "claude-opus-5-5", label: "Claude Opus 5.5", badge: "anthropic" },
+  { value: "claude-fable-5-1", label: "Claude Fable 5.1", badge: "anthropic" },
+  { value: "claude-haiku-5-5", label: "Claude Haiku 5.5", badge: "anthropic" },
+  { value: "gpt-6-astra", label: "GPT-6 Astra", badge: "openai" },
+  { value: "gpt-6.1-sol", label: "GPT-6.1 Sol", badge: "openai" },
+  { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", badge: "openai" },
+  { value: "google/gemini-4-argon", label: "Gemini 4 Argon", badge: "google" },
+  { value: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash", badge: "google" },
+  { value: "moonshotai/kimi-k3", label: "Kimi K3", badge: "moonshot" },
+  { value: "moonshotai/kimi-k2.7-code", label: "Kimi K2.7 Code", badge: "moonshot" },
+  { value: "zai-org/glm-5.3", label: "GLM 5.3", badge: "z-ai" },
+  { value: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash", badge: "z-ai" },
+  { value: "qwen/qwen3.8-max", label: "Qwen 3.8 Max", badge: "qwen" },
+  { value: "xai/grok-4.7", label: "Grok 4.7", badge: "xai" },
+]
+
+export const DSH_EFFORT_OPTIONS = [
+  { value: "auto", label: "Auto (default)" },
+  { value: "off", label: "Off — instant" },
+  { value: "low", label: "Low" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max — deep thinking" },
+]
+
+export const COMMANDCODE_EFFORT_OPTIONS = [
+  { value: "auto", label: "Auto (default)" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+]
+
+export const COMMANDCODE_MODE_OPTIONS = [
+  { value: "yolo", label: "Yolo — auto-approve edits" },
+  { value: "plan", label: "Plan — propose plan & options" },
+  { value: "accept-edits", label: "Accept edits" },
+  { value: "standard", label: "Standard" },
+]
+
 const FALLBACK_EXECUTORS: ExecutorSettings = {
   order: ["auto", "hermes", "codex", "commandcode", "claude", "dsh", "omp", "shell"],
   disabled: [],
@@ -75,8 +137,31 @@ function isLive(w: Workspace): boolean {
   return w.status === "connected" || w.status === "local"
 }
 
-function defaultWorkspacePath(workspaces: Workspace[]): string {
+export function defaultWorkspacePath(
+  workspaces: Workspace[],
+  boardTasks: Pick<Task, "workspace_path">[] = [],
+  slug = "",
+): string {
   if (workspaces.length === 0) return ""
+  const validPaths = new Set(workspaces.map((w) => w.path))
+  // 1. Prefer the workspace most recently used by tasks on this board.
+  for (const t of boardTasks) {
+    if (t.workspace_path && validPaths.has(t.workspace_path)) {
+      return t.workspace_path
+    }
+  }
+  // 2. Match workspace name or path to the board slug when possible.
+  if (slug) {
+    const slugTokens = slug.toLowerCase().split(/[-_\s]+/).filter((tok) => tok.length >= 3)
+    const slugMatched = workspaces.find((w) => {
+      const hay = `${w.name} ${w.path}`.toLowerCase()
+      return slugTokens.some((tok) => hay.includes(tok))
+    })
+    if (slugMatched) return slugMatched.path
+  }
+  // 3. Prefer a connected / live workspace (e.g. connected Mac node-agent or local checkout).
+  const live = workspaces.find((w) => isLive(w))
+  if (live) return live.path
   const local = workspaces.find((w) => !isRemoteWorkspace(w))
   return local?.path ?? workspaces[0].path
 }
@@ -143,9 +228,13 @@ export default function TaskDialog({
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
-  const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces))
+  const [ws, setWs] = useState(() => defaultWorkspacePath(workspaces, [], slug))
+  const [wsUserEdited, setWsUserEdited] = useState(false)
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState("dsh")
+  const [model, setModel] = useState("deepseek-v4.1-flash")
+  const [effort, setEffort] = useState("auto")
+  const [commandCodeMode, setCommandCodeMode] = useState("yolo")
   const [executionMode, setExecutionMode] = useState<"direct" | "agentic">("direct")
   const [maxIterations, setMaxIterations] = useState("6")
   const [priority, setPriority] = useState("0")
@@ -180,7 +269,40 @@ export default function TaskDialog({
     queryKey: ["executor-settings"],
     queryFn: getExecutorSettings,
   })
+  const { data: boardTasks } = useQuery({
+    queryKey: ["tasks", slug],
+    queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`),
+  })
   const visibleExecutors = useMemo(() => visibleExecutorsFor(executorSettings), [executorSettings])
+
+  // Auto-select workspace from board tasks or live workspaces until user manually picks one.
+  useEffect(() => {
+    if (wsUserEdited) return
+    const nextWs = defaultWorkspacePath(workspaces, boardTasks ?? [], slug)
+    if (nextWs && nextWs !== ws) {
+      setWs(nextWs)
+    }
+  }, [workspaces, boardTasks, slug, ws, wsUserEdited])
+
+  // Keep default model aligned when switching between dsh and commandcode.
+  function handleExecutorChange(nextExec: string) {
+    setExecutor(nextExec)
+    if (nextExec === "dsh") {
+      if (!DSH_MODEL_OPTIONS.some((o) => o.value === model)) {
+        setModel("deepseek-v4.1-flash")
+      }
+      if (!DSH_EFFORT_OPTIONS.some((o) => o.value === effort)) {
+        setEffort("auto")
+      }
+    } else if (nextExec === "commandcode") {
+      if (!COMMANDCODE_MODEL_OPTIONS.some((o) => o.value === model)) {
+        setModel("deepseek/deepseek-v4.1-flash")
+      }
+      if (!COMMANDCODE_EFFORT_OPTIONS.some((o) => o.value === effort)) {
+        setEffort("auto")
+      }
+    }
+  }
 
   // Find the workspace ID from the selected path so we can list branches.
   const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
@@ -214,6 +336,9 @@ export default function TaskDialog({
     verifyProfile,
     designSource,
     designTool: designTool === "none" ? "" : designTool,
+    model: executor === "dsh" || executor === "commandcode" ? model : undefined,
+    effort: executor === "dsh" || executor === "commandcode" ? effort : undefined,
+    commandCodeMode: executor === "commandcode" ? commandCodeMode : undefined,
   }
 
   // Dry-run validation, debounced so typing a title does not fire a request per
@@ -240,7 +365,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, model, effort, commandCodeMode, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -481,7 +606,13 @@ export default function TaskDialog({
               <Label className="block text-xs text-ink-3" htmlFor="task-workspace">
                 Workspace
               </Label>
-              <Select value={ws || "__scratch"} onValueChange={(v) => setWs(v === "__scratch" ? "" : v)}>
+              <Select
+                value={ws || "__scratch"}
+                onValueChange={(v) => {
+                  setWsUserEdited(true)
+                  setWs(v === "__scratch" ? "" : v)
+                }}
+              >
                 <SelectTrigger id="task-workspace" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                   <SelectValue placeholder="workspace" />
                 </SelectTrigger>
@@ -554,9 +685,27 @@ export default function TaskDialog({
                   title="Click to customize executor or execution mode"
                 >
                   <SlidersHorizontal className="size-3 text-ink-3" />
-                  <span>{executor === "dsh" ? "dsh · DeepSeek Flash v4.1" : (EXECUTOR_LABELS[executor] ?? executor)}</span>
+                  <span>
+                    {executor === "dsh"
+                      ? `dsh · ${DSH_MODEL_OPTIONS.find((m) => m.value === model)?.label ?? model}`
+                      : executor === "commandcode"
+                        ? `cmd · ${COMMANDCODE_MODEL_OPTIONS.find((m) => m.value === model)?.label ?? model}`
+                        : (EXECUTOR_LABELS[executor] ?? executor)}
+                  </span>
+                  {(executor === "dsh" || executor === "commandcode") && effort !== "auto" && (
+                    <>
+                      <span className="text-ink-3">·</span>
+                      <span className="font-mono text-[10px] uppercase text-accent">{effort}</span>
+                    </>
+                  )}
                   <span className="text-ink-3">·</span>
-                  <span className="text-ink-2">{executionMode === "agentic" ? "Agentic" : "Write"}</span>
+                  <span className="text-ink-2">
+                    {executor === "commandcode" && commandCodeMode === "plan"
+                      ? "Plan"
+                      : executionMode === "agentic"
+                        ? "Agentic"
+                        : "Write"}
+                  </span>
                 </button>
 
                 <button
@@ -600,7 +749,7 @@ export default function TaskDialog({
                   <Label className="block text-xs text-ink-3" htmlFor="task-executor">
                     Executor
                   </Label>
-                  <Select value={executor} onValueChange={setExecutor}>
+                  <Select value={executor} onValueChange={handleExecutorChange}>
                     <SelectTrigger id="task-executor" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
                       <SelectValue />
                     </SelectTrigger>
@@ -634,6 +783,63 @@ export default function TaskDialog({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {(executor === "dsh" || executor === "commandcode") && (
+                  <>
+                    <div className="min-w-0">
+                      <Label className="block text-xs text-ink-3" htmlFor="task-model-inline">
+                        Model ({executor === "dsh" ? "DSH / 9Router" : "Command Code"})
+                      </Label>
+                      <SearchSelect
+                        value={model}
+                        onValueChange={(v) => v && setModel(v)}
+                        options={executor === "dsh" ? DSH_MODEL_OPTIONS : COMMANDCODE_MODEL_OPTIONS}
+                        placeholder="Select model…"
+                        searchPlaceholder="Search models…"
+                        emptyMessage="No matching model"
+                        className="mt-1"
+                        triggerClassName={selCls}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <Label className="block text-xs text-ink-3" htmlFor="task-effort-inline">
+                        Reasoning effort
+                      </Label>
+                      <Select value={effort} onValueChange={setEffort}>
+                        <SelectTrigger id="task-effort-inline" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="">
+                          {(executor === "dsh" ? DSH_EFFORT_OPTIONS : COMMANDCODE_EFFORT_OPTIONS).map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-sm">
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {executor === "commandcode" && (
+                  <div className="col-span-2 min-w-0">
+                    <Label className="block text-xs text-ink-3" htmlFor="task-cmd-mode-inline">
+                      Command Code mode
+                    </Label>
+                    <Select value={commandCodeMode} onValueChange={setCommandCodeMode}>
+                      <SelectTrigger id="task-cmd-mode-inline" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="">
+                        {COMMANDCODE_MODE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-sm">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
 

@@ -99,4 +99,19 @@ describe("traceSpansFromHistory", () => {
     expect(traceOrigin([])).toBeUndefined()
     expect(traceOrigin([ev(1, "created", 0)])).toBeUndefined()
   })
+
+  it("sorts descending events from /api/boards/{slug}/tasks/{id}/events chronologically", () => {
+    const descending = [
+      ev(3, "completed", 190),
+      ev(2, "remote_dispatched", 130, '{"executor":"dsh"}'),
+      ev(1, "created", 100),
+    ]
+    expect(traceOrigin(descending)).toBe(100_000)
+    const spans = traceSpansFromHistory(descending, [])
+    expect(spans.map((s) => s.label)).toEqual(["task.created", "agent.dispatch", "task.completed"])
+    expect(spans[0].start).toBe(0)
+    expect(spans[0].end).toBe(30_000)
+    expect(spans[1].start).toBe(30_000)
+    expect(spans[1].end).toBe(90_000)
+  })
 })

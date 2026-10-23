@@ -155,6 +155,7 @@ type NodeDispatchRequest struct {
 	Message              string `json:"message"`
 	Workspace            string `json:"workspace"`
 	Model                string `json:"model,omitempty"`
+	Effort               string `json:"effort,omitempty"`
 	Provider             string `json:"provider,omitempty"`
 	Executor             string `json:"executor,omitempty"`
 	Command              string `json:"command,omitempty"`

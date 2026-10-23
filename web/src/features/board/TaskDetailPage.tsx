@@ -235,6 +235,10 @@ export default function TaskDetailPage({
     () => traceSpansFromHistory(events.data ?? [], runs.data ?? []),
     [events.data, runs.data]
   )
+  const traceTotal = useMemo(
+    () => Math.max(1, traceSpans.reduce((max, s) => Math.max(max, s.end), 0)),
+    [traceSpans]
+  )
   const resultSplit = task.result ? splitAgentResult(task.result) : null
   const jev = parseTaskExecutionMeta(task.execution_meta)
   const runReason = queueReason(task, profile)
@@ -464,6 +468,7 @@ export default function TaskDetailPage({
               working={resultSplit?.working ?? ""}
               running={task.status === "running"}
               slug={slug}
+              attachments={attachments.data}
             />
             {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onBack} />}
           </TabsContent>
@@ -495,8 +500,9 @@ export default function TaskDetailPage({
                 <AgentTrace
                   spans={traceSpans}
                   timeOrigin={traceOrigin(events.data ?? [])}
+                  defaultTime={traceTotal}
                   runId={task.id}
-                  model={profile?.model}
+                  model={task.model || profile?.model}
                   autoPlay={false}
                   collapsible
                 />

@@ -99,7 +99,8 @@ func taskSelectCols() string {
 	        COALESCE(gate_output,''), COALESCE(start_mode,'manual'), COALESCE(attempt,1),
 	        COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,''), COALESCE(base_branch,''),
 	        COALESCE(verify_profile,''), COALESCE(verify_profile_effective,''),
-	        COALESCE(verify_status,''), COALESCE(verify_output,''), COALESCE(design_source,''), COALESCE(design_tool,'')`
+	        COALESCE(verify_status,''), COALESCE(verify_output,''), COALESCE(design_source,''), COALESCE(design_tool,''),
+	        COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,'')`
 }
 
 func scanTask(rows *sql.Rows) (Task, error) {
@@ -114,7 +115,7 @@ func scanTask(rows *sql.Rows) (Task, error) {
 		&pathsJSON, &t.GateCommand, &t.GateStatus, &t.GateOutput, &t.StartMode, &t.Attempt,
 		&t.Isolation, &t.Branch, &t.WorktreePath, &t.BaseBranch,
 		&t.VerifyProfile, &t.VerifyProfileEffective, &t.VerifyStatus, &t.VerifyOutput,
-		&t.DesignSource, &t.DesignTool); err != nil {
+		&t.DesignSource, &t.DesignTool, &t.Model, &t.Effort, &t.CommandCodeMode); err != nil {
 		return t, err
 	}
 	t.Paths = PathsParse(pathsJSON)

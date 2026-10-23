@@ -48,6 +48,12 @@ export interface CreateTaskDraft {
    * every card that is not a design task.
    */
   designTool: "" | "pen_cli" | "pencil_mcp"
+  /** Explicit model override for dsh or commandcode execution. */
+  model?: string
+  /** Reasoning effort override ("auto", "off", "low", "medium", "high", "max"). */
+  effort?: string
+  /** Command Code permission mode ("yolo", "plan", "accept-edits", "standard"). */
+  commandCodeMode?: string
 }
 
 /** One validation problem, as returned by POST /tasks/validate. */
@@ -105,6 +111,15 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // tool's mandate into the dispatch prompt from this field, so the
     // agent's instructions cannot go stale the way body text can.
     ...(draft.designTool ? { design_tool: draft.designTool } : {}),
+    ...(draft.model?.trim() && draft.model.trim() !== "auto" && draft.model.trim() !== "default"
+      ? { model: draft.model.trim() }
+      : {}),
+    ...(draft.effort?.trim() && draft.effort.trim() !== "auto"
+      ? { effort: draft.effort.trim() }
+      : {}),
+    ...(draft.executor === "commandcode" && draft.commandCodeMode?.trim()
+      ? { commandcode_mode: draft.commandCodeMode.trim() }
+      : {}),
   }
 }
 

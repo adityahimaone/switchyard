@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { api, toastGlobal, type Task } from "../../api"
-import { Check, ChevronDown, Copy, FileCode2, Loader2, Minus, Plus } from "lucide-react"
+import { Check, ChevronDown, Copy, FileCode2, GitCommitHorizontal, Loader2, Minus, Plus, RotateCcw } from "lucide-react"
 import { ReviewGateBar } from "./ReviewGateBar"
 import { VerificationBlock } from "./VerificationBlock"
 
 type DiffLine = { type: "context" | "added" | "removed"; oldLine?: number; newLine?: number; content: string }
 type DiffFile = { name: string; lines: DiffLine[] }
-type ReviewMetadata = { provenance?: string[]; codegraph?: string }
+type ReviewMetadata = { provenance?: string[]; codegraph?: string; suggested_commit_message?: string }
 type ReviewDiff = { stat: string; diff: string; files?: string[]; clean: boolean } & ReviewMetadata
 
 export function parseDiffFiles(raw: string, authoritativeNames: string[] = []): DiffFile[] {
@@ -163,6 +164,9 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [commitMsg, setCommitMsg] = useState("")
+  const [commitEdited, setCommitEdited] = useState(false)
+  const [commitCopied, setCommitCopied] = useState(false)
   // Set only after a 409 from a failing check, so the override is always a
   // response to a refusal rather than a way to skip a check silently.
   const [overriding, setOverriding] = useState(false)
@@ -203,6 +207,12 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diff.data, files.length, allNames.join("|")])
 
+  useEffect(() => {
+    if (diff.data?.suggested_commit_message && !commitEdited) {
+      setCommitMsg(diff.data.suggested_commit_message)
+    }
+  }, [diff.data?.suggested_commit_message, commitEdited])
+
   const approve = useMutation({
     mutationFn: (action: "done" | "commit" | "commit_push") => {
       const body: Record<string, unknown> = { action }
@@ -210,6 +220,9 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
       // plain `git add -A`, which is both cheaper and less error-prone.
       if (action !== "done" && selectedCount > 0 && selectedCount < files.length) {
         body.files = [...selected]
+      }
+      if (action !== "done" && commitMsg.trim()) {
+        body.message = commitMsg.trim()
       }
       // A red gate or a red verification is refused unless the reviewer says so
       // explicitly. The override is recorded server-side, so "it shipped past a
@@ -281,6 +294,61 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
               to "may I approve this", and a reviewer should meet it before
               reading 8000 lines of patch. */}
           <VerificationBlock slug={slug} taskId={task.id} />
+
+          {!diff.data?.clean && !diff.isLoading && (
+            <div className="rounded-control border border-line bg-well p-3">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor={`commit-msg-${task.id}`} className="flex items-center gap-1.5 text-xs font-medium text-ink">
+                  <GitCommitHorizontal className="size-3.5 text-accent" aria-hidden />
+                  <span>Commit message template</span>
+                  <span className="rounded bg-[var(--c-line)]/50 px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
+                    preserved on commit &amp; push
+                  </span>
+                </label>
+                <div className="flex items-center gap-1">
+                  {commitEdited && diff.data?.suggested_commit_message && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => {
+                        setCommitMsg(diff.data?.suggested_commit_message || "")
+                        setCommitEdited(false)
+                      }}
+                      className="h-6 gap-1 px-2 text-2xs text-ink-3 hover:text-ink"
+                    >
+                      <RotateCcw className="size-3" /> Reset
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(commitMsg)
+                      setCommitCopied(true)
+                      window.setTimeout(() => setCommitCopied(false), 1200)
+                    }}
+                    className="h-6 gap-1 px-2 text-2xs text-ink-3 hover:text-ink"
+                  >
+                    {commitCopied ? <Check className="size-3 text-success-text" /> : <Copy className="size-3" />}
+                    {commitCopied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                id={`commit-msg-${task.id}`}
+                rows={5}
+                value={commitMsg}
+                onChange={(e) => {
+                  setCommitMsg(e.target.value)
+                  setCommitEdited(true)
+                }}
+                placeholder="feat(scope): concise summary of task changes…"
+                className="border-line bg-canvas font-mono text-xs leading-relaxed text-ink"
+              />
+            </div>
+          )}
 
           {(diff.data?.codegraph || (diff.data?.provenance?.length ?? 0) > 0) && (
             <details className="rounded-control border border-line bg-well px-3 py-2">

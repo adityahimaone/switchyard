@@ -132,6 +132,29 @@ describe("buildCreatePayload", () => {
     expect(buildCreatePayload({ ...base, designTool: "pen_cli" }).design_tool).toBe("pen_cli")
     expect(buildCreatePayload({ ...base, designTool: "pencil_mcp" }).design_tool).toBe("pencil_mcp")
   })
+
+  it("sends model, effort and commandcode_mode when configured", () => {
+    const dshPayload = buildCreatePayload({
+      ...base,
+      executor: "dsh",
+      model: "deepseek-v4.1-flash",
+      effort: "low",
+    })
+    expect(dshPayload.model).toBe("deepseek-v4.1-flash")
+    expect(dshPayload.effort).toBe("low")
+    expect("commandcode_mode" in dshPayload).toBe(false)
+
+    const cmdPayload = buildCreatePayload({
+      ...base,
+      executor: "commandcode",
+      model: "claude-sonnet-5-5",
+      effort: "high",
+      commandCodeMode: "plan",
+    })
+    expect(cmdPayload.model).toBe("claude-sonnet-5-5")
+    expect(cmdPayload.effort).toBe("high")
+    expect(cmdPayload.commandcode_mode).toBe("plan")
+  })
 })
 
 describe("isSubmitKey", () => {

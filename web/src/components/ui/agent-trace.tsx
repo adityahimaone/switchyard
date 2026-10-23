@@ -425,10 +425,12 @@ export function AgentTrace({
       }
 
       // The transport clock is a timecode: one fixed precision on both sides so digits do not jitter.
-      // On a clock axis it is a pair of times of day instead.
+      // On a clock axis it shows the start-to-end (or playhead) wall-clock window so start and finish are never identical when resting at the end.
       if (clockRef.current) {
         clockRef.current.textContent = timeOrigin != null
-          ? `${formatClock(timeOrigin + t, o.total)} / ${formatClock(timeOrigin + o.total, o.total)}`
+          ? t >= o.total
+            ? `${formatClock(timeOrigin, o.total)} → ${formatClock(timeOrigin + o.total, o.total)} (${formatMs(o.total)})`
+            : `${formatClock(timeOrigin + t, o.total)} / ${formatClock(timeOrigin + o.total, o.total)}`
           : `${(t / 1000).toFixed(2)}s / ${(o.total / 1000).toFixed(2)}s`
       }
       // The chip describes the run at the playhead, not the transport: at 6.4s of a 10.4s run the
@@ -813,7 +815,7 @@ export function AgentTrace({
             ref={clockRef}
             className={cn(
               "text-muted-foreground shrink-0 text-right font-mono text-[11px] tabular-nums",
-              timeOrigin != null ? "w-[10rem]" : "w-[7rem]"
+              timeOrigin != null ? "min-w-[10rem] max-w-[16rem]" : "w-[7rem]"
             )}
           />
         </div>

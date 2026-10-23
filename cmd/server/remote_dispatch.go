@@ -77,7 +77,7 @@ func startRemoteDispatcher(ctx context.Context) {
 // dispatchCandidate is one card the dispatch selection surfaced.
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
-	baseBranch                                                                                                                                                     string
+	baseBranch, model, effort, commandCodeMode                                                                                                                     string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -90,7 +90,7 @@ type dispatchCandidate struct {
 // both rules at claim time; this keeps the poll itself from even
 // considering a card that cannot run.
 func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
-	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
+	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,''), COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
 		AND NOT EXISTS (
 			SELECT 1 FROM task_dependencies d
 			LEFT JOIN tasks dt ON dt.id = d.depends_on_id
@@ -104,7 +104,7 @@ func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
 	var pending []dispatchCandidate
 	for rows.Next() {
 		var r dispatchCandidate
-		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool); err != nil {
+		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool, &r.model, &r.effort, &r.commandCodeMode); err != nil {
 			return nil, err
 		}
 		if r.ws != "" {
@@ -249,6 +249,10 @@ func dispatchPendingRemoteTasks() {
 				msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
 			}
 			model, modelErr := kanban.ProfileModel(r.assignee)
+			if strings.TrimSpace(r.model) != "" {
+				model = strings.TrimSpace(r.model)
+				modelErr = nil
+			}
 			if modelErr != nil && continuity {
 				log.Printf("remote-dispatcher: %s blocked: %v", r.id, modelErr)
 				continue
@@ -261,6 +265,7 @@ func dispatchPendingRemoteTasks() {
 				Message:             msg,
 				Workspace:           r.ws,
 				Model:               model,
+				Effort:              strings.TrimSpace(r.effort),
 				Provider:            r.assignee,
 				Executor:            r.executor,
 				Command:             command,
@@ -270,6 +275,7 @@ func dispatchPendingRemoteTasks() {
 				DSHWorkspaceID:      binding.HarnessWorkspaceID,
 				DSHSessionID:        dshSessionID,
 				DSHPermissionMode:   "danger-full-access",
+				CommandCodeMode:     strings.TrimSpace(r.commandCodeMode),
 				SessionContinuation: sessionContinuation,
 			}
 			if continuity {
@@ -336,7 +342,16 @@ func dispatchPendingRemoteTasks() {
 			// A pen_cli design card always gets the full budget: it
 			// generates a mock and then implements to it.
 			req.TimeoutS = int(kanban.RemoteJobTimeoutForTask(r.executionMode, r.designTool).Seconds())
+			effectiveDesignSource := strings.TrimSpace(r.designSource)
+			if effectiveDesignSource == "" && (r.designTool == "pen_cli" || r.designTool == "pencil_mcp") {
+				effectiveDesignSource = kanban.DesignPathForTitle(r.title)
+			}
 			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitForTask(r.executionMode, r.designTool))
+			// Always capture any exported .pen PNG as a permanent card attachment,
+			// even if the run timed out after generating the design or if verify is disabled.
+			if effectiveDesignSource != "" {
+				kanban.CaptureDesignExport(b.Slug, r.id, workWorkspace, effectiveDesignSource)
+			}
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {
@@ -352,7 +367,7 @@ func dispatchPendingRemoteTasks() {
 				// runs after the gate rather than before because the gate is the
 				// project's own command and a broken build should surface as the
 				// gate's verdict, not as a pile of failures from both.
-				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile, r.designSource)
+				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile, effectiveDesignSource)
 			}
 		}
 		db.Close()

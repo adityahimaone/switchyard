@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -167,9 +168,17 @@ func GroupRuns(events []TaskEvent) []TaskRun {
 func GroupTaskRuns(events []TaskEvent) []TaskRun { return groupRuns(events) }
 
 func groupRuns(events []TaskEvent) []TaskRun {
+	sorted := make([]TaskEvent, len(events))
+	copy(sorted, events)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].ID != 0 && sorted[j].ID != 0 && sorted[i].ID != sorted[j].ID {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return sorted[i].CreatedAt < sorted[j].CreatedAt
+	})
 	out := []TaskRun{}
 	starts := map[string]bool{"claimed": true, "spawned": true, "retry": true, "run_started": true, "run_requested": true, "retry_requested": true, "remote_dispatched": true}
-	for _, ev := range events {
+	for _, ev := range sorted {
 		if starts[ev.Kind] || len(out) == 0 && ev.Kind != "created" {
 			out = append(out, TaskRun{Index: len(out) + 1, StartedAt: ev.CreatedAt})
 		}

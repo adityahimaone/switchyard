@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, Fragment, useRef } from "react"
-import { ArrowDownToLine, BrainCircuit, Check, ChevronDown, Copy, CornerDownRight, FileCheck2, Layers3, Terminal, WrapText } from "lucide-react"
-import { toastGlobal, workerLog, type Task, type TaskEvent } from "../../api"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { ArrowDownToLine, BrainCircuit, Check, ChevronDown, Copy, CornerDownRight, ExternalLink, FileCheck2, Image as ImageIcon, Layers3, ListChecks, Loader2, Play, Terminal, WrapText } from "lucide-react"
+import { api, toastGlobal, workerLog, type Attachment, type Task, type TaskEvent } from "../../api"
 import { AgentMarkdown } from "./AgentMarkdown"
 
 function useCopy(text: string) {
@@ -733,11 +734,240 @@ export function parseHarnessResult(raw: string, executor: Task["executor"]): Dsh
     }
 }
 
-function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
+export interface InteractiveOption {
+  id: string
+  badge: string
+  title: string
+  description: string
+  prompt: string
+}
+
+/**
+ * Extracts selectable options or plan steps from a DSH / Command Code answer
+ * when the agent presents numbered/lettered options or a multi-step plan.
+ */
+export function extractInteractiveOptions(answer: string): InteractiveOption[] {
+  if (!answer || answer.startsWith("No final answer text returned")) return []
+  const lines = answer.split("\n")
+  const options: InteractiveOption[] = []
+  const seen = new Set<string>()
+
+  // 1. Explicit "Option 1 / Option A / Approach 1" patterns
+  const explicitRe = /^\s*(?:[-*•]|\d+\.|#{1,4})?\s*\*{0,2}(Option\s+[A-Z0-9]+|Approach\s+[A-Z0-9]+|Plan\s+[A-Z0-9]+|Choice\s+[A-Z0-9]+)\s*[:—–-]\s*([^*\n]+?)\*{0,2}(?:\s*[—–:-]\s*(.+))?$/i
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(explicitRe)
+    if (m) {
+      const badge = m[1].trim()
+      const title = m[2].replace(/\*\*/g, "").trim()
+      let desc = (m[3] || "").replace(/\*\*/g, "").trim()
+      if (!desc && i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim()
+        if (nextLine && !explicitRe.test(nextLine) && !/^[#>-]/.test(nextLine)) {
+          desc = nextLine.replace(/\*\*/g, "").slice(0, 180)
+        }
+      }
+      const key = `${badge}:${title}`.toLowerCase()
+      if (title && !seen.has(key)) {
+        seen.add(key)
+        options.push({
+          id: `opt-${options.length + 1}`,
+          badge,
+          title,
+          description: desc,
+          prompt: `Proceed with ${badge} (${title})${desc ? `: ${desc}` : ""}. Please implement this option now.`,
+        })
+      }
+    }
+  }
+  if (options.length >= 2) return options.slice(0, 6)
+
+  // 2. Numbered list items when the answer mentions options/plan/approaches/choices
+  const hasCue = /\b(options?|approaches|plan|choose|select|which one|next steps?|recommendations?)\b/i.test(answer)
+  if (!hasCue) return []
+
+  const numberedRe = /^\s*(\d+)\.\s+\*\*([^*]+)\*\*(?:\s*[—–:-]\s*(.+))?$/
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(numberedRe)
+    if (m) {
+      const num = m[1]
+      const title = m[2].trim()
+      const desc = (m[3] || "").replace(/\*\*/g, "").trim()
+      const key = `${num}:${title}`.toLowerCase()
+      if (title && !seen.has(key)) {
+        seen.add(key)
+        options.push({
+          id: `step-${num}`,
+          badge: `Option ${num}`,
+          title,
+          description: desc,
+          prompt: `Proceed with Option ${num} (${title})${desc ? `: ${desc}` : ""}. Please execute this now.`,
+        })
+      }
+    }
+  }
+  return options.length >= 2 ? options.slice(0, 6) : []
+}
+
+function ResultAttachmentsGallery({ attachments }: { attachments?: Attachment[] }) {
+  const images = useMemo(
+    () => (attachments ?? []).filter((a) => a.mime?.startsWith("image/")),
+    [attachments],
+  )
+  if (!images.length) return null
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--c-line)] bg-[var(--c-well)]/50 p-3">
+      <div className="mb-2 flex items-center gap-1.5">
+        <ImageIcon className="size-3.5 text-[var(--c-accent)]" aria-hidden />
+        <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-2">
+          Design &amp; Result Exports ({images.length})
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {images.map((img) => {
+          const imgUrl = `/api/attachments/${img.id}`
+          return (
+            <a
+              key={img.id}
+              href={imgUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group overflow-hidden rounded-md border border-[var(--c-line)] bg-[var(--c-canvas)] transition-colors hover:border-[var(--c-accent)]/50"
+            >
+              <div className="relative aspect-[16/10] w-full overflow-hidden bg-black/20">
+                <img
+                  src={imgUrl}
+                  alt={img.filename}
+                  loading="lazy"
+                  className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-[var(--c-line)] px-2.5 py-1.5">
+                <span className="truncate font-mono text-2xs text-ink-2" title={img.filename}>
+                  {img.filename}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 text-2xs text-[var(--c-accent)]">
+                  Open <ExternalLink className="size-3" />
+                </span>
+              </div>
+            </a>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function InteractiveOptionsPicker({
+  options,
+  slug,
+  task,
+}: {
+  options: InteractiveOption[]
+  slug?: string
+  task?: Task
+}) {
+  const qc = useQueryClient()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [customNote, setCustomNote] = useState("")
+
+  const selectMutation = useMutation({
+    mutationFn: async (opt: InteractiveOption) => {
+      if (!slug || !task) return
+      setSelectedId(opt.id)
+      const mention = `@${task.assignee || "default"}`
+      const extra = customNote.trim() ? `\n\nAdditional context: ${customNote.trim()}` : ""
+      const body = `${mention} ${opt.prompt}${extra}`
+      await api(`/api/boards/${slug}/tasks/${task.id}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ author: "user", body }),
+      })
+    },
+    onSuccess: (_data, opt) => {
+      toastGlobal(`Selected ${opt.badge} — continuing agent session`, "success")
+      setCustomNote("")
+      if (slug && task) {
+        qc.invalidateQueries({ queryKey: ["tasks", slug] })
+        qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
+        qc.invalidateQueries({ queryKey: ["comments", slug, task.id] })
+        qc.invalidateQueries({ queryKey: ["runs", slug, task.id] })
+      }
+    },
+    onError: (e: Error) => {
+      toastGlobal(e.message, "error")
+    },
+  })
+
+  if (!options.length || !slug || !task) return null
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--c-accent)]/35 bg-[var(--c-accent-tint)]/20 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <ListChecks className="size-3.5 text-[var(--c-accent)]" aria-hidden />
+          <span className="text-xs font-semibold text-ink">
+            Select an option or plan step to continue
+          </span>
+        </div>
+        <span className="text-2xs text-ink-3">
+          Resumes bound {task.executor || "dsh"} session
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {options.map((opt) => {
+          const isPending = selectMutation.isPending && selectedId === opt.id
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={selectMutation.isPending || task.status === "running"}
+              onClick={() => selectMutation.mutate(opt)}
+              className="group flex flex-col items-start justify-between gap-1.5 rounded-md border border-[var(--c-line)] bg-[var(--c-canvas)]/90 p-2.5 text-left transition-all hover:border-[var(--c-accent)]/60 hover:bg-[var(--c-surface)] disabled:opacity-50"
+            >
+              <div className="flex w-full items-center justify-between gap-2">
+                <span className="rounded bg-[var(--c-accent-tint)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--c-accent)]">
+                  {opt.badge}
+                </span>
+                <span className="inline-flex items-center gap-1 text-2xs font-medium text-[var(--c-accent)] opacity-85 group-hover:opacity-100">
+                  {isPending ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" /> Running…
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-3 fill-current" /> Run option
+                    </>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs font-medium text-ink">{opt.title}</p>
+              {opt.description && (
+                <p className="line-clamp-2 text-[11px] leading-relaxed text-ink-3">
+                  {opt.description}
+                </p>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="text"
+          value={customNote}
+          onChange={(e) => setCustomNote(e.target.value)}
+          placeholder="Optional note or constraint when running the selected option…"
+          className="h-7 min-w-0 flex-1 rounded border border-[var(--c-line)] bg-[var(--c-canvas)] px-2 text-xs text-ink placeholder:text-ink-3 focus:border-[var(--c-accent)] focus:outline-none"
+        />
+      </div>
+    </div>
+  )
+}
+
+function DshResultPanel({ text, hasWorking, title, defaultOpen, executor, slug, task, attachments }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"]; slug?: string; task?: Task; attachments?: Attachment[] }) {
   const [open, setOpen] = useState(defaultOpen !== false)
   const [traceOpen, setTraceOpen] = useState(false)
   const { copied, copy } = useCopy(text)
   const parsed = useMemo(() => parseHarnessResult(text, executor ?? "dsh"), [text, executor])
+  const interactiveOptions = useMemo(() => extractInteractiveOptions(parsed.answer), [parsed.answer])
   const harnessName = executor === "commandcode" ? "Command Code" : executor === "claude" ? "Claude Code" : executor === "omp" ? "omp" : "DeepSeek Harness"
   const trace = parsed.events.filter((event) => event.type !== "text")
   const answer = parsed.answer || "No final answer text returned. Open raw trace to inspect the run."
@@ -792,6 +1022,10 @@ function DshResultPanel({ text, hasWorking, title, defaultOpen, executor }: { te
           )}
 
           <AgentMarkdown text={answer} />
+
+          <ResultAttachmentsGallery attachments={attachments} />
+
+          <InteractiveOptionsPicker options={interactiveOptions} slug={slug} task={task} />
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--c-line)] pt-2.5">
             <button
@@ -879,8 +1113,8 @@ export function HarnessChatResult({ text, executor }: { text: string; executor: 
   )
 }
 
-export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"] }) {
-  if (executor === "dsh" || executor === "commandcode" || executor === "claude" || executor === "omp") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} />
+export function ResultPanel({ text, hasWorking, title, defaultOpen, executor, slug, task, attachments }: { text: string; hasWorking: boolean; title?: string; defaultOpen?: boolean; executor?: Task["executor"]; slug?: string; task?: Task; attachments?: Attachment[] }) {
+  if (executor === "dsh" || executor === "commandcode" || executor === "claude" || executor === "omp") return <DshResultPanel text={text} hasWorking={hasWorking} title={title} defaultOpen={defaultOpen} executor={executor} slug={slug} task={task} attachments={attachments} />
   const [wrap, setWrap] = useState(true)
   const [open, setOpen] = useState(defaultOpen !== false)
   const formattedText = useMemo(() => prettyJSONText(text), [text])
@@ -955,7 +1189,7 @@ export function ResultPanel({ text, hasWorking, title, defaultOpen, executor }: 
   )
 }
 
-export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] }) {
+export function ResultStack({ task, events, slug, attachments }: { task: Task; events: TaskEvent[]; slug?: string; attachments?: Attachment[] }) {
   const completedEvents = useMemo(() =>
     events.filter((e) => e.kind === "completed" && e.payload).reverse(),
     [events]
@@ -987,7 +1221,17 @@ export function ResultStack({ task, events }: { task: Task; events: TaskEvent[] 
         <span className="text-2xs tabular-nums text-ink-3">{results.length}</span>
       </div>
       {results.map((r, i) => (
-        <ResultPanel key={i} text={r.text} hasWorking={false} title={`Result ${r.index} · ${r.outcome}`} defaultOpen={i === results.length - 1} executor={task.executor} />
+        <ResultPanel
+          key={i}
+          text={r.text}
+          hasWorking={false}
+          title={`Result ${r.index} · ${r.outcome}`}
+          defaultOpen={i === results.length - 1}
+          executor={task.executor}
+          slug={slug}
+          task={task}
+          attachments={i === results.length - 1 ? attachments : undefined}
+        />
       ))}
     </div>
   )
@@ -1012,13 +1256,14 @@ export function ResultEmpty({ running }: { running?: boolean }) {
 /* Log and answer as peers in one column: the log streams while running, the
    answer settles beneath it. Both stay reachable without a sub-tab, so the
    same component backs the drawer and the page. */
-export function TaskOutput({ task, events, working, running, slug, compact = false }: {
+export function TaskOutput({ task, events, working, running, slug, compact = false, attachments }: {
   task: Task
   events: TaskEvent[]
   working: string
   running: boolean
   slug: string
   compact?: boolean
+  attachments?: Attachment[]
 }) {
   const showLog = running || !!working
   const showResult = !!task.result
@@ -1032,7 +1277,7 @@ export function TaskOutput({ task, events, working, running, slug, compact = fal
       {showLog && (
         <WorkerLogPanel text={working} running={running} slug={slug} taskId={task.id} />
       )}
-      {showResult && <ResultStack task={task} events={events} />}
+      {showResult && <ResultStack task={task} events={events} slug={slug} attachments={attachments} />}
     </div>
   )
 }

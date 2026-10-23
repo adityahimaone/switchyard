@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { api, parseTaskExecutionMeta, runControl, taskHealth, toastGlobal, type Profile, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
+import { api, parseTaskExecutionMeta, runControl, taskHealth, toastGlobal, type Attachment, type Profile, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
 import { ExternalLink, X } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { TaskOutput } from "./OutputPanels"
@@ -65,6 +65,10 @@ export default function TaskDetail({
     queryKey: ["events", slug, task.id],
     queryFn: () => api<TaskEvent[]>(`/api/boards/${slug}/tasks/${task.id}/events`),
     refetchInterval: task.status === "running" ? 5_000 : false,
+  })
+  const attachments = useQuery<Attachment[]>({
+    queryKey: ["attachments", slug, task.id],
+    queryFn: () => api<Attachment[]>(`/api/boards/${slug}/tasks/${task.id}/attachments`),
   })
   const profile = profiles.find((p) => p.name === task.assignee)
   const ws = workspaces.find((w) => w.path === task.workspace_path)
@@ -248,6 +252,7 @@ export default function TaskDetail({
                 working={resultSplit?.working ?? ""}
                 running={task.status === "running"}
                 slug={slug}
+                attachments={attachments.data}
               />
 
               {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onOpenPage} />}

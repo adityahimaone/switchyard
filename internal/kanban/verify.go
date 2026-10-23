@@ -430,6 +430,12 @@ func designPathValid(p string) bool {
 	return true
 }
 
+// CaptureDesignExport pulls the design's exported PNG from the worker
+// and links it to the card as a permanent attachment.
+func CaptureDesignExport(slug, taskID, workspacePath, designSource string) []string {
+	return captureDesignExport(slug, taskID, workspacePath, designSource)
+}
+
 // captureDesignExport pulls the design's exported PNG from the worker
 // and links it to the card, so a reviewer sees the design the card was
 // graded against beside the screenshots of what was built.

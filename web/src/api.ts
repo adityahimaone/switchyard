@@ -67,6 +67,12 @@ export interface Task {
    * in the app). Undefined means no pen.dev design is involved.
    */
   design_tool?: "pen_cli" | "pencil_mcp"
+  /** Explicit model override for dsh or commandcode execution. */
+  model?: string
+  /** Reasoning effort override ("auto", "off", "low", "medium", "high", "max"). */
+  effort?: string
+  /** Command Code permission mode ("yolo", "plan", "accept-edits", "standard"). */
+  commandcode_mode?: string
 }
 
 /** The verification ladder, weakest first. */

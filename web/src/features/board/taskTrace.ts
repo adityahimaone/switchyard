@@ -139,21 +139,98 @@ function inRunWindow(run: TaskRun, at: number): boolean {
   return run.started_at <= at && (run.ended_at === 0 || run.ended_at >= at)
 }
 
+function sortEventsChronologically(events: TaskEvent[]): TaskEvent[] {
+  return [...events].sort((a, b) => a.created_at - b.created_at || a.id - b.id)
+}
+
+/**
+ * Coalesce consecutive streaming `worker_output` chunks so a 150-chunk output
+ * stream does not drown out the lifecycle trace or collapse every row onto the
+ * final second. If a `worker_output` chunk carries a `HERMES_EVENT:` phase or
+ * turn/step marker, we surface that milestone; otherwise consecutive chunks
+ * merge into a single `worker.output` span covering their time window.
+ */
+function coalesceWorkerOutputEvents(sorted: TaskEvent[]): TaskEvent[] {
+  const workerCount = sorted.filter((e) => e.kind === "worker_output").length
+  if (workerCount <= 3) return sorted
+
+  const out: TaskEvent[] = []
+  let i = 0
+  while (i < sorted.length) {
+    const ev = sorted[i]
+    if (ev.kind !== "worker_output") {
+      out.push(ev)
+      i++
+      continue
+    }
+    let j = i
+    let chunkCount = 0
+    const milestones: TaskEvent[] = []
+    const seenPhases = new Set<string>()
+    while (j < sorted.length && sorted[j].kind === "worker_output") {
+      const cur = sorted[j]
+      chunkCount++
+      try {
+        const parsed = JSON.parse(cur.payload) as { text?: string }
+        const text = typeof parsed.text === "string" ? parsed.text : ""
+        for (const line of text.split("\n")) {
+          const t = line.trim()
+          if (t.startsWith("HERMES_EVENT:")) {
+            const rawJson = t.slice("HERMES_EVENT:".length).trim()
+            const hev = JSON.parse(rawJson) as { phase?: string; label?: string; executor?: string }
+            const phase = hev.phase || "event"
+            if (!seenPhases.has(phase)) {
+              seenPhases.add(phase)
+              milestones.push({
+                ...cur,
+                id: cur.id * 1000 + milestones.length,
+                kind: `worker_${phase}`,
+                payload: JSON.stringify({
+                  status: hev.label || phase,
+                  ...(hev.executor ? { executor: hev.executor } : {}),
+                }),
+              })
+            }
+          }
+        }
+      } catch {
+        // ignore unparseable chunk
+      }
+      j++
+    }
+    if (milestones.length > 0) {
+      out.push(...milestones)
+    } else {
+      const first = sorted[i]
+      out.push({
+        ...first,
+        payload: JSON.stringify({ status: `${chunkCount} output chunks` }),
+      })
+    }
+    i = j
+  }
+  return out
+}
+
 /** The wall-clock origin of a history trace: when its
  * first event happened, in epoch ms. */
 export function traceOrigin(events: TaskEvent[]): number | undefined {
-  const first = events[0]
+  if (events.length === 0) return undefined
+  const sorted = sortEventsChronologically(events)
+  const first = sorted.find((e) => e.created_at > 0) ?? sorted[0]
   return first && first.created_at > 0 ? first.created_at * 1000 : undefined
 }
 
 export function traceSpansFromHistory(events: TaskEvent[], runs: TaskRun[]): TraceSpan[] {
   if (events.length === 0) return []
-  const t0 = events[0].created_at
+  const sorted = coalesceWorkerOutputEvents(sortEventsChronologically(events))
+  if (sorted.length === 0) return []
+  const t0 = sorted[0].created_at
   const spans: TraceSpan[] = []
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i]
-    const next = events[i + 1]
-    const startMs = (e.created_at - t0) * 1000
+  for (let i = 0; i < sorted.length; i++) {
+    const e = sorted[i]
+    const next = sorted[i + 1]
+    const startMs = Math.max(0, (e.created_at - t0) * 1000)
     // A span lasts until the next event; the final one closes a
     // beat after its own timestamp so it is still visible.
     // Events carry second precision, so several can share a
@@ -161,13 +238,13 @@ export function traceSpansFromHistory(events: TaskEvent[], runs: TaskRun[]): Tra
     // as bars instead of 1ms slivers. It is a rendering
     // convention, not data — the events really did happen in
     // that second, and same-second spans simply overlap.
-    const endMs = next ? (next.created_at - t0) * 1000 : startMs + 500
+    const rawEndMs = next ? Math.max(startMs, (next.created_at - t0) * 1000) : startMs + 500
     const span: TraceSpan = {
       id: `ev-${e.id}`,
       label: labelOf(e.kind),
       start: startMs,
-      end: Math.max(endMs, startMs + 1000),
-      kind: SPAN_KIND[e.kind] ?? "io",
+      end: Math.max(rawEndMs, startMs + 1000),
+      kind: SPAN_KIND[e.kind] ?? (e.kind.startsWith("worker_") ? "agent" : "io"),
       status: ERROR_KINDS.has(e.kind) ? "error" : "ok",
       detail: detailOf(e.payload),
     }

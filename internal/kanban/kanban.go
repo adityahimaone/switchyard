@@ -109,6 +109,12 @@ type Task struct {
 	// BaseBranch is the branch the worktree should be created from.
 	// Empty means use the current HEAD. Only meaningful when isolation is "worktree".
 	BaseBranch string `json:"base_branch,omitempty"`
+	// Model overrides the assignee profile's default model when set (e.g., for DSH or Command Code).
+	Model string `json:"model,omitempty"`
+	// Effort selects the reasoning effort level ("off", "low", "medium", "high", "max") when supported.
+	Effort string `json:"effort,omitempty"`
+	// CommandCodeMode selects the Command Code permission mode ("yolo", "plan", "accept-edits", "standard").
+	CommandCodeMode string `json:"commandcode_mode,omitempty"`
 }
 
 type TaskEvent struct {
@@ -340,6 +346,9 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		// Base branch for worktree isolation: the branch the worktree is created
 		// from. Empty means use the current HEAD.
 		`ALTER TABLE tasks ADD COLUMN base_branch TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN effort TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN commandcode_mode TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -526,12 +535,12 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool, model, effort, commandcode_mode)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation, t.BaseBranch,
 		// verify_profile_effective/verify_status are intentionally not inserted:
 		// they are decided by routing after the run, not by the author of the card.
-		t.VerifyProfile, t.DesignSource, t.DesignTool); err != nil {
+		t.VerifyProfile, t.DesignSource, t.DesignTool, strings.TrimSpace(t.Model), strings.TrimSpace(t.Effort), strings.TrimSpace(t.CommandCodeMode)); err != nil {
 		return err
 	}
 	if len(t.DependsOn) > 0 {
@@ -664,8 +673,18 @@ func TaskEvents(slug, taskID string) ([]TaskEvent, error) {
 		}
 		rows2.Close()
 	}
-	q := fmt.Sprintf(`SELECT id, task_id, kind, COALESCE(%s,''), created_at FROM task_events WHERE task_id=? ORDER BY id DESC LIMIT 100`, payloadCol)
-	rows, err := db.Query(q, taskID)
+	// Always include all lifecycle events (kind <> 'worker_output') plus the latest
+	// 150 worker_output events, ordered newest-first (id DESC) so existing callers
+	// and tests see the latest event at index 0 while never losing 'created',
+	// 'remote_dispatched', 'gate_*', 'verify_*', or 'completed' under a flood of chunks.
+	q := fmt.Sprintf(`SELECT id, task_id, kind, COALESCE(%s,''), created_at FROM (
+		SELECT id, task_id, kind, %s, created_at FROM task_events WHERE task_id=? AND kind <> 'worker_output'
+		UNION ALL
+		SELECT id, task_id, kind, %s, created_at FROM (
+			SELECT id, task_id, kind, %s, created_at FROM task_events WHERE task_id=? AND kind = 'worker_output' ORDER BY id DESC LIMIT 150
+		)
+	) ORDER BY id DESC`, payloadCol, payloadCol, payloadCol, payloadCol)
+	rows, err := db.Query(q, taskID, taskID)
 	if err != nil {
 		return nil, err
 	}

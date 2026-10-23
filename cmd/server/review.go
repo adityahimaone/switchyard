@@ -284,12 +284,13 @@ func handleTaskDiff(w http.ResponseWriter, r *http.Request) {
 		files = parseDiffNames(review.diff)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"stat":       truncate(review.stat, 4000),
-		"diff":       truncate(review.diff, diffLimit),
-		"files":      files,
-		"clean":      review.clean,
-		"provenance": reviewProvenance(t.Result),
-		"codegraph":  reviewCodeGraph(t.Result),
+		"stat":                     truncate(review.stat, 4000),
+		"diff":                     truncate(review.diff, diffLimit),
+		"files":                    files,
+		"clean":                    review.clean,
+		"provenance":               reviewProvenance(t.Result),
+		"codegraph":                reviewCodeGraph(t.Result),
+		"suggested_commit_message": synthesizeCommitMessage(t, files),
 	})
 }
 
@@ -439,30 +440,13 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": "workspace clean; no commit needed"})
 		return
 	}
-	// Build commit message: subject + bullet changes + Refs footer.
-	subject := req.Message
-	if subject == "" {
-		subject = t.Title
-	}
-
-	// Files listed in the body: selective set when given, else all changed files.
+	// Build commit message: preserve an explicit multi-line commit template from the UI,
+	// or synthesize a human-readable conventional commit message from the task result & files.
 	commitFiles := req.Files
 	if len(commitFiles) == 0 {
 		commitFiles = changedFiles(t)
 	}
-	const maxBullet = 100
-	var msgBuilder strings.Builder
-	msgBuilder.WriteString(subject)
-	msgBuilder.WriteString("\n\n")
-	for i, f := range commitFiles {
-		if i >= maxBullet {
-			fmt.Fprintf(&msgBuilder, "  - … (+%d more)\n", len(commitFiles)-maxBullet)
-			break
-		}
-		msgBuilder.WriteString("  - " + f + "\n")
-	}
-	msgBuilder.WriteString("\nRefs: " + t.ID + "\n")
-	msg := msgBuilder.String()
+	msg := buildApproveCommitMessage(t, req.Message, commitFiles)
 
 	var script string
 	if len(req.Files) > 0 {
@@ -734,4 +718,232 @@ func validateCommitFiles(files []string) error {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// buildApproveCommitMessage returns a clean, human-readable commit message.
+// If the reviewer provided a multi-line commit message (e.g., edited the template in Review),
+// it is preserved verbatim (ensuring the Refs footer is present). Otherwise, it synthesizes
+// a structured conventional commit template using the task's result summary and changed files.
+func buildApproveCommitMessage(t *reviewTask, customMessage string, files []string) string {
+	trimmed := strings.TrimSpace(customMessage)
+	if strings.Contains(trimmed, "\n") {
+		if !strings.Contains(trimmed, "Refs: "+t.ID) {
+			trimmed += "\n\nRefs: " + t.ID
+		}
+		return trimmed + "\n"
+	}
+	return synthesizeCommitMessageWithSubject(t, trimmed, files)
+}
+
+func synthesizeCommitMessage(t *reviewTask, files []string) string {
+	return synthesizeCommitMessageWithSubject(t, "", files)
+}
+
+func synthesizeCommitMessageWithSubject(t *reviewTask, customSubject string, files []string) string {
+	scope := inferCommitScope(files, t.WorkspacePath)
+	subject := strings.TrimSpace(customSubject)
+	if subject == "" {
+		subject = formatConventionalSubject(t.Title, scope)
+	}
+	bullets := extractAgentSummaryBullets(t.Result)
+
+	var b strings.Builder
+	b.WriteString(subject)
+	b.WriteString("\n\n")
+	if len(bullets) > 0 {
+		b.WriteString("Summary:\n")
+		for _, line := range bullets {
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(files) > 0 {
+		b.WriteString(fmt.Sprintf("Files (%d):\n", len(files)))
+		const maxFiles = 12
+		for i, f := range files {
+			if i >= maxFiles {
+				b.WriteString(fmt.Sprintf("- ... (+%d more files)\n", len(files)-maxFiles))
+				break
+			}
+			b.WriteString("- " + f + "\n")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("Refs: " + t.ID + "\n")
+	return b.String()
+}
+
+func inferCommitScope(files []string, workspacePath string) string {
+	if len(files) > 0 {
+		counts := map[string]int{}
+		best := ""
+		bestN := 0
+		for _, f := range files {
+			parts := strings.Split(filepath.ToSlash(strings.TrimSpace(f)), "/")
+			var candidate string
+			if len(parts) >= 2 {
+				if (parts[0] == "src" || parts[0] == "internal" || parts[0] == "cmd" || parts[0] == "web" || parts[0] == "app") && len(parts) >= 2 {
+					candidate = parts[1]
+				} else {
+					candidate = parts[0]
+				}
+			} else if len(parts) == 1 && parts[0] != "" {
+				ext := filepath.Ext(parts[0])
+				candidate = strings.TrimSuffix(parts[0], ext)
+			}
+			candidate = strings.ToLower(strings.TrimSpace(candidate))
+			if candidate == "" || candidate == "src" || candidate == "app" || candidate == "index" {
+				continue
+			}
+			counts[candidate]++
+			if counts[candidate] > bestN {
+				bestN = counts[candidate]
+				best = candidate
+			}
+		}
+		if best != "" {
+			return best
+		}
+	}
+	if base := filepath.Base(strings.TrimSpace(workspacePath)); base != "" && base != "." && base != "/" {
+		return strings.ToLower(base)
+	}
+	return "ui"
+}
+
+func formatConventionalSubject(title, scope string) string {
+	clean := strings.TrimSpace(title)
+	for _, prefix := range []string{"i want you to ", "i want you ", "please ", "can you "} {
+		if strings.HasPrefix(strings.ToLower(clean), prefix) {
+			clean = strings.TrimSpace(clean[len(prefix):])
+		}
+	}
+	if clean == "" {
+		clean = "update task implementation"
+	}
+	lower := strings.ToLower(clean)
+	// Already conventional commit style?
+	for _, p := range []string{"feat(", "fix(", "refactor(", "chore(", "docs(", "style(", "test(", "perf(", "feat:", "fix:", "refactor:", "chore:", "docs:", "style:", "test:", "perf:"} {
+		if strings.HasPrefix(lower, p) {
+			if len(clean) > 72 {
+				return clean[:69] + "..."
+			}
+			return clean
+		}
+	}
+	kind := "feat"
+	switch {
+	case strings.Contains(lower, "fix") || strings.Contains(lower, "bug") || strings.Contains(lower, "issue") || strings.Contains(lower, "error"):
+		kind = "fix"
+	case strings.Contains(lower, "refactor") || strings.Contains(lower, "clean") || strings.Contains(lower, "redesign"):
+		kind = "refactor"
+	case strings.Contains(lower, "test") || strings.Contains(lower, "verify"):
+		kind = "test"
+	case strings.Contains(lower, "doc") || strings.Contains(lower, "audit"):
+		kind = "docs"
+	}
+	if len(clean) > 0 {
+		clean = strings.ToLower(clean[:1]) + clean[1:]
+	}
+	header := fmt.Sprintf("%s(%s): %s", kind, scope, clean)
+	if len(header) > 78 {
+		header = header[:75] + "..."
+	}
+	return header
+}
+
+func extractAgentSummaryBullets(rawResult string) []string {
+	answer := extractFinalAnswerText(rawResult)
+	if strings.TrimSpace(answer) == "" {
+		return nil
+	}
+	var bullets []string
+	var paragraphs []string
+	for _, line := range strings.Split(answer, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Strip markdown bold/code noise for readable git log
+		cleanLine := strings.ReplaceAll(trimmed, "**", "")
+		if strings.HasPrefix(cleanLine, "- ") || strings.HasPrefix(cleanLine, "* ") || strings.HasPrefix(cleanLine, "• ") {
+			item := strings.TrimSpace(cleanLine[2:])
+			if item != "" && len(item) > 4 {
+				if len(item) > 100 {
+					item = item[:97] + "..."
+				}
+				bullets = append(bullets, item)
+			}
+		} else if len(cleanLine) > 12 && !strings.HasPrefix(cleanLine, "|") {
+			if len(cleanLine) > 100 {
+				cleanLine = cleanLine[:97] + "..."
+			}
+			paragraphs = append(paragraphs, cleanLine)
+		}
+		if len(bullets) >= 6 {
+			break
+		}
+	}
+	if len(bullets) > 0 {
+		return bullets
+	}
+	if len(paragraphs) > 3 {
+		return paragraphs[:3]
+	}
+	return paragraphs
+}
+
+func extractFinalAnswerText(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var lastText string
+	var plainLines []string
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" ||
+			strings.HasPrefix(trimmed, "provenance ") ||
+			strings.HasPrefix(trimmed, "EXECUTOR_PROOF=") ||
+			strings.HasPrefix(trimmed, "HERMES_EVENT:") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "{") {
+			var obj map[string]any
+			if json.Unmarshal([]byte(trimmed), &obj) == nil {
+				if ft, ok := obj["finalText"].(string); ok && strings.TrimSpace(ft) != "" {
+					lastText = strings.TrimSpace(ft)
+					continue
+				}
+				if res, ok := obj["result"].(string); ok && strings.TrimSpace(res) != "" {
+					lastText = strings.TrimSpace(res)
+					continue
+				}
+				if msg, ok := obj["message"].(map[string]any); ok {
+					if role, _ := msg["role"].(string); role == "assistant" {
+						if content, ok := msg["content"].([]any); ok {
+							var parts []string
+							for _, c := range content {
+								if cm, ok := c.(map[string]any); ok {
+									if ct, _ := cm["type"].(string); ct == "text" {
+										if txt, ok := cm["text"].(string); ok && strings.TrimSpace(txt) != "" {
+											parts = append(parts, strings.TrimSpace(txt))
+										}
+									}
+								}
+							}
+							if len(parts) > 0 {
+								lastText = strings.Join(parts, "\n")
+							}
+						}
+					}
+				}
+				continue
+			}
+		}
+		plainLines = append(plainLines, trimmed)
+	}
+	if lastText != "" {
+		return lastText
+	}
+	return strings.Join(plainLines, "\n")
 }
