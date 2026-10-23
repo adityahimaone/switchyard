@@ -198,7 +198,7 @@ export default function TaskDialog({
   const [wsUserEdited, setWsUserEdited] = useState(false)
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState("dsh")
-  const [dshModel, setDshModel] = useState("adit-9router/premium")
+  const [dshModel, setDshModel] = useState("deepseek-account:DeepSeek-V4.1-Flash")
   const [cmdModel, setCmdModel] = useState("qwen/qwen3.8-omni-flash")
   const { models: dynamicModels } = useExecutorModels(executor)
 

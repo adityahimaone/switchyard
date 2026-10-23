@@ -112,22 +112,34 @@ func fetchDSHModels() []ModelOption {
 }
 
 func parseCordisPatchModels(data []byte) []ModelOption {
-	pinned := []ModelOption{
-		{Value: "adit-9router/premium", Label: "Premium (default)", Badge: "reasoning", Pinned: true},
-		{Value: "adit-9router/cheap", Label: "Cheap", Badge: "fast & capable", Pinned: true},
-		{Value: "adit-9router/god", Label: "God Mode", Badge: "flagship mix", Pinned: true},
-		{Value: "adit-9router/free", Label: "Free", Badge: "no cost", Pinned: true},
-		{Value: "adit-9router/claude-office", Label: "Claude Office", Badge: "office mix", Pinned: true},
-		{Value: "adit-9router/kiro-cheap-combo-2", Label: "Kiro Cheap Combo 2", Badge: "combo", Pinned: true},
-		{Value: "adit-9router/codex", Label: "Codex", Badge: "coding", Pinned: true},
-		{Value: "adit-9router/f8", Label: "F8", Badge: "1M context", Pinned: true},
-		{Value: "adit-9router/free-combo-q4-2026", Label: "Free Combo Q4 2026", Badge: "1M context", Pinned: true},
+	official := []ModelOption{
+		{Value: "deepseek-account:DeepSeek-V4.1-Flash", Label: "DeepSeek-V4.1-Flash", Badge: "DeepSeek Account", Pinned: true},
+		{Value: "deepseek-account:DeepSeek-V4-Pro", Label: "DeepSeek-V4-Pro", Badge: "DeepSeek Account", Pinned: true},
+		{Value: "deepseek:DeepSeek-V4.1-Flash", Label: "DeepSeek-V4.1-Flash", Badge: "DeepSeek", Pinned: true},
+		{Value: "deepseek:DeepSeek-V4-Pro", Label: "DeepSeek-V4-Pro", Badge: "DeepSeek", Pinned: true},
+	}
+
+	pinnedRouter := []ModelOption{
+		{Value: "adit-9router/kiro-cheap-combo-2", Label: "Kiro Cheap Combo 2", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/claude-office", Label: "Claude Office", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/free-combo-q4-2026", Label: "Free Combo Q4 2026", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/codex", Label: "Codex", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/f8", Label: "F8", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/free", Label: "Free", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/god", Label: "God Mode", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/cheap", Label: "Cheap", Badge: "adit-9router", Pinned: true},
+		{Value: "adit-9router/premium", Label: "Premium", Badge: "adit-9router", Pinned: true},
 	}
 
 	seen := make(map[string]bool)
 	var result []ModelOption
 
-	for _, p := range pinned {
+	for _, p := range official {
+		result = append(result, p)
+		seen[p.Value] = true
+	}
+
+	for _, p := range pinnedRouter {
 		result = append(result, p)
 		seen[p.Value] = true
 		seen[strings.TrimPrefix(p.Value, "adit-9router/")] = true
@@ -178,7 +190,7 @@ func parseCordisPatchModels(data []byte) []ModelOption {
 		}
 	}
 
-	if len(result) > len(pinned) {
+	if len(result) > len(official) {
 		return result
 	}
 	return getFallbackDSHModels()

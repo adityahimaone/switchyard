@@ -31,16 +31,25 @@ func TestModelsRoutes(t *testing.T) {
 		t.Fatal("expected at least 1 DSH model")
 	}
 
-	// Verify pinned models are present
+	// Verify official and pinned models are present
+	hasOfficial := false
 	hasPremium := false
 	for _, m := range dshResp.Models {
+		if m.Value == "deepseek-account:DeepSeek-V4.1-Flash" {
+			hasOfficial = true
+			if !m.Pinned {
+				t.Errorf("expected deepseek-account:DeepSeek-V4.1-Flash to be pinned")
+			}
+		}
 		if m.Value == "adit-9router/premium" {
 			hasPremium = true
 			if !m.Pinned {
 				t.Errorf("expected premium to be pinned")
 			}
-			break
 		}
+	}
+	if !hasOfficial {
+		t.Errorf("deepseek-account:DeepSeek-V4.1-Flash not found in DSH models")
 	}
 	if !hasPremium {
 		t.Errorf("adit-9router/premium not found in DSH models")

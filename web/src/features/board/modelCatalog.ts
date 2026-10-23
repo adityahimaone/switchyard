@@ -4,57 +4,81 @@ import { SearchSelectOption } from "@/components/ui/search-select"
 
 export const FALLBACK_DSH_MODELS: SearchSelectOption[] = [
   {
-    "value": "adit-9router/premium",
-    "label": "Premium (default)",
-    "badge": "reasoning",
+    "value": "deepseek-account:DeepSeek-V4.1-Flash",
+    "label": "DeepSeek-V4.1-Flash",
+    "badge": "DeepSeek Account",
     "pinned": true
   },
   {
-    "value": "adit-9router/cheap",
-    "label": "Cheap",
-    "badge": "fast & capable",
+    "value": "deepseek-account:DeepSeek-V4-Pro",
+    "label": "DeepSeek-V4-Pro",
+    "badge": "DeepSeek Account",
     "pinned": true
   },
   {
-    "value": "adit-9router/god",
-    "label": "God Mode",
-    "badge": "flagship mix",
+    "value": "deepseek:DeepSeek-V4.1-Flash",
+    "label": "DeepSeek-V4.1-Flash",
+    "badge": "DeepSeek",
     "pinned": true
   },
   {
-    "value": "adit-9router/free",
-    "label": "Free",
-    "badge": "no cost",
-    "pinned": true
-  },
-  {
-    "value": "adit-9router/claude-office",
-    "label": "Claude Office",
-    "badge": "office mix",
+    "value": "deepseek:DeepSeek-V4-Pro",
+    "label": "DeepSeek-V4-Pro",
+    "badge": "DeepSeek",
     "pinned": true
   },
   {
     "value": "adit-9router/kiro-cheap-combo-2",
     "label": "Kiro Cheap Combo 2",
-    "badge": "combo",
+    "badge": "adit-9router",
     "pinned": true
   },
   {
-    "value": "adit-9router/codex",
-    "label": "Codex",
-    "badge": "coding",
-    "pinned": true
-  },
-  {
-    "value": "adit-9router/f8",
-    "label": "F8",
-    "badge": "1M context",
+    "value": "adit-9router/claude-office",
+    "label": "Claude Office",
+    "badge": "adit-9router",
     "pinned": true
   },
   {
     "value": "adit-9router/free-combo-q4-2026",
     "label": "Free Combo Q4 2026",
-    "badge": "1M context",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/codex",
+    "label": "Codex",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/f8",
+    "label": "F8",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/free",
+    "label": "Free",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/god",
+    "label": "God Mode",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/cheap",
+    "label": "Cheap",
+    "badge": "adit-9router",
+    "pinned": true
+  },
+  {
+    "value": "adit-9router/premium",
+    "label": "Premium",
+    "badge": "adit-9router",
     "pinned": true
   },
   {
