@@ -60,7 +60,7 @@ function DialogContent({
              elements clashing through, paired with ambient specular highlight
              and deep multi-tier elevation shadow. */
           "glass-dialog dialog-bloom rounded-panel outline-none",
-          "max-h-[calc(100dvh-2.5rem)] overflow-hidden",
+          "max-h-[calc(100dvh-2.5rem)]",
           // Apple WWDC 2018 Fluid Interfaces: scale 0.96 -> 1.0 with --ease-out-expo
           "transition-[transform,opacity] duration-200 ease-[var(--ease-out-expo)]",
           "data-[state=closed]:scale-[0.96] data-[state=closed]:opacity-0",
