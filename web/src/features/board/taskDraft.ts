@@ -92,7 +92,7 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // the stored value says what was chosen rather than what was assumed.
     isolation: draft.isolation,
     // Only sent for worktree isolation with a non-empty base branch.
-    ...(draft.isolation === "worktree" && draft.baseBranch.trim() ? { base_branch: draft.baseBranch.trim() } : {}),
+    ...(draft.isolation === "worktree" && draft.baseBranch?.trim() ? { base_branch: draft.baseBranch.trim() } : {}),
     // Always sent for the same reason as isolation: "" is a real choice — it is
     // how a card asks to be routed from its diff — and the stored value should
     // say the card asked, rather than leaving it indistinguishable from a card
@@ -116,6 +116,19 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
  */
 export function isSubmitKey(e: { key: string; shiftKey: boolean }): boolean {
   return e.key === "Enter" && !e.shiftKey
+}
+
+/**
+ * Dialog-wide submit shortcut (`Cmd+Enter` on macOS, `Ctrl+Enter` elsewhere).
+ * Lets keyboard users submit from Title, Prompt, or any other field while
+ * leaving plain `Enter` in the prompt textarea free to insert newlines.
+ */
+export function isShortcutSubmitKey(e: {
+  key: string
+  metaKey?: boolean
+  ctrlKey?: boolean
+}): boolean {
+  return e.key === "Enter" && Boolean(e.metaKey || e.ctrlKey)
 }
 
 /**

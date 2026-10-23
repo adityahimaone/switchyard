@@ -4,7 +4,14 @@ import type { ExecutorSettings, Profile, VerifyProfile, Workspace } from "../../
 import { api, getExecutorSettings, startTask, validateTask } from "../../api"
 import { BranchPicker } from "@/components/git/branch-picker"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -12,14 +19,15 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Segmented } from "@/components/ui/segmented"
-import { Sparkles, Loader2, Paperclip, ChevronDown, ChevronRight, X } from "lucide-react"
+import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
+import { cn } from "@/lib/utils"
 import {
   buildCreatePayload,
   canSubmit,
   issuesForField,
-  isSubmitKey,
+  isShortcutSubmitKey,
   splitPathInput,
   type CreateTaskDraft,
   type DependencyCandidate,
@@ -98,13 +106,14 @@ function CollapsibleSection({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="group/head -mx-1 flex w-full items-center gap-1.5 rounded px-1 py-1 text-left"
+        className="group/head -mx-1 flex w-full items-center gap-1.5 rounded px-1 py-1 text-left transition-transform duration-150 ease-[var(--ease-out-expo)] active:scale-[0.99]"
       >
-        {open ? (
-          <ChevronDown className="size-3.5 shrink-0 text-ink-3" />
-        ) : (
-          <ChevronRight className="size-3.5 shrink-0 text-ink-3" />
-        )}
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-ink-3 transition-transform duration-150 ease-[var(--ease-out-expo)]",
+            open && "rotate-90",
+          )}
+        />
         <span className="text-2xs font-semibold tracking-[0.14em] text-ink-2 uppercase">{title}</span>
         <span className="h-px flex-1 bg-[var(--c-line)]" aria-hidden />
         {badge}
@@ -158,7 +167,9 @@ export default function TaskDialog({
   const [uploading, setUploading] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [execOverrideOpen, setExecOverrideOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const improveCache = useRef(new Map<string, string>())
 
   const paths = useMemo(() => splitPathInput(pathsRaw), [pathsRaw])
@@ -366,88 +377,95 @@ export default function TaskDialog({
        the only dialog in the app not dimming by `--scrim`, so it read as a
        heavier modal than the identical ones next to it. */
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent
-        className="max-h-[90dvh] overflow-y-auto p-4 bg-[var(--c-canvas)]!"
-        showClose={false}
-      >
-        <h2 id="task-dialog-title" className="text-sm font-semibold">
-          New Task
-        </h2>
-
+      <DialogContent className="p-0" showClose>
         <form
           onSubmit={submit}
-          className="flex flex-col"
+          onKeyDown={(e) => {
+            if (isShortcutSubmitKey(e) && !busy && !uploading && submitReady) {
+              e.preventDefault()
+              void submit()
+            }
+          }}
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <Label className="mt-3 block text-xs text-ink-3" htmlFor="task-title">
-            Title
-          </Label>
-          <Input
-            id="task-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Task title"
-            aria-invalid={issuesForField(issues, "title").length > 0}
-            className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)]"
-          />
-          {issuesForField(issues, "title").map((i) => (
-            <FieldIssue key={i.code + i.message} issue={i} />
-          ))}
+          <DialogHeader className="py-3.5">
+            <DialogTitle id="task-dialog-title" className="text-sm font-semibold">
+              New Task
+            </DialogTitle>
+          </DialogHeader>
 
-          <div className="mt-3 flex items-center justify-between">
-            <Label className="text-xs text-ink-3" htmlFor="task-body">
-              Prompt
+          <DialogBody className="flex flex-col">
+            <Label className="block text-xs text-ink-3" htmlFor="task-title">
+              Title
             </Label>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={aiBusy || !body.trim()}
-                onClick={() => improveBody("fast")}
-                className="h-6 gap-1 border-[var(--c-accent)]/40 px-2 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
-                title="Fill a template instantly, no AI call"
-              >
-                <Sparkles className="size-3" />
-                Fast
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={aiBusy || !body.trim()}
-                onClick={() => improveBody("deep")}
-                className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
-                title="Rewrite with an AI model. Slower, but more contextual."
-              >
-                {aiMode === "deep" ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  <Sparkles className="size-3" />
-                )}
-                {aiMode === "deep" ? "Improving…" : "Deep"}
-              </Button>
-            </div>
-          </div>
-          <Textarea
-            id="task-body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if (isSubmitKey(e)) {
-                e.preventDefault()
-                void submit()
-              }
-            }}
-            rows={5}
-            placeholder="What should the agent do? Enter creates the task, Shift+Enter adds a line."
-            className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm"
-          />
-          {issuesForField(issues, "body").map((i) => (
-            <FieldIssue key={i.code + i.message} issue={i} />
-          ))}
+            <Input
+              id="task-title"
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+                  e.preventDefault()
+                  bodyRef.current?.focus()
+                }
+              }}
+              placeholder="Task title"
+              aria-invalid={issuesForField(issues, "title").length > 0}
+              className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)]"
+            />
+            {issuesForField(issues, "title").map((i) => (
+              <FieldIssue key={i.code + i.message} issue={i} />
+            ))}
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="min-w-0">
+            <div className="mt-3 flex items-center justify-between">
+              <Label className="text-xs text-ink-3" htmlFor="task-body">
+                Prompt
+              </Label>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={aiBusy || !body.trim()}
+                  onClick={() => improveBody("fast")}
+                  className="h-6 gap-1 border-[var(--c-accent)]/40 px-2 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
+                  title="Fill a template instantly, no AI call"
+                >
+                  <Sparkles className="size-3" />
+                  Fast
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={aiBusy || !body.trim()}
+                  onClick={() => improveBody("deep")}
+                  className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
+                  title="Rewrite with an AI model. Slower, but more contextual."
+                >
+                  {aiMode === "deep" ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3" />
+                  )}
+                  {aiMode === "deep" ? "Improving…" : "Deep"}
+                </Button>
+              </div>
+            </div>
+            <Textarea
+              ref={bodyRef}
+              id="task-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={4}
+              placeholder="What should the agent do? Enter adds a line, ⌘↵ creates the task."
+              className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm"
+            />
+            {issuesForField(issues, "body").map((i) => (
+              <FieldIssue key={i.code + i.message} issue={i} />
+            ))}
+
+            <div className="mt-3">
               <Label className="block text-xs text-ink-3" htmlFor="task-workspace">
                 Workspace
               </Label>
@@ -507,80 +525,193 @@ export default function TaskDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-0">
-              <Label className="block text-xs text-ink-3" htmlFor="task-executor">
-                Executor
-              </Label>
-              <Select value={executor} onValueChange={setExecutor}>
-                <SelectTrigger id="task-executor" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="">
-                  {visibleExecutors.map((e) => (
-                    <SelectItem key={e} value={e} className="text-sm">
-                      {EXECUTOR_LABELS[e] ?? e}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          {/* Branch lives with the workspace, not inside Scope & safety: it is a
-              property of where the work runs, and burying it under a collapsed
-              section behind a second "Worktree" switch is why the Pull button
-              went unfound. Pull is live either way — the checkout has to be
-              current before the card is dispatched — while choosing a branch
-              only means something for a worktree, so the list locks itself
-              under Workspace isolation rather than offering a choice that
-              would be dropped from the payload. */}
-          {selectedWorkspace && (
-            <div className="mt-3">
-              <Label className="block text-xs text-ink-3">Branch</Label>
-              <BranchPicker
-                className="mt-1 w-full"
-                workspaceId={selectedWorkspace.id || selectedWorkspace.path}
-                mode={isolation === "worktree" ? "base" : "switch"}
-                value={baseBranch}
-                onChange={setBaseBranch}
-                selectDisabled={false}
-                triggerClassName={branchSelCls}
+            {/* Compact inline bar: shows the fast default (dsh · DeepSeek Flash v4.1 · Write)
+                plus a 1-click pen.dev toggle chip on a single row, expanding full
+                Execution or pen.dev overrides inline only when clicked. */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-expanded={execOverrideOpen}
+                  onClick={() => setExecOverrideOpen((v) => !v)}
+                  className={cn(
+                    "glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium text-ink transition-[color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97]",
+                    execOverrideOpen && "border-[var(--c-accent)]/50 bg-accent-tint text-accent",
+                  )}
+                  title="Click to customize executor or execution mode"
+                >
+                  <SlidersHorizontal className="size-3 text-ink-3" />
+                  <span>{executor === "dsh" ? "dsh · DeepSeek Flash v4.1" : (EXECUTOR_LABELS[executor] ?? executor)}</span>
+                  <span className="text-ink-3">·</span>
+                  <span className="text-ink-2">{executionMode === "agentic" ? "Agentic" : "Write"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  aria-pressed={designTool !== "none"}
+                  onClick={() =>
+                    setDesignTool((prev) => (prev === "none" ? "pen_cli" : "none"))
+                  }
+                  className={cn(
+                    "glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97]",
+                    designTool !== "none"
+                      ? "border-[var(--c-accent)]/50 bg-accent-tint text-accent"
+                      : "text-ink-3 hover:text-ink",
+                  )}
+                  title="Toggle pen.dev design workflow"
+                >
+                  <PenTool className="size-3" />
+                  <span>pen.dev</span>
+                  {designTool !== "none" && (
+                    <span className="rounded bg-[var(--c-canvas)]/70 px-1 py-0.5 font-mono text-[10px] leading-none text-accent">
+                      {designTool === "pen_cli" ? "CLI" : "MCP"}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <Segmented
+                label="Start mode"
+                value={startMode}
+                onChange={setStartMode}
+                options={[
+                  { value: "manual", label: "Manual" },
+                  { value: "now", label: "Now" },
+                ]}
               />
-              <p className="mt-1 text-[11px] text-ink-3">
-                {isolation === "worktree"
-                  ? "The worktree is created from this branch. Current HEAD uses whatever is checked out now."
-                  : "Pick a branch to switch the workspace checkout before running, or click Pull to fast-forward the current branch."}
-              </p>
             </div>
-          )}
 
-          {executor === "shell" && (
-            <div className="mt-3 rounded-lg border border-warning/30 bg-warning-tint p-3">
-              <p className="text-xs font-medium text-warning">Autonomous shell access</p>
-              <p className="mt-1 text-[11px] leading-4 text-ink-3">
-                The orchestrator will read the workspace, edit files, run tests and retry commands
-                until the task is ready for review.
-              </p>
-            </div>
-          )}
+            {execOverrideOpen && (
+              <div className="mt-2 grid grid-cols-2 gap-3 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)]/50 p-3">
+                <div className="min-w-0">
+                  <Label className="block text-xs text-ink-3" htmlFor="task-executor">
+                    Executor
+                  </Label>
+                  <Select value={executor} onValueChange={setExecutor}>
+                    <SelectTrigger id="task-executor" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="">
+                      {visibleExecutors.map((e) => (
+                        <SelectItem key={e} value={e} className="text-sm">
+                          {EXECUTOR_LABELS[e] ?? e}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0">
+                  <Label className="block text-xs text-ink-3" htmlFor="task-exec-mode-inline">
+                    Execution mode
+                  </Label>
+                  <Select
+                    value={executionMode}
+                    onValueChange={(v) => setExecutionMode(v as "direct" | "agentic")}
+                  >
+                    <SelectTrigger id="task-exec-mode-inline" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="">
+                      <SelectItem value="direct" className="text-sm">
+                        Direct (Write)
+                      </SelectItem>
+                      <SelectItem value="agentic" className="text-sm">
+                        Agentic (plan and iterate)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <Label className="text-xs text-ink-3">Start</Label>
-            <Segmented
-              label="Start mode"
-              value={startMode}
-              onChange={setStartMode}
-              options={[
-                { value: "manual", label: "Manual" },
-                { value: "now", label: "Now" },
-              ]}
-            />
-          </div>
-          <p className="mt-1 text-[11px] text-ink-3">
-            {startMode === "now"
-              ? "Claims the task immediately instead of waiting for the next dispatcher poll."
-              : "Queues the task; the dispatcher picks it up within 30 seconds."}
-          </p>
+            {designTool !== "none" && (
+              <div className="mt-2 grid grid-cols-2 gap-3 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)]/50 p-3">
+                <div className="min-w-0">
+                  <Label className="block text-xs text-ink-3" htmlFor="task-design-tool-inline">
+                    Design tool
+                  </Label>
+                  <Select
+                    value={designTool}
+                    onValueChange={(v) => setDesignTool(v as "none" | "pen_cli" | "pencil_mcp")}
+                  >
+                    <SelectTrigger
+                      id="task-design-tool-inline"
+                      className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="">
+                      <SelectItem value="pen_cli" className="text-sm">
+                        pen CLI — headless .pen + PNG
+                      </SelectItem>
+                      <SelectItem value="pencil_mcp" className="text-sm">
+                        pencil MCP — live canvas
+                      </SelectItem>
+                      <SelectItem value="none" className="text-sm">
+                        Off — disable pen.dev
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {issuesForField(issues, "design_tool").map((i) => (
+                    <FieldIssue key={i.code + i.message} issue={i} />
+                  ))}
+                </div>
+                <div className="min-w-0">
+                  <Label className="block text-xs text-ink-3" htmlFor="task-design-source-inline">
+                    Design source (.pen)
+                  </Label>
+                  <Input
+                    id="task-design-source-inline"
+                    value={designSource}
+                    onChange={(e) => setDesignSource(e.target.value)}
+                    placeholder="design/task-card.pen"
+                    className="mt-1 h-9 border-[var(--c-line)] bg-[var(--c-canvas)] text-xs"
+                  />
+                  {issuesForField(issues, "design_source").map((i) => (
+                    <FieldIssue key={i.code + i.message} issue={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Branch lives with the workspace, not inside Scope & safety: it is a
+                property of where the work runs, and burying it under a collapsed
+                section behind a second "Worktree" switch is why the Pull button
+                went unfound. Pull is live either way — the checkout has to be
+                current before the card is dispatched — while choosing a branch
+                only means something for a worktree, so the list locks itself
+                under Workspace isolation rather than offering a choice that
+                would be dropped from the payload. */}
+            {selectedWorkspace && (
+              <div className="mt-3">
+                <Label className="block text-xs text-ink-3">Branch</Label>
+                <BranchPicker
+                  className="mt-1 w-full"
+                  workspaceId={selectedWorkspace.id || selectedWorkspace.path}
+                  mode={isolation === "worktree" ? "base" : "switch"}
+                  value={baseBranch}
+                  onChange={setBaseBranch}
+                  selectDisabled={false}
+                  triggerClassName={branchSelCls}
+                />
+                <p className="mt-1 text-[11px] text-ink-3">
+                  {isolation === "worktree"
+                    ? "The worktree is created from this branch. Current HEAD uses whatever is checked out now."
+                    : "Pick a branch to switch the workspace checkout before running, or click Pull to fast-forward the current branch."}
+                </p>
+              </div>
+            )}
+
+            {executor === "shell" && (
+              <div className="mt-3 rounded-lg border border-warning/30 bg-warning-tint p-3">
+                <p className="text-xs font-medium text-warning">Autonomous shell access</p>
+                <p className="mt-1 text-[11px] leading-4 text-ink-3">
+                  The orchestrator will read the workspace, edit files, run tests and retry commands
+                  until the task is ready for review.
+                </p>
+              </div>
+            )}
 
           {/* Scope and safety: collapsed by default, because most tasks need
               none of it and eight controls in one scroll is how fields get
@@ -968,20 +1099,25 @@ export default function TaskDialog({
               {err}
             </p>
           )}
+          </DialogBody>
 
-          <div className="mt-4 flex items-center justify-end gap-2">
+          <DialogFooter>
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
+              variant="signal"
               size="sm"
-              disabled={busy || uploading || !submitReady}
-              className="bg-[var(--c-accent)] text-black hover:bg-[var(--c-accent)]/90"
+              loading={busy}
+              disabled={uploading || !submitReady}
             >
-              {busy ? "…" : "Create"}
+              <span>Create</span>
+              <kbd className="ml-1 rounded bg-black/15 px-1 py-0.5 font-mono text-[10px] leading-none opacity-80">
+                ⌘↵
+              </kbd>
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

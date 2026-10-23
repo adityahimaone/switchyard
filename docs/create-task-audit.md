@@ -68,6 +68,21 @@ Five issues prevented fast, unattended task completion with **DeepSeek Harness (
 
 ---
 
+### 2.4 Issue #4: Create Task UI/UX & Speed Audit (`emil-design-eng`)
+
+Applying the **Emil Design Engineering** review framework to `TaskDialog.tsx`, `branch-picker.tsx`, `segmented.tsx`, and `select.tsx` identified seven UI/UX and speed bottlenecks that added friction to creating tasks:
+
+| Before | After | Why |
+|---|---|---|
+| `DialogContent` in `TaskDialog.tsx` overrode the glass surface with `max-h-[90dvh] overflow-y-auto p-4 bg-[var(--c-canvas)]!` and scrolled the entire modal as one block | Uses structured `DialogHeader` + scrollable `DialogBody` + pinned `DialogFooter` while preserving `glass-strong` + `dialog-bloom` elevation | Expanding `Scope & safety` or `Advanced` no longer pushes the header or the `Cancel` / `Create` action bar out of view, and keeps layered surface depth |
+| `Execution` rendered separate full-width dropdown rows even when using the default `dsh` + `DeepSeek Flash v4.1` configuration, and `pen.dev` controls (`Design tool` & `Design source`) were buried at the bottom of the collapsed `Advanced` drawer | Replaced with a single compact inline bar showing `dsh · DeepSeek Flash v4.1 · Write`, a 1-click `pen.dev` chip, and the `Manual \| Now` segmented switch; clicking the execution pill or `pen.dev` chip reveals inline overrides on demand | Cuts vertical visual noise in half and reduces toggling `pen.dev` (`pen_cli` / `pencil_mcp` + `.pen` path) from 3 clicks to 1 click |
+| Prompt `Textarea` used bare `Enter` to submit the form, and `Cmd/Ctrl+Enter` did not work from Title or other inputs | `Cmd/Ctrl+Enter` (`⌘↵`) submits from anywhere in the dialog (with a visible `⌘↵` keycap badge on the `Create` button), `Enter` in Title advances focus to Prompt, and `Enter` in Prompt inserts a newline naturally | Prevents accidental task submission when writing multi-line instructions and lets keyboard users submit instantly from any field |
+| `CollapsibleSection` swapped between `<ChevronDown>` and `<ChevronRight>` with no press scaling | Uses a single `<ChevronRight>` with `transition-transform duration-150 ease-[var(--ease-out-expo)]` (`rotate-90` when open) and `active:scale-[0.99]` on the trigger | Gives immediate tactile press response and smooth directional feedback when toggling `Scope & safety` or `Advanced` |
+| Submit `Button` used ad-hoc `className="bg-[var(--c-accent)] text-black hover:bg-[var(--c-accent)]/90"` | Uses `variant="signal"` with `loading={busy}` on `Button` | Restores the design system's 1px top highlight (`inset 0 1px 0`), semantic `text-accent-ink` contrast in both light/dark themes, built-in loading spinner, and `active:scale-[0.97]` press feel |
+| `Segmented` buttons and `SelectTrigger` lacked press feedback and chevron state animation | Added `active:scale-[0.97]` + `ease-[var(--ease-out-expo)]` to `Segmented`, and `active:scale-[0.99]` + `[&[data-state=open]>svg]:rotate-180` to `SelectTrigger` | Makes high-frequency controls (Start mode, Isolation, Workspace, Branch, Executor) feel responsive on pointer down |
+
+---
+
 ## 3. Verification Results (Habit Tracking Mac)
 
 1. **Branch Listing & Switching on `Habit tracking mac` (`/Users/adityahimawan/Development/habbit-tracking-next`)**:

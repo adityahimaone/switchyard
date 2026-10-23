@@ -42,7 +42,8 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             "h-6 rounded-control px-2.5 text-xs font-medium outline-none",
-            "transition-[color,background-color,box-shadow] duration-150",
+            "transition-[color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)]",
+            "active:scale-[0.97]",
             "focus-visible:ring-[3px] focus-visible:ring-focus/40",
             /* The active pill is the one forward-ish action in a 3-button row,
                so it gets a real elevation plus a faint accent bloom underneath.

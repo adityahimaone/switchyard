@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildCreatePayload,
   canSubmit,
+  isShortcutSubmitKey,
   isSubmitKey,
   issuesForField,
   splitPathInput,
@@ -23,6 +24,7 @@ const base: CreateTaskDraft = {
   gateCommand: "",
   startMode: "manual",
   isolation: "workspace",
+  baseBranch: "",
   verifyProfile: "auto",
   designSource: "",
   designTool: "",
@@ -145,6 +147,16 @@ describe("isSubmitKey", () => {
     expect(isSubmitKey({ key: "a", shiftKey: false })).toBe(false)
     expect(isSubmitKey({ key: "Tab", shiftKey: false })).toBe(false)
     expect(isSubmitKey({ key: "Escape", shiftKey: true })).toBe(false)
+  })
+})
+
+describe("isShortcutSubmitKey", () => {
+  it("submits on Cmd+Enter or Ctrl+Enter", () => {
+    expect(isShortcutSubmitKey({ key: "Enter", metaKey: true, ctrlKey: false })).toBe(true)
+    expect(isShortcutSubmitKey({ key: "Enter", metaKey: false, ctrlKey: true })).toBe(true)
+  })
+  it("leaves plain Enter for newline or field navigation", () => {
+    expect(isShortcutSubmitKey({ key: "Enter", metaKey: false, ctrlKey: false })).toBe(false)
   })
 })
 
