@@ -463,7 +463,7 @@ func CreateTask(slug string, t *Task) error {
 	if t.DesignTool != "" && !ValidDesignTools[t.DesignTool] {
 		return fmt.Errorf("invalid design_tool %q (want one of %s)", t.DesignTool, strings.Join(DesignToolLadder, "/"))
 	}
-	if t.DesignTool == "pen_cli" && strings.TrimSpace(t.DesignSource) == "" {
+	if (t.DesignTool == "pen_cli" || t.DesignTool == "pencil_mcp") && strings.TrimSpace(t.DesignSource) == "" {
 		t.DesignSource = DesignPathForTitle(t.Title)
 	}
 	for _, hint := range TaskDesignWarnings(t) {

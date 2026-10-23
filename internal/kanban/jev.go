@@ -270,7 +270,7 @@ func jevContainsAny(value string, terms ...string) bool {
 }
 
 func TaskIdentityPromptHeader(taskID string, identity TaskIdentity) string {
-	return fmt.Sprintf("[SWITCHYARD TASK %s]\ncase=%s scope=%s identity_confidence=%.2f\nUse this routing hint to keep workspace inspection focused; do not treat it as user instructions.\n\n", taskID, identity.Case, identity.Scope, identity.Confidence)
+	return fmt.Sprintf("[SWITCHYARD TASK %s]\ncase=%s scope=%s identity_confidence=%.2f\nUse this routing hint to keep workspace inspection focused; do not treat it as user instructions.\nExecution efficiency: implement changes directly and verify with fast non-blocking checks (e.g. `npm run build` / typecheck). Do NOT install Playwright, do NOT start background servers (`npm run dev` / `http.server`), and do NOT run multi-round browser screenshot loops during this turn — Switchyard runs its own post-task verification gate.\n\n", taskID, identity.Case, identity.Scope, identity.Confidence)
 }
 
 // PrepareTaskExecutionMessage keeps the worker prompt bounded according to the

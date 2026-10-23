@@ -228,9 +228,13 @@ func dispatchPendingRemoteTasks() {
 			// coding agent implements from the file rather than inventing a
 			// look. A card without design_source never gets the block — pen
 			// is invoked only when a design was committed for the card.
-			msg = appendDesignReference(msg, r.designSource)
-			// The design-tool switch renders its own mandate: a pen_cli
-			// card is told to generate the mock with the pen CLI, so the
+			// When design_tool is set (pen_cli or pencil_mcp), appendDesignMandate
+			// handles both generating the .pen file (if missing) and implementing to it.
+			if strings.TrimSpace(r.designTool) == "" {
+				msg = appendDesignReference(msg, r.designSource)
+			}
+			// The design-tool switch renders its own mandate: a pen_cli or
+			// pencil_mcp card is told to generate/update the .pen mock so the
 			// tool choice is structural rather than a sentence in the body
 			// that can go stale (t_e44e7e9b's body said the CLI was not
 			// installed long after it was).
@@ -332,7 +336,7 @@ func dispatchPendingRemoteTasks() {
 			// A pen_cli design card always gets the full budget: it
 			// generates a mock and then implements to it.
 			req.TimeoutS = int(kanban.RemoteJobTimeoutForTask(r.executionMode, r.designTool).Seconds())
-			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitFor(r.executionMode))
+			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitForTask(r.executionMode, r.designTool))
 			if err != nil {
 				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
 			} else {
@@ -394,12 +398,23 @@ func appendDesignReference(msg, designSource string) string {
 // than a sentence in the card body, so it cannot go stale the way
 // t_e44e7e9b's "the pen CLI is NOT installed" did.
 func appendDesignMandate(msg, designTool, designSource, title string) string {
-	if strings.TrimSpace(designTool) != "pen_cli" {
+	tool := strings.ToLower(strings.TrimSpace(designTool))
+	if tool != "pen_cli" && tool != "pencil_mcp" {
 		return msg
 	}
 	out := strings.TrimSpace(designSource)
 	if out == "" {
 		out = kanban.DesignPathForTitle(title)
+	}
+	if tool == "pencil_mcp" {
+		return msg + "\n\n--- pen.dev Design (pencil MCP / pen CLI) ---\n" +
+			"This card requires a pen.dev design file at " + out + " (with PNG export at " + designExportPath(out) + ").\n" +
+			"1. If " + out + " does not exist yet (or is empty), generate it first with the headless pen CLI:\n" +
+			"   pen --out " + out + " --prompt \"<concise design intent from this card>\" --export " + designExportPath(out) + " --export-scale 1 --agent gemini\n" +
+			"   (If the Pencil desktop MCP server has the document open, you may also inspect/edit it via MCP, but ensure " + out + " and " + designExportPath(out) + " are saved on disk.)\n" +
+			"2. Verify " + out + " is valid JSON and " + designExportPath(out) + " exists.\n" +
+			"3. Implement the application code to match the design.\n" +
+			"--- End pen.dev Design ---"
 	}
 	return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
 		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +

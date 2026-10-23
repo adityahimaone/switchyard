@@ -51,11 +51,11 @@ func TestPrepareTaskExecutionMessageCompactsByScope(t *testing.T) {
 		message = message[:i] + "x" + message[i+1:]
 	}
 	focused := PrepareTaskExecutionMessage("t_focus", message, TaskIdentity{Case: "coding", Scope: "focused", Confidence: 0.9})
-	if len(focused) > 8300 || !strings.Contains(focused, "task context compacted") {
+	if len(focused) > 8600 || !strings.Contains(focused, "task context compacted") {
 		t.Fatalf("focused message was not compacted: %d", len(focused))
 	}
 	none := PrepareTaskExecutionMessage("t_none", message, TaskIdentity{Case: "ops", Scope: "none", Confidence: 0.9})
-	if len(none) > 4300 || !strings.Contains(none, "scope=none") {
+	if len(none) > 4600 || !strings.Contains(none, "scope=none") {
 		t.Fatalf("none message was not bounded: %d", len(none))
 	}
 }

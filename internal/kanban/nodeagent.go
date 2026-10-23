@@ -1107,7 +1107,8 @@ func RemoteJobTimeoutFor(executionMode string) time.Duration {
 // the node-agent enforces.
 func RemoteJobTimeoutForTask(executionMode, designTool string) time.Duration {
 	base := RemoteJobTimeoutFor(executionMode)
-	if strings.EqualFold(strings.TrimSpace(designTool), "pen_cli") {
+	tool := strings.ToLower(strings.TrimSpace(designTool))
+	if tool == "pen_cli" || tool == "pencil_mcp" {
 		if full := RemoteJobTimeout(); full > base {
 			return full
 		}
@@ -1121,6 +1122,12 @@ func RemoteDispatchWait() time.Duration { return RemoteJobTimeout() + 2*time.Min
 // planner/execution cycles without changing the timeout for direct jobs.
 func RemoteDispatchWaitFor(executionMode string) time.Duration {
 	return RemoteJobTimeoutFor(executionMode) + 2*time.Minute
+}
+
+// RemoteDispatchWaitForTask gives design cards and agentic jobs enough time
+// for their per-task timeout plus a 2-minute margin.
+func RemoteDispatchWaitForTask(executionMode, designTool string) time.Duration {
+	return RemoteJobTimeoutForTask(executionMode, designTool) + 2*time.Minute
 }
 
 func trimErrStr(s string) string {

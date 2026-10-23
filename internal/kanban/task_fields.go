@@ -85,6 +85,15 @@ func UpdateTaskFields(slug, taskID string, f TaskFields) error {
 		sets = append(sets, "design_tool=?")
 		args = append(args, tool)
 		changed = append(changed, "design_tool")
+		if (tool == "pen_cli" || tool == "pencil_mcp") && f.DesignSource == nil {
+			var curSource, title string
+			_ = db.QueryRow(`SELECT COALESCE(design_source,''), COALESCE(title,'') FROM tasks WHERE id=?`, taskID).Scan(&curSource, &title)
+			if strings.TrimSpace(curSource) == "" && strings.TrimSpace(title) != "" {
+				sets = append(sets, "design_source=?")
+				args = append(args, DesignPathForTitle(title))
+				changed = append(changed, "design_source")
+			}
+		}
 	}
 	if len(sets) == 0 {
 		return &RunControlError{Code: 400, Err: fmt.Errorf("no editable field in request")}

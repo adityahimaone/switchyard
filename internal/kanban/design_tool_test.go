@@ -192,7 +192,7 @@ func TestRemoteJobTimeoutForTask(t *testing.T) {
 	if got := RemoteJobTimeoutForTask("direct", ""); got != full {
 		t.Errorf("direct plain = %v, want %v", got, full)
 	}
-	if got := RemoteJobTimeoutForTask("agentic", "pencil_mcp"); got != 300*time.Second {
-		t.Errorf("agentic+pencil_mcp = %v, want the agentic 300s (only the CLI generates)", got)
+	if got := RemoteJobTimeoutForTask("agentic", "pencil_mcp"); got != full {
+		t.Errorf("agentic+pencil_mcp = %v, want the full design budget %v", got, full)
 	}
 }
