@@ -90,19 +90,27 @@ func registerModelsRoutes(mux *http.ServeMux) {
 func fetchDSHModels() []ModelOption {
 	candidates := []string{}
 	if dshHome := os.Getenv("DSH_HOME"); dshHome != "" {
-		candidates = append(candidates, filepath.Join(dshHome, "profiles", "web", "cordis.patch.yml"))
+		candidates = append(candidates,
+			filepath.Join(dshHome, "profiles", "web", "cordis.patch.yml"),
+			filepath.Join(dshHome, "profiles", "headless", "cordis.patch.yml"),
+		)
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, ".dsh", "profiles", "web", "cordis.patch.yml"))
+		candidates = append(candidates,
+			filepath.Join(home, ".dsh", "profiles", "web", "cordis.patch.yml"),
+			filepath.Join(home, ".dsh", "profiles", "headless", "cordis.patch.yml"),
+		)
 	}
 	candidates = append(candidates,
 		"/home/adityahimaone/.dsh/profiles/web/cordis.patch.yml",
+		"/home/adityahimaone/.dsh/profiles/headless/cordis.patch.yml",
 		"/Users/adityahimawan/.dsh/profiles/web/cordis.patch.yml",
+		"/Users/adityahimawan/.dsh/profiles/headless/cordis.patch.yml",
 	)
 
 	for _, path := range candidates {
 		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-			if parsed := parseCordisPatchModels(data); len(parsed) > 0 {
+			if parsed := parseCordisPatchModels(data); len(parsed) > 13 {
 				return parsed
 			}
 		}
@@ -132,31 +140,32 @@ func parseCordisPatchModels(data []byte) []ModelOption {
 	}
 
 	seen := make(map[string]bool)
-	var result []ModelOption
-
 	for _, p := range official {
-		result = append(result, p)
 		seen[p.Value] = true
 	}
-
 	for _, p := range pinnedRouter {
-		result = append(result, p)
 		seen[p.Value] = true
 		seen[strings.TrimPrefix(p.Value, "adit-9router/")] = true
 	}
 
+	var dynamicModels []ModelOption
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	insideModels := false
 	idRe := regexp.MustCompile(`^\s*-\s*id:\s*([^\s#]+)`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
 		if strings.Contains(line, "models:") {
 			insideModels = true
 			continue
 		}
+		// If another top-level section starts, stop models
+		if insideModels && (strings.HasPrefix(line, "- id:") || (len(line) > 0 && line[0] != ' ' && line[0] != '\t' && line[0] != '#')) {
+			insideModels = false
+			continue
+		}
 		if insideModels {
-			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "- id:") {
 				m := idRe.FindStringSubmatch(line)
 				if len(m) > 1 {
@@ -176,23 +185,25 @@ func parseCordisPatchModels(data []byte) []ModelOption {
 						label = strings.Join(parts[1:], " · ")
 					}
 
-					result = append(result, ModelOption{
+					dynamicModels = append(dynamicModels, ModelOption{
 						Value:    val,
 						Label:    label,
 						Sublabel: rawId,
 						Badge:    badge,
 					})
 				}
-			} else if strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "      ") && !strings.HasPrefix(line, "     -") && !strings.HasPrefix(line, "    -") {
-				// exited models section
-				insideModels = false
 			}
 		}
 	}
 
-	if len(result) > len(official) {
+	if len(dynamicModels) > 0 {
+		var result []ModelOption
+		result = append(result, official...)
+		result = append(result, pinnedRouter...)
+		result = append(result, dynamicModels...)
 		return result
 	}
+
 	return getFallbackDSHModels()
 }
 

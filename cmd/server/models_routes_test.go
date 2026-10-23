@@ -27,8 +27,14 @@ func TestModelsRoutes(t *testing.T) {
 	if dshResp.Executor != "dsh" {
 		t.Fatalf("expected executor dsh, got %s", dshResp.Executor)
 	}
-	if len(dshResp.Models) == 0 {
-		t.Fatal("expected at least 1 DSH model")
+	if len(dshResp.Models) < 100 {
+		t.Fatalf("expected at least 100 DSH models (got %d), adit-9router catalog must not be limited", len(dshResp.Models))
+	}
+
+	// Verify empty patch file falls back to full catalog
+	emptyParsed := parseCordisPatchModels([]byte("[]"))
+	if len(emptyParsed) < 100 {
+		t.Fatalf("expected fallback catalog with > 100 models, got %d", len(emptyParsed))
 	}
 
 	// Verify official and pinned models are present
