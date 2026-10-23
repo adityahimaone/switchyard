@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Segmented } from "@/components/ui/segmented"
 import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
@@ -360,13 +361,22 @@ export default function TaskDialog({
   }
 
   const selCls =
-    "w-full border-[var(--c-line)] bg-[var(--c-canvas)] text-sm data-[size=default]:h-9"
+    "w-full rounded-control border border-line/60 bg-surface/50 hover:bg-surface/80 dark:bg-well/30 dark:hover:bg-well/60 text-sm data-[size=default]:h-9"
   /* The branch control shares its row with the Pull button, so the trigger takes
      the leftover width instead of `w-full`, which would push the button out. */
   const branchSelCls =
-    "min-w-0 flex-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm data-[size=default]:h-9"
+    "min-w-0 flex-1 rounded-control border border-line/60 bg-surface/50 hover:bg-surface/80 dark:bg-well/30 dark:hover:bg-well/60 text-sm data-[size=default]:h-9"
   const pathIssues = issuesForField(issues, "paths")
   const depOptions = candidates.filter((c) => !deps.includes(c.id))
+  const depSearchOptions: SearchSelectOption[] = useMemo(
+    () =>
+      depOptions.map((c) => ({
+        value: c.id,
+        label: c.title,
+        badge: c.status,
+      })),
+    [depOptions]
+  )
   const submitReady = canSubmit(issues, { title, body, paths, gateCommand })
 
   return (
@@ -776,27 +786,16 @@ export default function TaskDialog({
                   ))}
                 </div>
               )}
-              <Select value="" onValueChange={(v) => v && setDeps((prev) => [...prev, v])}>
-                <SelectTrigger id="task-deps" className={`${selCls} min-w-0 [&>span]:truncate`}>
-                  <SelectValue placeholder="Pick a card…" />
-                </SelectTrigger>
-                <SelectContent className="max-w-[22rem]">
-                  {depOptions.length === 0 ? (
-                    <SelectItem value="__none" disabled className="text-sm">
-                      No other cards
-                    </SelectItem>
-                  ) : (
-                    depOptions.map((c) => (
-                      <SelectItem key={c.id} value={c.id} className="text-sm">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                          <span className="shrink-0 text-ink-3">{c.status}</span>
-                        </span>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                value=""
+                onValueChange={(v) => v && setDeps((prev) => [...prev, v])}
+                options={depSearchOptions}
+                placeholder="Pick a card…"
+                searchPlaceholder="Search cards by title…"
+                emptyMessage={candidates.length === 0 ? "No other cards on this board" : "No matching cards"}
+                className="mt-1"
+                triggerClassName={selCls}
+              />
               <p className="mt-1 text-[11px] text-ink-3">
                 This card waits until each dependency reaches done — not merely
                 review, so it never builds on uncommitted work.

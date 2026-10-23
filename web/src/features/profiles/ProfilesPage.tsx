@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, setProfileAvatarUrl, toastGlobal, uploadProfileAvatar, type Profile, type ProfileDetail } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -63,7 +64,6 @@ function ProfileForm({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [nameErr, setNameErr] = useState<string | null>(null)
-  const [modelQ, setModelQ] = useState("")
   const [avatarUrl, setAvatarUrl] = useState("")
   const [avatarPreview, setAvatarPreview] = useState(initial?.avatar_url ?? "")
   const [avatarBusy, setAvatarBusy] = useState(false)
@@ -91,7 +91,23 @@ function ProfileForm({
     providerRoster.find((p) => p.base_url === "https://9router.adityahimaone.space/v1") ??
     providerRoster[0]
   const modelOptions: string[] = Array.from(new Set([...(activeProvider?.models ?? []), ...(model ? [model] : [])])).sort()
-  const filteredModels = modelQ ? modelOptions.filter((m) => m.toLowerCase().includes(modelQ.toLowerCase())).slice(0, 80) : modelOptions.slice(0, 80)
+  const modelSearchOptions: SearchSelectOption[] = useMemo(() => {
+    const list: SearchSelectOption[] = [
+      {
+        value: "",
+        label: "model default",
+        sublabel: activeProvider?.default_model ? `Default: ${activeProvider.default_model}` : "Provider default",
+      },
+    ]
+    for (const m of modelOptions) {
+      list.push({
+        value: m,
+        label: m,
+        sublabel: activeProvider?.name,
+      })
+    }
+    return list
+  }, [modelOptions, activeProvider])
   const canSubmit = !busy && (editing || NAME_RE.test(name.trim()))
 
   function addSkill(skill: string) {
@@ -283,7 +299,7 @@ function ProfileForm({
               <div>
                 <Label className="text-xs text-ink-2">Provider</Label>
                 <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger className="mt-1.5 w-full border-line bg-well">
+                  <SelectTrigger className="mt-1.5 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="max-h-[min(26rem,var(--radix-select-content-available-height))]">
@@ -293,28 +309,16 @@ function ProfileForm({
               </div>
               <div>
                 <Label className="text-xs text-ink-2">Model</Label>
-                <Select value={model || "__default"} onValueChange={(value) => setModel(value === "__default" ? "" : value)}>
-                  <SelectTrigger size="sm" className="mt-1.5 w-full border-line bg-well">
-                    <SelectValue>{model || "model default"}</SelectValue>
-                  </SelectTrigger>
-                  {/* `max-h-*` deriving from the space Radix reports, never a fixed `h-*`.
-                      A hard height overrides the base cap entirely, and Radix
-                      anchors a `position="popper"` panel to its trigger without
-                      pushing it above — so on a short window the panel rendered
-                      143px off the top with the search row unreachable, which is
-                      the worst instance of this bug in the app. */}
-                  <SelectContent position="popper" align="start" className="max-h-[min(26rem,var(--radix-select-content-available-height))] w-72 min-w-72 max-w-72">
-                    {/* `glass-occlude`, not `glass-flat-strong`: the model list
-                        scrolls under this row, and a tint with no blur leaves it
-                        sharp and legible inside the strip. */}
-                    <div className="glass-occlude sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
-                      <Input value={modelQ} onChange={(event) => setModelQ(event.target.value)} placeholder="Search model…" aria-label="Search models" className="border-line bg-well text-xs" />
-                    </div>
-                    <SelectItem value="__default">model default</SelectItem>
-                    {filteredModels.length === 0 && <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>}
-                    {filteredModels.map((value) => <SelectItem key={value} value={value} className="max-w-72 truncate text-sm" title={value}>{value}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchSelect
+                  value={model}
+                  onValueChange={setModel}
+                  options={modelSearchOptions}
+                  placeholder="model default"
+                  searchPlaceholder="Search model…"
+                  emptyMessage="No model found"
+                  size="default"
+                  className="mt-1.5"
+                />
                 {activeProvider && (
                   <p className="mt-1.5 truncate text-[10px] text-ink-3" title={activeProvider.base_url}>
                     {modelOptions.length} model{modelOptions.length === 1 ? "" : "s"} from {activeProvider.name}

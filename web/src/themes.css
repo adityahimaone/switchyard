@@ -112,7 +112,7 @@
      reads as grey, and the sidebar stands directly on the ambient glow. */
   --glass-tint: rgb(255 255 255 / 0.66);
   --glass-tint-strong: rgb(255 255 255 / 0.82);
-  --glass-tint-dialog: rgb(255 255 255 / 0.96);
+  --glass-tint-dialog: rgb(255 255 255 / 0.84);
   --glass-edge: rgb(255 255 255 / 0.7);
 }
 
@@ -179,7 +179,7 @@
 
   --glass-tint: rgb(38 48 71 / 0.52);
   --glass-tint-strong: rgb(30 41 59 / 0.72);
-  --glass-tint-dialog: rgb(15 23 42 / 0.95);
+  --glass-tint-dialog: rgb(15 23 42 / 0.82);
   --glass-edge: rgb(255 255 255 / 0.08);
 }
 
@@ -258,7 +258,7 @@
      hole cut in the page. */
   --glass-tint: rgb(250 246 236 / 0.7);
   --glass-tint-strong: rgb(250 246 236 / 0.86);
-  --glass-tint-dialog: rgb(244 239 228 / 0.96);
+  --glass-tint-dialog: rgb(244 239 228 / 0.84);
   --glass-edge: rgb(255 255 255 / 0.55);
 }
 
@@ -322,6 +322,6 @@
 
   --glass-tint: rgb(38 38 38 / 0.62);
   --glass-tint-strong: rgb(28 28 28 / 0.78);
-  --glass-tint-dialog: rgb(28 28 28 / 0.95);
+  --glass-tint-dialog: rgb(28 28 28 / 0.82);
   --glass-edge: rgb(255 255 255 / 0.07);
 }

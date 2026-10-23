@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { GitBranch, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { listWorkspaceBranches, toastGlobal, workspaceGitCheckout, workspaceGitPull } from "@/api"
 import { cn } from "@/lib/utils"
 
@@ -155,10 +155,31 @@ export function BranchPicker({
         ? "No branches"
         : "Detached HEAD"
 
+  const branchOptions = useMemo<SearchSelectOption[]>(() => {
+    const list: SearchSelectOption[] = []
+    if (mode === "base" && !selectDisabled) {
+      list.push({
+        value: "__head",
+        label: "Current HEAD",
+        sublabel: current ? `Checked out: ${current}` : undefined,
+        icon: <GitBranch className="size-3.5 text-ink-3" aria-hidden />,
+      })
+    }
+    for (const b of branches) {
+      list.push({
+        value: b,
+        label: b,
+        badge: b === current ? "current" : undefined,
+        icon: <GitBranch className="size-3.5 text-ink-3" aria-hidden />,
+      })
+    }
+    return list
+  }, [branches, current, mode, selectDisabled])
+
   return (
     <div className={cn("flex min-w-0 flex-col gap-1", className)}>
-      <div className="flex min-w-0 items-center gap-1">
-        <Select
+      <div className="flex min-w-0 items-center gap-1.5">
+        <SearchSelect
           value={selected}
           disabled={disabled || selectDisabled || busy || !branchesQuery.data}
           onValueChange={(next) => {
@@ -166,49 +187,23 @@ export function BranchPicker({
             if (mode === "switch") checkout.mutate(next)
             else onChange?.(next === "__head" ? "" : next)
           }}
-        >
-          <SelectTrigger
-            size={triggerSize}
-            className={cn("min-w-0 [&>span]:truncate", triggerClassName)}
-            aria-label="Branch"
-            disabled={disabled || selectDisabled || busy}
-            title={loadError || (current ? `On branch ${current}` : undefined)}
-          >
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent className="max-w-[22rem]">
-            {mode === "base" && !selectDisabled && (
-              <SelectItem value="__head" className="text-sm">
-                Current HEAD
-              </SelectItem>
-            )}
-            {branches.length === 0 ? (
-              <p className="px-2 py-1.5 text-xs text-ink-3">{loadError || "No branches"}</p>
-            ) : (
-              branches.map((b) => (
-                <SelectItem key={b} value={b} className="truncate" title={b}>
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <GitBranch className="size-3 shrink-0 text-ink-3" aria-hidden />
-                    <span className="min-w-0 flex-1 truncate">{b}</span>
-                    {b === current && <span className="shrink-0 text-2xs text-accent-text">current</span>}
-                  </span>
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+          options={branchOptions}
+          placeholder={placeholder}
+          searchPlaceholder="Search branches…"
+          emptyMessage={loadError || "No branches found"}
+          size={triggerSize}
+          triggerClassName={cn("min-w-0 [&>span]:truncate", triggerClassName)}
+          title={loadError || (current ? `On branch ${current}` : undefined)}
+        />
 
         <Button
           type="button"
-          variant="ghost"
-          size="sm"
+          variant="outline"
+          size={compact ? "icon-sm" : "sm"}
           className={cn(
-            "shrink-0 gap-1 text-2xs",
-            /* `size-7` in compact mode, not `size-8`: the composer's chip row is
-               28px tall (`PROMPT_CHIP`'s `h-7`), and a 32px round button in it
-               made the whole row 32px and left the pull sitting proud of the
-               branch chip it belongs to. */
-            compact ? "size-7 rounded-full p-0" : "h-7 px-2",
+            "shrink-0 gap-1.5 rounded-control text-xs font-medium transition-[transform,background-color] duration-150 active:scale-95",
+            "border-line/60 bg-surface/50 hover:bg-surface/80 dark:bg-well/30 dark:hover:bg-well/60 text-ink-2 hover:text-ink",
+            compact ? "size-8 rounded-control p-0" : "h-9 px-3",
           )}
           disabled={disabled || busy}
           onClick={() => {
@@ -219,9 +214,9 @@ export function BranchPicker({
           title="git pull --ff-only in this workspace"
         >
           {pull.isPending ? (
-            <Loader2 className="size-3 animate-spin" aria-hidden />
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
           ) : (
-            <RefreshCw className="size-3" aria-hidden />
+            <RefreshCw className="size-3.5" aria-hidden />
           )}
           {!compact && "Pull"}
         </Button>

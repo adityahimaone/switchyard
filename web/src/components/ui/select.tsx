@@ -35,21 +35,16 @@ function SelectTrigger({
       data-size={size}
       data-cuelume-toggle=""
       className={cn(
-        /* `glass-control` was here and had been deleted from `index.css` during
-           the lantern-era cleanup, so every select trigger was rendering with no
-           background and no border at all — only `shadow-xs`. It now uses the
-           same material as `Input`, which is what the rest of the app's fields
-           resolve to, so a select and an input sitting side by side in the same
-           toolbar match. `glass-flat` rather than `glass`: selects appear inside
-           toolbars and cards, and a trigger is a control, not a floating panel. */
-        "glass-flat flex w-fit items-center justify-between gap-2 rounded-md px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] outline-none active:scale-[0.99] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&[data-state=open]>svg]:rotate-180",
+        /* Apple Design §12 & §1: Subtle translucent control surface with instant
+           touch feedback, hairline border, and optical tracking. */
+        "flex w-fit items-center justify-between gap-2 rounded-control border border-line/60 bg-surface/50 px-3 py-2 text-sm text-ink tracking-[-0.01em] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-[border-color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] hover:border-line-strong hover:bg-surface/80 dark:bg-well/30 dark:hover:bg-well/60 focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[placeholder]:text-ink-4 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-ink-3 [&[data-state=open]>svg]:rotate-180",
         className
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="size-4 opacity-50 transition-transform duration-150 ease-[var(--ease-out-expo)]" />
+        <ChevronDownIcon className="size-4 opacity-60 transition-transform duration-200 ease-[var(--ease-out-expo)]" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -67,22 +62,10 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          // Viewport-relative max-height rather than a flat 300px. A select is
-          // usually opened near the bottom of a window, where a 300px panel plus
-          // the trigger runs past the viewport edge — and since the app root is
-          // `height: 100%` with `overflow: visible` there is nothing to scroll
-          // to recover it. Radix shrinks the panel to fit, but only if it is
-          // allowed to shrink below this floor.
-          //
-          // Origin-aware: scales from the trigger. The exit mirrors the entry per
-          // side, so the menu leaves toward the control that opened it instead
-          // of fading in place.
-          //
-          // 200ms on --ease-out-expo. A select opens dozens of times a day, so
-          // this is deliberately near-imperceptible — enough to say where it came
-          // from, not enough to be waited on.
-          "glass-strong relative z-50 max-h-[min(300px,calc(100dvh-4rem))] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-control text-popover-foreground",
-          "transition-[transform,opacity] duration-200 ease-[var(--ease-out-expo)]",
+          // Apple Translucent Glass Popover Material.
+          // z-[110] guarantees the dropdown floats comfortably above modal dialogs (z-overlay = 100).
+          "border border-line/60 bg-raised/95 text-ink shadow-float backdrop-blur-2xl saturate-150 dark:bg-raised/90 relative z-[110] max-h-[min(300px,calc(100dvh-4rem))] max-w-[calc(100vw-1rem)] min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-panel outline-none",
+          "transition-[transform,opacity] duration-180 ease-[var(--ease-out-expo)]",
           "data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
           "data-[side=bottom]:data-[state=closed]:translate-y-[-4px] data-[side=bottom]:data-[state=open]:translate-y-0",
           "data-[side=top]:data-[state=closed]:translate-y-[4px] data-[side=top]:data-[state=open]:translate-y-0",
@@ -100,20 +83,7 @@ function SelectContent({
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(
-            /* The inner viewport had its own flat `max-h-[300px]` floor,
-               independent of the Content cap above. That floor is what actually
-               bound the list, and it is why `position="popper"` panels still
-               overflowed: Radix positions that variant against the trigger, so a
-               320px panel on a 300px-tall window runs off the top edge and the
-               Content's own `100dvh` cap could not rescue it — Radix will not
-               push a popper past the trigger.
-
-               `--radix-select-content-available-height` is the space Radix has
-               actually computed for this panel given the side it picked. Deriving
-               the floor from that lets the panel shrink to whatever fits on
-               whichever side it opened, with the `min()` tail preserving the
-               original 300px whenever there is room. */
-            "min-h-0 max-h-[min(300px,var(--radix-select-content-available-height))] overflow-y-auto p-1",
+            "min-h-0 max-h-[min(300px,var(--radix-select-content-available-height))] overflow-y-auto p-1.5 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line-strong/30",
             position === "popper" &&
               "w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
           )}
@@ -133,7 +103,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)}
+      className={cn("px-2.5 py-1.5 text-xs font-medium text-ink-3", className)}
       {...props}
     />
   )
@@ -148,17 +118,19 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-2 rounded-control py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "relative flex w-full cursor-pointer items-center gap-2 rounded-control py-1.5 pr-8 pl-2.5 text-xs text-ink outline-none select-none transition-colors duration-100",
+        "focus:bg-accent/10 focus:text-ink hover:bg-accent/10 data-[state=checked]:font-medium data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 [&_svg:not([class*='text-'])]:text-accent *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
       {...props}
     >
       <span
         data-slot="select-item-indicator"
-        className="absolute right-2 flex size-3.5 items-center justify-center"
+        className="absolute right-2 flex size-3.5 items-center justify-center text-accent"
       >
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
+          <CheckIcon className="size-3.5" />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -227,3 +199,5 @@ export {
   SelectTrigger,
   SelectValue,
 }
+
+export { SearchSelect, type SearchSelectProps, type SearchSelectOption } from "./search-select"

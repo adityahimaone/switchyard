@@ -314,12 +314,12 @@
   --scrim-blur: 8px;
   --dialog-bloom: color-mix(in srgb, var(--c-accent) 18%, transparent);
 
-  --glass-tint-dialog: rgb(22 26 38 / 0.95);
-  --glass-blur-dialog: 32px;
+  --glass-tint-dialog: rgb(20 24 35 / 0.82);
+  --glass-blur-dialog: 28px;
   --glass-saturate-dialog: 1.6;
   --glass-edge-dialog: rgb(255 255 255 / 0.1);
   --glass-lift-dialog: 0 1px 2px rgb(0 0 0 / 0.4), 0 32px 72px -12px rgb(0 0 0 / 0.65),
-    inset 0 1px 0 0 rgb(255 255 255 / 0.12);
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14);
 
   --c-heat-0: #1e293b;
   --c-heat-1: #1e3a5f;
@@ -538,13 +538,17 @@
   --scrim-blur: 8px;
   --dialog-bloom: color-mix(in srgb, var(--c-accent) 14%, transparent);
 
-  --glass-tint-dialog: rgb(255 255 255 / 0.96);
-  --glass-blur-dialog: 32px;
+  --glass-tint-dialog: rgb(255 255 255 / 0.84);
+  --glass-blur-dialog: 28px;
   --glass-saturate-dialog: 1.8;
   --glass-edge-dialog: var(--c-line);
   --glass-lift-dialog: 0 1px 2px rgb(16 24 40 / 0.08), 0 24px 56px -12px rgb(16 24 40 / 0.22),
-    inset 0 1px 0 0 rgb(255 255 255 / 0.9);
+    inset 0 1px 0 0 rgb(255 255 255 / 0.85);
   /* The dark-mode values live on `.dark` below. */
+
+  /* ---- z-index layers ---- */
+  --z-index-overlay: 100;
+  --z-index-toast: 120;
 
   /* ---- motion ---- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -605,6 +609,16 @@
   -webkit-backdrop-filter: blur(var(--glass-blur-dialog)) saturate(var(--glass-saturate-dialog));
   box-shadow: var(--glass-lift-dialog);
   border: 1px solid var(--glass-edge-dialog);
+}
+
+/* Stacking context utilities: overlay covers fixed app chrome (sidebar z-10, header z-50),
+ * while toast floats safely above active modal dialogs. */
+@utility z-overlay {
+  z-index: 100;
+}
+
+@utility z-toast {
+  z-index: 120;
 }
 
 /* Modal overlay scrim.
