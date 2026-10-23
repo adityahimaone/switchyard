@@ -16,6 +16,9 @@ export interface SearchSelectProps {
   value?: string
   defaultValue?: string
   onValueChange?: (value: string) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  modal?: boolean
   options: SearchSelectOption[]
   placeholder?: string
   searchPlaceholder?: string
@@ -34,6 +37,9 @@ export function SearchSelect({
   value: controlledValue,
   defaultValue,
   onValueChange,
+  open: controlledOpen,
+  onOpenChange,
+  modal = false,
   options,
   placeholder = "Select an option…",
   searchPlaceholder = "Search…",
@@ -47,10 +53,21 @@ export function SearchSelect({
   ariaLabel,
   title,
 }: SearchSelectProps) {
-  const [open, setOpen] = React.useState(false)
+  const [internalOpen, setInternalOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState(defaultValue ?? "")
   const [query, setQuery] = React.useState("")
   const [activeIndex, setActiveIndex] = React.useState(0)
+
+  const isControlledOpen = controlledOpen !== undefined
+  const open = isControlledOpen ? controlledOpen : internalOpen
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlledOpen) setInternalOpen(next)
+      onOpenChange?.(next)
+    },
+    [isControlledOpen, onOpenChange]
+  )
 
   const isControlled = controlledValue !== undefined
   const value = isControlled ? controlledValue : internalValue
@@ -118,7 +135,7 @@ export function SearchSelect({
 
   return (
     <div className={cn("relative w-full", className)}>
-      <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Root open={open} onOpenChange={setOpen} modal={modal}>
         <PopoverPrimitive.Trigger asChild>
           <button
             type="button"

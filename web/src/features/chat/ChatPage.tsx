@@ -2,13 +2,14 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Activity, Archive, Check, ChevronRight, FileImage, FolderKanban, MoreHorizontal, PanelLeft, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input, InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AgentOrb } from "@/components/agents/thinking-orb"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { MessageScroller } from "@/components/agents/message-scroller"
 import { StreamingText } from "@/components/agents/streaming-text"
 import { HarnessChatResult } from "@/features/board/OutputPanels"
@@ -235,7 +236,7 @@ const EXAMPLE_PROMPTS = ["Summarize this workspace", "Inspect current task statu
  * executor name 96px — and one shared cap would either clip the model or waste
  * 48px on the executor. */
 const PROMPT_CHIP =
-  "!h-7 !rounded-control gap-1 px-2 text-xs [&_svg]:!size-3.5 !bg-transparent !shadow-xs hover:!bg-accent-tint focus-visible:!bg-accent-tint data-[state=open]:!bg-accent-tint text-ink-2 hover:text-ink"
+  "!h-7 !rounded-control gap-1.5 px-2.5 text-xs font-normal tracking-[-0.01em] border border-line/60 bg-surface/50 hover:bg-surface/90 hover:border-line-strong/80 dark:bg-well/40 dark:hover:bg-well/70 text-ink-2 hover:text-ink data-[state=open]:border-accent/50 data-[state=open]:bg-accent-tint data-[state=open]:text-accent shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-[border-color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97] [&_svg]:!size-3.5"
 
 /* The disclosure chevron's box, shared by the rail's two disclosure levels: a
  * section header ("Projects", "Recents") and a project row inside one.
@@ -327,7 +328,7 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
   const [model, setModel] = useState("")
   const [agent, setAgent] = useState<ChatAgent>(projectExecutor ?? "hermes")
   const [executorOptions, setExecutorOptions] = useState<string>(projectOptions ?? "{}")
-  const [modelSearch, setModelSearch] = useState("")
+  const [openPromptSelect, setOpenPromptSelect] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [selectedRun, setSelectedRun] = useState<ChatRun>()
   const [streamBuffer, setStreamBuffer] = useState<Record<string, string>>({})
@@ -451,11 +452,22 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
     providers.data?.forEach((p) => p.models.forEach((m) => set.add(m)))
     return Array.from(set).sort()
   }, [profiles, providers.data])
-  const filteredModelOptions = useMemo(() => {
-    const needle = modelSearch.trim().toLowerCase()
-    if (!needle) return modelOptions
-    return modelOptions.filter((option) => option.toLowerCase().includes(needle))
-  }, [modelOptions, modelSearch])
+  const chatModelOptions = useMemo<SearchSelectOption[]>(() => {
+    const list: SearchSelectOption[] = [
+      {
+        value: "",
+        label: "Default model",
+        sublabel: "Hermes default",
+      },
+    ]
+    for (const v of modelOptions) {
+      list.push({
+        value: v,
+        label: v,
+      })
+    }
+    return list
+  }, [modelOptions])
 
   /* Touch devices never fire a real hover, so the rail's row actions — which
      rest at `opacity-0` until hover — would be permanently invisible on a
@@ -1314,7 +1326,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
            used to repeat agent/workspace/model is gone. */
         meta={
           <>
-            <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgent)}>
+            <Select
+              open={openPromptSelect === "agent"}
+              onOpenChange={(o) => setOpenPromptSelect(o ? "agent" : null)}
+              value={agent}
+              onValueChange={(v) => setAgent(v as ChatAgent)}
+            >
               <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-24")} aria-label="Executor">
                 <SelectValue placeholder="Executor" />
               </SelectTrigger>
@@ -1325,7 +1342,12 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={profile || "default"} onValueChange={setProfile}>
+            <Select
+              open={openPromptSelect === "profile"}
+              onOpenChange={(o) => setOpenPromptSelect(o ? "profile" : null)}
+              value={profile || "default"}
+              onValueChange={setProfile}
+            >
               <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-28")} aria-label="Agent profile">
                 <SelectValue placeholder="Profile" />
               </SelectTrigger>
@@ -1351,7 +1373,13 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               </SelectContent>
             </Select>
 
-            <Select value={workspace || "__local"} onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)} disabled={!!projectID}>
+            <Select
+              open={openPromptSelect === "workspace"}
+              onOpenChange={(o) => setOpenPromptSelect(o ? "workspace" : null)}
+              value={workspace || "__local"}
+              onValueChange={(v) => setWorkspace(v === "__local" ? "" : v)}
+              disabled={!!projectID}
+            >
               <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-32")} aria-label="Workspace" disabled={!!projectID}>
                 <SelectValue />
               </SelectTrigger>
@@ -1389,53 +1417,33 @@ export default function ChatPage({ profiles, workspaces, initialSessionID, onSes
               /* Switching branches under a live turn would move the tree the
                  agent is editing, so the control is held while one runs. */
               disabled={isRunning}
+              open={openPromptSelect === "branch"}
+              onOpenChange={(o) => setOpenPromptSelect(o ? "branch" : null)}
+              modal={false}
             />
 
             {agent === "hermes" ? (
-              <Select value={model || "__default"} onValueChange={(v) => setModel(v === "__default" ? "" : v)}>
-                <SelectTrigger size="sm" className={cn(PROMPT_CHIP, "max-w-36")} aria-label="Model">
-                  <SelectValue placeholder="Default model" />
-                </SelectTrigger>
-                {/* `max-h-*` rather than `h-80`. A fixed height is what pushed this panel
-                      past the viewport top on short windows: Radix anchors a
-                      `position="popper"` panel to the trigger and will not push it
-                      above, so the panel has to be willing to shrink. The sticky
-                      search row above still pins inside it. */}
-                <SelectContent position="popper" align="start" className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-60">
-                  {/* `glass-occlude`, matching the two other sticky search rows
-                      in a `SelectContent` (`AttachmentAnalysisSettings`,
-                      `ProfilesPage`). This was `glass-flat-strong` with no
-                      second `backdrop-filter`, on the argument that blurring
-                      once per stack keeps the row reading as part of the menu
-                      rather than as a slab pasted over it. That reasoning missed
-                      the only thing the row actually has to do: the model list
-                      scrolls *under* it, and with no filter the list stays
-                      sharp, so a quarter of a menu item sat visibly inside the
-                      strip. A sticky row over scrolling content cannot occlude
-                      with tint alone — it needs the blur, and it is one element,
-                      so the layer is affordable. */}
-                  <div className="glass-occlude sticky top-0 z-10 p-1" onKeyDown={(event) => event.stopPropagation()}>
-                    <Input
-                      value={modelSearch}
-                      onChange={(event) => setModelSearch(event.target.value)}
-                      placeholder="Search models"
-                      aria-label="Search models"
-                    />
-                  </div>
-                  <SelectItem value="__default">Default model</SelectItem>
-                  {filteredModelOptions.length === 0 && (
-                    <p className="px-2 py-1.5 text-xs text-ink-3">No model found</p>
-                  )}
-                  {filteredModelOptions.map((v) => (
-                    <SelectItem key={v} value={v} className="max-w-60 truncate" title={v}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                value={model || ""}
+                onValueChange={(v) => setModel(v)}
+                options={chatModelOptions}
+                placeholder="Default model"
+                searchPlaceholder="Search models…"
+                open={openPromptSelect === "model"}
+                onOpenChange={(o) => setOpenPromptSelect(o ? "model" : null)}
+                modal={false}
+                size="sm"
+                className="w-auto"
+                triggerClassName={cn(PROMPT_CHIP, "max-w-40")}
+                ariaLabel="Model"
+              />
             ) : executorDef(agent).option ? (
               /* dsh/commandcode fix their own model, so the roster select is
                  replaced by the executor's own knob: dsh's sandbox/approval
                  decision, or commandcode's permission mode. */
               <Select
+                open={openPromptSelect === "option"}
+                onOpenChange={(o) => setOpenPromptSelect(o ? "option" : null)}
                 value={optionValue(executorOptions, agent)}
                 onValueChange={(v) => setExecutorOptions((prev) => withOption(prev, agent, v))}
               >

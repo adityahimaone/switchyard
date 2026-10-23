@@ -45,6 +45,9 @@ export function BranchPicker({
   disabled,
   triggerClassName,
   triggerSize = "sm",
+  open,
+  onOpenChange,
+  modal = false,
   className,
 }: {
   /** The workspace whose checkout this control reads. Renders nothing without one. */
@@ -52,6 +55,9 @@ export function BranchPicker({
   /** mode="base": the chosen start-point. "" means "current HEAD". Ignored in switch mode. */
   value?: string
   onChange?: (branch: string) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  modal?: boolean
   mode?: BranchPickerMode
   /**
    * Where pull/checkout results go. "toast" is for the composer, whose chip row
@@ -182,6 +188,9 @@ export function BranchPicker({
       <div className="flex min-w-0 items-center gap-1.5">
         <SearchSelect
           value={selected}
+          open={open}
+          onOpenChange={onOpenChange}
+          modal={modal}
           disabled={disabled || selectDisabled || busy || !branchesQuery.data}
           onValueChange={(next) => {
             setNote(null)

@@ -16,10 +16,10 @@ import {
 } from "react";
 import { Button } from "@/components/motion/button";
 import {
-  MorphPopover,
-  MorphPopoverContent,
-  MorphPopoverTrigger,
-} from "@/components/motion/popover-morph";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -223,70 +223,69 @@ export function PromptInput({
 
       <div className="mt-1 flex min-h-8 items-center gap-1">
         {actions.length ? (
-          <MorphPopover open={actionsOpen} onOpenChange={setActionsOpen}>
-            <MorphPopoverTrigger>
+          <Popover open={actionsOpen} onOpenChange={setActionsOpen} modal={false}>
+            <PopoverTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 disabled={disabled || loading}
                 aria-label="Add to prompt"
-                /* `shrink-0` for the same reason as the send button: it sits at the head of
-                   the row and must not be the control that gives way when the
-                   selects run out of space. */
-                className="size-8 shrink-0 rounded-full"
+                className="size-8 shrink-0 rounded-full text-ink-3 transition-[transform,background-color] duration-150 hover:bg-surface/80 hover:text-ink active:scale-95 dark:hover:bg-well/60"
               >
-                <motion.span
+                <Plus
+                  className={cn(
+                    "size-4 transition-transform duration-200 ease-[var(--ease-out-expo)]",
+                    actionsOpen && "rotate-45 text-accent"
+                  )}
                   aria-hidden="true"
-                  animate={{ rotate: actionsOpen ? 45 : 0 }}
-                  transition={reduce ? { duration: 0 } : SPRING_SWAP}
-                >
-                  <Plus className="size-4" />
-                </motion.span>
+                />
               </Button>
-            </MorphPopoverTrigger>
+            </PopoverTrigger>
 
-            <MorphPopoverContent
+            <PopoverContent
               side="top"
               align="start"
               sideOffset={8}
-              /* 8px, not the component's 12px default: every other menu in this
-                 app (DropdownMenuContent) is `rounded-control`, and at 12px this
-                 popover read as a foreign design language pasted into the
-                 composer. */
-              radius={8}
-              className="w-56 p-1.5"
+              className="w-64 p-1.5 shadow-float"
             >
-              {actions.map((action) => (
-                <button
-                  key={action.value}
-                  type="button"
-                  disabled={action.disabled}
-                  onClick={() => {
-                    onAction?.(action.value);
-                    setActionsOpen(false);
-                  }}
-                  className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {action.icon ? (
-                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">
-                      {action.icon}
-                    </span>
-                  ) : null}
-                  <span className="min-w-0">
-                    <span className="block text-sm text-foreground">
-                      {action.label}
-                    </span>
-                    {action.description ? (
-                      <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
-                        {action.description}
+              <div className="flex flex-col gap-0.5">
+                {actions.map((action) => (
+                  <button
+                    key={action.value}
+                    type="button"
+                    disabled={action.disabled}
+                    onClick={() => {
+                      onAction?.(action.value);
+                      setActionsOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-start gap-2.5 rounded-control p-2 text-left outline-none",
+                      "transition-[background-color,transform] duration-150 ease-[var(--ease-out-expo)]",
+                      "hover:bg-accent/10 focus-visible:bg-accent/10 active:scale-[0.98]",
+                      "disabled:pointer-events-none disabled:opacity-40"
+                    )}
+                  >
+                    {action.icon ? (
+                      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-accent-tint text-accent [&_svg]:size-3.5">
+                        {action.icon}
                       </span>
                     ) : null}
-                  </span>
-                </button>
-              ))}
-            </MorphPopoverContent>
-          </MorphPopover>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-medium text-ink">
+                        {action.label}
+                      </span>
+                      {action.description ? (
+                        <span className="mt-0.5 block text-[11px] leading-tight text-ink-3">
+                          {action.description}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         ) : null}
         {leadingAction}
         {models.length ? (
@@ -294,9 +293,6 @@ export function PromptInput({
             value={currentModelValue}
             onValueChange={setModel}
             disabled={disabled || loading}
-            /* min-w-0 lets the trigger truncate instead of forcing the row
-               wider; combined with the send button's `shrink-0` this is what
-               keeps the primary action at a clickable size on narrow windows. */
             className="min-w-0 shrink"
           >
             <SelectTrigger className="glass-flat h-8 w-auto max-w-52 rounded-xl px-2 text-xs hover:bg-muted focus-visible:ring-2">
@@ -311,9 +307,6 @@ export function PromptInput({
                 </span>
               </span>
             </SelectTrigger>
-            {/* No shadow override: the shared panel lift is what separates a
-                floating menu from the page, and cancelling it left this one
-                reading as a flat block. */}
             <SelectContent className="w-52">
               {models.map((option) => (
                 <SelectItem
@@ -344,12 +337,14 @@ export function PromptInput({
           disabled={loading ? !onStop : !canSubmit}
           aria-label={loading ? "Stop generating" : "Send prompt"}
           onClick={loading ? onStop : undefined}
-          /* `shrink-0` is a guard now, not a fix. It was load-bearing when the
-             toolbar selects shared this row — measured at 900px and 768px they
-             squeezed this button to 16x32, narrower than its own icon. Those
-             selects have their own row above, so nothing here competes with it;
-             the icon keeps `shrink-0` against a future occupant of the slot. */
-          className="ml-auto size-8 shrink-0 rounded-full"
+          className={cn(
+            "ml-auto size-8 shrink-0 rounded-full shadow-sm transition-[transform,opacity,background-color] duration-150 active:scale-95",
+            loading
+              ? "bg-danger text-accent-ink hover:opacity-90"
+              : canSubmit
+                ? "bg-accent text-accent-ink hover:opacity-90"
+                : "bg-well text-ink-4 opacity-40 cursor-not-allowed scale-100"
+          )}
         >
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span
@@ -363,7 +358,7 @@ export function PromptInput({
               {loading ? (
                 <Square className="size-3 shrink-0 fill-current" />
               ) : (
-                <ArrowUp className="size-4 shrink-0" />
+                <ArrowUp className="size-4 shrink-0 stroke-[2.5]" />
               )}
             </motion.span>
           </AnimatePresence>
