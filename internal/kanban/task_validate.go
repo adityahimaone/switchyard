@@ -138,8 +138,8 @@ func ValidateNewTask(t *Task) []Issue {
 	// needs that workspace to be a git repository — which cannot be checked
 	// here, because git only exists on the worker. So this catches the
 	// obviously-wrong case and the dispatch step catches the rest.
-	if t.Isolation != "" && t.Isolation != "workspace" && t.Isolation != "worktree" {
-		add(CodeBadRequest, "isolation", "isolation %q is not one of workspace/worktree", t.Isolation)
+	if t.Isolation != "" && t.Isolation != "auto" && t.Isolation != "workspace" && t.Isolation != "worktree" {
+		add(CodeBadRequest, "isolation", "isolation %q is not one of auto/workspace/worktree", t.Isolation)
 	}
 	if t.Isolation == "worktree" && strings.TrimSpace(t.WorkspacePath) == "" {
 		add(CodeBadRequest, "isolation",
