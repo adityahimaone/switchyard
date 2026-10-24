@@ -179,6 +179,7 @@ type NodeDispatchRequest struct {
 	LastTurnSeq          *int64 `json:"last_turn_seq,omitempty"`
 	LastCommentID        *int64 `json:"last_comment_id,omitempty"`
 	RunID                string `json:"run_id,omitempty"`
+	ArtifactDir          string `json:"artifact_dir,omitempty"`
 	// SessionContinuation tells worker to prompt existing DSHSessionID instead of creating a cold session.
 	SessionContinuation bool `json:"session_continuation,omitempty"`
 	// TimeoutS overrides the node-agent's job timeout for this
