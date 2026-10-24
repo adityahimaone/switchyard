@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { api, parseTaskExecutionMeta, runControl, taskHealth, toastGlobal, type Attachment, type Profile, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
 import { ExternalLink, X } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
@@ -174,6 +175,14 @@ export default function TaskDetail({
                       <span className="flex items-center justify-end gap-1.5" title={task.workspace_path}>
                         <OsIcon ws={ws} />
                         <span className="truncate">{ws?.name ?? task.workspace_path.split(/[\\/]/).pop()}</span>
+                        {ws?.labels?.includes("work") && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 border-purple-500/30 bg-purple-500/10 px-1 py-0 text-[9px] font-medium leading-none text-purple-400"
+                          >
+                            work
+                          </Badge>
+                        )}
                         {wsIsSsh && <span className="text-ink-3">· ssh</span>}
                       </span>
                     ) : "scratch"}

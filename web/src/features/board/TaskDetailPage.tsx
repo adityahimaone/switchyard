@@ -306,6 +306,14 @@ export default function TaskDetailPage({
                     <span className="inline-flex items-center gap-1.5">
                       <OsIcon ws={ws} />
                       {ws ? ws.name : task.workspace_path ? task.workspace_path.split(/[\\/]/).pop() : "scratch"}
+                      {ws?.labels?.includes("work") && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-purple-500/30 bg-purple-500/10 px-1 py-0 text-[9px] font-medium leading-none text-purple-400"
+                        >
+                          work
+                        </Badge>
+                      )}
                     </span>
                   </p>
                   <p className="mt-1.5 truncate font-mono text-2xs text-ink-3">
