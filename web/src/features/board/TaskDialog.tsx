@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ExecutorSettings, Profile, Task, VerifyProfile, Workspace } from "../../api"
-import { api, getExecutorSettings, startTask, validateTask } from "../../api"
+import { api, getExecutorSettings, listSkills, startTask, validateTask } from "../../api"
 import { BranchPicker } from "@/components/git/branch-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Segmented } from "@/components/ui/segmented"
-import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X } from "lucide-react"
+import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
@@ -241,6 +241,135 @@ export default function TaskDialog({
   const fileRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const improveCache = useRef(new Map<string, string>())
+
+  // Skills query and autocomplete for prompt/body ($ trigger)
+  const skillsQuery = useQuery({ queryKey: ["task-skills"], queryFn: () => listSkills() })
+  const [skillDismissed, setSkillDismissed] = useState(false)
+  const [skillActiveIndex, setSkillActiveIndex] = useState(0)
+  const [cursorPos, setCursorPos] = useState(0)
+  const skillListRef = useRef<HTMLDivElement>(null)
+  const skillItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  const skillMatch = useMemo(() => {
+    if (skillDismissed) return null
+    const textBefore = body.slice(0, cursorPos)
+    const m = textBefore.match(/(?:^|\s)\$([a-zA-Z0-9_\-]*)$/)
+    if (!m) return null
+    return {
+      query: m[1],
+      tokenStart: cursorPos - m[1].length - 1,
+    }
+  }, [body, cursorPos, skillDismissed])
+
+  const skillMatches = useMemo(() => {
+    if (!skillMatch) return []
+    const q = skillMatch.query.toLowerCase()
+    return (skillsQuery.data ?? []).filter((s) => {
+      const nameMatch = s.name.toLowerCase().includes(q)
+      const descMatch = s.description?.toLowerCase().includes(q)
+      return nameMatch || descMatch
+    })
+  }, [skillMatch, skillsQuery.data])
+
+  const isSkillPickerOpen = Boolean(skillMatch && skillMatches.length > 0)
+
+  useEffect(() => {
+    setSkillActiveIndex(0)
+  }, [skillMatch?.query])
+
+  useEffect(() => {
+    if (!isSkillPickerOpen) return
+    const el = skillItemRefs.current[skillActiveIndex]
+    el?.scrollIntoView({ block: "nearest" })
+  }, [skillActiveIndex, isSkillPickerOpen])
+
+  useEffect(() => {
+    if (!isSkillPickerOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        skillListRef.current &&
+        !skillListRef.current.contains(e.target as Node) &&
+        bodyRef.current &&
+        !bodyRef.current.contains(e.target as Node)
+      ) {
+        setSkillDismissed(true)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isSkillPickerOpen])
+
+  function insertSkill(name: string) {
+    const textarea = bodyRef.current
+    const cursor = textarea?.selectionStart ?? cursorPos ?? body.length
+    const textBefore = body.slice(0, cursor)
+    const textAfter = body.slice(cursor)
+    const m = textBefore.match(/(?:^|\s)\$([a-zA-Z0-9_\-]*)$/)
+    if (!m) return
+
+    const replaceStart = cursor - m[1].length - 1
+    const newBefore = body.slice(0, replaceStart) + `$${name} `
+    const nextBody = newBefore + textAfter
+    setBody(nextBody)
+    setSkillDismissed(true)
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus()
+        const newPos = newBefore.length
+        textarea.setSelectionRange(newPos, newPos)
+        setCursorPos(newPos)
+      }
+    }, 0)
+  }
+
+  function handleTriggerSkill() {
+    setSkillDismissed(false)
+    setBody((prev) => {
+      const needsSpace = prev.length > 0 && !prev.endsWith(" ") && !prev.endsWith("\n")
+      const next = `${prev}${needsSpace ? " " : ""}$`
+      setTimeout(() => {
+        if (bodyRef.current) {
+          bodyRef.current.focus()
+          bodyRef.current.setSelectionRange(next.length, next.length)
+          setCursorPos(next.length)
+        }
+      }, 0)
+      return next
+    })
+  }
+
+  function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (isSkillPickerOpen && skillMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        e.stopPropagation()
+        setSkillActiveIndex((prev) => (prev + 1) % skillMatches.length)
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        e.stopPropagation()
+        setSkillActiveIndex((prev) => (prev - 1 + skillMatches.length) % skillMatches.length)
+        return
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault()
+        e.stopPropagation()
+        const selected = skillMatches[skillActiveIndex]
+        if (selected) {
+          insertSkill(selected.name)
+        }
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
+        setSkillDismissed(true)
+        return
+      }
+    }
+  }
 
   const paths = useMemo(() => splitPathInput(pathsRaw), [pathsRaw])
 
@@ -536,6 +665,17 @@ export default function TaskDialog({
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={handleTriggerSkill}
+                  className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:border-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
+                  title="Insert a skill reference ($)"
+                >
+                  <Puzzle className="size-3 text-[var(--c-accent)]" />
+                  Skill
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   disabled={aiBusy || !body.trim()}
                   onClick={() => improveBody("fast")}
                   className="h-6 gap-1 border-[var(--c-accent)]/40 px-2 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
@@ -562,15 +702,93 @@ export default function TaskDialog({
                 </Button>
               </div>
             </div>
-            <Textarea
-              ref={bodyRef}
-              id="task-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={4}
-              placeholder="What should the agent do? Enter adds a line, ⌘↵ creates the task."
-              className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-sm"
-            />
+            <div className="relative mt-1">
+              <Textarea
+                ref={bodyRef}
+                id="task-body"
+                value={body}
+                onChange={(e) => {
+                  setBody(e.target.value)
+                  setCursorPos(e.target.selectionStart ?? e.target.value.length)
+                  setSkillDismissed(false)
+                }}
+                onSelect={(e) => {
+                  const target = e.target as HTMLTextAreaElement
+                  setCursorPos(target.selectionStart)
+                }}
+                onClick={(e) => {
+                  const target = e.target as HTMLTextAreaElement
+                  setCursorPos(target.selectionStart)
+                  setSkillDismissed(false)
+                }}
+                onKeyUp={(e) => {
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    const target = e.target as HTMLTextAreaElement
+                    setCursorPos(target.selectionStart)
+                  }
+                }}
+                onKeyDown={handleBodyKeyDown}
+                rows={4}
+                placeholder="What should the agent do? Type $ to select a skill. Enter adds a line, ⌘↵ creates the task."
+                className="border-[var(--c-line)] bg-[var(--c-canvas)] text-sm"
+              />
+              {isSkillPickerOpen && (
+                <div
+                  ref={skillListRef}
+                  role="listbox"
+                  aria-label="Skill suggestions"
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto overscroll-contain rounded-control border border-line-strong/60 bg-surface/95 p-1 backdrop-blur-xl shadow-lg ring-1 ring-black/5 dark:bg-card/95 [scrollbar-width:thin]"
+                >
+                  <div className="px-2 py-1 text-[10px] font-medium tracking-wider text-ink-3 uppercase">
+                    Agent Skills ({skillMatches.length})
+                  </div>
+                  {skillMatches.slice(0, 15).map((skill, idx) => {
+                    const isActive = idx === skillActiveIndex
+                    return (
+                      <button
+                        key={skill.name}
+                        type="button"
+                        role="option"
+                        aria-selected={isActive}
+                        ref={(el) => {
+                          skillItemRefs.current[idx] = el
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          insertSkill(skill.name)
+                        }}
+                        onMouseEnter={() => setSkillActiveIndex(idx)}
+                        className={cn(
+                          "flex w-full items-start gap-2.5 rounded px-2.5 py-1.5 text-left transition-colors duration-100 outline-none select-none",
+                          isActive
+                            ? "bg-accent/15 text-accent-text dark:bg-accent/20"
+                            : "hover:bg-raised text-ink"
+                        )}
+                      >
+                        <Puzzle className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-medium text-ink">
+                              ${skill.name}
+                            </span>
+                            {skill.category && (
+                              <span className="rounded bg-well px-1 py-0.2 font-mono text-[9px] text-ink-3">
+                                {skill.category}
+                              </span>
+                            )}
+                          </div>
+                          {skill.description && (
+                            <p className="line-clamp-1 text-[11px] text-ink-3">
+                              {skill.description}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
             {issuesForField(issues, "body").map((i) => (
               <FieldIssue key={i.code + i.message} issue={i} />
             ))}
