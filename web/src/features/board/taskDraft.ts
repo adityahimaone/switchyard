@@ -24,7 +24,7 @@ export interface CreateTaskDraft {
    * on one repo can interleave edits. "worktree" gives the task its own git
    * worktree and branch.
    */
-  isolation: "workspace" | "worktree"
+  isolation: "auto" | "workspace" | "worktree"
   /** The branch to base the worktree on. Only used when isolation is "worktree". */
   baseBranch: string
   /**

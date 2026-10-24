@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +13,23 @@ import (
 
 // Runtime routes: node health, chat daemon health, notifications, the SSE stream, flow and manual dispatch.
 func registerRuntimeRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/nodes/progress", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			TaskID string `json:"task_id"`
+			Chunk  string `json:"chunk"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		if req.TaskID != "" && req.Chunk != "" {
+			kanban.BroadcastEvent("task_progress", map[string]any{
+				"task_id": req.TaskID,
+				"chunk":   req.Chunk,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /api/nodes", func(w http.ResponseWriter, r *http.Request) {
 		st, err := kanban.NodeAgentHealth()
 		if err != nil {

@@ -40,7 +40,7 @@ func TestValidateWorkspacePath(t *testing.T) {
 	localCases := []string{
 		"", // scratch
 		"/tmp",
-		"/home/adityahimaone/apps/kanban-board",
+		t.TempDir(),
 		"relative/path/is/checked/by-dispatcher", // relative → dispatcher's own guard
 	}
 	for _, p := range localCases {

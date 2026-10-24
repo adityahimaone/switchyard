@@ -173,6 +173,46 @@ func truncateWorktreeOutput(s string) string {
 	return s
 }
 
+// PushWorkspaceBaseBranch pushes the repository's current or specified base branch to origin.
+func PushWorkspaceBaseBranch(repoPath, baseBranch string) (string, error) {
+	branch := strings.TrimSpace(baseBranch)
+	if branch == "" {
+		branch = "$(git -C " + shellQuotePath(repoPath) + " rev-parse --abbrev-ref HEAD)"
+	} else {
+		branch = shellQuotePath(branch)
+	}
+	script := fmt.Sprintf("cd %s && git push origin %s", shellQuotePath(repoPath), branch)
+	out, code := workerShell(repoPath, "worktree: push", script)
+	if code != 0 {
+		return out, fmt.Errorf("git push failed (exit %d): %s", code, truncateWorktreeOutput(out))
+	}
+	return out, nil
+}
+
+// PrepareWorktreeConflictResolution merges the base branch into the task's worktree so conflict markers exist.
+// Returns the list of conflicting files and raw output.
+func PrepareWorktreeConflictResolution(repoPath, worktreePath, baseBranch string) ([]string, string, error) {
+	branch := strings.TrimSpace(baseBranch)
+	if branch == "" {
+		branch = "$(git -C " + shellQuotePath(repoPath) + " rev-parse --abbrev-ref HEAD)"
+	} else {
+		branch = shellQuotePath(branch)
+	}
+	script := fmt.Sprintf("cd %s && git merge --no-commit %s; git diff --name-only --diff-filter=U",
+		shellQuotePath(worktreePath), branch)
+	out, _ := workerShell(repoPath, "worktree: prepare conflict resolution", script)
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	var conflicts []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed != "" && !strings.Contains(trimmed, " ") && !strings.HasPrefix(trimmed, "Auto-merging") && !strings.HasPrefix(trimmed, "CONFLICT") {
+			conflicts = append(conflicts, trimmed)
+		}
+	}
+	return conflicts, out, nil
+}
+
+
 // SweepAllBoardWorktrees reclaims stale worktrees across every board.
 //
 // It reports rather than returns an error: one unreachable worker must not stop

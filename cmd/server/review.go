@@ -70,6 +70,7 @@ type reviewTask struct {
 	// the shared checkout, so the review covers exactly this task's changes.
 	Branch       string
 	WorktreePath string
+	BaseBranch   string
 }
 
 // Workdir is where this task's commands run: its worktree when it has one,
@@ -97,10 +98,10 @@ func loadReviewTask(slug, id string) (*reviewTask, error) {
 	t.Slug = slug
 	err = db.QueryRow(`SELECT id, title, status, workspace_path,
 		COALESCE(workspace_transport,''), COALESCE(workspace_ssh_target,'mac-tailscale')
-		, COALESCE(result,''), COALESCE(branch,''), COALESCE(worktree_path,'')
+		, COALESCE(result,''), COALESCE(branch,''), COALESCE(worktree_path,''), COALESCE(base_branch,'')
 		FROM tasks WHERE id=?`, id).
 		Scan(&t.ID, &t.Title, &t.Status, &t.WorkspacePath, &t.Transport, &t.SSHTarget, &t.Result,
-			&t.Branch, &t.WorktreePath)
+			&t.Branch, &t.WorktreePath, &t.BaseBranch)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +463,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	} else {
 		script = fmt.Sprintf("git add -A -- \"$scope\" && git commit -m %s", shellQuote(msg))
 	}
-	if req.Action == "commit_push" {
+	if req.Action == "commit_push" && t.WorktreePath == "" {
 		script += " && git push"
 	}
 	out, code := runGitFunc(t, reviewScopeSetup+script)
@@ -510,6 +511,13 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 			fail(w, err, http.StatusConflict)
 			return
 		}
+		if req.Action == "commit_push" {
+			pushOut, pushErr := kanban.PushWorkspaceBaseBranch(t.WorkspacePath, t.BaseBranch)
+			if pushErr != nil {
+				fail(w, fmt.Errorf("merged into base branch, but git push failed: %v\n%s", pushErr, truncate(pushOut, 500)), http.StatusInternalServerError)
+				return
+			}
+		}
 	}
 
 	if err := completeApprove(slug, id); err != nil {
@@ -517,6 +525,49 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "done", "output": truncate(out, 4000), "commit": sha})
+}
+
+// handleTaskResolveConflict merges the base branch into the task's worktree so conflict markers exist,
+// appends a structured conflict resolution comment, and requeues the task to todo.
+func handleTaskResolveConflict(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	id := r.PathValue("id")
+	t, err := loadReviewTask(slug, id)
+	if err != nil {
+		fail(w, err, http.StatusNotFound)
+		return
+	}
+	if t.WorktreePath == "" {
+		fail(w, fmt.Errorf("task %s does not use a worktree", id), http.StatusBadRequest)
+		return
+	}
+
+	conflicts, raw, prepErr := kanban.PrepareWorktreeConflictResolution(t.WorkspacePath, t.WorktreePath, t.BaseBranch)
+	if prepErr != nil {
+		log.Printf("resolve-conflict: %s: error preparing merge: %v", id, prepErr)
+	}
+
+	conflictMsg := "Merge conflict encountered while attempting to merge task into base branch."
+	if len(conflicts) > 0 {
+		conflictMsg += fmt.Sprintf("\nConflicting files:\n- %s", strings.Join(conflicts, "\n- "))
+	}
+	conflictMsg += "\n\nPlease resolve all git conflict markers in the workspace, verify tests pass, and complete the task."
+	if raw != "" && len(conflicts) == 0 {
+		conflictMsg += "\nGit output:\n" + truncate(raw, 1000)
+	}
+
+	comment, err := kanban.RequestTaskChanges(slug, id, "reviewer", conflictMsg, "", 0)
+	if err != nil {
+		fail(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     "todo",
+		"conflicts":  conflicts,
+		"comment_id": comment.ID,
+		"message":    "conflict markers placed in worktree and task requeued for agent",
+	})
 }
 
 // mergePlanFor derives the worktree plan used to merge a task's branch back.

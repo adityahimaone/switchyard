@@ -57,7 +57,7 @@ func TestShellQuoteOneLiteralPath(t *testing.T) {
 		t.Fatalf("resolve expected dir: %v", err)
 	}
 
-	got := "cd " + shellQuote(hostile) + " && pwd"
+	got := "cd " + shellQuote(hostile) + " && pwd -P"
 	out, code := runLocalShell(t, got)
 	if code != 0 {
 		t.Fatalf("exit %d for workdir %q\nscript: %s\noutput: %s", code, hostile, got, out)

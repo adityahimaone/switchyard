@@ -79,6 +79,53 @@ func registerWorkspaceFileRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 		http.ServeFile(w, r, resolved.LocalPath)
 	})
+	mux.HandleFunc("GET /api/workspaces/{id}/files/search", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := workspaceByID(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, http.StatusNotFound)
+			return
+		}
+		limit := 20
+		if v, e := strconv.Atoi(r.URL.Query().Get("limit")); e == nil && v > 0 {
+			limit = v
+		}
+		matches, err := kanban.SearchWorkspaceFiles(ws, r.URL.Query().Get("q"), limit)
+		if err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, matches)
+	})
+	mux.HandleFunc("GET /api/workspaces/{id}/codegraph/symbols", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := workspaceByID(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, http.StatusNotFound)
+			return
+		}
+		limit := 15
+		if v, e := strconv.Atoi(r.URL.Query().Get("limit")); e == nil && v > 0 {
+			limit = v
+		}
+		symbols, err := kanban.SearchWorkspaceSymbols(ws, r.URL.Query().Get("q"), limit)
+		if err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, symbols)
+	})
+	mux.HandleFunc("GET /api/workspaces/{id}/defaults", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := workspaceByID(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, http.StatusNotFound)
+			return
+		}
+		defs, err := kanban.GetWorkspaceDefaults(ws)
+		if err != nil {
+			fail(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, defs)
+	})
 	mux.HandleFunc("PUT /api/workspaces/{id}/files/edit", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := workspaceByID(r.PathValue("id"))
 		if err != nil {

@@ -721,6 +721,10 @@ export interface TaskComment {
   task_id: string
   author: string
   body: string
+  intent?: "comment" | "request_changes"
+  file_path?: string
+  line_number?: number
+  resolved?: boolean
   created_at: number
   requeued?: boolean
 }

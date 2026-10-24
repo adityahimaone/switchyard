@@ -11,15 +11,28 @@ func TestReviewCommentRequeuesWithoutMention(t *testing.T) {
 	if err := CreateTask(slug, &task); err != nil {
 		t.Fatal(err)
 	}
-	comment, err := AddComment(slug, task.ID, "reviewer", "please fix the failing test")
+	// Plain comment with intent="comment" should NOT requeue review task
+	plainComment, err := AddComment(slug, task.ID, "reviewer", "an observation note")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !comment.Requeued {
-		t.Fatal("review comment was not marked requeued")
+	if plainComment.Requeued {
+		t.Fatal("plain review comment should not requeue task")
+	}
+	if got, err := TaskStatus(slug, task.ID); err != nil || got != "review" {
+		t.Fatalf("status = %q, want review after plain comment", got)
+	}
+
+	// RequestTaskChanges with intent="request_changes" MUST requeue review task
+	reqComment, err := RequestTaskChanges(slug, task.ID, "reviewer", "please fix the failing test", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reqComment.Requeued {
+		t.Fatal("request changes comment was not marked requeued")
 	}
 	if got, err := TaskStatus(slug, task.ID); err != nil || got != "todo" {
-		t.Fatalf("status = %q, err=%v; want todo", got, err)
+		t.Fatalf("status = %q, err=%v; want todo after request changes", got, err)
 	}
 }
 

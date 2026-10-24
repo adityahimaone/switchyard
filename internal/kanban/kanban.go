@@ -214,7 +214,29 @@ func openDB(slug string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureCommentsSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
+}
+
+func ensureCommentsSchema(db *sql.DB) error {
+	var tableName string
+	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='task_comments'`).Scan(&tableName); err != nil || tableName == "" {
+		return nil
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE task_comments ADD COLUMN intent TEXT NOT NULL DEFAULT 'comment'`,
+		`ALTER TABLE task_comments ADD COLUMN file_path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE task_comments ADD COLUMN line_number INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE task_comments ADD COLUMN resolved INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensurePathLeasesSchema creates the table backing declared edit scope.

@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Segmented } from "@/components/ui/segmented"
-import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle } from "lucide-react"
+import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle, FileCode, Code2, Layers } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
@@ -221,7 +221,7 @@ export default function TaskDialog({
   const [deps, setDeps] = useState<string[]>([])
   const [gateCommand, setGateCommand] = useState("")
   const [startMode, setStartMode] = useState<"manual" | "now">("now")
-  const [isolation, setIsolation] = useState<"workspace" | "worktree">("workspace")
+  const [isolation, setIsolation] = useState<"auto" | "workspace" | "worktree">("auto")
   const [baseBranch, setBaseBranch] = useState("")
   const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
   const [designSource, setDesignSource] = useState("")
@@ -241,12 +241,208 @@ export default function TaskDialog({
   const fileRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const improveCache = useRef(new Map<string, string>())
+  const [cursorPos, setCursorPos] = useState(0)
+
+  // Omnibox @ trigger (Files, Symbols, Cards)
+  const [atDismissed, setAtDismissed] = useState(false)
+  const [atActiveIndex, setAtActiveIndex] = useState(0)
+  const atListRef = useRef<HTMLDivElement>(null)
+  const atItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  const atMatch = useMemo(() => {
+    if (atDismissed) return null
+    const textBefore = body.slice(0, cursorPos)
+    const m = textBefore.match(/(?:^|\s)@([a-zA-Z0-9_\-./#]*)$/)
+    if (!m) return null
+    return {
+      query: m[1],
+      tokenStart: cursorPos - m[1].length - 1,
+    }
+  }, [body, cursorPos, atDismissed])
+
+  const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
+
+  interface FileSearchMatch {
+    path: string
+    basename: string
+    directory: string
+    score: number
+  }
+
+  interface SymbolSearchMatch {
+    name: string
+    kind: string
+    file_path: string
+    line: number
+  }
+
+  const atFilesQuery = useQuery({
+    queryKey: ["ws-files-search", selectedWorkspace?.id, atMatch?.query],
+    queryFn: () =>
+      selectedWorkspace?.id
+        ? api<FileSearchMatch[]>(
+            `/api/workspaces/${selectedWorkspace.id}/files/search?q=${encodeURIComponent(atMatch?.query ?? "")}&limit=10`
+          )
+        : Promise.resolve([]),
+    enabled: Boolean(selectedWorkspace?.id && atMatch),
+    staleTime: 5000,
+  })
+
+  const atSymbolsQuery = useQuery({
+    queryKey: ["ws-symbols-search", selectedWorkspace?.id, atMatch?.query],
+    queryFn: () =>
+      selectedWorkspace?.id && (atMatch?.query.length ?? 0) >= 2
+        ? api<SymbolSearchMatch[]>(
+            `/api/workspaces/${selectedWorkspace.id}/codegraph/symbols?q=${encodeURIComponent(atMatch?.query ?? "")}&limit=6`
+          )
+        : Promise.resolve([]),
+    enabled: Boolean(selectedWorkspace?.id && atMatch && (atMatch.query.length >= 2)),
+    staleTime: 5000,
+  })
+
+  const { data: boardTasks } = useQuery({
+    queryKey: ["tasks", slug],
+    queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`),
+  })
+
+  type OmniboxItem =
+    | { kind: "file"; file: FileSearchMatch }
+    | { kind: "symbol"; symbol: SymbolSearchMatch }
+    | { kind: "card"; card: Task }
+
+  const omniboxItems = useMemo<OmniboxItem[]>(() => {
+    if (!atMatch) return []
+    const items: OmniboxItem[] = []
+    for (const f of atFilesQuery.data ?? []) {
+      items.push({ kind: "file", file: f })
+    }
+    for (const s of atSymbolsQuery.data ?? []) {
+      items.push({ kind: "symbol", symbol: s })
+    }
+    const q = atMatch.query.toLowerCase().replace(/^#/, "")
+    const matchingCards = (boardTasks ?? []).filter(
+      (t) => t.id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q)
+    ).slice(0, 4)
+    for (const c of matchingCards) {
+      items.push({ kind: "card", card: c })
+    }
+    return items
+  }, [atMatch, atFilesQuery.data, atSymbolsQuery.data, boardTasks])
+
+  const isAtPickerOpen = Boolean(atMatch && omniboxItems.length > 0)
+
+  useEffect(() => {
+    setAtActiveIndex(0)
+  }, [atMatch?.query])
+
+  useEffect(() => {
+    if (!isAtPickerOpen) return
+    const el = atItemRefs.current[atActiveIndex]
+    el?.scrollIntoView({ block: "nearest" })
+  }, [atActiveIndex, isAtPickerOpen])
+
+  useEffect(() => {
+    if (!isAtPickerOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        atListRef.current &&
+        !atListRef.current.contains(e.target as Node) &&
+        bodyRef.current &&
+        !bodyRef.current.contains(e.target as Node)
+      ) {
+        setAtDismissed(true)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isAtPickerOpen])
+
+  // Load workspace-inferred defaults (suggested gate & verify profile)
+  useEffect(() => {
+    if (!selectedWorkspace?.id) return
+    api<{ suggested_gate_command?: string; suggested_verify_profile?: string }>(
+      `/api/workspaces/${selectedWorkspace.id}/defaults`
+    )
+      .then((defs) => {
+        if (defs.suggested_gate_command && !gateCommand.trim()) {
+          setGateCommand(defs.suggested_gate_command)
+        }
+        if (defs.suggested_verify_profile && (verifyProfile === "fast" || !verifyProfile)) {
+          setVerifyProfile(defs.suggested_verify_profile as VerifyProfile)
+        }
+      })
+      .catch(() => {})
+  }, [selectedWorkspace?.id])
+
+  function insertOmniboxItem(item: OmniboxItem) {
+    const textarea = bodyRef.current
+    const cursor = textarea?.selectionStart ?? cursorPos ?? body.length
+    const textBefore = body.slice(0, cursor)
+    const textAfter = body.slice(cursor)
+    const m = textBefore.match(/(?:^|\s)@([a-zA-Z0-9_\-./#]*)$/)
+    if (!m) return
+
+    const replaceStart = cursor - m[1].length - 1
+    let token = ""
+    if (item.kind === "file") {
+      token = `@${item.file.path} `
+      // Auto-add to declared paths lease scope
+      setPathsRaw((prev) => {
+        const list = splitPathInput(prev)
+        if (!list.includes(item.file.path)) {
+          return list.length > 0 ? `${prev}, ${item.file.path}` : item.file.path
+        }
+        return prev
+      })
+    } else if (item.kind === "symbol") {
+      token = `@${item.symbol.file_path}#L${item.symbol.line} (${item.symbol.name}) `
+      setPathsRaw((prev) => {
+        const list = splitPathInput(prev)
+        if (!list.includes(item.symbol.file_path)) {
+          return list.length > 0 ? `${prev}, ${item.symbol.file_path}` : item.symbol.file_path
+        }
+        return prev
+      })
+    } else if (item.kind === "card") {
+      token = `#${item.card.id} `
+      setDeps((prev) => (prev.includes(item.card.id) ? prev : [...prev, item.card.id]))
+    }
+
+    const newBefore = body.slice(0, replaceStart) + token
+    const nextBody = newBefore + textAfter
+    setBody(nextBody)
+    setAtDismissed(true)
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus()
+        const newPos = newBefore.length
+        textarea.setSelectionRange(newPos, newPos)
+        setCursorPos(newPos)
+      }
+    }, 0)
+  }
+
+  function handleTriggerAt() {
+    setAtDismissed(false)
+    setBody((prev) => {
+      const needsSpace = prev.length > 0 && !prev.endsWith(" ") && !prev.endsWith("\n")
+      const next = `${prev}${needsSpace ? " " : ""}@`
+      setTimeout(() => {
+        if (bodyRef.current) {
+          bodyRef.current.focus()
+          bodyRef.current.setSelectionRange(next.length, next.length)
+          setCursorPos(next.length)
+        }
+      }, 0)
+      return next
+    })
+  }
 
   // Skills query and autocomplete for prompt/body ($ trigger)
   const skillsQuery = useQuery({ queryKey: ["task-skills"], queryFn: () => listSkills() })
   const [skillDismissed, setSkillDismissed] = useState(false)
   const [skillActiveIndex, setSkillActiveIndex] = useState(0)
-  const [cursorPos, setCursorPos] = useState(0)
   const skillListRef = useRef<HTMLDivElement>(null)
   const skillItemRefs = useRef<(HTMLButtonElement | null)[]>([])
 
@@ -340,6 +536,35 @@ export default function TaskDialog({
   }
 
   function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (isAtPickerOpen && omniboxItems.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        e.stopPropagation()
+        setAtActiveIndex((prev) => (prev + 1) % omniboxItems.length)
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        e.stopPropagation()
+        setAtActiveIndex((prev) => (prev - 1 + omniboxItems.length) % omniboxItems.length)
+        return
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault()
+        e.stopPropagation()
+        const selected = omniboxItems[atActiveIndex]
+        if (selected) {
+          insertOmniboxItem(selected)
+        }
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
+        setAtDismissed(true)
+        return
+      }
+    }
     if (isSkillPickerOpen && skillMatches.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault()
@@ -377,10 +602,6 @@ export default function TaskDialog({
     queryKey: ["executor-settings"],
     queryFn: getExecutorSettings,
   })
-  const { data: boardTasks } = useQuery({
-    queryKey: ["tasks", slug],
-    queryFn: () => api<Task[]>(`/api/boards/${slug}/tasks`),
-  })
   const visibleExecutors = useMemo(() => visibleExecutorsFor(executorSettings), [executorSettings])
 
   // Auto-select workspace from board tasks or live workspaces until user manually picks one.
@@ -405,9 +626,6 @@ export default function TaskDialog({
       }
     }
   }
-
-  // Find the workspace ID from the selected path so we can list branches.
-  const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
 
   // Seed the default mode once, without stomping a user change on re-render.
   const seededMode = useRef(false)
@@ -665,6 +883,17 @@ export default function TaskDialog({
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={handleTriggerAt}
+                  className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:border-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
+                  title="Reference a file, symbol, or card (@)"
+                >
+                  <FileCode className="size-3 text-[var(--c-accent)]" />
+                  @ File
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={handleTriggerSkill}
                   className="h-6 gap-1 border-[var(--c-line)] px-2 text-[11px] text-ink-2 hover:border-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"
                   title="Insert a skill reference ($)"
@@ -782,6 +1011,63 @@ export default function TaskDialog({
                               {skill.description}
                             </p>
                           )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {isAtPickerOpen && (
+                <div
+                  ref={atListRef}
+                  role="listbox"
+                  aria-label="File and symbol suggestions"
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto overscroll-contain rounded-control border border-line-strong/60 bg-surface/95 p-1 backdrop-blur-xl shadow-lg ring-1 ring-black/5 dark:bg-card/95 [scrollbar-width:thin]"
+                >
+                  <div className="px-2 py-1 text-[10px] font-medium tracking-wider text-ink-3 uppercase">
+                    Workspace Context &amp; References ({omniboxItems.length})
+                  </div>
+                  {omniboxItems.slice(0, 15).map((item, idx) => {
+                    const isActive = idx === atActiveIndex
+                    const isFile = item.kind === "file"
+                    const isSymbol = item.kind === "symbol"
+                    const isCard = item.kind === "card"
+                    return (
+                      <button
+                        key={isFile ? item.file.path : isSymbol ? `${item.symbol.file_path}:${item.symbol.line}` : item.card.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isActive}
+                        ref={(el) => {
+                          atItemRefs.current[idx] = el
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          insertOmniboxItem(item)
+                        }}
+                        onMouseEnter={() => setAtActiveIndex(idx)}
+                        className={cn(
+                          "flex w-full items-start gap-2.5 rounded px-2.5 py-1.5 text-left transition-colors duration-100 outline-none select-none",
+                          isActive
+                            ? "bg-accent/15 text-accent-text dark:bg-accent/20"
+                            : "hover:bg-raised text-ink"
+                        )}
+                      >
+                        {isFile && <FileCode className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden />}
+                        {isSymbol && <Code2 className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />}
+                        {isCard && <Layers className="mt-0.5 size-3.5 shrink-0 text-blue-500" aria-hidden />}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-medium text-ink truncate">
+                              {isFile ? item.file.basename : isSymbol ? item.symbol.name : `#${item.card.id}`}
+                            </span>
+                            <span className="rounded bg-well px-1 py-0.2 font-mono text-[9px] text-ink-3">
+                              {isFile ? "file" : isSymbol ? item.symbol.kind : item.card.status}
+                            </span>
+                          </div>
+                          <p className="line-clamp-1 font-mono text-[11px] text-ink-3">
+                            {isFile ? item.file.path : isSymbol ? `${item.symbol.file_path}#L${item.symbol.line}` : item.card.title}
+                          </p>
                         </div>
                       </button>
                     )
@@ -1226,8 +1512,9 @@ export default function TaskDialog({
                 <Segmented
                   label="Isolation"
                   value={isolation}
-                  onChange={setIsolation}
+                  onChange={(v) => setIsolation(v as "auto" | "workspace" | "worktree")}
                   options={[
+                    { value: "auto", label: "Auto" },
                     { value: "workspace", label: "Workspace" },
                     { value: "worktree", label: "Worktree" },
                   ]}

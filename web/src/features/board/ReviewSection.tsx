@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api, toastGlobal, type Task } from "../../api"
-import { Check, ChevronDown, Copy, FileCode2, GitCommitHorizontal, Loader2, Minus, Plus, RotateCcw } from "lucide-react"
+import { Check, ChevronDown, Copy, FileCode2, GitCommitHorizontal, Loader2, Minus, Plus, RotateCcw, AlertTriangle, GitMerge, Play } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { ReviewGateBar } from "./ReviewGateBar"
 import { VerificationBlock } from "./VerificationBlock"
 
@@ -248,6 +249,32 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
     },
   })
 
+  const continueRun = useMutation({
+    mutationFn: () =>
+      api<{ status: string }>(`/api/boards/${slug}/tasks/${task.id}/retry`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toastGlobal("Run resumed", "success")
+      qc.invalidateQueries({ queryKey: ["tasks", slug] })
+      qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
+    },
+    onError: (e: Error) => setErr(e.message),
+  })
+
+  const resolveConflict = useMutation({
+    mutationFn: () =>
+      api<{ status: string }>(`/api/boards/${slug}/tasks/${task.id}/resolve-conflict`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toastGlobal("Conflict markers placed in worktree — agent requeued to resolve", "success")
+      qc.invalidateQueries({ queryKey: ["tasks", slug] })
+      qc.invalidateQueries({ queryKey: ["events", slug, task.id] })
+    },
+    onError: (e: Error) => setErr(e.message),
+  })
+
   if (task.status !== "review") return null
 
   return (
@@ -282,6 +309,14 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
         </button>
         <div className="flex shrink-0 items-center gap-2 text-2xs text-ink-3 tabular">
           {diff.isLoading && <Loader2 className="size-3 animate-spin" aria-label="Loading" />}
+          <span className={cn(
+            "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase font-semibold",
+            files.length > 5 ? "bg-rose-500/15 text-rose-500 border border-rose-500/30" :
+            files.length > 2 ? "bg-amber-500/15 text-amber-500 border border-amber-500/30" :
+            "bg-blue-500/15 text-blue-500 border border-blue-500/30"
+          )}>
+            {files.length > 5 ? "High Blast Radius" : files.length > 2 ? "Medium Impact" : "Low Impact"}
+          </span>
           <span>{files.length} files</span>
           <span className="text-success-text">+{additions}</span>
           <span className="text-danger-text">−{removals}</span>
@@ -290,6 +325,48 @@ export function ReviewSection({ slug, task, onDone }: { slug: string; task: Task
 
       {open && (
         <div className="flex flex-col gap-2 p-3">
+          {/* Timeout partial landing banner */}
+          {task.last_failure_error?.includes("timeout") && (
+            <div className="flex items-center justify-between rounded-control border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="size-4 shrink-0 text-amber-500" />
+                <span>Run paused after timeout — partial workspace changes are ready for review.</span>
+              </div>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => continueRun.mutate()}
+                disabled={continueRun.isPending}
+                className="h-6 gap-1 border-amber-500/50 text-amber-500 hover:bg-amber-500/20"
+              >
+                {continueRun.isPending ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+                Continue Run
+              </Button>
+            </div>
+          )}
+
+          {/* Merge conflict banner */}
+          {(err?.includes("conflict") || err?.includes("merge back failed")) && (
+            <div className="flex items-center justify-between rounded-control border border-danger/40 bg-danger-tint px-3 py-2 text-xs text-danger-text">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="size-4 shrink-0 text-danger-text" />
+                <span>Merge conflict with base branch.</span>
+              </div>
+              <Button
+                type="button"
+                size="xs"
+                variant="destructive"
+                onClick={() => resolveConflict.mutate()}
+                disabled={resolveConflict.isPending}
+                className="h-6 gap-1"
+              >
+                {resolveConflict.isPending ? <Loader2 className="size-3 animate-spin" /> : <GitMerge className="size-3" />}
+                Resolve Conflict with Agent
+              </Button>
+            </div>
+          )}
+
           {/* Verification sits above the diff, not beside it: it is the answer
               to "may I approve this", and a reviewer should meet it before
               reading 8000 lines of patch. */}

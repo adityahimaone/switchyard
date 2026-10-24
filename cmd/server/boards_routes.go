@@ -432,19 +432,59 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Author string `json:"author,omitempty"`
-			Body   string `json:"body"`
+			Author     string `json:"author,omitempty"`
+			Body       string `json:"body"`
+			Intent     string `json:"intent,omitempty"`
+			FilePath   string `json:"file_path,omitempty"`
+			LineNumber int    `json:"line_number,omitempty"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
 			fail(w, err, 400)
 			return
 		}
-		c, err := kanban.AddComment(r.PathValue("slug"), r.PathValue("id"), req.Author, req.Body)
+		c, err := kanban.AddCommentWithOptions(r.PathValue("slug"), r.PathValue("id"), kanban.CommentInput{
+			Author:     req.Author,
+			Body:       req.Body,
+			Intent:     req.Intent,
+			FilePath:   req.FilePath,
+			LineNumber: req.LineNumber,
+		})
 		if err != nil {
 			fail(w, err, 400)
 			return
 		}
 		writeJSON(w, http.StatusCreated, c)
+	})
+	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/request-changes", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Author     string `json:"author,omitempty"`
+			Body       string `json:"body,omitempty"`
+			FilePath   string `json:"file_path,omitempty"`
+			LineNumber int    `json:"line_number,omitempty"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req)
+		body := strings.TrimSpace(req.Body)
+		if body == "" {
+			body = "Requested changes after review."
+		}
+		c, err := kanban.RequestTaskChanges(r.PathValue("slug"), r.PathValue("id"), req.Author, body, req.FilePath, req.LineNumber)
+		if err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
+	})
+	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/comments/{comment_id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+		commentID, err := strconv.ParseInt(r.PathValue("comment_id"), 10, 64)
+		if err != nil {
+			fail(w, fmt.Errorf("invalid comment_id"), 400)
+			return
+		}
+		if err := kanban.ResolveComment(r.PathValue("slug"), r.PathValue("id"), commentID); err != nil {
+			fail(w, err, 400)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"resolved": true, "comment_id": commentID})
 	})
 
 	// run control: retry/release/clone are guarded in the domain layer.
@@ -523,6 +563,7 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 	// review gate: diff + approve (commit / commit&push) — only path review->done
 	mux.HandleFunc("GET /api/boards/{slug}/tasks/{id}/diff", handleTaskDiff)
 	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/approve", handleTaskApprove)
+	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/resolve-conflict", handleTaskResolveConflict)
 
 	// workspaces (shared source of truth: ~/.hermes/workspaces.json)
 	mux.HandleFunc("GET /api/workspaces", func(w http.ResponseWriter, r *http.Request) {

@@ -591,7 +591,7 @@ func finalizeRemoteResult(db *sql.DB, req NodeDispatchRequest, taskID, eventKind
 		}
 	}
 	args := []any{hasBaseline, taskID, baseline, result.Success, time.Now().Unix(), result.Output, trimErrStr(failure), taskID}
-	query := `UPDATE tasks SET status=CASE WHEN ? AND EXISTS (SELECT 1 FROM task_comments WHERE task_id=? AND id>?) THEN 'todo' WHEN ? THEN 'review' ELSE 'blocked' END, completed_at=?, result=?, last_failure_error=?, current_run_id=NULL WHERE id=? AND status='running'`
+	query := `UPDATE tasks SET status=CASE WHEN ? AND EXISTS (SELECT 1 FROM task_comments WHERE task_id=? AND id>? AND (intent = 'request_changes' OR (intent = 'comment' AND body LIKE '%@%'))) THEN 'todo' WHEN ? THEN 'review' ELSE 'blocked' END, completed_at=?, result=?, last_failure_error=?, current_run_id=NULL WHERE id=? AND status='running'`
 	if req.RunID != "" {
 		query += ` AND current_run_id=?`
 		args = append(args, req.RunID)

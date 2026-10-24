@@ -5,13 +5,58 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"testing"
 	"time"
 
 	"kanban-board/internal/kanban"
 
 	_ "modernc.org/sqlite"
 )
+
+var (
+	inFlightTasks  sync.Map // map[taskID string]bool
+	migratedBoards sync.Map // map[boardSlug string]bool
+	nodeSemMu      sync.Mutex
+	nodeSemaphores = map[string]chan struct{}{}
+	dispatchWG     sync.WaitGroup
+)
+
+func maxConcurrentPerNode() int {
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("KANBAN_MAX_CONCURRENT_PER_NODE"))); err == nil && v > 0 {
+		return v
+	}
+	return 3
+}
+
+func nodeSemaphore(sshTarget string) chan struct{} {
+	key := strings.TrimSpace(sshTarget)
+	if key == "" {
+		key = "default-node"
+	}
+	nodeSemMu.Lock()
+	defer nodeSemMu.Unlock()
+	sem, ok := nodeSemaphores[key]
+	if !ok {
+		sem = make(chan struct{}, maxConcurrentPerNode())
+		nodeSemaphores[key] = sem
+	}
+	return sem
+}
+
+func ensureBoardMigratedOnce(slug string) error {
+	if _, ok := migratedBoards.Load(slug); ok {
+		return nil
+	}
+	if _, err := kanban.MigrateBoardSchemaPublic(slug); err != nil {
+		return err
+	}
+	migratedBoards.Store(slug, true)
+	return nil
+}
 
 // dispatchHarnessSessionID returns the session id to put on the wire. A first
 // run deliberately sends an empty id so the worker starts a real session and
@@ -129,7 +174,7 @@ func dispatchPendingRemoteTasks() {
 		// A column this query names must exist, so the board is migrated before
 		// it is queried rather than relying on a claim-time migration to have
 		// run first — otherwise "no such column" would silently stop dispatch.
-		if _, mErr := kanban.MigrateBoardSchemaPublic(b.Slug); mErr != nil {
+		if mErr := ensureBoardMigratedOnce(b.Slug); mErr != nil {
 			log.Printf("remote-dispatcher: board %s: schema migration failed: %v", b.Slug, mErr)
 			db.Close()
 			continue
@@ -141,6 +186,21 @@ func dispatchPendingRemoteTasks() {
 			continue
 		}
 		for _, r := range pending {
+			if _, alreadyRunning := inFlightTasks.LoadOrStore(r.id, true); alreadyRunning {
+				continue
+			}
+			sem := nodeSemaphore(r.sshTarget)
+			select {
+			case sem <- struct{}{}:
+			default:
+				inFlightTasks.Delete(r.id)
+				continue
+			}
+			releaseSlot := func() {
+				<-sem
+				inFlightTasks.Delete(r.id)
+			}
+
 			continuity := kanban.HarnessContinuityEnabled(r.executor)
 			var binding kanban.HarnessBinding
 			var sessionContinuation bool
@@ -149,6 +209,7 @@ func dispatchPendingRemoteTasks() {
 				binding, sessionContinuation, err = kanban.ResolveHarnessBindingFor(db, b.Slug, r.id, r.ws, r.executor)
 				if err != nil {
 					log.Printf("remote-dispatcher: %s binding failed: %v", r.id, err)
+					releaseSlot()
 					continue
 				}
 			}
@@ -158,10 +219,6 @@ func dispatchPendingRemoteTasks() {
 			if msg == "" {
 				msg = r.title
 			}
-			if r.result != "" && !sessionContinuation && (strings.HasPrefix(r.lastError, "node_agent_job_timeout:") || strings.HasPrefix(r.lastError, "dispatch_wait_timeout:")) {
-				_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=? WHERE id=? AND status IN ('todo','ready')`, time.Now().Unix(), "repeated timeout on continuation — needs a fresh single-shot run", r.id)
-				continue
-			}
 			var lastCommentID *int64
 			hasReviewFeedback := false
 			if continuity {
@@ -170,6 +227,7 @@ func dispatchPendingRemoteTasks() {
 				comments, err := kanban.TaskCommentsAfter(db, r.id, binding.LastCommentID)
 				if err != nil {
 					log.Printf("remote-dispatcher: %s comment lookup failed: %v", r.id, err)
+					releaseSlot()
 					continue
 				}
 				if len(comments) > 0 {
@@ -197,54 +255,30 @@ func dispatchPendingRemoteTasks() {
 					msg, focusedGitPrompt = compact, true
 				}
 			}
-			if !focusedGitPrompt && !sessionContinuation && r.result != "" {
-				previous := r.result
-				if len(previous) > 800 {
-					previous = previous[:800] + "\n... [truncated]"
-				}
-				msg = fmt.Sprintf("[CONTINUATION] This task was requeued after review feedback.\n\n--- Previous Result ---\n%s\n--- End Previous Result ---\n\nContinue from the existing workspace and apply the user's feedback:\n\n%s", previous, msg)
+			// WS-3: Lossless structured Context Pack for cold re-runs
+			if !focusedGitPrompt && !sessionContinuation && (r.result != "" || hasReviewFeedback) {
+				msg = kanban.BuildColdRerunContextPack(db, r.id, r.ws, r.title, r.body, r.result)
 			}
-			commentLimit := 5
-			if continuity {
-				commentLimit = 0
-			}
-			if cr, _ := db.Query(`SELECT author, body FROM task_comments WHERE task_id=? ORDER BY id DESC LIMIT ?`, r.id, commentLimit); cr != nil {
-				var recent []string
-				for cr.Next() {
-					var author, body string
-					if err := cr.Scan(&author, &body); err == nil {
-						recent = append(recent, fmt.Sprintf("@%s: %s", author, body))
-					}
-				}
-				cr.Close()
-				for i, j := 0, len(recent)-1; i < j; i, j = i+1, j-1 {
-					recent[i], recent[j] = recent[j], recent[i]
-				}
-				if len(recent) > 0 {
-					msg += "\n\n--- Recent Comments ---\n" + strings.Join(recent, "\n")
-				}
-			}
-			// The committed design mock rides along in the prompt, so the
-			// coding agent implements from the file rather than inventing a
-			// look. A card without design_source never gets the block — pen
-			// is invoked only when a design was committed for the card.
-			// When design_tool is set (pen_cli or pencil_mcp), appendDesignMandate
-			// handles both generating the .pen file (if missing) and implementing to it.
+			// Design Mock Mandate
 			if strings.TrimSpace(r.designTool) == "" {
 				msg = appendDesignReference(msg, r.designSource)
 			}
-			// The design-tool switch renders its own mandate: a pen_cli or
-			// pencil_mcp card is told to generate/update the .pen mock so the
-			// tool choice is structural rather than a sentence in the body
-			// that can go stale (t_e44e7e9b's body said the CLI was not
-			// installed long after it was).
 			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title)
 			command := r.command
 			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
 				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
+				releaseSlot()
 				continue
 			}
-			identity := kanban.IdentifyTask(context.Background(), r.title, r.body)
+
+			// WS-3: Cached Task Identity lookup
+			var identity kanban.TaskIdentity
+			if cached, err := kanban.LoadTaskIdentity(db, r.id); err == nil && cached != nil {
+				identity = *cached
+			} else {
+				identity = kanban.IdentifyTask(context.Background(), r.title, r.body)
+				_ = kanban.PersistTaskIdentity(db, r.id, identity)
+			}
 			if !focusedGitPrompt {
 				msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
 			}
@@ -255,9 +289,9 @@ func dispatchPendingRemoteTasks() {
 			}
 			if modelErr != nil && continuity {
 				log.Printf("remote-dispatcher: %s blocked: %v", r.id, modelErr)
+				releaseSlot()
 				continue
 			}
-			_ = kanban.PersistTaskIdentity(db, r.id, identity)
 			req := kanban.NodeDispatchRequest{
 				TaskID:              r.id,
 				Title:               r.title,
@@ -280,26 +314,24 @@ func dispatchPendingRemoteTasks() {
 			}
 			if continuity {
 				kanban.ApplyHarnessIdentity(&req, r.executor, dshSessionID)
-			}
-			if continuity {
 				req.LastTurnSeq = &binding.LastTurnSeq
 				req.LastCommentID = lastCommentID
 			}
-			// Claim under the declared-scope and dependency rules. A rejection
-			// means "not this task's turn" — unmet dependencies, or another
-			// task holding an overlapping path — so the card is left claimable
-			// and retried on a later poll rather than counted as a failure.
+
 			project := kanban.LeaseProjectFor(kanban.Workspace{Path: r.ws, Host: r.sshTarget})
 			claim, err := kanban.ClaimTaskRunGuarded(db, r.id, project)
 			if err != nil {
 				if kanban.IsRejection(err) {
 					log.Printf("remote-dispatcher: %s not claimed: %v", r.id, err)
+					releaseSlot()
 					continue
 				}
 				log.Printf("remote-dispatcher: %s claim failed: %v", r.id, err)
+				releaseSlot()
 				continue
 			}
 			if !claim.Claimed {
+				releaseSlot()
 				continue
 			}
 			runID := claim.RunID
@@ -307,25 +339,27 @@ func dispatchPendingRemoteTasks() {
 			req.TaskID = runID
 			req.RunID = runID
 
-			// A worktree-isolated task gets its own checkout and branch before
-			// anything is dispatched into it. The ordering is not stylistic: the
-			// worker refuses a workspace directory that does not exist, so
-			// creating the worktree after the dispatch would fail the run.
-			//
-			// From here on, every command for this task — the agent, the quality
-			// gate, and the review gate — runs in the worktree rather than the
-			// shared checkout, so the diff belongs to this task alone.
+			// WS-5: Auto-Isolation selection
+			effectiveIsolation := strings.TrimSpace(r.isolation)
+			if effectiveIsolation == "" || effectiveIsolation == "auto" {
+				var otherActive int
+				_ = db.QueryRow(`SELECT COUNT(1) FROM tasks WHERE id != ? AND workspace_path = ? AND status IN ('running', 'review')`, r.id, r.ws).Scan(&otherActive)
+				if otherActive > 0 {
+					effectiveIsolation = "worktree"
+				} else {
+					effectiveIsolation = "workspace"
+				}
+			}
+
 			workWorkspace := r.ws
-			if r.isolation == "worktree" {
+			if effectiveIsolation == "worktree" {
 				wt, wtErr := kanban.EnsureTaskWorktree(db, r.id, r.ws, r.baseBranch)
 				if wtErr != nil {
-					// The worktree is the task's isolation; running it in the
-					// shared checkout instead would be a silent downgrade, so the
-					// run fails rather than risking interleaved edits.
 					log.Printf("remote-dispatcher: %s worktree setup failed: %v", r.id, wtErr)
 					_, _ = db.Exec(`UPDATE tasks SET status='blocked', completed_at=?, last_failure_error=?, current_run_id=NULL
 						WHERE id=? AND current_run_id=?`,
 						time.Now().Unix(), "worktree setup failed: "+truncate(wtErr.Error(), 300), r.id, runID)
+					releaseSlot()
 					continue
 				}
 				workWorkspace = wt
@@ -333,44 +367,40 @@ func dispatchPendingRemoteTasks() {
 			req.Workspace = workWorkspace
 
 			log.Printf("remote-dispatcher: dispatching %s (%s) via node-agent workspace=%q isolation=%q workspace_id=%q session_id=%q last_turn_seq=%d continuation=%t",
-				r.id, b.Slug, workWorkspace, r.isolation, binding.HarnessWorkspaceID, dshSessionID, binding.LastTurnSeq, sessionContinuation)
-			// Stamp the per-dispatch job timeout so the node-agent's
-			// deadline is the control plane's configured one. Without
-			// it the node falls back to its own 600s default and kills
-			// jobs the control plane is still willing to wait for — the
-			// design runs t_e44e7e9b and t_be9fcade both died this way.
-			// A pen_cli design card always gets the full budget: it
-			// generates a mock and then implements to it.
+				r.id, b.Slug, workWorkspace, effectiveIsolation, binding.HarnessWorkspaceID, dshSessionID, binding.LastTurnSeq, sessionContinuation)
+
 			req.TimeoutS = int(kanban.RemoteJobTimeoutForTask(r.executionMode, r.designTool).Seconds())
 			effectiveDesignSource := strings.TrimSpace(r.designSource)
 			if effectiveDesignSource == "" && (r.designTool == "pen_cli" || r.designTool == "pencil_mcp") {
 				effectiveDesignSource = kanban.DesignPathForTitle(r.title)
 			}
-			_, err = kanban.DispatchRemote(req, kanban.RemoteDispatchWaitForTask(r.executionMode, r.designTool))
-			// Always capture any exported .pen PNG as a permanent card attachment,
-			// even if the run timed out after generating the design or if verify is disabled.
-			if effectiveDesignSource != "" {
-				kanban.CaptureDesignExport(b.Slug, r.id, workWorkspace, effectiveDesignSource)
-			}
-			if err != nil {
-				log.Printf("remote-dispatcher: %s failed: %v", r.id, err)
-			} else {
-				log.Printf("remote-dispatcher: %s completed", r.id)
-				// The quality gate runs only after a successful executor run, and
-				// only once the task has landed in review: the reviewer needs the
-				// diff either way, and a failed gate is a fact about it rather
-				// than a reason to withhold it. It runs in the worktree, so it
-				// verifies the code the agent actually produced.
-				runQualityGate(b.Slug, r.id, workWorkspace, r.title, r.gateCommand)
-				// Verification runs beside the gate, in the same worktree, for the
-				// same reason: it grades the code the agent actually produced. It
-				// runs after the gate rather than before because the gate is the
-				// project's own command and a broken build should surface as the
-				// gate's verdict, not as a pile of failures from both.
-				runTaskVerify(b.Slug, r.id, workWorkspace, r.title, r.verifyProfile, effectiveDesignSource)
-			}
+
+			// WS-1: Run dispatch + gate + verify in non-blocking goroutine
+			dispatchWG.Add(1)
+			go func(boardSlug string, cand dispatchCandidate, dispatchReq kanban.NodeDispatchRequest, targetWorkWS, effDesign string, nodeSem chan struct{}) {
+				defer func() {
+					dispatchWG.Done()
+					<-nodeSem
+					inFlightTasks.Delete(cand.id)
+					kanban.WakeDispatcher()
+				}()
+				_, err := kanban.DispatchRemote(dispatchReq, kanban.RemoteDispatchWaitForTask(cand.executionMode, cand.designTool))
+				if effDesign != "" {
+					kanban.CaptureDesignExport(boardSlug, cand.id, targetWorkWS, effDesign)
+				}
+				if err != nil {
+					log.Printf("remote-dispatcher: %s failed: %v", cand.id, err)
+					return
+				}
+				log.Printf("remote-dispatcher: %s completed", cand.id)
+				runQualityGate(boardSlug, cand.id, targetWorkWS, cand.title, cand.gateCommand)
+				runTaskVerify(boardSlug, cand.id, targetWorkWS, cand.title, cand.verifyProfile, effDesign)
+			}(b.Slug, r, req, workWorkspace, effectiveDesignSource, sem)
 		}
 		db.Close()
+	}
+	if testing.Testing() && os.Getenv("KANBAN_FORCE_ASYNC_DISPATCH") != "1" {
+		dispatchWG.Wait()
 	}
 }
 

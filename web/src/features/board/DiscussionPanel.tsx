@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowDown, Check, Loader2, MessageSquare, Send } from "lucide-react"
+import { AlertTriangle, ArrowDown, Check, Loader2, MessageSquare, RotateCcw, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api, toastGlobal, type Profile, type Task, type TaskComment } from "../../api"
@@ -240,18 +240,19 @@ export function DiscussionPanel({
   }, [phase])
 
   const post = useMutation({
-    mutationFn: ({ body }: { body: string; draft: string }) =>
+    mutationFn: ({ body, intent }: { body: string; draft: string; intent?: "comment" | "request_changes" }) =>
       api<TaskComment>(`/api/boards/${slug}/tasks/${task.id}/comments`, {
         method: "POST",
-        body: JSON.stringify({ body, author: USER_AUTHOR }),
+        body: JSON.stringify({ body, author: USER_AUTHOR, intent: intent ?? "comment" }),
       }),
-    onMutate: async ({ body }) => {
+    onMutate: async ({ body, intent }) => {
       await qc.cancelQueries({ queryKey: key })
       const optimistic: TaskComment = {
         id: -Date.now(),
         task_id: task.id,
         author: USER_AUTHOR,
         body,
+        intent: intent ?? "comment",
         created_at: Math.floor(Date.now() / 1000),
       }
       qc.setQueryData<TaskComment[]>(key, (old) => [...(old ?? []), optimistic])
@@ -283,11 +284,11 @@ export function DiscussionPanel({
     },
   })
 
-  function send() {
+  function send(intent: "comment" | "request_changes" = "comment") {
     const body = withMention(draft, target, names)
     if (!body || post.isPending) return
     setErr(null)
-    post.mutate({ body, draft })
+    post.mutate({ body, draft, intent })
     setDraft("")
     writeDraft(task.id, "")
     textareaRef.current?.focus()
@@ -442,10 +443,23 @@ export function DiscussionPanel({
             {note.text}
           </p>
           <span className="hidden shrink-0 font-mono text-2xs text-ink-3 sm:inline">{"↵"} send {"·"} {"⇧↵"} new line</span>
-          <Button size="sm" disabled={!canSend} onClick={send} className="shrink-0 gap-1.5">
-            {post.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            Send
-          </Button>
+          {task.status === "review" || task.status === "blocked" ? (
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="outline" disabled={!canSend} onClick={() => send("comment")} className="shrink-0 gap-1 text-2xs">
+                {post.isPending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                Comment
+              </Button>
+              <Button size="sm" disabled={!canSend} onClick={() => send("request_changes")} className="shrink-0 gap-1 bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 text-2xs">
+                {post.isPending ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                Request Changes &amp; Re-run
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" disabled={!canSend} onClick={() => send("comment")} className="shrink-0 gap-1.5">
+              {post.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              Send
+            </Button>
+          )}
         </div>
       </div>
       {err && <p role="alert" className="mt-1.5 text-meta text-danger-text">Not sent: {err}. Your message is back in the box.</p>}

@@ -132,7 +132,7 @@ func TestDispatchRemoteMapsWireRunToCardAndRequeuesLateComment(t *testing.T) {
 		t.Fatalf("claim: claimed=%t err=%v", claimed, err)
 	}
 	baseline := binding.LastCommentID
-	if _, err := AddComment(slug, task.ID, "reviewer", "arrived during run"); err != nil {
+	if _, err := RequestTaskChanges(slug, task.ID, "reviewer", "arrived during run", "", 0); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func TestFinalizeRemoteResultAndCommentAlwaysLeaveTodo(t *testing.T) {
 		errCh := make(chan error, 2)
 		go func() {
 			<-start
-			_, err := AddComment(slug, task.ID, "reviewer", "race feedback")
+			_, err := RequestTaskChanges(slug, task.ID, "reviewer", "race feedback", "", 0)
 			errCh <- err
 		}()
 		go func() {
