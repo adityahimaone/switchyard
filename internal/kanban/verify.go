@@ -338,7 +338,7 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile, designSource
 		log.Printf("verify: %s: could not record start: %v", taskID, err)
 	}
 
-	artifactDir := filepath.Join(os.TempDir(), "switchyard-artifacts-"+taskID)
+	artifactDir := filepath.Join("/tmp", "switchyard-artifacts-"+taskID)
 	res, err := DispatchRemoteRaw(NodeDispatchRequest{
 		TaskID:      taskID,
 		CardID:      taskID,
