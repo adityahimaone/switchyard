@@ -27,6 +27,8 @@ type TaskFields struct {
 	VerifyProfile *string `json:"verify_profile,omitempty"`
 	DesignSource  *string `json:"design_source,omitempty"`
 	DesignTool    *string `json:"design_tool,omitempty"`
+	Executor      *string `json:"executor,omitempty"`
+	Model         *string `json:"model,omitempty"`
 }
 
 // UpdateTaskFields applies an edit to a task's post-create fields.
@@ -94,6 +96,25 @@ func UpdateTaskFields(slug, taskID string, f TaskFields) error {
 				changed = append(changed, "design_source")
 			}
 		}
+	}
+	if f.Executor != nil {
+		exec := strings.ToLower(strings.TrimSpace(*f.Executor))
+		if exec == "cmd" {
+			exec = "commandcode"
+		}
+		if exec != "" && !ValidExecutors[exec] {
+			return &RunControlError{Code: 400, Err: fmt.Errorf(
+				"executor %q is not a valid executor", exec)}
+		}
+		sets = append(sets, "executor=?")
+		args = append(args, exec)
+		changed = append(changed, "executor")
+	}
+	if f.Model != nil {
+		m := strings.TrimSpace(*f.Model)
+		sets = append(sets, "model=?")
+		args = append(args, m)
+		changed = append(changed, "model")
 	}
 	if len(sets) == 0 {
 		return &RunControlError{Code: 400, Err: fmt.Errorf("no editable field in request")}

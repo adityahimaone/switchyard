@@ -287,6 +287,9 @@ func dispatchPendingRemoteTasks() {
 				model = strings.TrimSpace(r.model)
 				modelErr = nil
 			}
+			if (r.executor == "commandcode" || r.executor == "cmd") && strings.EqualFold(strings.TrimSpace(model), "cheap") {
+				model = "deepseek/deepseek-v4.1-flash"
+			}
 			if modelErr != nil && continuity {
 				log.Printf("remote-dispatcher: %s blocked: %v", r.id, modelErr)
 				releaseSlot()

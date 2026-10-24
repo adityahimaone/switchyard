@@ -17,6 +17,7 @@ import { ReviewSection } from "./ReviewSection"
 import { DiscussionPanel } from "./DiscussionPanel"
 import { useTaskDiscussion } from "./useTaskDiscussion"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
+import { BlockedResolutionBanner } from "./BlockedResolutionBanner"
 import {
   AgentPicker, EmptyNote, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
   Section, StatusBadge, TaskActions,
@@ -352,7 +353,11 @@ export default function TaskDetailPage({
                 </Section>
               )}
 
-              {task.last_failure_error && <FailureBlock message={task.last_failure_error} className="mt-2.5" />}
+              {task.status === "blocked" ? (
+                <BlockedResolutionBanner task={task} slug={slug} className="mt-2.5" />
+              ) : task.last_failure_error ? (
+                <FailureBlock message={task.last_failure_error} className="mt-2.5" />
+              ) : null}
 
               <TaskActions
                 className="mt-3"
@@ -458,6 +463,7 @@ export default function TaskDetailPage({
             </div>
 
             {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onBack} />}
+            {task.status === "blocked" && <BlockedResolutionBanner task={task} slug={slug} className="mt-4" />}
           </TabsContent>
 
           {/* ------------------------------------------------------ output -- */}
@@ -471,6 +477,7 @@ export default function TaskDetailPage({
               attachments={attachments.data}
             />
             {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onBack} />}
+            {task.status === "blocked" && <BlockedResolutionBanner task={task} slug={slug} className="mt-4" />}
           </TabsContent>
 
           {/* -------------------------------------------------- discussion -- */}

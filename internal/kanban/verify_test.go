@@ -388,6 +388,27 @@ func TestUpdateTaskFieldsValidates(t *testing.T) {
 	if state.Profile != VerifyE2E {
 		t.Fatalf("verify_profile = %q, want %q", state.Profile, VerifyE2E)
 	}
+
+	// Executor and model updates
+	badExec := "invalid-executor-foo"
+	if err := UpdateTaskFields("default", "t1", TaskFields{Executor: &badExec}); err == nil {
+		t.Fatal("an unknown executor was accepted")
+	}
+	goodExec := "commandcode"
+	goodModel := "deepseek/deepseek-v4.1-flash"
+	if err := UpdateTaskFields("default", "t1", TaskFields{Executor: &goodExec, Model: &goodModel}); err != nil {
+		t.Fatalf("updating executor/model: %v", err)
+	}
+	task, err := GetTask("default", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Executor != "commandcode" {
+		t.Fatalf("executor = %q, want commandcode", task.Executor)
+	}
+	if task.Model != "deepseek/deepseek-v4.1-flash" {
+		t.Fatalf("model = %q, want deepseek/deepseek-v4.1-flash", task.Model)
+	}
 }
 
 // TestUpdateTaskFieldsRejectsEscapingDesignSource matters because the design

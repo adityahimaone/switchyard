@@ -497,7 +497,25 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusAccepted, t)
 	})
 	mux.HandleFunc("POST /api/boards/{slug}/tasks/{id}/retry", func(w http.ResponseWriter, r *http.Request) {
-		t, err := kanban.RetryTask(r.PathValue("slug"), r.PathValue("id"))
+		slug, id := r.PathValue("slug"), r.PathValue("id")
+		if r.Body != nil {
+			var req struct {
+				Executor *string `json:"executor,omitempty"`
+				Model    *string `json:"model,omitempty"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req); err == nil {
+				if req.Executor != nil || req.Model != nil {
+					if err := kanban.UpdateTaskFields(slug, id, kanban.TaskFields{
+						Executor: req.Executor,
+						Model:    req.Model,
+					}); err != nil {
+						runControlError(w, err)
+						return
+					}
+				}
+			}
+		}
+		t, err := kanban.RetryTask(slug, id)
 		if err != nil {
 			runControlError(w, err)
 			return

@@ -7,6 +7,7 @@ import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { TaskOutput } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
+import { BlockedResolutionBanner } from "./BlockedResolutionBanner"
 import {
   AgentPicker, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
   Section, StatusBadge, TaskActions,
@@ -241,7 +242,11 @@ export default function TaskDetail({
                 </Section>
               )}
 
-              {task.last_failure_error && <FailureBlock message={task.last_failure_error} />}
+              {task.status === "blocked" ? (
+                <BlockedResolutionBanner task={task} slug={slug} onRetried={onClose} />
+              ) : task.last_failure_error ? (
+                <FailureBlock message={task.last_failure_error} />
+              ) : null}
             </>
           ) : (
             <>
@@ -256,6 +261,7 @@ export default function TaskDetail({
               />
 
               {task.status === "review" && <ReviewSection slug={slug} task={task} onDone={onOpenPage} />}
+              {task.status === "blocked" && <BlockedResolutionBanner task={task} slug={slug} onRetried={onClose} className="my-2.5" />}
 
               <TaskActions
                 task={task}

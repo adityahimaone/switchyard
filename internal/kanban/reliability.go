@@ -254,7 +254,7 @@ func RetryTask(slug, taskID string) (Task, error) {
 
 	nextAttempt := attempt + 1
 	if _, err := tx.Exec(`UPDATE tasks SET status='todo', completed_at=NULL, consecutive_failures=0,
-		started_at=NULL, current_run_id=NULL, attempt=?
+		started_at=NULL, current_run_id=NULL, last_failure_error='', attempt=?
 		WHERE id=?`, nextAttempt, taskID); err != nil {
 		return Task{}, err
 	}
