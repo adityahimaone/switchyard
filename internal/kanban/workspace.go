@@ -26,7 +26,7 @@ type workspaceFile struct {
 // typed keys that win over the original file on save
 var workspaceKnownKeys = map[string]bool{
 	"id": true, "name": true, "path": true, "host": true, "os": true, "kind": true,
-	"note": true, "apps": true, "codegraph_apps": true, "codegraph_hidden": true,
+	"note": true, "apps": true, "codegraph_apps": true, "codegraph_hidden": true, "labels": true,
 }
 
 var wsMu sync.Mutex

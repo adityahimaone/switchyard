@@ -401,6 +401,7 @@ export interface Workspace {
   os?: string
   kind: string
   note?: string
+  labels?: string[]
   codegraph_apps?: { path: string; name: string }[]
   codegraph_hidden?: string[]
   status?: string

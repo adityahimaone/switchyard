@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Segmented } from "@/components/ui/segmented"
-import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle, FileCode, Code2, Layers } from "lucide-react"
+import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle, FileCode, Code2, Layers, BookOpen } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
@@ -261,6 +261,18 @@ export default function TaskDialog({
   }, [body, cursorPos, atDismissed])
 
   const selectedWorkspace = useMemo(() => workspaces.find((w) => w.path === ws), [workspaces, ws])
+
+  const isWorkWorkspace = useMemo(() => {
+    if (!selectedWorkspace) return false
+    return Boolean(
+      selectedWorkspace.labels?.includes("work") ||
+      selectedWorkspace.labels?.includes("saas") ||
+      selectedWorkspace.name?.toLowerCase().includes("gadjian") ||
+      selectedWorkspace.name?.toLowerCase().includes("hadirr") ||
+      selectedWorkspace.name?.toLowerCase().includes("baktiku") ||
+      selectedWorkspace.path?.toLowerCase().includes("saas")
+    )
+  }, [selectedWorkspace])
 
   interface FileSearchMatch {
     path: string
@@ -1260,6 +1272,14 @@ export default function TaskDialog({
                               {osLabel}
                             </Badge>
                           )}
+                          {w.labels?.includes("work") && (
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 border-purple-500/30 bg-purple-500/10 px-1 py-0 text-[9px] font-medium leading-none text-purple-400"
+                            >
+                              work
+                            </Badge>
+                          )}
                         </span>
                       </SelectItem>
                     )
@@ -1269,6 +1289,14 @@ export default function TaskDialog({
                   </SelectItem>
                 </SelectContent>
               </Select>
+              {isWorkWorkspace && (
+                <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-2xs text-purple-300">
+                  <BookOpen className="size-3.5 shrink-0 text-purple-400" />
+                  <span>
+                    <strong className="font-semibold text-purple-200">Fast-8 SAAS Rules Active:</strong> Internal DOCS.md & AGENTS.md rules automatically attached (view versioning, module SCSS, minification).
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Compact inline bar: shows the fast default (dsh · DeepSeek Flash v4.1 · Write)

@@ -282,6 +282,11 @@ func dispatchPendingRemoteTasks() {
 			if !focusedGitPrompt {
 				msg = kanban.PrepareTaskExecutionMessage(r.id, msg, identity)
 			}
+			var wsLabels []string
+			if wsObj, err := kanban.FindWorkspace(r.ws); err == nil && wsObj != nil {
+				wsLabels = wsObj.Labels
+			}
+			msg = kanban.AugmentSAASPrompt(msg, r.ws, wsLabels)
 			model, modelErr := kanban.ProfileModel(r.assignee)
 			if strings.TrimSpace(r.model) != "" {
 				model = strings.TrimSpace(r.model)

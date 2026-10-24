@@ -159,6 +159,7 @@ type Workspace struct {
 	Apps            []string       `json:"apps,omitempty"`
 	CodeGraphApps   []CodeGraphApp `json:"codegraph_apps,omitempty"`
 	CodeGraphHidden []string       `json:"codegraph_hidden,omitempty"`
+	Labels          []string       `json:"labels,omitempty"`
 	Status          string         `json:"status,omitempty"`
 	StatusMsg       string         `json:"status_message,omitempty"`
 	PingMs          *float64       `json:"ping_ms,omitempty"`
