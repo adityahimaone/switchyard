@@ -127,6 +127,13 @@ func RenderReviewComments(taskID, cardTitle string, comments []TaskComment) stri
 		if i > 0 {
 			body.WriteString("\n")
 		}
+		if strings.TrimSpace(comment.FilePath) != "" {
+			if comment.LineNumber > 0 {
+				fmt.Fprintf(&body, "Anchor: [%s:%d]\n", comment.FilePath, comment.LineNumber)
+			} else {
+				fmt.Fprintf(&body, "Anchor: [%s]\n", comment.FilePath)
+			}
+		}
 		fmt.Fprintf(&body, "Reviewer: %s\nComment:\n%s\n", comment.Author, comment.Body)
 	}
 	body.WriteString("\nPlease address this on top of the existing session state; do not restart the task from scratch.")
