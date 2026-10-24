@@ -8,6 +8,8 @@ export interface SearchSelectOption {
   label: string
   sublabel?: string
   badge?: string
+  badgeNode?: React.ReactNode
+  keywords?: string[]
   icon?: React.ReactNode
   pinned?: boolean
   disabled?: boolean
@@ -97,7 +99,9 @@ export function SearchSelect({
       const matchLabel = opt.label.toLowerCase().includes(q)
       const matchValue = opt.value.toLowerCase().includes(q)
       const matchSub = opt.sublabel?.toLowerCase().includes(q)
-      return matchLabel || matchValue || matchSub
+      const matchBadge = opt.badge?.toLowerCase().includes(q)
+      const matchKeywords = opt.keywords?.some((k) => k.toLowerCase().includes(q))
+      return matchLabel || matchValue || matchSub || matchBadge || matchKeywords
     })
   }, [options, query])
 
@@ -237,10 +241,14 @@ export function SearchSelect({
                     <span className="shrink-0 text-ink-3 [&_svg]:size-3.5">{selectedOption.icon}</span>
                   )}
                   <span className="truncate">{selectedOption.label}</span>
-                  {showTriggerBadge && selectedOption.badge && (
-                    <span className="shrink-0 rounded bg-well px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
-                      {selectedOption.badge}
-                    </span>
+                  {showTriggerBadge && (
+                    selectedOption.badgeNode ? (
+                      <span className="shrink-0">{selectedOption.badgeNode}</span>
+                    ) : selectedOption.badge ? (
+                      <span className="shrink-0 rounded bg-well px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
+                        {selectedOption.badge}
+                      </span>
+                    ) : null
                   )}
                 </>
               ) : (
@@ -360,11 +368,13 @@ export function SearchSelect({
                             </span>
                           )}
                         </div>
-                        {opt.badge && (
+                        {opt.badgeNode ? (
+                          <span className="shrink-0">{opt.badgeNode}</span>
+                        ) : opt.badge ? (
                           <span className="shrink-0 rounded bg-well px-1 py-0.5 font-mono text-[9px] text-ink-3">
                             {opt.badge}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       {isSelected && (
                         <Check className="size-3.5 shrink-0 text-accent" aria-hidden />

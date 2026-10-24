@@ -882,6 +882,69 @@ export default function TaskDialog({
       })),
     [depOptions]
   )
+  const workspaceSearchOptions: SearchSelectOption[] = useMemo(() => {
+    const list: SearchSelectOption[] = workspaces.map((w) => {
+      const ssh = isSshWorkspace(w)
+      const live = isLive(w)
+      const os = (w.os || "").toLowerCase()
+      const osLabel =
+        os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : ""
+      return {
+        value: w.path,
+        label: w.name,
+        sublabel: w.path,
+        keywords: [
+          w.name,
+          w.path,
+          w.host ?? "",
+          os,
+          ...(w.labels ?? []),
+          ssh ? "ssh" : "local",
+        ],
+        icon: live ? (
+          <span
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
+            title={w.status === "local" ? "local" : `connected ${w.ping_ms != null ? Math.round(w.ping_ms) + "ms" : ""}`}
+          />
+        ) : undefined,
+        badgeNode: (
+          <span className="flex items-center gap-1">
+            {ssh && (
+              <Badge
+                variant="outline"
+                className="shrink-0 border-review/30 bg-review-tint px-1 py-0 text-[9px] leading-none text-review-text"
+              >
+                ssh
+              </Badge>
+            )}
+            {osLabel && (
+              <Badge
+                variant="outline"
+                className="shrink-0 border-[var(--c-line)] bg-[var(--c-canvas)] px-1 py-0 text-[9px] leading-none text-ink-3"
+              >
+                {osLabel}
+              </Badge>
+            )}
+            {w.labels?.includes("work") && (
+              <Badge
+                variant="outline"
+                className="shrink-0 border-purple-500/30 bg-purple-500/10 px-1 py-0 text-[9px] font-medium leading-none text-purple-400"
+              >
+                work
+              </Badge>
+            )}
+          </span>
+        ),
+      }
+    })
+    list.push({
+      value: "__scratch",
+      label: "(no workspace — scratch)",
+      sublabel: "Run outside any workspace",
+      keywords: ["scratch", "none"],
+    })
+    return list
+  }, [workspaces])
   const submitReady = canSubmit(issues, { title, body, paths, gateCommand })
 
   return (
@@ -1220,75 +1283,21 @@ export default function TaskDialog({
               <Label className="block text-xs text-ink-3" htmlFor="task-workspace">
                 Workspace
               </Label>
-              <Select
+              <SearchSelect
+                id="task-workspace"
                 value={ws || "__scratch"}
                 onValueChange={(v) => {
                   setWsUserEdited(true)
                   setWs(v === "__scratch" ? "" : v)
                 }}
-              >
-                <SelectTrigger id="task-workspace" className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}>
-                  <SelectValue placeholder="workspace" />
-                </SelectTrigger>
-                <SelectContent className="max-w-[22rem]">
-                  {workspaces.map((w) => {
-                    const ssh = isSshWorkspace(w)
-                    const live = isLive(w)
-                    const os = (w.os || "").toLowerCase()
-                    const osLabel =
-                      os === "mac" ? "mac" : os === "windows" ? "win" : os === "linux" ? "linux" : ""
-                    return (
-                      <SelectItem
-                        key={w.id}
-                        value={w.path}
-                        className="text-sm"
-                        title={`${w.name} — ${w.path}${w.host ? ` (${w.host})` : ""}${w.status ? ` · ${w.status}` : ""}`}
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          {live && (
-                            <span
-                              className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
-                              title={
-                                w.status === "local"
-                                  ? "local"
-                                  : `connected ${w.ping_ms != null ? Math.round(w.ping_ms) + "ms" : ""}`
-                              }
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate">{w.name}</span>
-                          {ssh && (
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 border-review/30 bg-review-tint px-1 py-0 text-[9px] leading-none text-review-text"
-                            >
-                              ssh
-                            </Badge>
-                          )}
-                          {osLabel && (
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 border-[var(--c-line)] bg-[var(--c-canvas)] px-1 py-0 text-[9px] leading-none text-ink-3"
-                            >
-                              {osLabel}
-                            </Badge>
-                          )}
-                          {w.labels?.includes("work") && (
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 border-purple-500/30 bg-purple-500/10 px-1 py-0 text-[9px] font-medium leading-none text-purple-400"
-                            >
-                              work
-                            </Badge>
-                          )}
-                        </span>
-                      </SelectItem>
-                    )
-                  })}
-                  <SelectItem value="__scratch" className="text-sm">
-                    (no workspace — scratch)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                options={workspaceSearchOptions}
+                placeholder="Select workspace…"
+                searchPlaceholder="Search workspaces by name, path, label…"
+                emptyMessage="No matching workspaces"
+                showTriggerBadge
+                className="mt-1"
+                triggerClassName={selCls}
+              />
               {isWorkWorkspace && (
                 <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-2xs text-purple-300">
                   <BookOpen className="size-3.5 shrink-0 text-purple-400" />

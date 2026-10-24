@@ -407,6 +407,7 @@ function WorkspaceForm({
   const [os, setOs] = useState(initial?.os ?? "")
   const [kind, setKind] = useState(initial?.kind ?? "dir")
   const [note, setNote] = useState(initial?.note ?? "")
+  const [labels, setLabels] = useState(initial?.labels?.join(", ") ?? "")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const editing = !!initial
@@ -440,7 +441,19 @@ function WorkspaceForm({
     if (transport === "ssh" && !host.trim()) { setErr("SSH host required"); return }
     setBusy(true); setErr(null)
     try {
-      await onSave({ id: id.trim().toLowerCase(), name: name.trim() || id.trim(), path: path.trim(), host: transport === "ssh" ? host.trim() : "", os, kind, note: note.trim() } as Workspace)
+      await onSave({
+        id: id.trim().toLowerCase(),
+        name: name.trim() || id.trim(),
+        path: path.trim(),
+        host: transport === "ssh" ? host.trim() : "",
+        os,
+        kind,
+        note: note.trim(),
+        labels: labels
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      } as Workspace)
       onClose()
     } catch (e) { setErr((e as Error).message); setBusy(false) }
   }
@@ -521,6 +534,31 @@ function WorkspaceForm({
               <SelectItem value="repo">Repository</SelectItem>
             </SelectContent>
           </Select>
+        </Field>
+        <Field label="Labels" htmlFor="ws-labels">
+          <div className="flex flex-col gap-1.5">
+            <Input
+              id="ws-labels"
+              value={labels}
+              onChange={(e) => setLabels(e.target.value)}
+              placeholder="work, saas (comma separated)"
+            />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = labels.split(",").map((s) => s.trim()).filter(Boolean)
+                  if (!cur.includes("work")) {
+                    setLabels(cur.concat("work").join(", "))
+                  }
+                }}
+                className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-2xs font-medium text-purple-400 hover:bg-purple-500/20"
+              >
+                + work
+              </button>
+              <span className="text-3xs text-ink-3">Add 'work' label for Fast-8 SAAS guidelines</span>
+            </div>
+          </div>
         </Field>
         <Field label="Note" htmlFor="ws-note">
           <Textarea
@@ -823,6 +861,7 @@ export default function WorkspacesPage() {
   const [pinging, setPinging] = useState<string | null>(null)
   const [codeGraphOpen, setCodeGraphOpen] = useState<Record<string, boolean>>({})
   const [platform, setPlatform] = useState<PlatformKey | "all">("all")
+  const [tagFilter, setTagFilter] = useState<string>("all")
   const [q, setQ] = useState("")
   const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null)
   const [bootLog, setBootLog] = useState<{ nodeID: string; label: string; action: string } | null>(null)
@@ -857,19 +896,26 @@ export default function WorkspacesPage() {
   const shownGroups = useMemo(
     () =>
       platformGroups
-        .map(([key, list]): [PlatformKey, Workspace[]] => [
-          key,
-          needle === ""
-            ? list
-            : list.filter(
-                (w) =>
-                  w.name.toLowerCase().includes(needle) ||
-                  w.path.toLowerCase().includes(needle) ||
-                  (w.host ?? "").toLowerCase().includes(needle),
-              ),
-        ])
+        .map(([key, list]): [PlatformKey, Workspace[]] => {
+          const byTag =
+            tagFilter === "all"
+              ? list
+              : list.filter((w) => (w.labels ?? []).includes(tagFilter))
+          return [
+            key,
+            needle === ""
+              ? byTag
+              : byTag.filter(
+                  (w) =>
+                    w.name.toLowerCase().includes(needle) ||
+                    w.path.toLowerCase().includes(needle) ||
+                    (w.host ?? "").toLowerCase().includes(needle) ||
+                    (w.labels ?? []).some((l) => l.toLowerCase().includes(needle)),
+                ),
+          ]
+        })
         .filter(([, list]) => list.length > 0),
-    [platformGroups, needle],
+    [platformGroups, tagFilter, needle],
   )
   const shownList = useMemo(() => shownGroups.flatMap(([, list]) => list), [shownGroups])
 
@@ -1042,6 +1088,18 @@ export default function WorkspacesPage() {
                 value: k as string,
                 label: `${PLATFORM_META[k].label} (${platformCounts.get(k) ?? 0})`,
               })),
+            ]}
+          />
+          <FilterChip
+            label="Tag"
+            value={tagFilter}
+            onChange={(v) => setTagFilter(v)}
+            options={[
+              { value: "all", label: "All tags" },
+              {
+                value: "work",
+                label: `Work (${(workspaces.data ?? []).filter((w) => w.labels?.includes("work")).length})`,
+              },
             ]}
           />
         </FilterBar>
@@ -1241,6 +1299,23 @@ function WorkspaceCard({
           <FolderGit2 className="size-4 text-ink-3" aria-hidden />
         </span>
         <p className="min-w-0 flex-1 truncate text-xs text-ink-3">{plat.label} · {isSsh ? `ssh ${ws.host}` : "local"}</p>
+        {ws.labels && ws.labels.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1">
+            {ws.labels.map((l) => (
+              <span
+                key={l}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-3xs font-medium leading-none border",
+                  l === "work"
+                    ? "border-purple-500/30 bg-purple-500/10 text-purple-400"
+                    : "border-line bg-well text-ink-3"
+                )}
+              >
+                {l}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Path truncates from the left: the tail is the part you read. */}
