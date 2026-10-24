@@ -448,12 +448,7 @@ func CaptureDesignExport(slug, taskID, workspacePath, designSource string) []str
 func captureDesignExport(slug, taskID, workspacePath, designSource string) []string {
 	candidates := designExportCandidates(designSource)
 	if len(candidates) == 0 {
-		candidates = []string{
-			"design/exports/redesign-habit-tracker.png",
-			"design/exports/habit-home.png",
-			"design/habit-home.png",
-			"design/exports/onboarding.png",
-		}
+		return nil
 	}
 	var picks []string
 	for _, c := range candidates {

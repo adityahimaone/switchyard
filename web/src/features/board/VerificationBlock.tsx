@@ -50,34 +50,59 @@ function VerdictIcon({ status }: { status: Verdict }) {
   return <ShieldQuestion className="size-3.5 text-ink-3" aria-hidden />
 }
 
+function screenshotKind(filename: string): { label: string; icon: string; badgeClass: string } {
+  const lower = filename.toLowerCase()
+  if (lower.startsWith("design-") || lower.includes("pen") || lower.includes("mock")) {
+    return {
+      label: "Design Mock (pen.dev)",
+      icon: "🎨",
+      badgeClass: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+    }
+  }
+  return {
+    label: "Live Browser (e2e)",
+    icon: "📱",
+    badgeClass: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  }
+}
+
 function Screenshot({ att }: { att: LightboxAttachment }) {
   const [failed, setFailed] = useState(false)
   const [view, setView] = useState<LightboxAttachment | null>(null)
   const theme = themeOf(att.filename)
+  const kind = screenshotKind(att.filename)
   return (
     <figure className="min-w-0">
-      <button
-        type="button"
-        onClick={() => setView(att)}
-        title={`View ${att.filename} full size`}
-        className="block w-full cursor-zoom-in"
-      >
-        {failed ? (
-          <div className="flex h-28 items-center justify-center rounded-control border border-line bg-well px-3 text-center text-2xs text-ink-3">
-            {att.filename}
-            <br />
-            preview unavailable — click to view
-          </div>
-        ) : (
-          <img
-            src={`/api/attachments/${att.id}`}
-            alt={`${att.filename}${theme ? `, ${theme} theme` : ""}`}
-            loading="lazy"
-            onError={() => setFailed(true)}
-            className="h-28 w-full rounded-control border border-line bg-canvas object-cover object-top"
-          />
-        )}
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setView(att)}
+          title={`View ${att.filename} full size`}
+          className="block w-full cursor-zoom-in"
+        >
+          {failed ? (
+            <div className="flex h-28 items-center justify-center rounded-control border border-line bg-well px-3 text-center text-2xs text-ink-3">
+              {att.filename}
+              <br />
+              preview unavailable — click to view
+            </div>
+          ) : (
+            <img
+              src={`/api/attachments/${att.id}`}
+              alt={`${att.filename}${theme ? `, ${theme} theme` : ""}`}
+              loading="lazy"
+              onError={() => setFailed(true)}
+              className="h-28 w-full rounded-control border border-line bg-canvas object-cover object-top"
+            />
+          )}
+        </button>
+        <span
+          className={`absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide backdrop-blur-md border shadow-sm ${kind.badgeClass}`}
+        >
+          <span>{kind.icon}</span>
+          <span>{kind.label}</span>
+        </span>
+      </div>
       <figcaption className="mt-1 truncate font-mono text-2xs text-ink-3" title={att.filename}>
         {theme ? `${theme} · ` : ""}
         {att.filename}
