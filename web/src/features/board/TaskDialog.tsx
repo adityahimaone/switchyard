@@ -535,6 +535,54 @@ export default function TaskDialog({
     })
   }
 
+  const summonedSkills = useMemo(() => {
+    const matches = body.match(/(?:^|\s)\$([a-zA-Z0-9_\-]+)/g) || []
+    return Array.from(new Set(matches.map((m) => m.trim().slice(1))))
+  }, [body])
+
+  const summonedRefs = useMemo(() => {
+    const matches = body.match(/(?:^|\s)@([a-zA-Z0-9_\-./]+)/g) || []
+    return Array.from(new Set(matches.map((m) => m.trim().slice(1))))
+  }, [body])
+
+  const summonedCards = useMemo(() => {
+    const matches = body.match(/(?:^|\s)#([a-zA-Z0-9_\-]+)/g) || []
+    return Array.from(new Set(matches.map((m) => m.trim().slice(1))))
+  }, [body])
+
+  function removeSummonedSkill(skillName: string) {
+    setBody((prev) =>
+      prev
+        .replace(new RegExp(`(?:^|\\s)\\$${skillName}(?=\\s|$)`, "g"), " ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+  }
+
+  function removeSummonedRef(refPath: string) {
+    const escaped = refPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    setBody((prev) =>
+      prev
+        .replace(new RegExp(`(?:^|\\s)@${escaped}(?=\\s|$)`, "g"), " ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+    setPathsRaw((prev) =>
+      splitPathInput(prev)
+        .filter((p) => p !== refPath)
+        .join(", ")
+    )
+  }
+
+  function removeSummonedCard(cardId: string) {
+    setBody((prev) =>
+      prev
+        .replace(new RegExp(`(?:^|\\s)#${cardId}(?=\\s|$)`, "g"), " ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+  }
+
   function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (isAtPickerOpen && omniboxItems.length > 0) {
       if (e.key === "ArrowDown") {
@@ -875,9 +923,23 @@ export default function TaskDialog({
             ))}
 
             <div className="mt-3 flex items-center justify-between">
-              <Label className="text-xs text-ink-3" htmlFor="task-body">
-                Prompt
-              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-ink-3" htmlFor="task-body">
+                  Prompt
+                </Label>
+                {summonedSkills.length > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/25 bg-purple-500/10 px-1.5 py-0.5 font-mono text-[10px] text-purple-700 dark:text-purple-300">
+                    <Puzzle className="size-2.5" />
+                    {summonedSkills.length} skill{summonedSkills.length > 1 ? "s" : ""}
+                  </span>
+                )}
+                {summonedRefs.length > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                    <FileCode className="size-2.5" />
+                    {summonedRefs.length} file{summonedRefs.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 <Button
                   type="button"
@@ -1075,6 +1137,69 @@ export default function TaskDialog({
                 </div>
               )}
             </div>
+
+            {/* Highlighted summoned tokens shelf */}
+            {(summonedSkills.length > 0 || summonedRefs.length > 0 || summonedCards.length > 0) && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)]/70 px-3 py-2 shadow-2xs backdrop-blur-md">
+                <span className="text-[10px] font-semibold tracking-wider text-ink-3 uppercase">
+                  Summoned:
+                </span>
+                {summonedSkills.map((sk) => (
+                  <span
+                    key={sk}
+                    className="inline-flex items-center gap-1 rounded-full border border-purple-500/35 bg-purple-500/12 px-2.5 py-0.5 font-mono text-xs font-medium text-purple-700 shadow-2xs dark:text-purple-300"
+                    title={`Active Skill: $${sk}`}
+                  >
+                    <Puzzle className="size-3 text-purple-600 dark:text-purple-400" />
+                    <span>${sk}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSummonedSkill(sk)}
+                      className="ml-0.5 rounded-full p-0.5 text-purple-500/70 hover:bg-purple-500/25 hover:text-purple-800 dark:hover:text-purple-100"
+                      aria-label={`Remove skill $${sk}`}
+                    >
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                ))}
+                {summonedRefs.map((ref) => (
+                  <span
+                    key={ref}
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-2.5 py-0.5 font-mono text-xs font-medium text-emerald-700 shadow-2xs dark:text-emerald-300"
+                    title={`Referenced Context: @${ref}`}
+                  >
+                    <FileCode className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    <span className="max-w-[14rem] truncate">@{ref}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSummonedRef(ref)}
+                      className="ml-0.5 rounded-full p-0.5 text-emerald-500/70 hover:bg-emerald-500/25 hover:text-emerald-800 dark:hover:text-emerald-100"
+                      aria-label={`Remove reference @${ref}`}
+                    >
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                ))}
+                {summonedCards.map((cid) => (
+                  <span
+                    key={cid}
+                    className="inline-flex items-center gap-1 rounded-full border border-blue-500/35 bg-blue-500/12 px-2.5 py-0.5 font-mono text-xs font-medium text-blue-700 shadow-2xs dark:text-blue-300"
+                    title={`Referenced Task Card: #${cid}`}
+                  >
+                    <Layers className="size-3 text-blue-600 dark:text-blue-400" />
+                    <span>#{cid}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSummonedCard(cid)}
+                      className="ml-0.5 rounded-full p-0.5 text-blue-500/70 hover:bg-blue-500/25 hover:text-blue-800 dark:hover:text-blue-100"
+                      aria-label={`Remove card #${cid}`}
+                    >
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {issuesForField(issues, "body").map((i) => (
               <FieldIssue key={i.code + i.message} issue={i} />
             ))}

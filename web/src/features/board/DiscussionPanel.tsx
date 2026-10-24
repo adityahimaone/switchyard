@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowDown, Check, Loader2, MessageSquare, RotateCcw, Send } from "lucide-react"
+import { AlertTriangle, ArrowDown, Check, Loader2, MessageSquare, RotateCcw, Send, Sparkles, Puzzle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, toastGlobal, type Profile, type Task, type TaskComment } from "../../api"
 import { AgentMarkdown } from "./AgentMarkdown"
@@ -12,17 +14,58 @@ import {
 import { commentsKey } from "./useTaskDiscussion"
 import { readDraft, writeDraft } from "./discussionStore"
 
-/* The Discussion tab as a conversation.
+export interface ReviewerPersona {
+  id: string
+  name: string
+  role: string
+  icon: string
+  skills: string[]
+  color: string
+}
 
-   What changed against the old inline CommentSection, and why:
-   - Sending is optimistic. The message is in the thread before the round trip
-     finishes and the box is clear and focused, so a second message is one
-     keystroke away.
-   - What happens next is shown from real state (queued, working, parked), not
-     from a three-step tracker whose middle step was not wired to anything.
-   - A reply is hard to miss: highlighted on arrival, a "New" divider on the
-     first unread one, and a pill when you are scrolled up and it lands below.
-   - Enter sends. Shift+Enter is a newline. */
+export const REVIEWER_PERSONAS: ReviewerPersona[] = [
+  {
+    id: "board-ui",
+    name: "You (Reviewer)",
+    role: "Human Reviewer",
+    icon: "👤",
+    skills: [],
+    color: "accent",
+  },
+  {
+    id: "qa-engineer",
+    name: "QA Engineer",
+    role: "Test & Quality Assurance",
+    icon: "🛡️",
+    skills: ["e2e", "ui-verification", "audit"],
+    color: "emerald",
+  },
+  {
+    id: "design-reviewer",
+    name: "Design Reviewer",
+    role: "UI & Visual Polish",
+    icon: "🎨",
+    skills: ["apple-design", "emil-design-eng", "animate"],
+    color: "purple",
+  },
+  {
+    id: "lead-reviewer",
+    name: "Lead Reviewer",
+    role: "Architecture & Code Lead",
+    icon: "🏛️",
+    skills: ["writing-plans", "writing-skills", "git"],
+    color: "blue",
+  },
+]
+
+function personaForAuthor(author: string, profiles: Profile[] = []): { name: string; icon: string; role?: string } {
+  const match = REVIEWER_PERSONAS.find((p) => p.id === author)
+  if (match) return { name: match.name, icon: match.icon, role: match.role }
+  const profileMatch = profiles.find((p) => p.name === author)
+  if (profileMatch) return { name: profileMatch.name, icon: "🤖", role: profileMatch.model || "Agent Profile" }
+  if (author === USER_AUTHOR || author === "board-ui") return { name: "You", icon: "👤", role: "Reviewer" }
+  return { name: author, icon: "💬" }
+}
 
 const FRESH_MS = 3200
 const STICK_PX = 96
@@ -51,18 +94,20 @@ function Dots() {
   )
 }
 
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, icon }: { name: string; icon?: string }) {
   return (
     <span
       aria-hidden
       className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-[var(--c-line)] bg-[var(--c-line)]/30 text-2xs font-semibold uppercase text-ink-2"
     >
-      {name.trim().charAt(0) || "?"}
+      {icon || name.trim().charAt(0) || "?"}
     </span>
   )
 }
 
-function Message({ c, head, fresh, now }: { c: TaskComment; head: boolean; fresh: boolean; now: number }) {
+function Message({ c, head, fresh, now, profiles }: { c: TaskComment; head: boolean; fresh: boolean; now: number; profiles?: Profile[] }) {
+  const persona = personaForAuthor(c.author, profiles)
+  const isReqChanges = c.intent === "request_changes"
   const mine = isMine(c)
   const pending = isPending(c)
   const when = (
@@ -79,8 +124,18 @@ function Message({ c, head, fresh, now }: { c: TaskComment; head: boolean; fresh
     return (
       <article className={`flex flex-col items-end ${head ? "mt-2.5" : "mt-0.5"} first:mt-0`}>
         {head && (
-          <header className="mb-0.5 flex items-baseline gap-2 px-0.5">
+          <header className="mb-0.5 flex flex-wrap items-baseline gap-2 px-0.5">
             <span className="text-meta font-semibold text-[var(--c-accent)]">You</span>
+            {isReqChanges && (
+              <Badge variant="outline" className="h-4 border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                Changes Requested
+              </Badge>
+            )}
+            {c.resolved && (
+              <Badge variant="outline" className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                <Check className="mr-0.5 size-2.5" /> Resolved
+              </Badge>
+            )}
             {when}
           </header>
         )}
@@ -98,11 +153,27 @@ function Message({ c, head, fresh, now }: { c: TaskComment; head: boolean; fresh
 
   return (
     <article className={`flex gap-2 ${head ? "mt-2.5" : "mt-0.5"} first:mt-0`}>
-      {head ? <Avatar name={c.author} /> : <span className="size-6 shrink-0" aria-hidden />}
+      {head ? <Avatar name={c.author} icon={persona.icon} /> : <span className="size-6 shrink-0" aria-hidden />}
       <div className="min-w-0 flex-1">
         {head && (
-          <header className="mb-0.5 flex items-baseline gap-2 px-0.5">
-            <span className="text-meta font-semibold text-ink-2">{c.author}</span>
+          <header className="mb-0.5 flex flex-wrap items-baseline gap-2 px-0.5">
+            <span className="text-meta font-semibold text-ink-2">{persona.name}</span>
+            {persona.role && <span className="font-mono text-[10px] text-ink-3">({persona.role})</span>}
+            {isReqChanges && (
+              <Badge variant="outline" className="h-4 border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                Changes Requested
+              </Badge>
+            )}
+            {c.resolved && (
+              <Badge variant="outline" className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                <Check className="mr-0.5 size-2.5" /> Resolved
+              </Badge>
+            )}
+            {c.file_path && (
+              <span className="font-mono text-[10px] text-ink-3">
+                [{c.file_path}{c.line_number ? `:${c.line_number}` : ""}]
+              </span>
+            )}
             {when}
           </header>
         )}
@@ -182,6 +253,26 @@ export function DiscussionPanel({
   const firstNewId = from === null ? null : comments.find((c) => !isMine(c) && !isPending(c) && c.id > from)?.id ?? null
   const newCount = firstNewId === null ? 0 : comments.filter((c) => !isMine(c) && !isPending(c) && c.id >= firstNewId).length
 
+  const allPersonas = useMemo(() => {
+    const list: ReviewerPersona[] = [...REVIEWER_PERSONAS]
+    for (const p of profiles) {
+      if (p.valid && !list.some((r) => r.id === p.name)) {
+        list.push({
+          id: p.name,
+          name: p.name,
+          role: p.model ? `Agent (${p.model})` : "Agent Profile",
+          icon: "🤖",
+          skills: p.skills || [],
+          color: "sky",
+        })
+      }
+    }
+    return list
+  }, [profiles])
+
+  const [activePersonaId, setActivePersonaId] = useState("board-ui")
+  const activePersona = allPersonas.find((p) => p.id === activePersonaId) ?? allPersonas[0]
+
   const scrollToBottom = () => {
     const el = threadRef.current
     if (!el) return
@@ -240,17 +331,18 @@ export function DiscussionPanel({
   }, [phase])
 
   const post = useMutation({
-    mutationFn: ({ body, intent }: { body: string; draft: string; intent?: "comment" | "request_changes" }) =>
+    mutationFn: ({ body, intent, author }: { body: string; draft: string; intent?: "comment" | "request_changes"; author?: string }) =>
       api<TaskComment>(`/api/boards/${slug}/tasks/${task.id}/comments`, {
         method: "POST",
-        body: JSON.stringify({ body, author: USER_AUTHOR, intent: intent ?? "comment" }),
+        body: JSON.stringify({ body, author: author || activePersona.id, intent: intent ?? "comment" }),
       }),
-    onMutate: async ({ body, intent }) => {
+    onMutate: async ({ body, intent, author }) => {
       await qc.cancelQueries({ queryKey: key })
+      const postAuthor = author || activePersona.id
       const optimistic: TaskComment = {
         id: -Date.now(),
         task_id: task.id,
-        author: USER_AUTHOR,
+        author: postAuthor,
         body,
         intent: intent ?? "comment",
         created_at: Math.floor(Date.now() / 1000),
@@ -288,9 +380,25 @@ export function DiscussionPanel({
     const body = withMention(draft, target, names)
     if (!body || post.isPending) return
     setErr(null)
-    post.mutate({ body, draft, intent })
+    post.mutate({ body, draft, intent, author: activePersona.id })
     setDraft("")
     writeDraft(task.id, "")
+    textareaRef.current?.focus()
+  }
+
+  function insertPersonaReviewTemplate() {
+    let tpl = ""
+    if (activePersona.id === "qa-engineer") {
+      tpl = `### 🛡️ QA Engineer Review ($e2e, $ui-verification, $audit)\n- [ ] Test Coverage & Edge Cases: \n- [ ] Visual Regression & Accessibility: \n- [ ] Required Changes:`
+    } else if (activePersona.id === "design-reviewer") {
+      tpl = `### 🎨 Design Review ($apple-design, $emil-design-eng, $animate)\n- [ ] Typography & Spacing Hierarchy: \n- [ ] Contrast Ratio & Glass Token AA Check: \n- [ ] Motion Feel & Transitions: `
+    } else if (activePersona.id === "lead-reviewer") {
+      tpl = `### 🏛️ Lead Architect Review ($writing-plans, $code-review)\n- [ ] Architecture & Scope Boundaries: \n- [ ] Modularity & Type Safety: \n- [ ] Action Items:`
+    } else {
+      const skillsStr = activePersona.skills.length > 0 ? activePersona.skills.map((s) => `$${s}`).join(", ") : "general"
+      tpl = `### ${activePersona.icon} ${activePersona.name} Review (${skillsStr})\n- [ ] Findings:\n- [ ] Action Required:`
+    }
+    setDraft((prev) => (prev ? `${prev}\n\n${tpl}` : tpl))
     textareaRef.current?.focus()
   }
 
@@ -344,6 +452,7 @@ export function DiscussionPanel({
                 head={c.id === firstNewId || showHeader(comments[i - 1], c)}
                 fresh={fresh.has(c.id)}
                 now={now}
+                profiles={profiles}
               />
             </Fragment>
           ))}
@@ -397,6 +506,60 @@ export function DiscussionPanel({
       </div>
 
       <div className="mt-2.5 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)]/40 focus-within:border-[var(--c-line-strong)]">
+        {/* Persona Selector with Skills Row */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--c-line)] bg-[var(--c-surface)]/60 px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-2xs font-medium text-ink-3">Reviewer:</span>
+            <Select value={activePersonaId} onValueChange={setActivePersonaId}>
+              <SelectTrigger className="h-6 w-auto gap-1 border-[var(--c-line)] bg-transparent px-2 text-xs font-medium">
+                <span className="mr-0.5 text-xs">{activePersona.icon}</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {allPersonas.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span>{p.icon}</span>
+                      <span className="font-medium">{p.name}</span>
+                      <span className="text-[10px] text-ink-3">({p.role})</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {activePersona.skills.length > 0 && (
+              <div className="hidden sm:flex flex-wrap items-center gap-1">
+                <span className="text-[10px] text-ink-3">Skills:</span>
+                {activePersona.skills.map((sk) => (
+                  <span
+                    key={sk}
+                    className="inline-flex items-center gap-0.5 rounded border border-purple-500/25 bg-purple-500/10 px-1.5 py-0.5 font-mono text-[9px] text-purple-700 dark:text-purple-300"
+                  >
+                    <Puzzle className="size-2 text-purple-600 dark:text-purple-400" />
+                    ${sk}
+                  </span>
+                ))}
+              </div>
+            )}
+            {activePersona.id !== "board-ui" && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10"
+                onClick={insertPersonaReviewTemplate}
+                title={`Draft review template tailored to ${activePersona.name}'s skills`}
+              >
+                <Sparkles className="size-3" />
+                Template
+              </Button>
+            )}
+          </div>
+        </div>
+
         {chipNames.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 border-b border-[var(--c-line)] px-2.5 py-1.5">
             <span className="text-2xs text-ink-3">Reply to</span>

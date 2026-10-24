@@ -170,13 +170,14 @@ type Workspace struct {
 }
 
 type Profile struct {
-	Name      string `json:"name"`
-	Model     string `json:"model"`
-	Provider  string `json:"provider"`
-	Active    bool   `json:"active"`
-	Valid     bool   `json:"valid"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-	BaseURL   string `json:"base_url,omitempty"`
+	Name      string   `json:"name"`
+	Model     string   `json:"model"`
+	Provider  string   `json:"provider"`
+	Active    bool     `json:"active"`
+	Valid     bool     `json:"valid"`
+	AvatarURL string   `json:"avatar_url,omitempty"`
+	BaseURL   string   `json:"base_url,omitempty"`
+	Skills    []string `json:"skills,omitempty"`
 }
 
 func openDB(slug string) (*sql.DB, error) {
@@ -806,6 +807,7 @@ func ListProfiles() ([]Profile, error) {
 				p.Model, p.Provider, p.BaseURL = parseModelYAML(string(raw))
 			}
 			p.Valid = profileValid(p.Provider)
+			p.Skills = readProfileSkills(e.Name())
 			if hasAvatar(e.Name()) {
 				p.AvatarURL = fmt.Sprintf("/api/profiles/%s/avatar?v=%s", e.Name(), profileAvatarRevision(e.Name()))
 			} else {
@@ -823,6 +825,7 @@ func ListProfiles() ([]Profile, error) {
 		def.Model = DefaultAgentModel
 	}
 	def.Valid = profileValid(def.Provider)
+	def.Skills = readProfileSkills("default")
 	if hasAvatar("default") {
 		def.AvatarURL = fmt.Sprintf("/api/profiles/default/avatar?v=%s", profileAvatarRevision("default"))
 	} else {

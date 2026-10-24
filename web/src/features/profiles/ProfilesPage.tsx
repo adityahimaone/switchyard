@@ -275,6 +275,57 @@ function ProfileForm({
 
             {!editing && (
               <div>
+                <div className="mb-3 rounded-lg border border-[var(--c-line)] bg-[var(--c-surface)]/60 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-ink-2">Quick Reviewer Presets</span>
+                    <span className="text-[10px] text-ink-3">Seeds name, prompt &amp; skills</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 border-emerald-500/30 bg-emerald-500/5 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400"
+                      onClick={() => {
+                        setName("qa-engineer")
+                        setSelectedSkills(["e2e", "ui-verification"])
+                        setPrompt("You are a QA Engineer focused on automated E2E testing, visual fixture verification, and edge-case regression audits.")
+                        if (nameErr) setNameErr(null)
+                      }}
+                    >
+                      🛡️ QA Engineer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 border-purple-500/30 bg-purple-500/5 px-2 text-[11px] text-purple-700 hover:bg-purple-500/15 dark:text-purple-400"
+                      onClick={() => {
+                        setName("design-reviewer")
+                        setSelectedSkills(["apple-design", "emil-design-eng", "animate"])
+                        setPrompt("You are a Senior Design Reviewer focused on visual polish, typography tokens, AA contrast ratios, and fluid physical motion.")
+                        if (nameErr) setNameErr(null)
+                      }}
+                    >
+                      🎨 Design Reviewer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 border-blue-500/30 bg-blue-500/5 px-2 text-[11px] text-blue-700 hover:bg-blue-500/15 dark:text-blue-400"
+                      onClick={() => {
+                        setName("lead-reviewer")
+                        setSelectedSkills(["writing-plans", "writing-skills"])
+                        setPrompt("You are a Lead Software Architect reviewing code modularity, test coverage, and documentation integrity.")
+                        if (nameErr) setNameErr(null)
+                      }}
+                    >
+                      🏛️ Lead Reviewer
+                    </Button>
+                  </div>
+                </div>
+
                 <Label htmlFor="profile-name" className="text-xs text-ink-2">
                   Name
                 </Label>
@@ -282,7 +333,7 @@ function ProfileForm({
                   id="profile-name"
                   value={name}
                   onChange={(e) => { setName(e.target.value); if (nameErr) setNameErr(null) }}
-                  placeholder="karina"
+                  placeholder="qa-engineer"
                   autoFocus
                   aria-invalid={!!nameErr}
                   aria-describedby={nameErr ? "profile-name-error" : "profile-name-help"}
@@ -617,7 +668,25 @@ export default function ProfilesPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 }
-              />
+              >
+                {p.skills && p.skills.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1 border-t border-[var(--c-line)]/50 pt-2">
+                    {p.skills.slice(0, 4).map((sk) => (
+                      <span
+                        key={sk}
+                        className="inline-flex items-center gap-0.5 rounded border border-purple-500/25 bg-purple-500/10 px-1.5 py-0.5 font-mono text-[10px] text-purple-700 dark:text-purple-300"
+                      >
+                        ${sk}
+                      </span>
+                    ))}
+                    {p.skills.length > 4 && (
+                      <span className="self-center text-[10px] text-ink-3">
+                        +{p.skills.length - 4} more
+                      </span>
+                    )}
+                  </div>
+                )}
+              </EntryCard>
             ))}
           </div>
         )}

@@ -661,6 +661,7 @@ export interface Profile {
   active: boolean
   valid: boolean
   avatar_url?: string
+  skills?: string[]
 }
 
 export interface ProfileDetail {
