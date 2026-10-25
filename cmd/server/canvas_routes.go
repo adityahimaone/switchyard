@@ -148,6 +148,30 @@ func registerCanvasRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusCreated, map[string]string{"task_id": id, "board": body.Board})
 	})
 
+	mux.HandleFunc("GET /api/canvas/sessions/{id}/files", func(w http.ResponseWriter, r *http.Request) {
+		files, err := kanban.GetCanvasFiles(r.PathValue("id"))
+		if err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, files)
+	})
+
+	mux.HandleFunc("PUT /api/canvas/sessions/{id}/files", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Files map[string]string `json:"files"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&body); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		if err := kanban.SaveCanvasFiles(r.PathValue("id"), body.Files); err != nil {
+			fail(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
 	// Token-gated proxy. It sits outside /api/ on purpose: the sandboxed iframe
 	// has an opaque origin and sends no cookie, so the URL token is the
 	// credential. The token only grants this one session's dev server.

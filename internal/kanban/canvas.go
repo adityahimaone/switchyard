@@ -1,10 +1,16 @@
 package kanban
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -690,4 +696,82 @@ func TouchCanvasSession(id string) {
 	canvasTouched[id] = time.Now()
 	canvasTouchMu.Unlock()
 	_ = canvasUpdate(id, `last_active_at=?`, time.Now().Unix())
+}
+
+// GetCanvasFiles packages and returns all canvas source files from the session's worktree.
+func GetCanvasFiles(id string) (map[string]string, error) {
+	s, err := GetCanvasSession(id)
+	if err != nil {
+		return nil, err
+	}
+	// Tar up canvas/ app/canvas/ src/canvas/
+	script := fmt.Sprintf(`cd %s && tar -czf - $(for d in canvas app/canvas src/canvas; do [ -d "$d" ] && echo "$d"; done) 2>/dev/null | base64`, shellQuotePath(s.WorktreePath))
+	out, code := workerShell(s.WorktreePath, "canvas: get-files", script)
+	if code != 0 {
+		return nil, fmt.Errorf("read canvas files: %s", truncateWorktreeOutput(out))
+	}
+	raw := stripShellProvenance(out)
+	raw = strings.ReplaceAll(raw, "\n", "")
+	raw = strings.ReplaceAll(raw, "\r", "")
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[string]string{}, nil
+	}
+	tarGz, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode tar.gz: %w", err)
+	}
+	gzr, err := gzip.NewReader(bytes.NewReader(tarGz))
+	if err != nil {
+		return nil, fmt.Errorf("gzip reader: %w", err)
+	}
+	defer gzr.Close()
+	tr := tar.NewReader(gzr)
+	files := make(map[string]string)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		content, err := io.ReadAll(io.LimitReader(tr, 4<<20))
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.ToSlash(hdr.Name)] = string(content)
+	}
+	return files, nil
+}
+
+// SaveCanvasFiles writes updated files back to the session's worktree and commits them.
+func SaveCanvasFiles(id string, files map[string]string) error {
+	s, err := GetCanvasSession(id)
+	if err != nil {
+		return err
+	}
+	for rel := range files {
+		if !CanvasPathAllowed(rel, s.DialKit) {
+			return fmt.Errorf("path not allowed: %s", rel)
+		}
+	}
+	for rel, content := range files {
+		dir := path.Dir(rel)
+		script := fmt.Sprintf(`cd %s && mkdir -p %s && cat << 'EOF_SW_CANVAS' > %s
+%s
+EOF_SW_CANVAS
+git add -A -- %s
+`, shellQuotePath(s.WorktreePath), shellQuotePath(dir), shellQuotePath(rel), content, shellQuotePath(rel))
+		out, code := workerShell(s.WorktreePath, "canvas: save-file", script)
+		if code != 0 {
+			return fmt.Errorf("save file %s: %s", rel, truncateWorktreeOutput(out))
+		}
+	}
+	commitScript := fmt.Sprintf(`cd %s && git diff --cached --quiet || git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "canvas: sync dialkit tweaks"`, shellQuotePath(s.WorktreePath))
+	_, _ = workerShell(s.WorktreePath, "canvas: commit-save", commitScript)
+	return canvasUpdate(id, `last_active_at=?`, time.Now().Unix())
 }

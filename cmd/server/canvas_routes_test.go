@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -20,5 +22,16 @@ func TestRewriteNextPaths(t *testing.T) {
 func TestCanvasProxyRejectsBadToken(t *testing.T) {
 	if kanban.CanvasViewTokenValid("cv_x", "nope") {
 		t.Fatal("bad token accepted")
+	}
+}
+
+func TestCanvasFilesRouteRejectsNonexistent(t *testing.T) {
+	mux := http.NewServeMux()
+	registerCanvasRoutes(mux)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/canvas/sessions/cv_dummy/files", nil)
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for nonexistent session files, got %d", w.Code)
 	}
 }
