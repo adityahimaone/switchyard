@@ -49,6 +49,19 @@ func TestParsePorcelainZ(t *testing.T) {
 	if !reflect.DeepEqual(bad, []string{"app/page.tsx", "old.ts", "new.ts"}) {
 		t.Fatalf("violations = %v", bad)
 	}
+
+	// Provenance headers/footers from workerShell must not leak as paths
+	withProvenance := "provenance executor=shell requested=shell bin=bash args=[\"-lc\" \"git status --porcelain -z\"]\nEXECUTOR_PROOF=shell\n?? canvas/hero.tsx\x00"
+	gotProv := ParsePorcelainZ(withProvenance)
+	if !reflect.DeepEqual(gotProv, []string{"canvas/hero.tsx"}) {
+		t.Fatalf("ParsePorcelainZ with provenance = %v, want [canvas/hero.tsx]", gotProv)
+	}
+
+	// Clean git status with only provenance lines must return no paths
+	emptyWithProv := "provenance executor=shell bin=bash\nEXECUTOR_PROOF=shell\nprovenance executor=shell exit=0\n"
+	if gotEmpty := ParsePorcelainZ(emptyWithProv); len(gotEmpty) != 0 {
+		t.Fatalf("ParsePorcelainZ empty with provenance = %v, want empty", gotEmpty)
+	}
 }
 
 func TestAllocCanvasPort(t *testing.T) {

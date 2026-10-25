@@ -248,21 +248,40 @@ func CanvasPathAllowed(rel string, dialkit bool) bool {
 	return dialkit && canvasDialKitFiles[rel]
 }
 
+func stripPorcelainProvenance(raw string) string {
+	if !strings.Contains(raw, "provenance executor=") && !strings.Contains(raw, "EXECUTOR_PROOF=") {
+		return raw
+	}
+	lines := strings.Split(raw, "\n")
+	var kept []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "provenance executor=") || strings.HasPrefix(trimmed, "EXECUTOR_PROOF=") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
 // ParsePorcelainZ extracts paths from `git status --porcelain -z -uall`.
 // Rename/copy entries carry a second NUL-separated path, which is included.
+// Any node-agent provenance lines prepended/appended to workerShell output
+// are stripped first so they are never mistaken for file entries.
 func ParsePorcelainZ(out string) []string {
+	out = stripPorcelainProvenance(out)
 	parts := strings.Split(out, "\x00")
 	var paths []string
 	for i := 0; i < len(parts); i++ {
-		e := parts[i]
-		if len(e) < 4 {
+		e := strings.TrimLeft(parts[i], "\r\n")
+		if len(e) < 4 || e[2] != ' ' {
 			continue
 		}
 		paths = append(paths, e[3:])
 		if e[0] == 'R' || e[0] == 'C' || e[1] == 'R' || e[1] == 'C' {
 			i++
 			if i < len(parts) && parts[i] != "" {
-				paths = append(paths, parts[i])
+				paths = append(paths, strings.TrimLeft(parts[i], "\r\n"))
 			}
 		}
 	}
@@ -472,13 +491,14 @@ func SendCanvasMessage(id, text string) error {
 func runCanvasTurn(s CanvasSession, text string) {
 	turn := s.Turns + 1
 	res, err := DispatchRemoteRaw(NodeDispatchRequest{
-		TaskID:    fmt.Sprintf("canvas-%s-%d", s.ID, turn),
-		Title:     "canvas: " + s.Title,
-		Workspace: s.WorktreePath,
-		Message:   CanvasMandate(&s, text),
-		Executor:  s.Executor,
-		Model:     s.Model,
-		TimeoutS:  int((20 * time.Minute).Seconds()),
+		TaskID:      fmt.Sprintf("canvas-%s-%d", s.ID, turn),
+		Title:       "canvas: " + s.Title,
+		Workspace:   s.WorktreePath,
+		Message:     CanvasMandate(&s, text),
+		Executor:    s.Executor,
+		HarnessKind: s.Executor,
+		Model:       s.Model,
+		TimeoutS:    int((20 * time.Minute).Seconds()),
 	}, 22*time.Minute)
 
 	reply, failure := "", ""
