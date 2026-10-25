@@ -267,10 +267,11 @@ func dispatchPendingRemoteTasks() {
 			}
 			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title, r.designScope, r.penAgent, r.penModel)
 			command := r.command
-			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
+			if r.executor == "shell" && command == "" {
 				if r.designTool == "pen_cli" {
 					command = buildDirectPenCommand(r.designSource, r.title, r.body, r.penAgent, r.penModel)
-				} else {
+					r.executionMode = "direct"
+				} else if r.executionMode != "agentic" {
 					log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
 					releaseSlot()
 					continue
