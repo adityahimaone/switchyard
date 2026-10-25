@@ -158,6 +158,7 @@ func main() {
 	// migrated to node-agent at startup and its executor was already routing
 	// through node-agent anyway, so it was a second code path over one transport.
 	startRemoteDispatcher(dispatcherCtx)
+	go kanban.StartCanvasReaper(dispatcherCtx, 1*time.Minute)
 	// Expired sessions are only reclaimed on a timer: ValidateSession deletes a
 	// row solely when that exact token is presented again, which never happens
 	// for a token the user has discarded.
@@ -210,6 +211,7 @@ func buildMux(dist string) *http.ServeMux {
 	registerWorkspaceIdentityRoutes(mux)
 	registerSettingsRoutes(mux)
 	registerModelsRoutes(mux)
+	registerCanvasRoutes(mux)
 	registerRuntimeRoutes(mux)
 	registerPowerRoutes(mux)
 	registerOverviewRoutes(mux)

@@ -13,6 +13,7 @@ import {
 	BoxesIcon,
 	SettingsIcon,
 	ScrollTextIcon,
+	PaletteIcon,
 } from "lucide-react";
 import type { Page } from "@/lib/sidebar-preferences";
 
@@ -47,6 +48,7 @@ export const navGroups: SidebarNavGroup[] = [
 		items: [
 			{ title: "Board", page: "board", icon: <KanbanSquareIcon /> },
 			{ title: "Chat", page: "chat", icon: <MessageSquareIcon /> },
+			{ title: "Canvas", page: "canvas", icon: <PaletteIcon /> },
 			{ title: "Flow map", page: "agent-mapping", icon: <RouteIcon /> },
 			{ title: "Knowledge", page: "knowledge", icon: <NetworkIcon /> },
 		],

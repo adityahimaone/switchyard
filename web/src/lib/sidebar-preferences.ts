@@ -17,4 +17,5 @@ export type Page =
   | "cron"
   | "ecosystem"
   | "chat"
+  | "canvas"
   | "settings"

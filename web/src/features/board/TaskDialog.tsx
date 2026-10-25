@@ -25,6 +25,7 @@ import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal,
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
+import type { CanvasPrefill } from "../canvas/canvasPrefill"
 import {
   buildCreatePayload,
   canSubmit,
@@ -183,6 +184,7 @@ export default function TaskDialog({
   candidates = [],
   onClose,
   onCreate,
+  onOpenCanvas,
 }: {
   slug: string
   workspaces: Workspace[]
@@ -191,6 +193,8 @@ export default function TaskDialog({
   candidates?: DependencyCandidate[]
   onClose: () => void
   onCreate: (p: Record<string, unknown>) => Promise<unknown>
+  /** Hand the draft to Canvas Studio instead of creating a card. */
+  onOpenCanvas?: (prefill: CanvasPrefill) => void
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
@@ -1385,6 +1389,18 @@ export default function TaskDialog({
                     </span>
                   )}
                 </button>
+
+                {onOpenCanvas && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenCanvas({ workspacePath: ws, title: title.trim(), brief: body.trim() })}
+                    className="glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium text-ink-3 transition-[color,transform] duration-150 ease-[var(--ease-out-expo)] hover:text-ink active:scale-[0.97]"
+                    title="Brainstorm this in Canvas Studio (live canvas in an isolated worktree) instead of creating a card"
+                  >
+                    <Palette className="size-3" />
+                    <span>Canvas</span>
+                  </button>
+                )}
               </div>
 
               <Segmented

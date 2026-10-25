@@ -13,6 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { pagePath, parseRoute } from "./lib/routes"
+import { CANVAS_PREFILL_KEY } from "./features/canvas/canvasPrefill"
 import LoadingState from "@/components/feedback/loading-state"
 
 const TaskDialog = lazy(() => import("./features/board/TaskDialog"))
@@ -27,6 +28,7 @@ const MemoryPage = lazy(() => import("./features/memory/MemoryPage"))
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage"))
 const OverviewPage = lazy(() => import("./features/overview/OverviewPage"))
 const AgentMappingPage = lazy(() => import("./features/flow/AgentMappingPage"))
+const CanvasPage = lazy(() => import("./features/canvas/CanvasPage"))
 const KnowledgePage = lazy(() => import("./features/knowledge/KnowledgePage"))
 const CronPage = lazy(() => import("./features/cron/CronPage"))
 const EcosystemPage = lazy(() => import("./features/ecosystem/EcosystemPage"))
@@ -226,6 +228,7 @@ export default function App() {
           {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
           {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
           {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
+          {page === "canvas" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CanvasPage workspaces={workspaces.data ?? []} boardSlug={slug} /></div>}
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
           {page === "chat" && (
@@ -301,6 +304,11 @@ export default function App() {
             status: t.status,
           }))}
           onClose={() => setCreating(false)}
+          onOpenCanvas={(prefill) => {
+            sessionStorage.setItem(CANVAS_PREFILL_KEY, JSON.stringify(prefill))
+            setCreating(false)
+            handleSelectPage("canvas")
+          }}
           onCreate={(payload) =>
             api<Task>(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(async (created) => {
               qc.invalidateQueries({ queryKey: ["tasks", slug] })
