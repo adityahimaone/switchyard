@@ -50,8 +50,8 @@ export interface PenNode {
   name?: string
   x?: number
   y?: number
-  width?: number
-  height?: number
+  width?: number | "fill_container" | "hug_contents" | string
+  height?: number | "fill_container" | "hug_contents" | string
   fill?: PenFill
   stroke?: string
   strokeWidth?: number
@@ -68,15 +68,21 @@ export interface PenNode {
   padding?: number | [number, number] | [number, number, number, number] | PenPadding
   alignItems?: "start" | "center" | "end" | "stretch" | string
   justifyContent?: "start" | "center" | "end" | "space-between" | "space_between" | "space-around" | "space_around" | string
+  // Ellipse & Donut Arc properties
+  innerRadius?: number
+  startAngle?: number
+  sweepAngle?: number
   // Text properties
   text?: string
   content?: string
   fontSize?: number
   fontWeight?: string | number
+  fontStyle?: "normal" | "italic" | string
   fontFamily?: string
   textAlign?: "left" | "center" | "right" | "justify"
   lineHeight?: number | string
   letterSpacing?: number
+  textGrowth?: "fixed-width" | "auto" | string
   // Icon properties
   icon?: string
   library?: string
@@ -403,7 +409,7 @@ export function ensureGoogleFontsLoaded(fonts: string[]) {
   )
   if (!cleanFonts.length || typeof document === "undefined") return
 
-  const fontParams = cleanFonts.map((f) => `family=${encodeURIComponent(f)}:wght@400;500;600;700;800`).join("&")
+  const fontParams = cleanFonts.map((f) => `family=${encodeURIComponent(f)}:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700`).join("&")
   const href = `https://fonts.googleapis.com/css2?${fontParams}&display=swap`
   const existing = document.querySelector(`link[href*="fonts.googleapis.com"][data-pen-fonts="true"]`)
   if (existing) {

@@ -83,7 +83,9 @@ export function compileNodeToJSX(
       .split(/[-_]/)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
       .join("")
-    const size = Math.max(node.width || 16, node.height || 16)
+    const numW = typeof node.width === "number" ? node.width : 16
+    const numH = typeof node.height === "number" ? node.height : 16
+    const size = Math.max(numW, numH)
     const color = resolveTokenValue(node.fill, variables) || "currentColor"
 
     const classes: string[] = ["shrink-0"]
@@ -109,7 +111,9 @@ export function compileNodeToJSX(
     if (parentLayout === "none") {
       classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
     }
-    if (node.width !== undefined) {
+    if (node.width === "fill_container" || node.fillWidth) {
+      classes.push("flex-1 min-w-0")
+    } else if (typeof node.width === "number") {
       classes.push(`w-[${node.width}px]`)
     }
     if (node.fontSize) classes.push(`text-[${node.fontSize}px]`)
@@ -119,6 +123,9 @@ export function compileNodeToJSX(
       else if (w === "600" || w === "semibold") classes.push("font-semibold")
       else if (w === "500" || w === "medium") classes.push("font-medium")
       else classes.push("font-normal")
+    }
+    if (node.fontStyle === "italic") {
+      classes.push("italic")
     }
     if (node.textAlign) {
       classes.push(`text-${node.textAlign}`)
@@ -135,6 +142,12 @@ export function compileNodeToJSX(
     if (resolvedFont && resolvedFont !== "inherit") {
       styleObj.fontFamily = resolvedFont.includes(" ") ? `"${resolvedFont}", sans-serif` : resolvedFont
     }
+    if (node.lineHeight !== undefined) {
+      styleObj.lineHeight = typeof node.lineHeight === "number" ? `${node.lineHeight}` : node.lineHeight
+    }
+    if (node.letterSpacing !== undefined) {
+      styleObj.letterSpacing = `${node.letterSpacing}px`
+    }
 
     const classAttr = classes.length ? ` className="${classes.join(" ")}"` : ""
     const styleAttr = Object.keys(styleObj).length ? ` style={${JSON.stringify(styleObj)}}` : ""
@@ -144,6 +157,34 @@ export function compileNodeToJSX(
 
   // 3. Ellipse or Circle Node
   if (node.type === "ellipse" || node.type === "circle") {
+    const w = typeof node.width === "number" ? node.width : 32
+    const h = typeof node.height === "number" ? node.height : 32
+
+    // Check if Donut / Progress Arc
+    if (node.innerRadius && node.innerRadius > 0) {
+      const R = w / 2
+      const innerR = R * node.innerRadius
+      const midR = (R + innerR) / 2
+      const strokeW = R - innerR
+      const C = 2 * Math.PI * midR
+      const sweep = node.sweepAngle !== undefined ? Math.abs(node.sweepAngle) : 360
+      const start = node.startAngle !== undefined ? node.startAngle : -90
+      const arcLength = (sweep / 360) * C
+      const strokeColor = resolveTokenValue(node.stroke || node.fill, variables) || "#000000"
+
+      const posClass = parentLayout === "none" ? `absolute left-[${node.x || 0}px] top-[${node.y || 0}px]` : "shrink-0"
+      return `${indent}<svg width={${w}} height={${h}} viewBox="0 0 ${w} ${h}" className="${posClass} overflow-visible">
+${indent}  <circle
+${indent}    cx={${R}}
+${indent}    cy={${R}}
+${indent}    r={${midR}}
+${indent}    fill="none"
+${indent}    stroke=${JSON.stringify(strokeColor)}
+${indent}    strokeWidth={${strokeW}}
+${sweep < 360 ? `${indent}    strokeDasharray="${arcLength} ${C}"\n${indent}    strokeLinecap="round"\n${indent}    transform="rotate(${start} ${R} ${R})"\n` : ""}${indent}  />
+${indent}</svg>`
+    }
+
     const classes: string[] = ["rounded-full", "shrink-0"]
     if (parentLayout === "none") {
       classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
@@ -172,10 +213,18 @@ export function compileNodeToJSX(
     classes.push("relative")
   }
 
-  if (node.layout === "vertical") {
-    classes.push("flex flex-col")
-  } else if (node.layout === "horizontal") {
-    classes.push("flex flex-row")
+  const isExplicitVertical = node.layout === "vertical"
+  const isExplicitHorizontal = node.layout === "horizontal"
+  const isAutoLayout =
+    node.layout !== "none" &&
+    (isExplicitVertical ||
+      isExplicitHorizontal ||
+      node.alignItems !== undefined ||
+      node.justifyContent !== undefined ||
+      node.gap !== undefined)
+
+  if (isAutoLayout) {
+    classes.push("flex", isExplicitVertical ? "flex-col" : "flex-row")
   }
 
   if (node.gap) {
@@ -203,15 +252,19 @@ export function compileNodeToJSX(
   if (padClass) classes.push(padClass)
 
   // Dimensions & sizing
-  if (node.fillWidth) {
-    classes.push("w-full")
-  } else if (node.width) {
+  if (node.width === "fill_container" || node.fillWidth) {
+    classes.push("flex-1 min-w-0 w-full")
+  } else if (node.width === "hug_contents") {
+    classes.push("w-fit")
+  } else if (typeof node.width === "number") {
     classes.push(`w-[${node.width}px]`)
   }
 
-  if (node.fillHeight) {
-    classes.push("h-full")
-  } else if (node.height) {
+  if (node.height === "fill_container" || node.fillHeight) {
+    classes.push("flex-1 min-h-0 h-full")
+  } else if (node.height === "hug_contents") {
+    classes.push("h-fit")
+  } else if (typeof node.height === "number") {
     classes.push(`h-[${node.height}px]`)
   }
 
@@ -252,7 +305,7 @@ export function compileNodeToJSX(
   const styleAttr = Object.keys(mergedStyle).length ? ` style={${JSON.stringify(mergedStyle)}}` : ""
 
   const childrenJSX = (node.children || [])
-    .map((child) => compileNodeToJSX(child, depth + 1, variables, node.layout || "none"))
+    .map((child) => compileNodeToJSX(child, depth + 1, variables, isAutoLayout ? (isExplicitVertical ? "vertical" : "horizontal") : "none"))
     .join("\n")
 
   if (childrenJSX) {

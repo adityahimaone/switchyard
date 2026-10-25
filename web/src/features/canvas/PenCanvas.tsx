@@ -135,8 +135,8 @@ function NodeRenderer({
 
     const startX = e.clientX
     const startY = e.clientY
-    const startW = node.width || 390
-    const startH = node.height || 844
+    const startW = typeof node.width === "number" ? node.width : 390
+    const startH = typeof node.height === "number" ? node.height : 844
     const startNodeX = node.x || (isRoot ? 80 : 0)
     const startNodeY = node.y || (isRoot ? 80 : 0)
     const aspectRatio = startW / startH
@@ -207,7 +207,9 @@ function NodeRenderer({
   // 1. Icon Node Rendering
   if (node.type === "icon") {
     const iconColor = resolveTokenValue(node.fill, variables) || "#ffffff"
-    const size = Math.max(node.width || 16, node.height || 16)
+    const numW = typeof node.width === "number" ? node.width : 16
+    const numH = typeof node.height === "number" ? node.height : 16
+    const size = Math.max(numW, numH)
     const iconStyle: React.CSSProperties = {
       color: iconColor,
       width: `${size}px`,
@@ -258,26 +260,30 @@ function NodeRenderer({
     const textStyle: React.CSSProperties = {
       fontSize: node.fontSize ? `${node.fontSize}px` : "14px",
       fontWeight: node.fontWeight || 400,
+      fontStyle: (node.fontStyle as any) || undefined,
       fontFamily: resolvedFont.includes(" ") ? `"${resolvedFont}", sans-serif` : resolvedFont,
       color: typeof resolvedColor === "string" ? resolvedColor : "#ffffff",
       textAlign: (node.textAlign as any) || "left",
-      lineHeight: node.lineHeight !== undefined ? (typeof node.lineHeight === "number" ? `${node.lineHeight}px` : node.lineHeight) : "1.4",
+      lineHeight: node.lineHeight !== undefined ? (typeof node.lineHeight === "number" ? `${node.lineHeight}` : node.lineHeight) : "1.4",
       letterSpacing: node.letterSpacing !== undefined ? `${node.letterSpacing}px` : "normal",
       opacity: node.opacity !== undefined ? node.opacity : 1,
       userSelect: isEditingText ? "text" : "none",
       cursor: isEditingText ? "text" : "pointer",
       transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
-      whiteSpace: "pre-wrap",
+      whiteSpace: node.textGrowth === "fixed-width" ? "normal" : "pre-wrap",
+    }
+
+    if (node.width === "fill_container" || node.fillWidth) {
+      textStyle.flex = "1 1 0%"
+      textStyle.minWidth = 0
+    } else if (typeof node.width === "number") {
+      textStyle.width = `${node.width}px`
     }
 
     if (parentLayout === "none") {
       textStyle.position = "absolute"
       textStyle.left = `${node.x || 0}px`
       textStyle.top = `${node.y || 0}px`
-    }
-
-    if (node.width !== undefined) {
-      textStyle.width = `${node.width}px`
     }
 
     return (
@@ -334,26 +340,80 @@ function NodeRenderer({
     )
   }
 
-  // 3. Ellipse / Circle Node Rendering
+  // 3. Ellipse / Circle / Donut Arc Node Rendering
   if (node.type === "ellipse" || node.type === "circle") {
     const strokeColor = resolveTokenValue(node.stroke, variables)
-    const ellipseStyle: React.CSSProperties = {
-      ...resolveFillStyle(node.fill, variables),
-      borderRadius: "50%",
-      width: `${node.width || 32}px`,
-      height: `${node.height || 32}px`,
-      border: node.strokeWidth && strokeColor ? `${node.strokeWidth}px solid ${strokeColor}` : strokeColor ? `1px solid ${strokeColor}` : undefined,
+    const fillColor = resolveTokenValue(typeof node.fill === "string" ? node.fill : undefined, variables)
+    const w = typeof node.width === "number" ? node.width : 32
+    const h = typeof node.height === "number" ? node.height : 32
+
+    const containerStyle: React.CSSProperties = {
+      width: `${w}px`,
+      height: `${h}px`,
       opacity: node.opacity !== undefined ? node.opacity : 1,
       transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
-      pointerEvents: "auto",
     }
 
     if (parentLayout === "none") {
-      ellipseStyle.position = "absolute"
-      ellipseStyle.left = `${node.x || 0}px`
-      ellipseStyle.top = `${node.y || 0}px`
+      containerStyle.position = "absolute"
+      containerStyle.left = `${node.x || 0}px`
+      containerStyle.top = `${node.y || 0}px`
     }
 
+    // Check if this is a Donut / Progress Arc (innerRadius > 0)
+    if (node.innerRadius && node.innerRadius > 0) {
+      const R = w / 2
+      const innerR = R * node.innerRadius
+      const midR = (R + innerR) / 2
+      const strokeW = R - innerR
+      const C = 2 * Math.PI * midR
+
+      const color = fillColor || strokeColor || "#000000"
+      const sweep = node.sweepAngle !== undefined ? Math.abs(node.sweepAngle) : 360
+      const start = node.startAngle !== undefined ? node.startAngle : -90
+      const arcLength = (sweep / 360) * C
+
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelectNode(node.id)
+          }}
+          className={cn(
+            "relative cursor-pointer select-none shrink-0",
+            isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
+          )}
+          style={containerStyle}
+          title={node.name || "Donut Ring"}
+        >
+          {isSelected && (
+            <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow pointer-events-none">
+              <span>{node.name || "Donut"}</span>
+            </div>
+          )}
+          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+            <circle
+              cx={R}
+              cy={R}
+              r={midR}
+              fill="none"
+              stroke={color}
+              strokeWidth={strokeW}
+              strokeDasharray={sweep < 360 ? `${arcLength} ${C}` : undefined}
+              strokeLinecap="round"
+              transform={sweep < 360 ? `rotate(${start} ${R} ${R})` : undefined}
+            />
+          </svg>
+        </div>
+      )
+    }
+
+    // Regular solid or gradient ellipse (e.g. ambient background glow blobs)
     return (
       <div
         role="button"
@@ -369,7 +429,12 @@ function NodeRenderer({
           "relative transition-shadow cursor-pointer select-none shrink-0",
           isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
         )}
-        style={ellipseStyle}
+        style={{
+          ...containerStyle,
+          ...resolveFillStyle(node.fill, variables),
+          borderRadius: "50%",
+          border: node.strokeWidth && strokeColor ? `${node.strokeWidth}px solid ${strokeColor}` : strokeColor ? `1px solid ${strokeColor}` : undefined,
+        }}
         title={node.name || "Ellipse"}
       >
         {isSelected && (
@@ -407,35 +472,49 @@ function NodeRenderer({
     baseStyle.position = "relative"
   }
 
-  if (node.fillWidth) {
+  if (node.width === "fill_container" || node.fillWidth) {
+    baseStyle.flex = "1 1 0%"
+    baseStyle.minWidth = 0
     baseStyle.width = "100%"
-  } else if (node.width !== undefined) {
+  } else if (node.width === "hug_contents") {
+    baseStyle.width = "fit-content"
+  } else if (typeof node.width === "number") {
     baseStyle.width = `${node.width}px`
   }
 
-  if (node.fillHeight) {
+  if (node.height === "fill_container" || node.fillHeight) {
+    baseStyle.flex = "1 1 0%"
+    baseStyle.minHeight = 0
     baseStyle.height = "100%"
-  } else if (node.height !== undefined) {
+  } else if (node.height === "hug_contents") {
+    baseStyle.height = "fit-content"
+  } else if (typeof node.height === "number") {
     baseStyle.height = `${node.height}px`
   }
 
   // Flexbox layout or freeform coordinate container
-  if (node.layout === "vertical") {
-    baseStyle.display = "flex"
-    baseStyle.flexDirection = "column"
-    baseStyle.gap = `${node.gap || 0}px`
-  } else if (node.layout === "horizontal") {
-    baseStyle.display = "flex"
-    baseStyle.flexDirection = "row"
-    baseStyle.gap = `${node.gap || 0}px`
-  }
+  const isExplicitVertical = node.layout === "vertical"
+  const isExplicitHorizontal = node.layout === "horizontal"
+  const isAutoLayout =
+    node.layout !== "none" &&
+    (isExplicitVertical ||
+      isExplicitHorizontal ||
+      node.alignItems !== undefined ||
+      node.justifyContent !== undefined ||
+      node.gap !== undefined)
 
-  if (node.alignItems) {
-    baseStyle.alignItems = normalizeFlexAlign(node.alignItems)
-  }
-
-  if (node.justifyContent) {
-    baseStyle.justifyContent = normalizeFlexAlign(node.justifyContent)
+  if (isAutoLayout) {
+    baseStyle.display = "flex"
+    baseStyle.flexDirection = isExplicitVertical ? "column" : "row"
+    if (node.gap) {
+      baseStyle.gap = `${node.gap}px`
+    }
+    if (node.alignItems) {
+      baseStyle.alignItems = normalizeFlexAlign(node.alignItems)
+    }
+    if (node.justifyContent) {
+      baseStyle.justifyContent = normalizeFlexAlign(node.justifyContent)
+    }
   }
 
   return (
@@ -534,7 +613,7 @@ function NodeRenderer({
           <NodeRenderer
             key={child.id}
             node={child}
-            parentLayout={node.layout || "none"}
+            parentLayout={isAutoLayout ? (isExplicitVertical ? "vertical" : "horizontal") : "none"}
             variables={variables}
             selectedNodeId={selectedNodeId}
             onSelectNode={onSelectNode}
