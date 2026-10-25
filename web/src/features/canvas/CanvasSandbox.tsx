@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { AlertCircle, Loader2, GripHorizontal, Check, Sparkles } from "lucide-react"
+import type { SelectedElementInfo, DiscoveredSchemaItem } from "./DialKitInspector"
 
 export interface CanvasSandboxProps {
   sessionId: string
@@ -13,6 +14,9 @@ export interface CanvasSandboxProps {
   onPanChange: (pan: { x: number; y: number }) => void
   onZoomChange: (zoom: number) => void
   onControlsDiscovered?: (controls: any[]) => void
+  onSchemaDiscovered?: (schema: { title: string; schema: Record<string, DiscoveredSchemaItem> }, file: string) => void
+  onSelectElement?: (element: SelectedElementInfo | null, file: string) => void
+  elementUpdate?: { file: string; text?: string; matchedDialKey?: string; styles?: Record<string, string> } | null
 }
 
 const FRAME_DIMENSIONS: Record<string, { width: number; height: number; label: string }> = {
@@ -52,6 +56,9 @@ export function CanvasSandbox({
   onPanChange,
   onZoomChange,
   onControlsDiscovered,
+  onSchemaDiscovered,
+  onSelectElement,
+  elementUpdate,
 }: CanvasSandboxProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const iframeRefs = useRef<Record<string, HTMLIFrameElement | null>>({})
@@ -61,6 +68,14 @@ export function CanvasSandbox({
   const isPanningRef = useRef(false)
   const panStartRef = useRef({ x: 0, y: 0 })
   const [isSpacePressed, setIsSpacePressed] = useState(false)
+  const [isWheeling, setIsWheeling] = useState(false)
+  const wheelTimeoutRef = useRef<any>(null)
+
+  // Keep latest zoom & pan in refs for synchronous wheel processing
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  const panRef = useRef(pan)
+  panRef.current = pan
 
   // Dragging artboard state
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -153,11 +168,29 @@ export function CanvasSandbox({
     [cleanFiles, dialkitProps],
   )
 
-  // Listen for iframe readiness & status
+  // Forward element update to active iframe
+  useEffect(() => {
+    if (!elementUpdate) return
+    const targetFile = elementUpdate.file || activeFile
+    if (!targetFile) return
+    const frameEl = iframeRefs.current[targetFile]
+    if (frameEl?.contentWindow) {
+      frameEl.contentWindow.postMessage(
+        {
+          type: "UPDATE_ELEMENT",
+          text: elementUpdate.text,
+          matchedDialKey: elementUpdate.matchedDialKey,
+          styles: elementUpdate.styles,
+        },
+        "*",
+      )
+    }
+  }, [elementUpdate, activeFile])
+
+  // Listen for iframe readiness & status & element selection
   useEffect(() => {
     function handleMsg(e: MessageEvent) {
       if (e.data?.type === "CANVAS_FRAME_READY") {
-        // Find which frame sent this
         for (const [key, el] of Object.entries(iframeRefs.current)) {
           if (el?.contentWindow === e.source) {
             readyFramesRef.current.add(key)
@@ -174,6 +207,9 @@ export function CanvasSandbox({
               if (e.data.controls && onControlsDiscovered) {
                 onControlsDiscovered(e.data.controls)
               }
+              if (e.data.schema && onSchemaDiscovered) {
+                onSchemaDiscovered({ title: e.data.title, schema: e.data.schema }, key)
+              }
             } else if (e.data.status === "error") {
               setLoadingMap((prev) => ({ ...prev, [key]: false }))
               setErrorMap((prev) => ({ ...prev, [key]: e.data.error }))
@@ -181,11 +217,26 @@ export function CanvasSandbox({
             break
           }
         }
+      } else if (e.data?.type === "ELEMENT_SELECTED") {
+        for (const [key, el] of Object.entries(iframeRefs.current)) {
+          if (el?.contentWindow === e.source) {
+            if (onSelectFile) onSelectFile(key)
+            if (onSelectElement) onSelectElement(e.data.element, key)
+            break
+          }
+        }
+      } else if (e.data?.type === "ELEMENT_DESELECTED") {
+        for (const [key, el] of Object.entries(iframeRefs.current)) {
+          if (el?.contentWindow === e.source) {
+            if (onSelectElement) onSelectElement(null, key)
+            break
+          }
+        }
       }
     }
     window.addEventListener("message", handleMsg)
     return () => window.removeEventListener("message", handleMsg)
-  }, [sendToFrame, onControlsDiscovered])
+  }, [sendToFrame, onControlsDiscovered, onSchemaDiscovered, onSelectElement, onSelectFile])
 
   // Broadcast DialKit prop changes to ALL frames live
   useEffect(() => {
@@ -228,7 +279,6 @@ export function CanvasSandbox({
 
   // Canvas Pan handlers (clicking empty space or space+drag)
   const onCanvasMouseDown = (e: React.MouseEvent) => {
-    // Only pan if clicking canvas background or space is pressed
     if (isSpacePressed || e.button === 1 || (e.target as HTMLElement).dataset.canvasSurface === "true") {
       isPanningRef.current = true
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
@@ -251,7 +301,6 @@ export function CanvasSandbox({
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (draggingId) {
-        // Move specific artboard in canvas coordinates
         const dx = (e.clientX - dragStartMouseRef.current.x) / zoom
         const dy = (e.clientY - dragStartMouseRef.current.y) / zoom
         const newX = Math.round(artboardStartPosRef.current.x + dx)
@@ -287,17 +336,57 @@ export function CanvasSandbox({
     }
   }, [draggingId, zoom, onPanChange, savePositions])
 
-  // Wheel zoom
-  const onWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  // Native non-passive Wheel listener for buttery-smooth trackpad panning & focal zoom
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? -0.05 : 0.05
-      const nextZoom = Math.min(Math.max(Math.round((zoom + delta) * 100) / 100, 0.2), 3.0)
-      onZoomChange(nextZoom)
-    } else if (isSpacePressed) {
-      onPanChange({ x: pan.x - e.deltaX, y: pan.y - e.deltaY })
+
+      // Activate pointer shield so iframe doesn't hijack wheel events
+      setIsWheeling(true)
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current)
+      wheelTimeoutRef.current = setTimeout(() => setIsWheeling(false), 120)
+
+      const rect = el.getBoundingClientRect()
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+
+      // Trackpad pinch-to-zoom OR Ctrl/Meta + wheel -> Zoom smoothly anchored at cursor
+      if (e.ctrlKey || e.metaKey) {
+        const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.008 : 0.002))
+        const currentZoom = zoomRef.current
+        const currentPan = panRef.current
+        const nextZoom = Math.min(Math.max(currentZoom * factor, 0.15), 4.0)
+
+        // Focal zoom formula: keep point under mouse stationary
+        const nextPanX = mouseX - (mouseX - currentPan.x) * (nextZoom / currentZoom)
+        const nextPanY = mouseY - (mouseY - currentPan.y) * (nextZoom / currentZoom)
+
+        onZoomChange(Math.round(nextZoom * 1000) / 1000)
+        onPanChange({
+          x: Math.round(nextPanX),
+          y: Math.round(nextPanY),
+        })
+      } else {
+        // Natural trackpad two-finger pan (or Shift+wheel for horizontal scroll)
+        const dx = e.shiftKey ? e.deltaY : e.deltaX
+        const dy = e.shiftKey ? 0 : e.deltaY
+        const currentPan = panRef.current
+        onPanChange({
+          x: Math.round(currentPan.x - dx),
+          y: Math.round(currentPan.y - dy),
+        })
+      }
     }
-  }
+
+    el.addEventListener("wheel", handleWheel, { passive: false })
+    return () => {
+      el.removeEventListener("wheel", handleWheel)
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current)
+    }
+  }, [onZoomChange, onPanChange])
 
   // Auto-arrange all artboards in a tidy row
   const autoArrange = useCallback(() => {
@@ -319,7 +408,6 @@ export function CanvasSandbox({
     <div
       ref={containerRef}
       onMouseDown={onCanvasMouseDown}
-      onWheel={onWheel}
       data-canvas-surface="true"
       className={`relative h-full w-full overflow-hidden select-none bg-[var(--c-canvas)] ${
         isSpacePressed ? (isPanningRef.current ? "cursor-grabbing" : "cursor-grab") : "cursor-default"
@@ -353,7 +441,7 @@ export function CanvasSandbox({
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: "0 0",
-          transition: isPanningRef.current || draggingId ? "none" : "transform 75ms ease-out",
+          transition: isPanningRef.current || isWheeling || draggingId ? "none" : "transform 50ms ease-out",
         }}
       >
         {artboardKeys.map((key) => {
@@ -415,9 +503,9 @@ export function CanvasSandbox({
                   isSelected ? "ring-2 ring-accent/60 shadow-2xl" : ""
                 }`}
               >
-                {/* Pointer events overlay while panning canvas or dragging frame */}
-                {(isSpacePressed || isPanningRef.current || draggingId) && (
-                  <div className="absolute inset-0 z-20 cursor-inherit pointer-events-auto" />
+                {/* Pointer events overlay while panning canvas, zooming, or dragging frame */}
+                {(isSpacePressed || isPanningRef.current || isWheeling || draggingId) && (
+                  <div className="absolute inset-0 z-20 cursor-inherit pointer-events-auto bg-transparent" />
                 )}
 
                 <iframe
@@ -450,3 +538,4 @@ export function CanvasSandbox({
     </div>
   )
 }
+

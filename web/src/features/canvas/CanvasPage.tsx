@@ -38,7 +38,12 @@ import { cn } from "@/lib/utils"
 import { useExecutorModels } from "../board/modelCatalog"
 import { CANVAS_PREFILL_KEY, type CanvasPrefill } from "./canvasPrefill"
 import { CanvasSandbox } from "./CanvasSandbox"
-import { DialKitInspector, type DialKitProps, DEFAULT_DIALKIT_PROPS } from "./DialKitInspector"
+import {
+  DialKitInspector,
+  type DialKitProps,
+  DEFAULT_DIALKIT_PROPS,
+  type SelectedElementInfo,
+} from "./DialKitInspector"
 
 export interface CanvasSession {
   id: string
@@ -360,7 +365,50 @@ function StudioSessionView({
   const [activeFile, setActiveFile] = useState<string | undefined>()
   const [dialkitProps, setDialkitProps] = useState<DialKitProps>(DEFAULT_DIALKIT_PROPS)
   const [initialDialkitProps, setInitialDialkitProps] = useState<DialKitProps>(DEFAULT_DIALKIT_PROPS)
+  const [selectedElement, setSelectedElement] = useState<SelectedElementInfo | null>(null)
+  const [elementUpdate, setElementUpdate] = useState<{
+    file: string
+    text?: string
+    matchedDialKey?: string
+    styles?: Record<string, string>
+  } | null>(null)
+  const [discoveredSchemas, setDiscoveredSchemas] = useState<
+    Record<string, { title: string; schema: Record<string, any> }>
+  >({})
   const [text, setText] = useState("")
+
+  const handleSelectElement = useCallback((el: SelectedElementInfo | null, _file: string) => {
+    setSelectedElement(el)
+    if (el) {
+      setInspectorOpen(true)
+      if (el.matchedDialKey && el.text) {
+        setDialkitProps((prev) => ({ ...prev, [el.matchedDialKey!]: el.text }))
+      }
+    }
+  }, [])
+
+  const handleSchemaDiscovered = useCallback(
+    (info: { title: string; schema: Record<string, any> }, file: string) => {
+      setDiscoveredSchemas((prev) => ({ ...prev, [file]: info }))
+    },
+    [],
+  )
+
+  const handleUpdateElement = useCallback(
+    (update: { text?: string; matchedDialKey?: string; styles?: Record<string, string> }) => {
+      if (!activeFile) return
+      setElementUpdate({
+        file: activeFile,
+        ...update,
+      })
+      if (selectedElement) {
+        setSelectedElement((prev) =>
+          prev ? { ...prev, text: update.text !== undefined ? update.text : prev.text } : null,
+        )
+      }
+    },
+    [activeFile, selectedElement],
+  )
 
   const detail = useQuery({
     queryKey: ["canvas-session", id],
@@ -744,6 +792,9 @@ function StudioSessionView({
                 pan={pan}
                 onPanChange={setPan}
                 onZoomChange={setZoom}
+                onSelectElement={handleSelectElement}
+                onSchemaDiscovered={handleSchemaDiscovered}
+                elementUpdate={elementUpdate}
               />
             )
           ) : (
@@ -922,6 +973,15 @@ function StudioSessionView({
             }}
             isSyncing={syncMutation.isPending}
             isDirty={isDirty}
+            selectedElement={selectedElement}
+            onUpdateElement={handleUpdateElement}
+            onDeselectElement={() => setSelectedElement(null)}
+            activeComponentTitle={
+              activeFile
+                ? discoveredSchemas[activeFile]?.title || activeFile.split("/").pop()
+                : "Component"
+            }
+            schema={activeFile ? discoveredSchemas[activeFile]?.schema : undefined}
           />
         </aside>
       </div>

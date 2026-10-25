@@ -280,6 +280,109 @@ const canvasSandboxHTML = `<!DOCTYPE html>
     let root = null;
     const moduleCache = {};
 
+    function extractDialKitSchema(code) {
+      const schema = {};
+      if (!code) return { title: '', schema };
+      const match = code.match(/useDialKit\(\s*['"\x60]([^'"\x60]+)['"\x60]\s*,\s*(\{[\s\S]*?\})\s*[,)]/);
+      if (!match) return { title: '', schema };
+      const rawObj = match[2];
+      const lines = rawObj.split('\n');
+      lines.forEach(l => {
+        const km = l.match(/^\s*([a-zA-Z0-9_$]+)\s*:\s*(.+?),?\s*$/);
+        if (!km) return;
+        const key = km[1];
+        const valStr = km[2].trim();
+        if (valStr.startsWith('[')) {
+          const nums = valStr.replace(/[\[\]]/g, '').split(',').map(n => parseFloat(n.trim()));
+          if (nums.length >= 1 && !isNaN(nums[0])) {
+            schema[key] = {
+              type: 'slider',
+              default: nums[0],
+              min: nums[1] !== undefined ? nums[1] : 0,
+              max: nums[2] !== undefined ? nums[2] : nums[0] * 2,
+              step: nums[2] !== undefined && nums[2] <= 1 ? 0.05 : 1
+            };
+          }
+        } else if (valStr.startsWith("'") || valStr.startsWith('"') || valStr.startsWith('\x60')) {
+          const s = valStr.slice(1, -1);
+          if (s.startsWith('#')) {
+            schema[key] = { type: 'color', default: s };
+          } else {
+            schema[key] = { type: 'text', default: s };
+          }
+        } else if (valStr.includes('action')) {
+          schema[key] = { type: 'action' };
+        }
+      });
+      return { title: match[1], schema };
+    }
+
+    let selectedElement = null;
+
+    function clearElementSelection() {
+      if (selectedElement) {
+        selectedElement.style.outline = '';
+        selectedElement.style.outlineOffset = '';
+        selectedElement.style.boxShadow = '';
+        selectedElement = null;
+      }
+    }
+
+    window.addEventListener('dblclick', (e) => {
+      const target = e.target;
+      if (!target || target === document.body || target === document.documentElement || target.id === 'root' || target.id === 'canvas-scaler' || target.closest('.dialkit-root')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+
+      clearElementSelection();
+      selectedElement = target;
+
+      target.style.outline = '2px solid #6366f1';
+      target.style.outlineOffset = '2px';
+      target.style.boxShadow = '0 0 0 4px rgba(99, 102, 241, 0.2)';
+
+      const compStyles = window.getComputedStyle(target);
+      const text = (target.innerText || target.textContent || '').trim();
+
+      // Find if this text matches any dialkit key
+      let matchedDialKey = null;
+      for (const k in currentProps) {
+        if (typeof currentProps[k] === 'string' && currentProps[k].trim() === text) {
+          matchedDialKey = k;
+          break;
+        }
+      }
+
+      window.parent.postMessage({
+        type: 'ELEMENT_SELECTED',
+        file: currentEntry,
+        element: {
+          tagName: target.tagName.toLowerCase(),
+          id: target.id || '',
+          className: target.className || '',
+          text: text.slice(0, 500),
+          matchedDialKey: matchedDialKey,
+          styles: {
+            color: compStyles.color,
+            backgroundColor: compStyles.backgroundColor,
+            fontSize: compStyles.fontSize,
+            borderRadius: compStyles.borderRadius,
+            padding: compStyles.padding,
+            accentColor: currentProps.accentColor || '#6366f1',
+          }
+        }
+      }, '*');
+    });
+
+    window.addEventListener('click', (e) => {
+      if (selectedElement && (e.target.id === 'canvas-scaler' || e.target === document.body || e.target.id === 'root')) {
+        clearElementSelection();
+        window.parent.postMessage({ type: 'ELEMENT_DESELECTED', file: currentEntry }, '*');
+      }
+    });
+
     function cleanPath(p) {
       return (p || '').replace(/^[./@]+/, '');
     }
@@ -491,7 +594,14 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         );
 
         applyDialKitStyles();
-        window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
+        const schemaInfo = extractDialKitSchema(rawCode);
+        window.parent.postMessage({
+          type: 'CANVAS_STATUS',
+          status: 'ready',
+          file: currentEntry,
+          title: schemaInfo.title,
+          schema: schemaInfo.schema
+        }, '*');
       } catch (err) {
         console.error(err);
         window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'error', error: err.message }, '*');
@@ -520,6 +630,25 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         if (currentEntry && (currentEntry.endsWith('.tsx') || currentEntry.endsWith('.jsx'))) {
           renderComponent();
         }
+      } else if (e.data?.type === 'UPDATE_ELEMENT') {
+        if (selectedElement) {
+          if (e.data.text !== undefined) {
+            selectedElement.innerText = e.data.text;
+          }
+          if (e.data.styles) {
+            for (const prop in e.data.styles) {
+              selectedElement.style[prop] = e.data.styles[prop];
+            }
+          }
+        }
+        if (e.data.matchedDialKey && e.data.text !== undefined) {
+          currentProps[e.data.matchedDialKey] = e.data.text;
+          if (currentEntry && (currentEntry.endsWith('.tsx') || currentEntry.endsWith('.jsx'))) {
+            renderComponent();
+          }
+        }
+      } else if (e.data?.type === 'DESELECT_ELEMENT') {
+        clearElementSelection();
       }
     });
 
