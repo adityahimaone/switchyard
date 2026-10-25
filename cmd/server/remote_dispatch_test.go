@@ -99,12 +99,19 @@ func TestBuildDirectPenCommand(t *testing.T) {
 	}
 
 	// In pen CLI 0.3.13+, deepseek is natively supported:
+	// deepseek-flash is the official default and omits --model flag
 	dsCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
 	if !strings.Contains(dsCmd, "--agent \"deepseek\"") {
 		t.Errorf("command should use native deepseek for deepseek agent:\n%s", dsCmd)
 	}
-	if !strings.Contains(dsCmd, "--model deepseek-flash") {
-		t.Errorf("command should pass deepseek-flash model:\n%s", dsCmd)
+	if strings.Contains(dsCmd, "--model") {
+		t.Errorf("command should omit --model for default deepseek-flash:\n%s", dsCmd)
+	}
+
+	// deepseek-v4-pro maps to pi;deepseek;deepseek-v4-pro
+	dsProCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-v4-pro")
+	if !strings.Contains(dsProCmd, "--model pi;deepseek;deepseek-v4-pro") {
+		t.Errorf("command should map deepseek-v4-pro:\n%s", dsProCmd)
 	}
 
 	// Unknown third-party agent fallback to pen.dev

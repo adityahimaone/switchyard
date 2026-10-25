@@ -544,6 +544,12 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 	if cliAgent == "gemini" {
 		cliAgent = "pen.dev"
 		cliModel = ""
+	} else if cliAgent == "deepseek" {
+		if cliModel == "deepseek-flash" || cliModel == "" {
+			cliModel = ""
+		} else if cliModel == "deepseek-v4-pro" {
+			cliModel = "pi;deepseek;deepseek-v4-pro"
+		}
 	} else if cliAgent != "claude" && cliAgent != "codex" && cliAgent != "google" && cliAgent != "deepseek" && cliAgent != "pen.dev" && cliAgent != "openrouter" && cliAgent != "fireworks" {
 		cliAgent = "pen.dev"
 		cliModel = ""
