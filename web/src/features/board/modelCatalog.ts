@@ -9052,28 +9052,28 @@ export const FALLBACK_COMMANDCODE_MODELS: SearchSelectOption[] = [
 
 export const FALLBACK_PEN_MODELS: SearchSelectOption[] = [
   {
-    value: "gemini:gemini-3.6-flash",
-    label: "Gemini 3.6 Flash (Fast & Efficient)",
-    badge: "Default",
-    sublabel: "fastest headless design generator",
+    value: "deepseek:deepseek-flash",
+    label: "DeepSeek V4.1 Flash (Fast & Cheap)",
+    badge: "Recommended",
+    sublabel: "fastest headless direct CLI runner (~4s, $0.007)",
   },
   {
-    value: "gemini:gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    badge: "Gemini",
-    sublabel: "complex UI hierarchy & layouts",
+    value: "deepseek:deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    badge: "DeepSeek",
+    sublabel: "high-accuracy open-weights design model",
+  },
+  {
+    value: "gemini:gemini-3.6-flash",
+    label: "pen.dev Cloud (Gemini 3.6 Flash)",
+    badge: "pen.dev",
+    sublabel: "active pen.dev cloud session",
   },
   {
     value: "claude:claude-3-7-sonnet",
     label: "Claude 3.7 Sonnet",
     badge: "Claude",
     sublabel: "detailed aesthetics & component design",
-  },
-  {
-    value: "deepseek:deepseek-chat",
-    label: "DeepSeek V3",
-    badge: "DeepSeek",
-    sublabel: "open-weights design model",
   },
 ]
 

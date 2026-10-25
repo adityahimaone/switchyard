@@ -498,16 +498,6 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 			"--- End pen.dev Design ---"
 	}
 
-	if tool == "pencil_mcp" {
-		return msg + "\n\n--- pen.dev Design (pencil MCP / pen CLI) ---\n" +
-			"This card requires a pen.dev design file at " + out + " (with PNG export at " + designExportPath(out) + ").\n" +
-			"1. If " + out + " does not exist yet (or is empty), generate it first with the headless pen CLI:\n" +
-			"   pen --out " + out + " --prompt \"<concise design intent from this card>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
-			"   (If the Pencil desktop MCP server has the document open, you may also inspect/edit it via MCP, but ensure " + out + " and " + designExportPath(out) + " are saved on disk.)\n" +
-			"2. Verify " + out + " is valid JSON and " + designExportPath(out) + " exists.\n" +
-			"3. Implement the application code to match the design.\n" +
-			"--- End pen.dev Design ---"
-	}
 	return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
 		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +
 		"authenticated on the worker node. Do not use the desktop app or the pencil MCP to create\n" +

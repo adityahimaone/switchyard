@@ -229,7 +229,7 @@ export default function TaskDialog({
   // Select items need non-empty values, the API wants the absence.
   const [designTool, setDesignTool] = useState<"none" | "pen_cli" | "pencil_mcp">("none")
   const [designScope, setDesignScope] = useState<"design_only" | "design_and_code">("design_only")
-  const [penModel, setPenModel] = useState("gemini:gemini-3.6-flash")
+  const [penModel, setPenModel] = useState("deepseek:deepseek-flash")
   const { models: penDynamicModels } = useExecutorModels("pen")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
@@ -1361,6 +1361,7 @@ export default function TaskDialog({
                       setDesignTool("pen_cli")
                       setDesignScope("design_only")
                       setExecutor("shell")
+                      setPenModel("deepseek:deepseek-flash")
                     } else {
                       setDesignTool("none")
                       if (executor === "shell") {
@@ -1562,9 +1563,6 @@ export default function TaskDialog({
                         <SelectItem value="pen_cli" className="text-sm">
                           pen CLI — headless .pen + PNG
                         </SelectItem>
-                        <SelectItem value="pencil_mcp" className="text-sm">
-                          pencil MCP — live canvas
-                        </SelectItem>
                         <SelectItem value="none" className="text-sm">
                           Off — disable pen.dev
                         </SelectItem>
@@ -1594,13 +1592,13 @@ export default function TaskDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="shell" className="text-sm">
-                            Direct pen CLI (Fast shell — ~20s, 0 tokens)
+                            Direct pen CLI (Fast shell — ~5s, 0 tokens) (Recommended)
                           </SelectItem>
                           <SelectItem value="dsh" className="text-sm">
-                            dsh (multi-turn harness agent)
+                            dsh (Agentic multi-turn harness)
                           </SelectItem>
                           <SelectItem value="commandcode" className="text-sm">
-                            Command Code (agent)
+                            Command Code (Agentic harness)
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -2005,9 +2003,6 @@ export default function TaskDialog({
                   </SelectItem>
                   <SelectItem value="pen_cli" className="text-sm">
                     pen CLI — generate the mock headlessly
-                  </SelectItem>
-                  <SelectItem value="pencil_mcp" className="text-sm">
-                    pencil MCP — edit the open document
                   </SelectItem>
                 </SelectContent>
               </Select>

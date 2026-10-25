@@ -135,9 +135,6 @@ export function VerifySettings({
               <SelectItem value="pen_cli" className="text-sm">
                 pen CLI — generate headlessly
               </SelectItem>
-              <SelectItem value="pencil_mcp" className="text-sm">
-                pencil MCP — edit open document
-              </SelectItem>
             </SelectContent>
           </Select>
         </div>
