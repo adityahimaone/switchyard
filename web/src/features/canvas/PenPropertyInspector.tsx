@@ -27,6 +27,7 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  Type,
 } from "lucide-react"
 import type { PenNode } from "./penTypes"
 import { cn } from "@/lib/utils"
@@ -211,6 +212,69 @@ export function PenPropertyInspector({
             </div>
           )}
         </div>
+
+        {/* 3b. Section: Typography (when text layer is selected) */}
+        {selectedNode.type === "text" && (
+          <div className="pt-2 space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+              <span>Typography</span>
+              <Type className="size-3.5 opacity-60" />
+            </div>
+
+            <div>
+              <span className="text-[10px] text-muted-foreground">Content</span>
+              <textarea
+                rows={2}
+                value={selectedNode.content !== undefined ? selectedNode.content : (selectedNode.text ?? "")}
+                onChange={(e) => {
+                  onUpdateNode({
+                    ...selectedNode,
+                    text: e.target.value,
+                    content: e.target.value,
+                  })
+                }}
+                className="mt-1 w-full rounded-lg border border-border/60 bg-muted/50 dark:bg-[#1a1b22] p-2 font-sans text-xs text-foreground outline-none resize-none focus:border-accent-text"
+                placeholder="Text content..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/50 dark:bg-[#1a1b22] px-2 py-1">
+                <span className="font-mono text-[10px] text-muted-foreground">Size</span>
+                <input
+                  type="number"
+                  min={8}
+                  max={120}
+                  value={selectedNode.fontSize ?? 14}
+                  onChange={(e) => handlePropChange("fontSize", Number(e.target.value))}
+                  className="w-full bg-transparent font-mono text-xs text-foreground outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/50 dark:bg-[#1a1b22] px-2 py-1">
+                <span className="font-mono text-[10px] text-muted-foreground">Wgt</span>
+                <input
+                  type="text"
+                  value={selectedNode.fontWeight ?? 400}
+                  onChange={(e) => handlePropChange("fontWeight", e.target.value)}
+                  className="w-full bg-transparent font-mono text-xs text-foreground outline-none"
+                  placeholder="400 or bold"
+                />
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-muted-foreground">Font Family</span>
+              <input
+                type="text"
+                value={selectedNode.fontFamily ?? ""}
+                onChange={(e) => handlePropChange("fontFamily", e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border/60 bg-muted/50 dark:bg-[#1a1b22] px-2 py-1 font-sans text-xs text-foreground outline-none focus:border-accent-text"
+                placeholder="e.g. Playfair Display, $font-serif"
+              />
+            </div>
+          </div>
+        )}
 
         {/* 4. Section: Alignment matching Reference Image */}
         <div className="pt-2 space-y-1.5">
@@ -470,7 +534,15 @@ export function PenPropertyInspector({
                 <span className="font-mono text-[10px] text-muted-foreground">Pad</span>
                 <input
                   type="number"
-                  value={typeof selectedNode.padding === "number" ? selectedNode.padding : (selectedNode.padding?.top ?? 0)}
+                  value={
+                    typeof selectedNode.padding === "number"
+                      ? selectedNode.padding
+                      : Array.isArray(selectedNode.padding)
+                      ? selectedNode.padding[0] ?? 0
+                      : typeof selectedNode.padding === "object" && selectedNode.padding !== null
+                      ? (selectedNode.padding as any).top ?? 0
+                      : 0
+                  }
                   onChange={(e) => handlePropChange("padding", Number(e.target.value))}
                   className="w-full bg-transparent font-mono text-xs text-foreground outline-none"
                 />

@@ -1,32 +1,43 @@
-import type { PenDocument, PenFill, PenFillGradient, PenNode, PenPadding } from "./penTypes"
+import type { PenDocument, PenFill, PenFillGradient, PenNode, PenVariable } from "./penTypes"
+import { resolveTokenValue, resolveEffects } from "./penTypes"
 
 /**
  * Deterministic (0 Token) Compiler: .pen Document -> React Component with Tailwind CSS.
  * Runs 100% in-browser in <1ms without LLM API tokens.
  */
 
-function fillToStylesOrClasses(fill?: PenFill, isText?: boolean): { className: string; style?: React.CSSProperties } {
+function fillToStylesOrClasses(
+  fill?: PenFill,
+  isText?: boolean,
+  variables?: Record<string, PenVariable>
+): { className: string; style?: React.CSSProperties } {
   if (!fill || fill === "transparent") return { className: "" }
 
   if (typeof fill === "string") {
-    // If it's a solid hex or rgba
+    const resolved = resolveTokenValue(fill, variables)
     if (isText) {
-      if (fill === "#ffffff" || fill === "#fff") return { className: "text-white" }
-      if (fill === "#000000" || fill === "#000") return { className: "text-black" }
-      return { className: `text-[${fill}]` }
+      if (resolved === "#ffffff" || resolved === "#fff") return { className: "text-white" }
+      if (resolved === "#000000" || resolved === "#000") return { className: "text-black" }
+      return { className: `text-[${resolved}]`, style: { color: resolved } }
     }
-    if (fill === "#ffffff" || fill === "#fff") return { className: "bg-white" }
-    if (fill === "#000000" || fill === "#000") return { className: "bg-black" }
-    return { className: `bg-[${fill}]` }
+    if (resolved === "#ffffff" || resolved === "#fff") return { className: "bg-white" }
+    if (resolved === "#000000" || resolved === "#000") return { className: "bg-black" }
+    return { className: `bg-[${resolved}]`, style: { backgroundColor: resolved } }
   }
 
   // Gradient fill
   const grad = fill as PenFillGradient
   if (grad.colors && grad.colors.length) {
-    const stops = grad.colors.map((c) => `${c.color} ${Math.round(c.position * 100)}%`).join(", ")
-    const bgString = grad.gradientType === "radial"
-      ? `radial-gradient(circle, ${stops})`
-      : `linear-gradient(${grad.rotation ?? 180}deg, ${stops})`
+    const stops = grad.colors
+      .map((c) => {
+        const col = resolveTokenValue(c.color, variables)
+        return `${col} ${Math.round(c.position * 100)}%`
+      })
+      .join(", ")
+    const bgString =
+      grad.gradientType === "radial"
+        ? `radial-gradient(circle at center, ${stops})`
+        : `linear-gradient(${grad.rotation ?? 180}deg, ${stops})`
     return {
       className: "",
       style: { background: bgString },
@@ -36,10 +47,18 @@ function fillToStylesOrClasses(fill?: PenFill, isText?: boolean): { className: s
   return { className: "" }
 }
 
-function paddingToClasses(padding?: number | PenPadding): string {
+function paddingToClasses(padding?: any): string {
   if (!padding) return ""
   if (typeof padding === "number") {
     return `p-[${padding}px]`
+  }
+  if (Array.isArray(padding)) {
+    if (padding.length === 2) {
+      return `py-[${padding[0]}px] px-[${padding[1]}px]`
+    }
+    if (padding.length === 4) {
+      return `pt-[${padding[0]}px] pr-[${padding[1]}px] pb-[${padding[2]}px] pl-[${padding[3]}px]`
+    }
   }
   const classes: string[] = []
   if (padding.top) classes.push(`pt-[${padding.top}px]`)
@@ -49,14 +68,50 @@ function paddingToClasses(padding?: number | PenPadding): string {
   return classes.join(" ")
 }
 
-export function compileNodeToJSX(node: PenNode, depth = 1): string {
+export function compileNodeToJSX(
+  node: PenNode,
+  depth = 1,
+  variables?: Record<string, PenVariable>,
+  parentLayout?: string
+): string {
   const indent = "  ".repeat(depth)
 
+  // 1. Icon Node
+  if (node.type === "icon") {
+    const iconName = node.icon || node.name || "Circle"
+    const pascal = iconName
+      .split(/[-_]/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join("")
+    const size = Math.max(node.width || 16, node.height || 16)
+    const color = resolveTokenValue(node.fill, variables) || "currentColor"
+
+    const classes: string[] = ["shrink-0"]
+    if (parentLayout === "none") {
+      classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
+    }
+
+    const classAttr = classes.length ? ` className="${classes.join(" ")}"` : ""
+    return `${indent}<LucideIcons.${pascal}${classAttr} style={{ width: ${size}, height: ${size}, color: ${JSON.stringify(color)} }} />`
+  }
+
+  // 2. Text Node
   if (node.type === "text") {
-    const isHeading = (node.fontSize && node.fontSize >= 18) || node.fontWeight === "600" || node.fontWeight === "700" || node.fontWeight === "bold"
+    const textContent = node.content !== undefined ? node.content : (node.text !== undefined ? node.text : "")
+    const isHeading =
+      (node.fontSize && node.fontSize >= 18) ||
+      node.fontWeight === "600" ||
+      node.fontWeight === "700" ||
+      node.fontWeight === "bold"
     const tag = isHeading ? "h3" : "p"
 
     const classes: string[] = []
+    if (parentLayout === "none") {
+      classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
+    }
+    if (node.width !== undefined) {
+      classes.push(`w-[${node.width}px]`)
+    }
     if (node.fontSize) classes.push(`text-[${node.fontSize}px]`)
     if (node.fontWeight) {
       const w = String(node.fontWeight)
@@ -72,19 +127,51 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
       classes.push(`rotate-[${node.rotation}deg]`)
     }
 
-    const fillRes = fillToStylesOrClasses(node.fill, true)
+    const fillRes = fillToStylesOrClasses(node.fill, true, variables)
+    if (fillRes.className) classes.push(fillRes.className)
+
+    const resolvedFont = resolveTokenValue(node.fontFamily, variables)
+    const styleObj: React.CSSProperties = { ...(fillRes.style || {}) }
+    if (resolvedFont && resolvedFont !== "inherit") {
+      styleObj.fontFamily = resolvedFont.includes(" ") ? `"${resolvedFont}", sans-serif` : resolvedFont
+    }
+
+    const classAttr = classes.length ? ` className="${classes.join(" ")}"` : ""
+    const styleAttr = Object.keys(styleObj).length ? ` style={${JSON.stringify(styleObj)}}` : ""
+
+    return `${indent}<${tag}${classAttr}${styleAttr}>${textContent}</${tag}>`
+  }
+
+  // 3. Ellipse or Circle Node
+  if (node.type === "ellipse" || node.type === "circle") {
+    const classes: string[] = ["rounded-full", "shrink-0"]
+    if (parentLayout === "none") {
+      classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
+    }
+    if (node.width) classes.push(`w-[${node.width}px]`)
+    if (node.height) classes.push(`h-[${node.height}px]`)
+
+    const fillRes = fillToStylesOrClasses(node.fill, false, variables)
     if (fillRes.className) classes.push(fillRes.className)
 
     const classAttr = classes.length ? ` className="${classes.join(" ")}"` : ""
     const styleAttr = fillRes.style ? ` style={${JSON.stringify(fillRes.style)}}` : ""
 
-    return `${indent}<${tag}${classAttr}${styleAttr}>${node.text || ""}</${tag}>`
+    return `${indent}<div${classAttr}${styleAttr} />`
   }
 
-  // Frames, rectangles, groups
+  // 4. Frames, rectangles, groups
   const classes: string[] = []
 
-  // Layout
+  // Layout & positioning
+  if (depth === 1) {
+    classes.push("relative")
+  } else if (parentLayout === "none") {
+    classes.push(`absolute left-[${node.x || 0}px] top-[${node.y || 0}px]`)
+  } else if (node.layout === "none") {
+    classes.push("relative")
+  }
+
   if (node.layout === "vertical") {
     classes.push("flex flex-col")
   } else if (node.layout === "horizontal") {
@@ -96,17 +183,19 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
   }
 
   if (node.alignItems) {
-    if (node.alignItems === "center") classes.push("items-center")
-    else if (node.alignItems === "start") classes.push("items-start")
-    else if (node.alignItems === "end") classes.push("items-end")
-    else if (node.alignItems === "stretch") classes.push("items-stretch")
+    const a = node.alignItems.replace("_", "-")
+    if (a === "center") classes.push("items-center")
+    else if (a === "start" || a === "flex-start") classes.push("items-start")
+    else if (a === "end" || a === "flex-end") classes.push("items-end")
+    else if (a === "stretch") classes.push("items-stretch")
   }
 
   if (node.justifyContent) {
-    if (node.justifyContent === "center") classes.push("justify-center")
-    else if (node.justifyContent === "space-between") classes.push("justify-between")
-    else if (node.justifyContent === "start") classes.push("justify-start")
-    else if (node.justifyContent === "end") classes.push("justify-end")
+    const j = node.justifyContent.replace("_", "-")
+    if (j === "center") classes.push("justify-center")
+    else if (j === "space-between") classes.push("justify-between")
+    else if (j === "start" || j === "flex-start") classes.push("justify-start")
+    else if (j === "end" || j === "flex-end") classes.push("justify-end")
   }
 
   // Padding
@@ -137,13 +226,9 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
   }
 
   // Stroke / Border
-  if (node.stroke) {
-    classes.push(node.strokeWidth && node.strokeWidth > 1 ? `border-[${node.strokeWidth}px] border-[${node.stroke}]` : `border border-[${node.stroke}]`)
-  }
-
-  // Effects / Shadow
-  if (node.effects === "shadow-xl") {
-    classes.push("shadow-2xl")
+  const strokeColor = resolveTokenValue(node.stroke, variables)
+  if (strokeColor) {
+    classes.push(node.strokeWidth && node.strokeWidth > 1 ? `border-[${node.strokeWidth}px] border-[${strokeColor}]` : `border border-[${strokeColor}]`)
   }
 
   // Rotation
@@ -152,14 +237,22 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
   }
 
   // Fill
-  const fillRes = fillToStylesOrClasses(node.fill, false)
+  const fillRes = fillToStylesOrClasses(node.fill, false, variables)
   if (fillRes.className) classes.push(fillRes.className)
 
+  // Effects (Glass blur & shadow)
+  const effectStyles = resolveEffects(node.effect || node.effects, variables)
+  const mergedStyle: React.CSSProperties = {
+    ...(fillRes.style || {}),
+    ...(effectStyles.backdropFilter ? { backdropFilter: effectStyles.backdropFilter, WebkitBackdropFilter: effectStyles.backdropFilter } : {}),
+    ...(effectStyles.boxShadow ? { boxShadow: effectStyles.boxShadow } : {}),
+  }
+
   const classAttr = classes.length ? ` className="${classes.join(" ")}"` : ""
-  const styleAttr = fillRes.style ? ` style={${JSON.stringify(fillRes.style)}}` : ""
+  const styleAttr = Object.keys(mergedStyle).length ? ` style={${JSON.stringify(mergedStyle)}}` : ""
 
   const childrenJSX = (node.children || [])
-    .map((child) => compileNodeToJSX(child, depth + 1))
+    .map((child) => compileNodeToJSX(child, depth + 1, variables, node.layout || "none"))
     .join("\n")
 
   if (childrenJSX) {
@@ -179,9 +272,10 @@ export default function ${componentName}() {
 `
   }
 
-  const rootJSX = compileNodeToJSX(rootNode, 1)
+  const rootJSX = compileNodeToJSX(rootNode, 1, doc.variables, "none")
 
   return `import React from 'react'
+import * as LucideIcons from 'lucide-react'
 
 /**
  * Compiled from pen.dev declarative design (.pen)

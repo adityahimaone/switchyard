@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from "react"
+import * as LucideIcons from "lucide-react"
 import {
   ZoomIn,
   ZoomOut,
@@ -13,8 +14,17 @@ import {
   ChevronDown,
   Upload,
 } from "lucide-react"
-import type { PenDocument, PenFill, PenFillGradient, PenNode, PenPadding } from "./penTypes"
-import { createDefaultPenDocument } from "./penTypes"
+import type { PenDocument, PenNode, PenVariable } from "./penTypes"
+import {
+  createDefaultPenDocument,
+  findNodeById,
+  resolveTokenValue,
+  resolveFillStyle,
+  resolvePaddingStyle,
+  resolveEffects,
+  normalizeFlexAlign,
+  ensureGoogleFontsLoaded,
+} from "./penTypes"
 import { cn } from "@/lib/utils"
 
 interface PenCanvasProps {
@@ -33,39 +43,27 @@ interface PenCanvasProps {
   inspectorOpen?: boolean
 }
 
-function resolveFillStyle(fill?: PenFill): React.CSSProperties {
-  if (!fill || fill === "transparent") return {}
-  if (typeof fill === "string") {
-    return { backgroundColor: fill }
+/**
+ * Dynamically resolves and renders a Lucide icon by name
+ */
+function renderPenIcon(iconName?: string, className?: string, style?: React.CSSProperties) {
+  if (!iconName) return null
+  const pascal = iconName
+    .split(/[-_]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("")
+  const IconComp = (LucideIcons as Record<string, any>)[pascal] || (LucideIcons as Record<string, any>)[iconName]
+  if (IconComp) {
+    return <IconComp className={className} style={style} />
   }
-  const grad = fill as PenFillGradient
-  if (grad.colors && grad.colors.length) {
-    const stops = grad.colors.map((c) => `${c.color} ${Math.round(c.position * 100)}%`).join(", ")
-    const bgString =
-      grad.gradientType === "radial"
-        ? `radial-gradient(circle, ${stops})`
-        : `linear-gradient(${grad.rotation ?? 180}deg, ${stops})`
-    return { background: bgString }
-  }
-  return {}
-}
-
-function resolvePaddingStyle(padding?: number | PenPadding): React.CSSProperties {
-  if (!padding) return {}
-  if (typeof padding === "number") {
-    return { padding: `${padding}px` }
-  }
-  return {
-    paddingTop: padding.top !== undefined ? `${padding.top}px` : undefined,
-    paddingRight: padding.right !== undefined ? `${padding.right}px` : undefined,
-    paddingBottom: padding.bottom !== undefined ? `${padding.bottom}px` : undefined,
-    paddingLeft: padding.left !== undefined ? `${padding.left}px` : undefined,
-  }
+  return null
 }
 
 interface NodeRendererProps {
   node: PenNode
   isRoot?: boolean
+  parentLayout?: string
+  variables?: Record<string, PenVariable>
   selectedNodeId: string | null
   onSelectNode: (id: string | null) => void
   onUpdateNode: (updated: PenNode) => void
@@ -75,6 +73,8 @@ interface NodeRendererProps {
 function NodeRenderer({
   node,
   isRoot,
+  parentLayout,
+  variables,
   selectedNodeId,
   onSelectNode,
   onUpdateNode,
@@ -82,7 +82,12 @@ function NodeRenderer({
 }: NodeRendererProps) {
   const isSelected = selectedNodeId === node.id
   const [isEditingText, setIsEditingText] = useState(false)
-  const [editTextVal, setEditTextVal] = useState(node.text || "")
+  const currentText = node.content !== undefined ? node.content : (node.text !== undefined ? node.text : "")
+  const [editTextVal, setEditTextVal] = useState(currentText)
+
+  useEffect(() => {
+    setEditTextVal(node.content !== undefined ? node.content : (node.text !== undefined ? node.text : ""))
+  }, [node.content, node.text])
 
   // Dragging to reposition root frames
   const isDraggingRoot = useRef(false)
@@ -132,8 +137,8 @@ function NodeRenderer({
     const startY = e.clientY
     const startW = node.width || 390
     const startH = node.height || 844
-    const startNodeX = node.x || 80
-    const startNodeY = node.y || 80
+    const startNodeX = node.x || (isRoot ? 80 : 0)
+    const startNodeY = node.y || (isRoot ? 80 : 0)
     const aspectRatio = startW / startH
 
     const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
@@ -148,10 +153,10 @@ function NodeRenderer({
 
       // Width & horizontal position
       if (direction.includes("e")) {
-        newW = Math.max(20, startW + dx)
+        newW = Math.max(10, startW + dx)
       } else if (direction.includes("w")) {
         const potentialW = startW - dx
-        if (potentialW >= 20) {
+        if (potentialW >= 10) {
           newW = potentialW
           newX = startNodeX + dx
         }
@@ -159,10 +164,10 @@ function NodeRenderer({
 
       // Height & vertical position
       if (direction.includes("s")) {
-        newH = Math.max(20, startH + dy)
+        newH = Math.max(10, startH + dy)
       } else if (direction.includes("n")) {
         const potentialH = startH - dy
-        if (potentialH >= 20) {
+        if (potentialH >= 10) {
           newH = potentialH
           newY = startNodeY + dy
         }
@@ -194,24 +199,85 @@ function NodeRenderer({
   // Handle text edit commit
   const handleCommitText = () => {
     setIsEditingText(false)
-    if (editTextVal !== node.text) {
-      onUpdateNode({ ...node, text: editTextVal })
+    if (editTextVal !== currentText) {
+      onUpdateNode({ ...node, text: editTextVal, content: editTextVal })
     }
   }
 
+  // 1. Icon Node Rendering
+  if (node.type === "icon") {
+    const iconColor = resolveTokenValue(node.fill, variables) || "#ffffff"
+    const size = Math.max(node.width || 16, node.height || 16)
+    const iconStyle: React.CSSProperties = {
+      color: iconColor,
+      width: `${size}px`,
+      height: `${size}px`,
+      opacity: node.opacity !== undefined ? node.opacity : 1,
+      transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
+    }
+
+    if (parentLayout === "none") {
+      iconStyle.position = "absolute"
+      iconStyle.left = `${node.x || 0}px`
+      iconStyle.top = `${node.y || 0}px`
+    }
+
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelectNode(node.id)
+        }}
+        className={cn(
+          "relative inline-flex items-center justify-center transition-shadow cursor-pointer shrink-0 select-none",
+          isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
+        )}
+        style={iconStyle}
+        title={node.name || node.icon || "Icon"}
+      >
+        {isSelected && (
+          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow pointer-events-none">
+            <span>{node.name || node.icon || "Icon"}</span>
+          </div>
+        )}
+        {renderPenIcon(node.icon || node.name, "w-full h-full", { strokeWidth: node.strokeWidth || 2 })}
+      </div>
+    )
+  }
+
+  // 2. Text Node Rendering
   if (node.type === "text") {
+    const resolvedFont = resolveTokenValue(node.fontFamily, variables) || "inherit"
+    const resolvedColor = resolveTokenValue(node.fill, variables) || "#ffffff"
+
     const textStyle: React.CSSProperties = {
       fontSize: node.fontSize ? `${node.fontSize}px` : "14px",
       fontWeight: node.fontWeight || 400,
-      fontFamily: node.fontFamily || "inherit",
-      color: typeof node.fill === "string" ? node.fill : "#ffffff",
-      textAlign: node.textAlign || "left",
+      fontFamily: resolvedFont.includes(" ") ? `"${resolvedFont}", sans-serif` : resolvedFont,
+      color: typeof resolvedColor === "string" ? resolvedColor : "#ffffff",
+      textAlign: (node.textAlign as any) || "left",
       lineHeight: node.lineHeight !== undefined ? (typeof node.lineHeight === "number" ? `${node.lineHeight}px` : node.lineHeight) : "1.4",
       letterSpacing: node.letterSpacing !== undefined ? `${node.letterSpacing}px` : "normal",
       opacity: node.opacity !== undefined ? node.opacity : 1,
       userSelect: isEditingText ? "text" : "none",
       cursor: isEditingText ? "text" : "pointer",
       transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
+      whiteSpace: "pre-wrap",
+    }
+
+    if (parentLayout === "none") {
+      textStyle.position = "absolute"
+      textStyle.left = `${node.x || 0}px`
+      textStyle.top = `${node.y || 0}px`
+    }
+
+    if (node.width !== undefined) {
+      textStyle.width = `${node.width}px`
     }
 
     return (
@@ -230,10 +296,10 @@ function NodeRenderer({
         onDoubleClick={(e) => {
           e.stopPropagation()
           setIsEditingText(true)
-          setEditTextVal(node.text || "")
+          setEditTextVal(currentText)
         }}
         className={cn(
-          "relative inline-block transition-shadow group",
+          "relative inline-block transition-shadow group shrink-0",
           isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
         )}
         style={textStyle}
@@ -255,29 +321,77 @@ function NodeRenderer({
               if (e.key === "Enter") handleCommitText()
               if (e.key === "Escape") {
                 setIsEditingText(false)
-                setEditTextVal(node.text || "")
+                setEditTextVal(currentText)
               }
             }}
             className="w-full bg-transparent outline-none ring-1 ring-accent-text"
             style={{ font: "inherit", color: "inherit", textAlign: "inherit" }}
           />
         ) : (
-          <span>{node.text || "Type something…"}</span>
+          <span>{currentText || (node.name ? "" : "Type something…")}</span>
         )}
       </div>
     )
   }
 
-  // Frame or Rectangle
+  // 3. Ellipse / Circle Node Rendering
+  if (node.type === "ellipse" || node.type === "circle") {
+    const strokeColor = resolveTokenValue(node.stroke, variables)
+    const ellipseStyle: React.CSSProperties = {
+      ...resolveFillStyle(node.fill, variables),
+      borderRadius: "50%",
+      width: `${node.width || 32}px`,
+      height: `${node.height || 32}px`,
+      border: node.strokeWidth && strokeColor ? `${node.strokeWidth}px solid ${strokeColor}` : strokeColor ? `1px solid ${strokeColor}` : undefined,
+      opacity: node.opacity !== undefined ? node.opacity : 1,
+      transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
+      pointerEvents: "auto",
+    }
+
+    if (parentLayout === "none") {
+      ellipseStyle.position = "absolute"
+      ellipseStyle.left = `${node.x || 0}px`
+      ellipseStyle.top = `${node.y || 0}px`
+    }
+
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelectNode(node.id)
+        }}
+        className={cn(
+          "relative transition-shadow cursor-pointer select-none shrink-0",
+          isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
+        )}
+        style={ellipseStyle}
+        title={node.name || "Ellipse"}
+      >
+        {isSelected && (
+          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow pointer-events-none">
+            <span>{node.name || "Ellipse"}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 4. Frame or Rectangle Node Rendering
+  const strokeColor = resolveTokenValue(node.stroke, variables)
   const baseStyle: React.CSSProperties = {
-    ...resolveFillStyle(node.fill),
+    ...resolveFillStyle(node.fill, variables),
     ...resolvePaddingStyle(node.padding),
-    border: node.strokeWidth && node.stroke ? `${node.strokeWidth}px solid ${node.stroke}` : node.stroke ? `1px solid ${node.stroke}` : undefined,
+    ...resolveEffects(node.effect || node.effects, variables),
+    border: node.strokeWidth && strokeColor ? `${node.strokeWidth}px solid ${strokeColor}` : strokeColor ? `1px solid ${strokeColor}` : undefined,
     borderRadius: node.cornerRadius ? `${node.cornerRadius}px` : undefined,
     opacity: node.opacity !== undefined ? node.opacity : 1,
     overflow: node.clip ? "hidden" : "visible",
     transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
-    boxShadow: node.effects === "shadow-xl" ? "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)" : undefined,
   }
 
   // Dimensioning & positioning
@@ -285,6 +399,12 @@ function NodeRenderer({
     baseStyle.position = "absolute"
     baseStyle.left = `${node.x || 80}px`
     baseStyle.top = `${node.y || 80}px`
+  } else if (parentLayout === "none") {
+    baseStyle.position = "absolute"
+    baseStyle.left = `${node.x || 0}px`
+    baseStyle.top = `${node.y || 0}px`
+  } else {
+    baseStyle.position = "relative"
   }
 
   if (node.fillWidth) {
@@ -299,7 +419,7 @@ function NodeRenderer({
     baseStyle.height = `${node.height}px`
   }
 
-  // Flexbox layout
+  // Flexbox layout or freeform coordinate container
   if (node.layout === "vertical") {
     baseStyle.display = "flex"
     baseStyle.flexDirection = "column"
@@ -311,21 +431,11 @@ function NodeRenderer({
   }
 
   if (node.alignItems) {
-    baseStyle.alignItems =
-      node.alignItems === "start"
-        ? "flex-start"
-        : node.alignItems === "end"
-        ? "flex-end"
-        : node.alignItems
+    baseStyle.alignItems = normalizeFlexAlign(node.alignItems)
   }
 
   if (node.justifyContent) {
-    baseStyle.justifyContent =
-      node.justifyContent === "start"
-        ? "flex-start"
-        : node.justifyContent === "end"
-        ? "flex-end"
-        : node.justifyContent
+    baseStyle.justifyContent = normalizeFlexAlign(node.justifyContent)
   }
 
   return (
@@ -424,6 +534,8 @@ function NodeRenderer({
           <NodeRenderer
             key={child.id}
             node={child}
+            parentLayout={node.layout || "none"}
+            variables={variables}
             selectedNodeId={selectedNodeId}
             onSelectNode={onSelectNode}
             onUpdateNode={onUpdateNode}
@@ -540,9 +652,29 @@ export function PenCanvas({
 
   const hasChildren = document.children && document.children.length > 0
 
+  // Auto load Google Fonts defined in document variables or font families
+  useEffect(() => {
+    const fonts: string[] = []
+    if (document.variables) {
+      for (const [key, v] of Object.entries(document.variables)) {
+        if (typeof v.value === "string" && (key.includes("font") || v.type === "string")) {
+          fonts.push(v.value)
+        }
+      }
+    }
+    function scanFonts(nodes: PenNode[]) {
+      for (const n of nodes) {
+        if (n.fontFamily && !n.fontFamily.startsWith("$")) fonts.push(n.fontFamily)
+        if (n.children) scanFonts(n.children)
+      }
+    }
+    if (document.children) scanFonts(document.children)
+    ensureGoogleFontsLoaded(fonts)
+  }, [document.variables, document.children])
+
   // Selected node lookup
   const selectedNode = selectedNodeId
-    ? document.children.find((c) => c.id === selectedNodeId) || { name: "Mellow" }
+    ? findNodeById(document.children, selectedNodeId) || { name: "Mellow" }
     : { name: document.children[0]?.name || "Mellow" }
 
   // 1:1 Figma & Pen.dev Keyboard Shortcuts (Delete, Nudge, Duplicate, Escape, Tool Switching)
@@ -576,7 +708,7 @@ export function PenCanvas({
 
       // Arrow keys to nudge selected element (1px normally, 10px with Shift)
       if (selectedNodeId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        const found = document.children.find((c) => c.id === selectedNodeId)
+        const found = findNodeById(document.children, selectedNodeId)
         if (found) {
           e.preventDefault()
           const step = e.shiftKey ? 10 : 1
@@ -588,8 +720,8 @@ export function PenCanvas({
           if (e.key === "ArrowDown") dy = step
           onUpdateNode({
             ...found,
-            x: (found.x || 80) + dx,
-            y: (found.y || 80) + dy,
+            x: (found.x ?? 0) + dx,
+            y: (found.y ?? 0) + dy,
           })
           return
         }
@@ -671,6 +803,8 @@ export function PenCanvas({
               key={rootNode.id}
               node={rootNode}
               isRoot
+              parentLayout="none"
+              variables={document.variables}
               selectedNodeId={selectedNodeId}
               onSelectNode={onSelectNode}
               onUpdateNode={onUpdateNode}
