@@ -182,6 +182,39 @@ export const VOLUME_KEY = "kb-sound-volume"
 export const SOUND_HOVER_KEY = "kb-sound-hover"
 export const SOUND_CLICK_KEY = "kb-sound-click"
 export const SOUND_OUTCOME_KEY = "kb-sound-outcome"
+export const CANVAS_FEATURE_KEY = "kb-canvas-enabled"
+
+export function readCanvasEnabled(): boolean {
+  return readBool(CANVAS_FEATURE_KEY, false)
+}
+
+export function saveCanvasEnabled(enabled: boolean) {
+  try {
+    localStorage.setItem(CANVAS_FEATURE_KEY, JSON.stringify(enabled))
+  } catch {}
+  window.dispatchEvent(new StorageEvent("storage", { key: CANVAS_FEATURE_KEY, newValue: JSON.stringify(enabled) }))
+}
+
+export function useCanvasFeature() {
+  const [enabled, setEnabled] = useState(() => readCanvasEnabled())
+
+  useEffect(() => {
+    const sync = () => setEnabled(readCanvasEnabled())
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CANVAS_FEATURE_KEY) sync()
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
+
+  return {
+    enabled,
+    setEnabled: (val: boolean) => {
+      saveCanvasEnabled(val)
+      setEnabled(val)
+    },
+  }
+}
 
 export function useSettings() {
   const [refreshMs, setRefreshMs] = useState(() => readNum(REFRESH_KEY, 15000))

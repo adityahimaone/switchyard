@@ -15,6 +15,7 @@ import {
 import { pagePath, parseRoute } from "./lib/routes"
 import { CANVAS_PREFILL_KEY } from "./features/canvas/canvasPrefill"
 import LoadingState from "@/components/feedback/loading-state"
+import { useCanvasFeature } from "./hooks/useSettings"
 
 const TaskDialog = lazy(() => import("./features/board/TaskDialog"))
 const TaskDetail = lazy(() => import("./features/board/TaskDetail"))
@@ -54,7 +55,15 @@ export default function App() {
     typeof window === "undefined" ? true : window.innerWidth >= 1024,
   )
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const { enabled: canvasEnabled } = useCanvasFeature()
   const qc = useQueryClient()
+
+  useEffect(() => {
+    if (!canvasEnabled && page === "canvas") {
+      setPage("board")
+      go(pagePath("board", slug))
+    }
+  }, [canvasEnabled, page, slug])
 
   useEffect(() => openEventStream((ev) => {
     if (ev.kind === "workspace_ping" || ev.kind === "workspace_updated" || ev.kind === "workspace_deleted") {
@@ -129,6 +138,7 @@ export default function App() {
   const currentBoard = (boards.data ?? []).find((b) => b.slug === slug) ?? null
 
   function handleSelectPage(p: Page) {
+    if (p === "canvas" && !canvasEnabled) return
     if (p === "board") {
       setDetail(null)
       setDetailId(null)
@@ -228,7 +238,7 @@ export default function App() {
           {page === "settings" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><SettingsPage /></div>}
           {page === "agent-mapping" && <div className="flex min-h-0 flex-1 overflow-hidden"><AgentMappingPage /></div>}
           {page === "knowledge" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><KnowledgePage /></div>}
-          {page === "canvas" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CanvasPage workspaces={workspaces.data ?? []} boardSlug={slug} /></div>}
+          {page === "canvas" && canvasEnabled && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CanvasPage workspaces={workspaces.data ?? []} boardSlug={slug} /></div>}
           {page === "cron" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><CronPage /></div>}
           {page === "ecosystem" && <div className="flex min-h-0 flex-1 flex-col overflow-hidden"><EcosystemPage /></div>}
           {page === "chat" && (
@@ -304,11 +314,11 @@ export default function App() {
             status: t.status,
           }))}
           onClose={() => setCreating(false)}
-          onOpenCanvas={(prefill) => {
+          onOpenCanvas={canvasEnabled ? (prefill) => {
             sessionStorage.setItem(CANVAS_PREFILL_KEY, JSON.stringify(prefill))
             setCreating(false)
             handleSelectPage("canvas")
-          }}
+          } : undefined}
           onCreate={(payload) =>
             api<Task>(`/api/boards/${slug}/tasks`, { method: "POST", body: JSON.stringify(payload) }).then(async (created) => {
               qc.invalidateQueries({ queryKey: ["tasks", slug] })

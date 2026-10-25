@@ -98,10 +98,12 @@ export const navLinks: SidebarNavItem[] = [
 	...footerNavLinks,
 ];
 
-export function buildNavGroups(active: Page): SidebarNavGroup[] {
+export function buildNavGroups(active: Page, canvasEnabled: boolean = false): SidebarNavGroup[] {
 	return navGroups.map((group) => ({
 		...group,
-		items: group.items.map((item) => ({ ...item, isActive: item.page === active })),
+		items: group.items
+			.filter((item) => canvasEnabled || item.page !== "canvas")
+			.map((item) => ({ ...item, isActive: item.page === active })),
 	}));
 }
 

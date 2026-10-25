@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { useSoundSettings } from "@/hooks/useSettings"
+import { useCanvasFeature, useSoundSettings } from "@/hooks/useSettings"
 import { applySoundPreferences, syncSoundEngine } from "@/lib/sound"
 import { SettingRow, SettingsSection } from "../settings-parts"
 import { useSetting } from "../useSetting"
@@ -33,6 +33,7 @@ export default function GeneralTab() {
   const [hover, setHover] = useSetting(SOUND_HOVER_KEY, true)
   const [click, setClick] = useSetting(SOUND_CLICK_KEY, true)
   const [latestChange, setLatestChange] = useSetting(LATEST_CHANGE_KEY, 0)
+  const { enabled: canvasEnabled, setEnabled: setCanvasEnabled } = useCanvasFeature()
   const sound = useSoundSettings()
 
   // The engine caches its configuration, so re-apply when a preference changes.
@@ -90,6 +91,23 @@ export default function GeneralTab() {
             id="set-latest-change"
             onCheckedChange={(v) => setLatestChange(v ? 1 : 0)}
             checked={latestChange === 1}
+          />
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Features"
+        description="Optional workspaces and experimental tools."
+      >
+        <SettingRow
+          label="Canvas Studio"
+          help="Enables the freeform component canvas in the sidebar and task creation dialog. Disabled by default."
+          htmlFor="set-canvas-enabled"
+        >
+          <Switch
+            id="set-canvas-enabled"
+            checked={canvasEnabled}
+            onCheckedChange={setCanvasEnabled}
           />
         </SettingRow>
       </SettingsSection>

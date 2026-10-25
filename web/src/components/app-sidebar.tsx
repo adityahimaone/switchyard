@@ -11,6 +11,7 @@ import {
 import { NavGroup } from "@/components/nav-group";
 import { buildFooterLinks, buildNavGroups } from "@/components/app-shared";
 import { LatestChange } from "@/components/latest-change";
+import { useCanvasFeature } from "@/hooks/useSettings";
 import type { Page } from "@/lib/sidebar-preferences";
 
 export function AppSidebar({
@@ -20,6 +21,7 @@ export function AppSidebar({
 	page: Page;
 	onSelectPage: (p: Page) => void;
 }) {
+	const { enabled: canvasEnabled } = useCanvasFeature();
 	return (
 		<Sidebar collapsible="icon" variant="inset">
 			{/* `h-13` to match the shell header exactly. The two are aligned by
@@ -54,7 +56,7 @@ export function AppSidebar({
 				</SidebarMenuButton>
 			</SidebarHeader>
 			<SidebarContent>
-				{buildNavGroups(page).map((group, index) => (
+				{buildNavGroups(page, canvasEnabled).map((group, index) => (
 					<NavGroup
 						key={`sidebar-group-${index}`}
 						{...group}
