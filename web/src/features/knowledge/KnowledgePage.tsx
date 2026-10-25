@@ -278,7 +278,7 @@ export default function KnowledgePage({
           {/* Sidebar Footer Link */}
           <div className="border-t border-line p-3 bg-well/25">
             <div className="flex items-center justify-between text-[11px] text-ink-3">
-              <span>Switchyard v0.2.0</span>
+              <span>Switchyard v0.3.0</span>
               {onSelectPage && (
                 <button
                   type="button"

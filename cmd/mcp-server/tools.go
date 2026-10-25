@@ -7,7 +7,7 @@ import (
 	"kanban-board/internal/kanban"
 )
 
-var version = "v0.2.0"
+var version = "v0.3.0"
 
 func sortToolSpecs(specs []toolSpec) {
 	sort.Slice(specs, func(i, j int) bool { return specs[i].Name < specs[j].Name })

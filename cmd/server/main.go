@@ -18,7 +18,7 @@ import (
 	"kanban-board/internal/kanban"
 )
 
-var version = "v0.2.0"
+var version = "v0.3.0"
 
 const sessionCookieName = "kanban_session"
 
