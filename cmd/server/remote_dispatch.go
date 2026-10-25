@@ -486,7 +486,7 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 	}
 
 	if scope == "design_only" {
-		return msg + "\n\n--- pen.dev Design Only (pen CLI) ---\n" +
+		return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
 			"CRITICAL: This card is strictly DESIGN ONLY. Do NOT create, edit, or modify application source code, components, routes, or styles.\n" +
 			"Do NOT touch files in app/, features/, components/, or src/.\n" +
 			"1. Generate the design mock using the pen.dev CLI:\n" +
@@ -495,7 +495,7 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 			"3. Register the surface in design/manifest.json (and optional design/system.md).\n" +
 			"4. Commit only design artifacts (" + out + ", " + designExportPath(out) + ", design/manifest.json) and STOP immediately.\n" +
 			"Your task is fully accomplished once the design files are produced and verified.\n" +
-			"--- End pen.dev Design Only ---"
+			"--- End pen.dev Design ---"
 	}
 
 	if tool == "pencil_mcp" {
@@ -508,7 +508,7 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 			"3. Implement the application code to match the design.\n" +
 			"--- End pen.dev Design ---"
 	}
-	return msg + "\n\n--- pen.dev Design & Code (pen CLI) ---\n" +
+	return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
 		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +
 		"authenticated on the worker node. Do not use the desktop app or the pencil MCP to create\n" +
 		"the file: the MCP edits only the document already open in the app and cannot save a new one.\n" +
@@ -547,14 +547,16 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 		agent = strings.ToLower(parts[0])
 		model = parts[1]
 	}
-	// pen CLI strictly supports claude, codex, or gemini as the headless driver.
-	// If a custom or third-party agent (like deepseek or 9router) is configured,
-	// default the direct CLI driver to gemini so pen CLI executes successfully.
+	// pen CLI 0.3.13+ supports: claude, codex, google, deepseek, pen.dev, openrouter, fireworks, etc.
+	// Map 'gemini' to 'pen.dev' (which uses active pen.dev account) or allow direct deepseek/claude/codex.
 	cliAgent := agent
 	cliModel := model
-	if cliAgent != "claude" && cliAgent != "codex" && cliAgent != "gemini" {
-		cliAgent = "gemini"
-		cliModel = "gemini-3.6-flash"
+	if cliAgent == "gemini" {
+		cliAgent = "pen.dev"
+		cliModel = ""
+	} else if cliAgent != "claude" && cliAgent != "codex" && cliAgent != "google" && cliAgent != "deepseek" && cliAgent != "pen.dev" && cliAgent != "openrouter" && cliAgent != "fireworks" {
+		cliAgent = "pen.dev"
+		cliModel = ""
 	}
 	modelArg := ""
 	if cliModel != "" {

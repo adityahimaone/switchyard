@@ -57,8 +57,8 @@ func TestAppendDesignReference(t *testing.T) {
 
 func TestAppendDesignMandateDesignOnly(t *testing.T) {
 	prompt := appendDesignMandate("Build a contact card", "pen_cli", "design/contact.pen", "Contact Card", "design_only", "gemini", "gemini-3.6-flash")
-	if !strings.Contains(prompt, "--- pen.dev Design Only (pen CLI) ---") {
-		t.Errorf("missing Design Only header in prompt:\n%s", prompt)
+	if !strings.Contains(prompt, "--- pen.dev Design (pen CLI) ---") {
+		t.Errorf("missing Design header in prompt:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "CRITICAL: This card is strictly DESIGN ONLY") {
 		t.Errorf("missing critical design only instruction in prompt:\n%s", prompt)
@@ -75,8 +75,8 @@ func TestAppendDesignMandateDesignOnly(t *testing.T) {
 
 	// Test Design & Code
 	codePrompt := appendDesignMandate("Build a contact card", "pen_cli", "design/contact.pen", "Contact Card", "design_and_code", "claude", "")
-	if !strings.Contains(codePrompt, "--- pen.dev Design & Code (pen CLI) ---") {
-		t.Errorf("missing Design & Code header in prompt:\n%s", codePrompt)
+	if !strings.Contains(codePrompt, "--- pen.dev Design (pen CLI) ---") {
+		t.Errorf("missing Design header in prompt:\n%s", codePrompt)
 	}
 	if !strings.Contains(codePrompt, "then implement this card to the committed design") {
 		t.Errorf("design_and_code must contain implementation instruction:\n%s", codePrompt)
@@ -98,10 +98,19 @@ func TestBuildDirectPenCommand(t *testing.T) {
 		t.Errorf("command missing model:\n%s", cmd)
 	}
 
-	// Third-party agents like deepseek fallback to gemini for pen CLI
-	fallbackCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
-	if !strings.Contains(fallbackCmd, "--agent \"gemini\"") {
-		t.Errorf("fallback command should use gemini for deepseek:\n%s", fallbackCmd)
+	// In pen CLI 0.3.13+, deepseek is natively supported:
+	dsCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
+	if !strings.Contains(dsCmd, "--agent \"deepseek\"") {
+		t.Errorf("command should use native deepseek for deepseek agent:\n%s", dsCmd)
+	}
+	if !strings.Contains(dsCmd, "--model deepseek-flash") {
+		t.Errorf("command should pass deepseek-flash model:\n%s", dsCmd)
+	}
+
+	// Unknown third-party agent fallback to pen.dev
+	fallbackCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "unknown_agent", "custom-model")
+	if !strings.Contains(fallbackCmd, "--agent \"pen.dev\"") {
+		t.Errorf("fallback command should use pen.dev for unknown agent:\n%s", fallbackCmd)
 	}
 }
 
