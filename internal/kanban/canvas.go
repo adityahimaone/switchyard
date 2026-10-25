@@ -325,10 +325,15 @@ func CanvasMandate(s *CanvasSession, userMsg string) string {
 	b.WriteString("- Use synthetic data and mock providers; never real requests, personal data, or credentials. If safe isolation is unclear, stop and ask.\n")
 	b.WriteString("- Do not start dev servers or open browsers; the board manages the server.\n")
 	b.WriteString("- Keep the canvas route at /canvas (Next.js) or canvas/index.html (Vite). Update the existing canvas for follow-ups; preserve names, IDs and positions.\n")
+	b.WriteString("FORMAT & TOKEN EFFICIENCY GUIDELINES:\n")
+	b.WriteString("- Create pure Vanilla HTML prototypes with Tailwind utility classes under canvas/ (e.g., canvas/variant-1.html, canvas/variant-2.html).\n")
+	b.WriteString("- When comparing or exploring, provide 2-3 distinct design variations (variant-1.html, variant-2.html) so the user can easily toggle between them.\n")
+	b.WriteString("- For icons, use Lucide Web CDN tags (<i data-lucide=\"icon-name\" class=\"...\"></i>) which auto-render instantly and save hundreds of tokens.\n")
+	b.WriteString("- Support DialKit visual tuning via CSS variables: var(--dialkit-radius), var(--dialkit-padding), var(--dialkit-accent).\n\n")
 	if s.DialKit {
-		b.WriteString("- DialKit is enabled: add dialkit (https://www.dialkit.dev/) as a dependency if the project is React, and bind its panels to registry item props so components can be tuned live. Only package.json and the lockfile may change for this.\n")
+		b.WriteString("- DialKit is enabled: components and styles should dynamically respond to DialKit theme (dark/light) and CSS variables.\n")
 	} else {
-		b.WriteString("- DialKit is disabled for this session; do not add dependencies.\n")
+		b.WriteString("- DialKit is disabled for this session.\n")
 	}
 	b.WriteString("\nSession: " + s.Title + "\nBranch: " + s.Branch + "\n\nRequest:\n" + strings.TrimSpace(userMsg) + "\n")
 	return b.String()
@@ -654,6 +659,19 @@ func PromoteCanvasSession(id, board string) (string, error) {
 	}
 	body := fmt.Sprintf("Implement the approved canvas \"%s\" in production.\n\nCanvas branch: %s\nCanvas worktree: %s\nSource: canvas/ (and app/canvas or src/canvas)\n\nLatest canvas summary:\n%s",
 		s.Title, s.Branch, s.WorktreePath, truncateWorktreeOutput(summary))
+
+	// Attach prototype blueprint into task card as visual specification
+	files, _ := GetCanvasFiles(id)
+	var blueprint strings.Builder
+	for p, content := range files {
+		if strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".tsx") {
+			blueprint.WriteString(fmt.Sprintf("\n\n### Prototype Blueprint: `%s`\n```html\n%s\n```", p, truncateWorktreeOutput(content)))
+		}
+	}
+	if blueprint.Len() > 0 {
+		body += blueprint.String()
+		body += "\n\n**Instructions for Worker:** Convert the approved vanilla prototype above into a production React component following the repository's design tokens and conventions."
+	}
 	t := &Task{
 		Title:         "Implement canvas: " + s.Title,
 		Body:          body,

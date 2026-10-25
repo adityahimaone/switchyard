@@ -396,7 +396,10 @@ function StudioSessionView({
     if (activeFile && files[activeFile]) return
     const keys = Object.keys(files)
     if (keys.length === 0) return
-    const candidate = keys.find((k) => k.endsWith(".tsx") && !k.endsWith("page.tsx")) || keys[0]
+    const candidate =
+      keys.find((k) => k.endsWith(".html")) ||
+      keys.find((k) => k.endsWith(".tsx") && !k.endsWith("page.tsx")) ||
+      keys[0]
     setActiveFile(candidate)
   }, [files, activeFile])
 

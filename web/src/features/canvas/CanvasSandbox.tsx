@@ -59,6 +59,8 @@ export function CanvasSandbox({
   const activeEntry = useMemo(() => {
     if (entryFile && cleanFiles[entryFile]) return entryFile
     const keys = Object.keys(cleanFiles)
+    const html = keys.find((k) => k.endsWith(".html"))
+    if (html) return html
     const bento = keys.find((k) => k.includes("bento") || k.includes("component") || k.includes("hero"))
     if (bento) return bento
     const candidate = keys.find((k) => k.endsWith(".tsx") && !k.endsWith("page.tsx"))

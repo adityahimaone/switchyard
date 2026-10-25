@@ -198,6 +198,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind CDN, Babel Standalone, Lucide Icons Web CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -206,11 +207,15 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         extend: {
           borderRadius: {
             'custom': 'var(--dialkit-radius, 16px)'
+          },
+          colors: {
+            'dialkit-accent': 'var(--dialkit-accent, #6366f1)'
           }
         }
       }
     }
   </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script type="importmap">
   {
@@ -307,7 +312,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       try {
         if (!currentEntry) {
           const keys = Object.keys(currentFiles).filter(k => !k.includes('._') && !k.includes('.DS_Store'));
-          currentEntry = keys.find(k => k.endsWith('.tsx') && !k.endsWith('page.tsx')) || keys[0];
+          currentEntry = keys.find(k => k.endsWith('.html')) || keys.find(k => k.endsWith('.tsx') && !k.endsWith('page.tsx')) || keys[0];
         }
         if (!currentEntry) {
           window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
@@ -320,6 +325,43 @@ const canvasSandboxHTML = `<!DOCTYPE html>
           return;
         }
 
+        // --- Dual Engine Branch 1: Pure Vanilla HTML + Tailwind + Lucide CDN ---
+        if (currentEntry.endsWith('.html') || (!currentEntry.endsWith('.tsx') && !currentEntry.endsWith('.jsx') && rawCode.trim().startsWith('<'))) {
+          document.documentElement.classList.toggle('dark', currentProps.theme === 'dark');
+          document.documentElement.style.setProperty('--dialkit-radius', (currentProps.radius || 16) + 'px');
+          document.documentElement.style.setProperty('--dialkit-padding', (currentProps.padding || 24) + 'px');
+          document.documentElement.style.setProperty('--dialkit-accent', currentProps.accentColor || '#6366f1');
+
+          let markup = rawCode;
+          const bodyMatch = rawCode.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+          if (bodyMatch) markup = bodyMatch[1];
+
+          const container = document.getElementById('root');
+          if (root) {
+            try { root.unmount(); } catch (_) {}
+            root = null;
+          }
+          container.innerHTML = '<div style="transform: scale(' + ((currentProps.scale || 100) / 100) + '); transform-origin: top center;" class="p-6 flex flex-col items-center justify-center min-h-screen ' + (currentProps.theme === 'dark' ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]') + '">' + markup + '</div>';
+
+          // Auto-render Lucide icons (<i data-lucide="..."></i>)
+          if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+          }
+
+          // Execute any inline scripts
+          const scripts = container.querySelectorAll('script');
+          scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+            newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+          });
+
+          window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
+          return;
+        }
+
+        // --- Dual Engine Branch 2: React TSX via Babel Standalone ---
         for (const k in moduleCache) delete moduleCache[k];
 
         const transformed = Babel.transform(rawCode, {
