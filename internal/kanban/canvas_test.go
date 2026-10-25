@@ -113,6 +113,19 @@ func TestEnsureGlobalScratchpad(t *testing.T) {
 	}
 }
 
+func TestCreateAndDiscardScratchpadSession(t *testing.T) {
+	s, err := CreateCanvasSession("scratchpad", "Test Canvas Session", "dsh", "", false, nil)
+	if err != nil {
+		t.Fatalf("CreateCanvasSession failed: %v", err)
+	}
+	if s.ID == "" || s.WorktreePath == "" {
+		t.Fatalf("invalid session returned: %+v", s)
+	}
+	if err := DiscardCanvasSession(s.ID); err != nil {
+		t.Fatalf("DiscardCanvasSession failed: %v", err)
+	}
+}
+
 func TestCanvasMandateDialKit(t *testing.T) {
 	s := &CanvasSession{Title: "Hero", Branch: "switchyard/canvas-x"}
 	if m := CanvasMandate(s, "try dark"); !strings.Contains(m, "DialKit is disabled") || !strings.Contains(m, "/create-canvas") {
