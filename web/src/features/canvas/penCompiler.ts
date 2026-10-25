@@ -6,7 +6,7 @@ import type { PenDocument, PenFill, PenFillGradient, PenNode, PenPadding } from 
  */
 
 function fillToStylesOrClasses(fill?: PenFill, isText?: boolean): { className: string; style?: React.CSSProperties } {
-  if (!fill) return { className: "" }
+  if (!fill || fill === "transparent") return { className: "" }
 
   if (typeof fill === "string") {
     // If it's a solid hex or rgba
@@ -68,6 +68,9 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
     if (node.textAlign) {
       classes.push(`text-${node.textAlign}`)
     }
+    if (node.rotation) {
+      classes.push(`rotate-[${node.rotation}deg]`)
+    }
 
     const fillRes = fillToStylesOrClasses(node.fill, true)
     if (fillRes.className) classes.push(fillRes.className)
@@ -110,18 +113,42 @@ export function compileNodeToJSX(node: PenNode, depth = 1): string {
   const padClass = paddingToClasses(node.padding)
   if (padClass) classes.push(padClass)
 
-  // Dimensions
-  if (node.width) classes.push(`w-[${node.width}px]`)
-  if (node.height) classes.push(`h-[${node.height}px]`)
+  // Dimensions & sizing
+  if (node.fillWidth) {
+    classes.push("w-full")
+  } else if (node.width) {
+    classes.push(`w-[${node.width}px]`)
+  }
+
+  if (node.fillHeight) {
+    classes.push("h-full")
+  } else if (node.height) {
+    classes.push(`h-[${node.height}px]`)
+  }
 
   // Corner radius
   if (node.cornerRadius) {
     classes.push(`rounded-[${node.cornerRadius}px]`)
   }
 
-  // Stroke
+  // Clip content
+  if (node.clip) {
+    classes.push("overflow-hidden")
+  }
+
+  // Stroke / Border
   if (node.stroke) {
-    classes.push(`border border-[${node.stroke}]`)
+    classes.push(node.strokeWidth && node.strokeWidth > 1 ? `border-[${node.strokeWidth}px] border-[${node.stroke}]` : `border border-[${node.stroke}]`)
+  }
+
+  // Effects / Shadow
+  if (node.effects === "shadow-xl") {
+    classes.push("shadow-2xl")
+  }
+
+  // Rotation
+  if (node.rotation) {
+    classes.push(`rotate-[${node.rotation}deg]`)
   }
 
   // Fill
@@ -152,17 +179,17 @@ export default function ${componentName}() {
 `
   }
 
-  const jsxBody = compileNodeToJSX(rootNode, 2)
+  const rootJSX = compileNodeToJSX(rootNode, 1)
 
   return `import React from 'react'
 
 /**
- * Compiled deterministically from pen.dev design (${doc.name || "Untitled"})
- * Zero AI tokens consumed.
+ * Compiled from pen.dev declarative design (.pen)
+ * 0 Token Deterministic Browser Compilation.
  */
 export default function ${componentName}() {
   return (
-${jsxBody}
+${rootJSX}
   )
 }
 `

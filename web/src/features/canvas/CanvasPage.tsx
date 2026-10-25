@@ -14,8 +14,10 @@ import {
   Copy,
   X,
   Code2,
-  Home,
   Folder,
+  ArrowLeft,
+  Upload,
+  Download,
 } from "lucide-react"
 import { api, toastGlobal, type Workspace } from "../../api"
 import { Button } from "@/components/ui/button"
@@ -130,8 +132,45 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
     onError: (e: Error) => toastGlobal(e.message, "error"),
   })
 
+  const { models: defaultModels } = useExecutorModels("dsh")
+
+  const handleImportPenFileGlobal = async (file: File) => {
+    try {
+      const text = await file.text()
+      const parsed = parsePenDocument(text)
+      if (!parsed || !parsed.children) {
+        toastGlobal("Invalid .pen file format", "error")
+        return
+      }
+      const title = file.name.replace(/\.(pen|json)$/i, "") || "Imported Design"
+      
+      const newSession = await post<CanvasSession>("/api/canvas/sessions", {
+        workspace_id: "scratchpad",
+        title,
+        brief: "Imported from .pen file",
+        executor: "dsh",
+        model: "DeepSeek V4.1 Flash",
+      })
+
+      await api(`/api/canvas/sessions/${newSession.id}/files`, {
+        method: "PUT",
+        body: JSON.stringify({
+          files: {
+            "design/component.pen": JSON.stringify(parsed, null, 2),
+          },
+        }),
+      })
+
+      qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+      setSelected(newSession.id)
+      toastGlobal(`Imported "${title}.pen" successfully!`, "success")
+    } catch (err: any) {
+      toastGlobal(err.message || "Failed to import .pen file", "error")
+    }
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 relative overflow-hidden bg-[#0d0e12]">
+    <div className="flex min-h-0 flex-1 relative overflow-hidden bg-background">
       {creating ? (
         <NewCanvas
           workspaces={workspaces}
@@ -173,11 +212,13 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
               model: params.model,
             })
           }
+          onImportPenFile={handleImportPenFileGlobal}
           onForkSession={(id) => forkMutation.mutate(id)}
           onDiscardSession={(id) => discardMutation.mutate(id)}
           onPromoteSession={(session) => {
             setSelected(session.id)
           }}
+          models={defaultModels}
         />
       )}
     </div>
@@ -530,6 +571,7 @@ function StudioSessionView({
   const [selectedPenNodeId, setSelectedPenNodeId] = useState<string | null>(null)
   const [penSaveStatus, setPenSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved")
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const studioFileInputRef = useRef<HTMLInputElement>(null)
 
   // Sync penDoc from files when files load
   useEffect(() => {
@@ -571,6 +613,42 @@ function StudioSessionView({
     },
     [id, penFileKey]
   )
+
+  const handleImportIntoCurrentSession = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text()
+        const parsed = parsePenDocument(text)
+        if (!parsed || !parsed.children) {
+          toastGlobal("Invalid .pen file format", "error")
+          return
+        }
+        setPenDoc(parsed)
+        if (parsed.children[0]) {
+          setSelectedPenNodeId(parsed.children[0].id)
+        }
+        triggerPenAutoSave(parsed)
+        toastGlobal(`Imported "${file.name}" into canvas!`, "success")
+      } catch (err: any) {
+        toastGlobal(err.message || "Failed to import .pen file", "error")
+      }
+    },
+    [triggerPenAutoSave]
+  )
+
+  const handleExportPen = useCallback(() => {
+    const jsonStr = JSON.stringify(penDoc, null, 2)
+    const blob = new Blob([jsonStr], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${s?.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "design"}.pen`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toastGlobal("Exported .pen file successfully", "success")
+  }, [penDoc, s?.title])
 
   // Handlers for PenNode mutations
   const handleUpdatePenNode = useCallback(
@@ -696,69 +774,106 @@ function StudioSessionView({
   const busy = s.status === "working"
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col h-full select-none bg-[#0d0e12]">
-      {/* Top Floating Pro Toolbar (Matches pen.dev Image 1) */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.08)] bg-[#0f1015]/90 px-4 backdrop-blur-md z-20">
-        {/* Left: Traffic Lights + Pen.dev Logo + Home (Back to Hub) + File Tab */}
+    <div className="flex min-h-0 flex-1 flex-col h-full select-none bg-background font-sans text-foreground">
+      {/* Hidden file input for importing .pen into this session */}
+      <input
+        ref={studioFileInputRef}
+        type="file"
+        accept=".pen,.json"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleImportIntoCurrentSession(e.target.files[0])
+            e.target.value = ""
+          }
+        }}
+      />
+
+      {/* Top Application Header matching Design System */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card/60 px-4 backdrop-blur-md z-20">
+        {/* Left: Back to Hub + File Breadcrumb + Save Badge */}
         <div className="flex items-center gap-3 min-w-0">
-          {/* macOS window traffic lights */}
-          <div className="flex items-center gap-1.5">
-            <span className="size-3 rounded-full bg-[#ff5f56]" />
-            <span className="size-3 rounded-full bg-[#ffbd2e]" />
-            <span className="size-3 rounded-full bg-[#27c93f]" />
-          </div>
-
-          {/* Logo & Back to Menu Hub */}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onBackToHub}
-            className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-all active:scale-95"
-            title="Back to Canvas Menu (Image 2)"
+            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground active:scale-95"
+            title="Return to Canvas Hub"
           >
-            <div className="flex size-5 items-center justify-center rounded bg-[#10e0dd]/20 text-[#10e0dd]">
-              <Sparkles className="size-3" />
-            </div>
-            <span className="font-bold tracking-tight">pen.dev</span>
-            <Home className="size-3.5 text-neutral-400 ml-1" />
-          </button>
+            <ArrowLeft className="size-3.5" />
+            <span className="font-medium">Canvas Hub</span>
+          </Button>
 
-          {/* Active File Tab matching Image 1 */}
-          <div className="flex items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#14151c] px-3 py-1 text-xs text-neutral-200 font-mono shadow-sm">
-            <Folder className="size-3.5 text-neutral-400" />
+          <div className="h-4 w-px bg-border" />
+
+          {/* Active File Breadcrumb */}
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground font-mono shadow-xs">
+            <Folder className="size-3.5 text-muted-foreground" />
             <span className="truncate max-w-56 font-sans">
               design / {s.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pen
             </span>
-            <span className="size-1.5 rounded-full bg-emerald-400 ml-1" />
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
           </div>
+
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {penSaveStatus === "saved" ? "Saved ✨" : penSaveStatus === "saving" ? "Saving…" : "Unsaved"}
+          </span>
         </div>
 
-        {/* Right Actions matching Image 1 */}
+        {/* Right Actions */}
         <div className="flex items-center gap-2">
+          {/* Import .pen file */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-200 hover:bg-[#1a1b24] active:scale-[0.97]"
+            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            onClick={() => studioFileInputRef.current?.click()}
+            title="Import .pen into this canvas"
+          >
+            <Upload className="size-3 mr-1.5 text-muted-foreground" />
+            <span>Import .pen</span>
+          </Button>
+
+          {/* Export .pen file */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            onClick={handleExportPen}
+            title="Export design as .pen file"
+          >
+            <Download className="size-3 mr-1.5 text-muted-foreground" />
+            <span>Export .pen</span>
+          </Button>
+
+          {/* Convert to React */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
             onClick={() => setReactModalOpen(true)}
           >
             <Code2 className="size-3.5 mr-1.5 text-accent-text" />
             <span>Convert to React (0 Token)</span>
           </Button>
 
+          {/* Promote to Task Card */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-200 hover:bg-[#1a1b24] active:scale-[0.97]"
+            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
             disabled={busy}
             onClick={() => setPromoteModalOpen(true)}
           >
-            <ArrowUpRight className="size-3.5 mr-1.5 text-emerald-400" />
+            <ArrowUpRight className="size-3.5 mr-1.5 text-accent-text" />
             <span>Promote to Task</span>
           </Button>
 
+          {/* Duplicate / Fork */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-300 hover:bg-[#1a1b24] active:scale-[0.97]"
+            className="h-7 px-2 text-xs border-border hover:bg-muted active:scale-[0.97]"
             disabled={busy}
             onClick={() =>
               run(() => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}), "Variation created", (n) =>
@@ -767,13 +882,14 @@ function StudioSessionView({
             }
             title="Duplicate / Fork"
           >
-            <GitFork className="size-3.5" />
+            <GitFork className="size-3.5 text-muted-foreground" />
           </Button>
 
+          {/* Discard Canvas */}
           <Button
             size="icon"
             variant="ghost"
-            className="size-7 text-neutral-400 hover:text-red-400 active:scale-[0.97]"
+            className="size-7 text-muted-foreground hover:text-destructive active:scale-[0.97]"
             onClick={() => {
               if (window.confirm("Discard this canvas? The worktree and branch will be deleted.")) {
                 run(() => post(`/api/canvas/sessions/${id}/discard`), "Canvas discarded", onGone)
@@ -784,154 +900,146 @@ function StudioSessionView({
             <Trash2 className="size-3.5" />
           </Button>
 
-          <div className="h-4 w-px bg-[rgba(255,255,255,0.1)] mx-0.5" />
+          <div className="h-4 w-px bg-border mx-0.5" />
 
-          {/* Toggle Inspector */}
+          {/* Toggle Floating Inspector */}
           <Button
             size="icon"
             variant={inspectorOpen ? "secondary" : "ghost"}
-            className="size-7 text-neutral-300 active:scale-[0.97]"
+            className="size-7 text-foreground active:scale-[0.97]"
             onClick={() => setInspectorOpen((v) => !v)}
-            title="Toggle pen.dev Inspector (Cmd+])"
+            title="Toggle Property Inspector (Cmd+])"
           >
             {inspectorOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
           </Button>
-
-          <div className="flex size-7 items-center justify-center rounded-full bg-neutral-800 font-mono text-xs font-semibold text-neutral-200 ml-1">
-            A
-          </div>
         </div>
       </header>
 
-      {/* Main Body */}
-      <div className="flex min-h-0 flex-1 relative overflow-hidden">
-        {/* Central Canvas Viewport */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col relative bg-[#0c0d10] overflow-hidden">
-          <PenCanvas
-            document={penDoc}
-            selectedNodeId={selectedPenNodeId}
-            onSelectNode={setSelectedPenNodeId}
-            onUpdateNode={handleUpdatePenNode}
-            onAddNode={handleAddPenNode}
-            onResetDocument={(doc) => {
-              setPenDoc(doc)
-              triggerPenAutoSave(doc)
-            }}
-            onOpenChat={() => setChatOpen(true)}
-            activeModel={s.model || "DeepSeek V4.1 Flash"}
-            turnCount={s.turns}
-          />
+      {/* Main Spatial Body: Full-width spatial canvas with floating inspector */}
+      <div className="flex min-h-0 flex-1 relative overflow-hidden bg-background">
+        {/* Full-bleed Canvas Viewport */}
+        <PenCanvas
+          document={penDoc}
+          selectedNodeId={selectedPenNodeId}
+          onSelectNode={setSelectedPenNodeId}
+          onUpdateNode={handleUpdatePenNode}
+          onAddNode={handleAddPenNode}
+          onResetDocument={(doc) => {
+            setPenDoc(doc)
+            triggerPenAutoSave(doc)
+          }}
+          onImportPenFile={handleImportIntoCurrentSession}
+          onOpenChat={() => setChatOpen(true)}
+          activeModel={s.model || "DeepSeek V4.1 Flash"}
+          turnCount={s.turns}
+          inspectorOpen={inspectorOpen}
+        />
 
-          {/* Floating Agent Chat Drawer (Bottom Right) */}
-          <div className="absolute bottom-4 right-4 z-30">
-            {chatOpen && (
-              <div className="w-96 max-w-[calc(100vw-2rem)] h-[440px] rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#14151d]/95 backdrop-blur-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                {/* Chat Header */}
-                <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-3 py-2 bg-[#181924]/60">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-200">
-                    <Sparkles className="size-3.5 text-accent-text" />
-                    <span>Agent Brainstorm</span>
-                    <span className="rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
-                      turn {s.turns}
-                    </span>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-6 text-neutral-400 hover:text-white active:scale-90"
-                    onClick={() => setChatOpen(false)}
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </Button>
+        {/* Floating Agent Chat Drawer (Bottom Right) */}
+        <div className="absolute bottom-4 right-4 z-30">
+          {chatOpen && (
+            <div className="w-96 max-w-[calc(100vw-2rem)] h-[440px] rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Chat Header */}
+              <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/40">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Sparkles className="size-3.5 text-accent-text" />
+                  <span>Agent Brainstorm</span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground border border-border">
+                    turn {s.turns}
+                  </span>
                 </div>
-
-                {/* Message Log */}
-                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 text-xs">
-                  {(detail.data?.messages ?? []).map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "rounded-lg px-2.5 py-1.5 whitespace-pre-wrap leading-relaxed",
-                        m.role === "user"
-                          ? "bg-accent-text/15 text-white ml-4"
-                          : m.role === "system"
-                          ? "border border-amber-500/30 text-amber-400 bg-amber-500/10"
-                          : "bg-[#181922] mr-4 border border-[rgba(255,255,255,0.08)] text-neutral-300",
-                      )}
-                    >
-                      <div className="mb-0.5 text-[9px] uppercase tracking-wider text-neutral-500 font-semibold font-mono">
-                        {m.role}
-                      </div>
-                      {m.content}
-                    </div>
-                  ))}
-                  {busy && (
-                    <div className="flex items-center gap-2 text-xs text-neutral-400 py-1 font-mono">
-                      <Loader2 className="size-3.5 animate-spin text-accent-text" />
-                      Agent is generating design variations…
-                    </div>
-                  )}
-                  {s.last_error && (
-                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-400">
-                      {s.last_error}
-                    </div>
-                  )}
-                </div>
-
-                {/* Prompt Box */}
-                <form
-                  className="flex gap-2 border-t border-[rgba(255,255,255,0.08)] p-2.5 bg-[#121319]"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    if (!text.trim() || busy) return
-                    const msg = text
-                    setText("")
-                    run(() => post(`/api/canvas/sessions/${id}/messages`, { message: msg }))
-                  }}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-6 text-muted-foreground hover:text-foreground active:scale-90"
+                  onClick={() => setChatOpen(false)}
                 >
-                  <Textarea
-                    rows={2}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Ask for variations, alternate styling, component tweaks…"
-                    className="text-xs resize-none min-h-[44px] bg-[#181922] text-white border-[rgba(255,255,255,0.08)]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.currentTarget.form?.requestSubmit()
-                      }
-                    }}
-                  />
-                  <Button
-                    type="submit"
-                    size="icon"
-                    className="size-9 shrink-0 active:scale-[0.97] bg-white text-black hover:bg-neutral-200"
-                    disabled={busy || !text.trim()}
-                    aria-label="Send message"
-                  >
-                    <Send className="size-3.5" />
-                  </Button>
-                </form>
+                  <ChevronDown className="size-3.5" />
+                </Button>
               </div>
-            )}
-          </div>
+
+              {/* Message Log */}
+              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 text-xs">
+                {(detail.data?.messages ?? []).map((m) => (
+                  <div
+                    key={m.id}
+                    className={cn(
+                      "rounded-lg px-2.5 py-1.5 whitespace-pre-wrap leading-relaxed",
+                      m.role === "user"
+                        ? "bg-accent-text/15 text-foreground ml-4 border border-accent-text/20"
+                        : m.role === "system"
+                        ? "border border-amber-500/30 text-amber-500 bg-amber-500/10"
+                        : "bg-muted mr-4 border border-border text-foreground",
+                    )}
+                  >
+                    <div className="mb-0.5 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold font-mono">
+                      {m.role}
+                    </div>
+                    {m.content}
+                  </div>
+                ))}
+                {busy && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-1 font-mono">
+                    <Loader2 className="size-3.5 animate-spin text-accent-text" />
+                    Agent is generating design variations…
+                  </div>
+                )}
+                {s.last_error && (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                    {s.last_error}
+                  </div>
+                )}
+              </div>
+
+              {/* Prompt Box */}
+              <form
+                className="flex gap-2 border-t border-border p-2.5 bg-card"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!text.trim() || busy) return
+                  const msg = text
+                  setText("")
+                  run(() => post(`/api/canvas/sessions/${id}/messages`, { message: msg }))
+                }}
+              >
+                <Textarea
+                  rows={2}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Ask for variations, alternate styling, component tweaks…"
+                  className="text-xs resize-none min-h-[44px] bg-muted text-foreground border-border"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.currentTarget.form?.requestSubmit()
+                    }
+                  }}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="size-9 shrink-0 active:scale-[0.97] bg-primary text-primary-foreground hover:opacity-90"
+                  disabled={busy || !text.trim()}
+                  aria-label="Send message"
+                >
+                  <Send className="size-3.5" />
+                </Button>
+              </form>
+            </div>
+          )}
         </div>
 
-        {/* Right Inspector Drawer (pen.dev Inspector) */}
-        <aside
-          className={cn(
-            "flex shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121318] transition-all duration-150 ease-out z-10",
-            inspectorOpen ? "w-80" : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
-          )}
-        >
+        {/* Floating Property Inspector matching Attached Reference Image */}
+        {inspectorOpen && (
           <PenPropertyInspector
             selectedNode={selectedPenNode}
             onUpdateNode={handleUpdatePenNode}
             onDeleteNode={handleDeletePenNode}
+            onCloseInspector={() => setInspectorOpen(false)}
             saveStatus={penSaveStatus}
             onConvertToReact={() => setReactModalOpen(true)}
             onPromoteToTask={() => setPromoteModalOpen(true)}
           />
-        </aside>
+        )}
       </div>
 
       {/* 0-Token React Transpiler & Promote Modals */}

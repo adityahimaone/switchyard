@@ -11,6 +11,7 @@ import {
   ArrowUp,
   Hash,
   ChevronDown,
+  Upload,
 } from "lucide-react"
 import type { PenDocument, PenFill, PenFillGradient, PenNode, PenPadding } from "./penTypes"
 import { createDefaultPenDocument } from "./penTypes"
@@ -24,8 +25,10 @@ interface PenCanvasProps {
   onAddNode?: (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => void
   onResetDocument?: (doc: PenDocument) => void
   onOpenChat?: () => void
+  onImportPenFile?: (file: File) => void
   activeModel?: string
   turnCount?: number
+  inspectorOpen?: boolean
 }
 
 function resolveFillStyle(fill?: PenFill): React.CSSProperties {
@@ -138,6 +141,7 @@ function NodeRenderer({
       opacity: node.opacity !== undefined ? node.opacity : 1,
       userSelect: isEditingText ? "text" : "none",
       cursor: isEditingText ? "text" : "pointer",
+      transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
     }
 
     return (
@@ -160,12 +164,12 @@ function NodeRenderer({
         }}
         className={cn(
           "relative inline-block transition-shadow group",
-          isSelected ? "ring-2 ring-[#2563eb] ring-offset-1 ring-offset-[#121316]" : "hover:ring-1 hover:ring-[rgba(255,255,255,0.2)]"
+          isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
         )}
         style={textStyle}
       >
         {isSelected && (
-          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-[#2563eb] px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow">
+          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow">
             <span>{node.name || "Text"}</span>
           </div>
         )}
@@ -203,6 +207,7 @@ function NodeRenderer({
     opacity: node.opacity !== undefined ? node.opacity : 1,
     overflow: node.clip ? "hidden" : "visible",
     transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
+    boxShadow: node.effects === "shadow-xl" ? "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)" : undefined,
   }
 
   // Dimensioning & positioning
@@ -212,8 +217,17 @@ function NodeRenderer({
     baseStyle.top = `${node.y || 80}px`
   }
 
-  if (node.width !== undefined) baseStyle.width = `${node.width}px`
-  if (node.height !== undefined) baseStyle.height = `${node.height}px`
+  if (node.fillWidth) {
+    baseStyle.width = "100%"
+  } else if (node.width !== undefined) {
+    baseStyle.width = `${node.width}px`
+  }
+
+  if (node.fillHeight) {
+    baseStyle.height = "100%"
+  } else if (node.height !== undefined) {
+    baseStyle.height = `${node.height}px`
+  }
 
   // Flexbox layout
   if (node.layout === "vertical") {
@@ -228,26 +242,20 @@ function NodeRenderer({
 
   if (node.alignItems) {
     baseStyle.alignItems =
-      node.alignItems === "center"
-        ? "center"
-        : node.alignItems === "start"
+      node.alignItems === "start"
         ? "flex-start"
         : node.alignItems === "end"
         ? "flex-end"
-        : "stretch"
+        : node.alignItems
   }
 
   if (node.justifyContent) {
     baseStyle.justifyContent =
-      node.justifyContent === "center"
-        ? "center"
-        : node.justifyContent === "space-between"
-        ? "space-between"
-        : node.justifyContent === "start"
+      node.justifyContent === "start"
         ? "flex-start"
         : node.justifyContent === "end"
         ? "flex-end"
-        : "flex-start"
+        : node.justifyContent
   }
 
   return (
@@ -259,40 +267,44 @@ function NodeRenderer({
           onSelectNode(node.id)
         }
       }}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelectNode(node.id)
+      }}
       onMouseDown={handleMouseDown}
       className={cn(
-        "relative select-none box-border transition-[box-shadow] duration-75",
+        "relative transition-all select-none",
+        isRoot ? "cursor-move" : "cursor-pointer",
         isSelected
-          ? "ring-2 ring-[#2563eb] shadow-[0_0_25px_rgba(37,99,235,0.25)]"
-          : "hover:ring-1 hover:ring-[rgba(255,255,255,0.2)]"
+          ? "ring-2 ring-accent-text ring-offset-2 ring-offset-background shadow-lg"
+          : "hover:ring-1 hover:ring-border"
       )}
       style={baseStyle}
     >
-      {/* Node tag at top-right (matching pen.dev Image 1) */}
-      {isSelected && (
-        <div className="absolute -top-3 -right-3 z-20 flex size-6 items-center justify-center rounded-full bg-[#2563eb] text-white shadow-md">
-          <Sparkles className="size-3" />
-        </div>
-      )}
-
-      {/* Resize corner handles when selected */}
+      {/* Selection Bounding Box Details & Dimension Badge */}
       {isSelected && (
         <>
-          <div className="absolute -top-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
-          <div className="absolute -top-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
-          <div className="absolute -bottom-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
-          <div className="absolute -bottom-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
+          {/* Top-left Layer Name Badge */}
+          <div className="absolute -top-6 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white shadow">
+            <span>{node.name || "Frame"}</span>
+          </div>
+
+          {/* Underneath Blue Dimension Pill: "[W] × [H]" */}
+          <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-md bg-accent-text px-2 py-0.5 font-mono text-[10px] font-semibold text-white shadow">
+            <span>
+              {node.width ?? "auto"} × {node.height ?? "auto"}
+            </span>
+          </div>
+
+          {/* Corner resize handle decorations */}
+          <div className="absolute -top-1 -left-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
+          <div className="absolute -top-1 -right-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
+          <div className="absolute -bottom-1 -left-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
+          <div className="absolute -bottom-1 -right-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
         </>
       )}
 
-      {/* Dimension Badge underneath frame (Exact match of pen.dev Image 1: e.g. "390 × 844") */}
-      {isSelected && isRoot && node.width && node.height && (
-        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center rounded bg-[#2563eb] px-2 py-0.5 font-mono text-[11px] font-semibold text-white shadow-md pointer-events-none">
-          <span>{Math.round(node.width)} × {Math.round(node.height)}</span>
-        </div>
-      )}
-
-      {/* Nested children */}
+      {/* Render nested children */}
       {node.children &&
         node.children.map((child) => (
           <NodeRenderer
@@ -316,14 +328,17 @@ export function PenCanvas({
   onAddNode,
   onResetDocument,
   onOpenChat,
+  onImportPenFile,
   activeModel = "DeepSeek V4.1 Flash",
   turnCount: _turnCount = 1,
+  inspectorOpen = true,
 }: PenCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan, setPan] = useState({ x: 80, y: 60 })
   const [zoom, setZoom] = useState(1.0)
   const [isPanning, setIsPanning] = useState(false)
   const [activeTool, setActiveTool] = useState<"pointer" | "frame" | "text" | "hand">("pointer")
+  const [isDraggingPenFile, setIsDraggingPenFile] = useState(false)
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
 
   // Focal zoom on trackpad pinch or Ctrl + Wheel
@@ -386,6 +401,28 @@ export function PenCanvas({
     setIsPanning(false)
   }
 
+  // Drag & drop file directly onto canvas
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingPenFile(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingPenFile(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingPenFile(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onImportPenFile) {
+      const file = e.dataTransfer.files[0]
+      if (file.name.endsWith(".pen") || file.name.endsWith(".json")) {
+        onImportPenFile(file)
+      }
+    }
+  }
+
   // Keyboard zoom shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -419,18 +456,30 @@ export function PenCanvas({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className={cn(
-        "relative h-full w-full overflow-hidden bg-[#0d0e12]",
+        "relative h-full w-full overflow-hidden bg-background font-sans select-none",
         isPanning || activeTool === "hand" ? "cursor-grabbing" : "cursor-default"
       )}
       style={{
         backgroundImage: `
-          radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0)
+          radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)
         `,
+        color: "rgba(128, 128, 128, 0.12)",
         backgroundSize: `${32 * zoom}px ${32 * zoom}px`,
         backgroundPosition: `${pan.x}px ${pan.y}px`,
       }}
     >
+      {/* File Drop Visual Hint */}
+      {isDraggingPenFile && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-accent-text pointer-events-none">
+          <Upload className="size-10 text-accent-text animate-bounce mb-2" />
+          <p className="text-sm font-semibold text-foreground">Drop .pen file to load into canvas</p>
+        </div>
+      )}
+
       {/* Canvas Viewport Transformer */}
       <div
         className="absolute origin-top-left transition-transform duration-75"
@@ -451,11 +500,11 @@ export function PenCanvas({
             />
           ))
         ) : (
-          <div className="flex h-72 w-96 flex-col items-center justify-center rounded-2xl border border-dashed border-[rgba(255,255,255,0.12)] bg-[#121316]/60 p-6 text-center backdrop-blur-sm">
+          <div className="flex h-72 w-96 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/60 p-6 text-center backdrop-blur-sm">
             <Sparkles className="size-8 text-accent-text opacity-60 mb-2" />
-            <h4 className="text-sm font-semibold text-neutral-200">Empty pen.dev Canvas</h4>
-            <p className="mt-1 text-xs text-neutral-400">
-              Start by scaffolding a component frame or adding shapes.
+            <h4 className="text-sm font-semibold text-foreground">Empty Canvas</h4>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Start by scaffolding a component frame or dropping a <code>.pen</code> file.
             </p>
             <button
               type="button"
@@ -464,7 +513,7 @@ export function PenCanvas({
                   onResetDocument(createDefaultPenDocument("Visual Component"))
                 }
               }}
-              className="mt-4 flex items-center gap-1.5 rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#18191f] px-3.5 py-2 text-xs font-medium text-neutral-100 hover:bg-[#20212a] active:scale-[0.98] transition-all"
+              className="mt-4 flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground hover:bg-muted active:scale-[0.98] transition-all shadow-xs"
             >
               <Plus className="size-3.5 text-accent-text" />
               <span>Scaffold Sample Frame</span>
@@ -473,16 +522,16 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Left Slim Vertical Tool Rail (Exact match of pen.dev Image 1) */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#14151c]/90 p-1.5 shadow-2xl backdrop-blur-md">
+      {/* Left Slim Vertical Tool Rail */}
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card/90 p-1.5 shadow-2xl backdrop-blur-md">
         <button
           type="button"
           onClick={() => setActiveTool("pointer")}
           className={cn(
             "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "pointer" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+            activeTool === "pointer" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           )}
-          title="Select / Move (V)"
+          title="Select / Move tool (V)"
         >
           <MousePointer className="size-4" />
         </button>
@@ -491,11 +540,11 @@ export function PenCanvas({
           type="button"
           onClick={() => {
             setActiveTool("frame")
-            if (onAddNode) onAddNode("root", "frame")
+            if (onAddNode) onAddNode(selectedNodeId || "root", "frame")
           }}
           className={cn(
             "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "frame" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+            activeTool === "frame" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           )}
           title="Frame tool (F)"
         >
@@ -510,7 +559,7 @@ export function PenCanvas({
           }}
           className={cn(
             "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "text" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+            activeTool === "text" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           )}
           title="Text tool (T)"
         >
@@ -522,71 +571,70 @@ export function PenCanvas({
           onClick={() => setActiveTool("hand")}
           className={cn(
             "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "hand" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+            activeTool === "hand" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           )}
           title="Hand / Pan tool (H)"
         >
           <Hand className="size-4" />
         </button>
 
-        <div className="h-px w-5 bg-[rgba(255,255,255,0.08)] my-0.5" />
+        <div className="h-px w-5 bg-border my-0.5" />
 
         {onOpenChat && (
           <button
             type="button"
             onClick={onOpenChat}
-            className="flex size-8 items-center justify-center rounded-xl text-neutral-400 hover:text-accent-text hover:bg-[rgba(255,255,255,0.06)] transition-all"
-            title="Ask AI Agent"
+            className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:text-accent-text hover:bg-muted/60 transition-all"
+            title="Ask AI Designer"
           >
             <Sparkles className="size-4" />
           </button>
         )}
       </div>
 
-      {/* Bottom Floating AI Command Capsule (Exact match of pen.dev Image 1) */}
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[#14151c]/90 px-3 py-2 shadow-2xl backdrop-blur-md">
+      {/* Bottom Floating AI Command Capsule */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md">
         <button
           type="button"
           onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-xl text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-all"
+          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+          title="Add Prompt Attachment"
         >
           <Plus className="size-4" />
         </button>
 
-        <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1b24] px-2.5 py-1 text-xs font-medium text-neutral-200">
-          <Hash className="size-3 text-neutral-400" />
-          <span>{selectedNode.name || "Frame"}</span>
+        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground">
+          <Hash className="size-3 text-muted-foreground" />
+          <span className="truncate max-w-32">{selectedNode.name || "Frame"}</span>
         </div>
 
-        <span className="flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[11px] text-amber-400">
-          <span>⚡ 1x</span>
-        </span>
-
-        <span className="flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[11px] text-neutral-400">
-          <span>⚅ 1x</span>
-        </span>
-
-        <div className="flex items-center gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1b24] px-2.5 py-1 text-xs text-neutral-300">
-          <span>{activeModel}</span>
-          <ChevronDown className="size-3 text-neutral-500" />
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+          <span className="truncate max-w-28">{activeModel}</span>
+          <ChevronDown className="size-3 opacity-60" />
         </div>
 
         <button
           type="button"
           onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-full bg-neutral-200 text-black hover:bg-white active:scale-95 transition-all shadow"
+          className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-xs"
+          title="Send AI Prompt"
         >
           <ArrowUp className="size-3.5 stroke-[2.5]" />
         </button>
       </div>
 
-      {/* Bottom Right Floating Zoom Pill (Exact match of pen.dev Image 1) */}
-      <div className="absolute bottom-5 right-5 z-30 flex items-center gap-1 rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[#14151c]/90 p-1.5 shadow-2xl backdrop-blur-md">
+      {/* Bottom Floating Zoom Pill — Offset when inspector is open so they never collide */}
+      <div
+        className={cn(
+          "absolute bottom-5 z-20 flex items-center gap-1 rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-md transition-all duration-200",
+          inspectorOpen ? "right-84" : "right-5"
+        )}
+      >
         <button
           type="button"
           title="Zoom Out (Ctrl -)"
           onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))}
-          className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
+          className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <ZoomOut className="size-3.5" />
         </button>
@@ -598,7 +646,7 @@ export function PenCanvas({
             setZoom(1.0)
             setPan({ x: 80, y: 60 })
           }}
-          className="min-w-12 px-2 py-1 text-center font-mono text-[11px] font-medium text-neutral-300 hover:text-white transition-colors"
+          className="min-w-12 px-2 py-1 text-center font-mono text-[11px] font-medium text-foreground hover:text-accent-text transition-colors"
         >
           {Math.round(zoom * 100)}%
         </button>
@@ -607,7 +655,7 @@ export function PenCanvas({
           type="button"
           title="Zoom In (Ctrl +)"
           onClick={() => setZoom((z) => Math.min(3.0, z * 1.2))}
-          className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
+          className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <ZoomIn className="size-3.5" />
         </button>
