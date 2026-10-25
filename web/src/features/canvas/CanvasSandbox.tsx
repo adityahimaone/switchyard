@@ -29,12 +29,14 @@ interface ArtboardPosition {
 
 function extractTitle(content?: string, fallback: string = ""): string {
   if (content) {
+    const dialMatch = content.match(/useDialKit\(\s*['"`]([^'"`]+)['"`]/)
+    if (dialMatch && dialMatch[1].trim()) return dialMatch[1].trim()
     const m = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
     if (m && m[1].trim()) return m[1].trim()
   }
   const base = fallback.split("/").pop() || fallback
-  if (base === "variant-1.html") return "Variant 1 · Modern Dark Glass Bento"
-  if (base === "variant-2.html") return "Variant 2 · Cyberpunk Studio Deck"
+  if (base === "variant-1.html" || base === "variant-1.tsx") return "Variant 1 · Modern Bento Card"
+  if (base === "variant-2.html" || base === "variant-2.tsx") return "Variant 2 · Audio Deck"
   return base.replace(/\.(html|tsx|jsx)$/, "")
 }
 

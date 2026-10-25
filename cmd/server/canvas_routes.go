@@ -189,7 +189,7 @@ func canvasSandboxHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://esm.sh data: blob:; frame-ancestors 'self'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; frame-ancestors 'self'")
 	w.Write([]byte(canvasSandboxHTML))
 }
 
@@ -198,8 +198,9 @@ const canvasSandboxHTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Tailwind CDN, Babel Standalone, Lucide Icons Web CDN -->
+  <!-- Tailwind CDN, DialKit CSS, Babel Standalone, Lucide Icons Web CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/dialkit@2.0.2/dist/styles.css" />
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -220,10 +221,15 @@ const canvasSandboxHTML = `<!DOCTYPE html>
   <script type="importmap">
   {
     "imports": {
-      "react": "https://esm.sh/react@19?dev",
-      "react-dom": "https://esm.sh/react-dom@19?dev",
-      "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
-      "lucide-react": "https://esm.sh/lucide-react@1.41.0?dev",
+      "react": "https://esm.sh/react@19",
+      "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@19",
+      "react-dom/client": "https://esm.sh/react-dom@19/client",
+      "dialkit": "https://esm.sh/dialkit@2.0.2",
+      "motion": "https://esm.sh/motion@12.4.7",
+      "motion/react": "https://esm.sh/motion@12.4.7/react",
+      "framer-motion": "https://esm.sh/framer-motion@14.6.0",
+      "lucide-react": "https://esm.sh/lucide-react@0.475.0",
       "clsx": "https://esm.sh/clsx@2.1.1",
       "tailwind-merge": "https://esm.sh/tailwind-merge@2.5.4"
     }
@@ -252,12 +258,18 @@ const canvasSandboxHTML = `<!DOCTYPE html>
   <script type="module">
     import React from 'react';
     import ReactDOM from 'react-dom/client';
+    import * as DialKit from 'dialkit';
+    import * as Motion from 'motion/react';
+    import * as FramerMotion from 'framer-motion';
     import * as LucideIcons from 'lucide-react';
     import clsx from 'clsx';
     import { twMerge } from 'tailwind-merge';
 
     window.React = React;
     window.ReactDOM = ReactDOM;
+    window.DialKit = DialKit;
+    window.Motion = Motion;
+    window.FramerMotion = FramerMotion;
     window.lucide = LucideIcons;
 
     let currentFiles = {};
@@ -280,8 +292,11 @@ const canvasSandboxHTML = `<!DOCTYPE html>
     }
 
     function requireModule(modulePath) {
-      if (modulePath === 'react') return React;
+      if (modulePath === 'react' || modulePath === 'react/jsx-runtime') return React;
       if (modulePath === 'react-dom' || modulePath === 'react-dom/client') return ReactDOM;
+      if (modulePath === 'dialkit') return DialKit;
+      if (modulePath === 'motion' || modulePath === 'motion/react') return Motion;
+      if (modulePath === 'framer-motion') return FramerMotion;
       if (modulePath === 'lucide-react') return LucideIcons;
       if (modulePath === 'clsx') return clsx;
       if (modulePath === 'tailwind-merge') return { twMerge };
@@ -439,6 +454,20 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         const container = document.getElementById('root');
         if (!root) root = ReactDOM.createRoot(container);
 
+        // Auto-inject DialKit.DialRoot if not explicitly in user component
+        const hasDialRoot = /<DialRoot\b/.test(rawCode);
+        const compEl = React.createElement(Comp, currentProps);
+        const appWithDialRoot = hasDialRoot
+          ? compEl
+          : React.createElement(React.Fragment, null,
+              compEl,
+              DialKit.DialRoot ? React.createElement(DialKit.DialRoot, {
+                position: 'bottom-right',
+                theme: currentProps.theme === 'light' ? 'light' : 'dark',
+                productionEnabled: true
+              }) : null
+            );
+
         root.render(
           React.createElement('div', {
             id: 'canvas-scaler',
@@ -447,7 +476,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
               transformOrigin: 'top center',
             },
             className: 'p-6 flex flex-col items-center justify-center min-h-screen ' + (currentProps.theme === 'dark' ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]')
-          }, React.createElement(Comp, currentProps))
+          }, appWithDialRoot)
         );
 
         applyDialKitStyles();
@@ -477,6 +506,9 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       } else if (e.data?.type === 'UPDATE_DIALKIT') {
         currentProps = { ...currentProps, ...e.data.props };
         applyDialKitStyles();
+        if (currentEntry && (currentEntry.endsWith('.tsx') || currentEntry.endsWith('.jsx'))) {
+          renderComponent();
+        }
       }
     });
 
