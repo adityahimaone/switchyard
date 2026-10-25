@@ -257,6 +257,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
 
   <script type="module">
     import React from 'react';
+    import * as ReactJSXRuntime from 'react/jsx-runtime';
     import ReactDOM from 'react-dom/client';
     import * as DialKit from 'dialkit';
     import * as Motion from 'motion/react';
@@ -266,6 +267,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
     import { twMerge } from 'tailwind-merge';
 
     window.React = React;
+    window.ReactJSXRuntime = ReactJSXRuntime;
     window.ReactDOM = ReactDOM;
     window.DialKit = DialKit;
     window.Motion = Motion;
@@ -292,7 +294,8 @@ const canvasSandboxHTML = `<!DOCTYPE html>
     }
 
     function requireModule(modulePath) {
-      if (modulePath === 'react' || modulePath === 'react/jsx-runtime') return React;
+      if (modulePath === 'react/jsx-runtime' || modulePath === 'react/jsx-dev-runtime') return ReactJSXRuntime;
+      if (modulePath === 'react') return React;
       if (modulePath === 'react-dom' || modulePath === 'react-dom/client') return ReactDOM;
       if (modulePath === 'dialkit') return DialKit;
       if (modulePath === 'motion' || modulePath === 'motion/react') return Motion;
@@ -310,7 +313,11 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       }
 
       const transformed = Babel.transform(rawCode, {
-        presets: ['env', 'react', 'typescript'],
+        presets: [
+          ['env', { modules: 'commonjs' }],
+          ['react', { runtime: 'automatic' }],
+          'typescript'
+        ],
         filename: modulePath
       }).code;
 
@@ -420,7 +427,11 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         for (const k in moduleCache) delete moduleCache[k];
 
         const transformed = Babel.transform(rawCode, {
-          presets: ['env', 'react', 'typescript'],
+          presets: [
+            ['env', { modules: 'commonjs' }],
+            ['react', { runtime: 'automatic' }],
+            'typescript'
+          ],
           filename: currentEntry
         }).code;
 
