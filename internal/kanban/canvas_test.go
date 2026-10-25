@@ -103,6 +103,16 @@ func TestCanvasViewToken(t *testing.T) {
 	}
 }
 
+func TestEnsureGlobalScratchpad(t *testing.T) {
+	p, err := ensureGlobalScratchpad()
+	if err != nil {
+		t.Fatalf("ensureGlobalScratchpad failed: %v", err)
+	}
+	if !strings.Contains(p, "canvas-scratchpad") {
+		t.Fatalf("unexpected scratchpad path: %s", p)
+	}
+}
+
 func TestCanvasMandateDialKit(t *testing.T) {
 	s := &CanvasSession{Title: "Hero", Branch: "switchyard/canvas-x"}
 	if m := CanvasMandate(s, "try dark"); !strings.Contains(m, "DialKit is disabled") || !strings.Contains(m, "/create-canvas") {
