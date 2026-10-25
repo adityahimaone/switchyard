@@ -84,18 +84,24 @@ func TestAppendDesignMandateDesignOnly(t *testing.T) {
 }
 
 func TestBuildDirectPenCommand(t *testing.T) {
-	cmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
+	cmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "claude", "claude-sonnet-5")
 	if !strings.Contains(cmd, "pen --out \"design/hero.pen\"") {
 		t.Errorf("command missing output path:\n%s", cmd)
 	}
 	if !strings.Contains(cmd, "--export \"design/exports/hero.png\"") {
 		t.Errorf("command missing export path:\n%s", cmd)
 	}
-	if !strings.Contains(cmd, "--agent \"deepseek\"") {
+	if !strings.Contains(cmd, "--agent \"claude\"") {
 		t.Errorf("command missing agent:\n%s", cmd)
 	}
-	if !strings.Contains(cmd, "--model deepseek-flash") {
+	if !strings.Contains(cmd, "--model claude-sonnet-5") {
 		t.Errorf("command missing model:\n%s", cmd)
+	}
+
+	// Third-party agents like deepseek fallback to gemini for pen CLI
+	fallbackCmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
+	if !strings.Contains(fallbackCmd, "--agent \"gemini\"") {
+		t.Errorf("fallback command should use gemini for deepseek:\n%s", fallbackCmd)
 	}
 }
 

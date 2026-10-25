@@ -547,9 +547,18 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 		agent = strings.ToLower(parts[0])
 		model = parts[1]
 	}
+	// pen CLI strictly supports claude, codex, or gemini as the headless driver.
+	// If a custom or third-party agent (like deepseek or 9router) is configured,
+	// default the direct CLI driver to gemini so pen CLI executes successfully.
+	cliAgent := agent
+	cliModel := model
+	if cliAgent != "claude" && cliAgent != "codex" && cliAgent != "gemini" {
+		cliAgent = "gemini"
+		cliModel = "gemini-3.6-flash"
+	}
 	modelArg := ""
-	if model != "" {
-		modelArg = " --model " + model
+	if cliModel != "" {
+		modelArg = " --model " + cliModel
 	}
 
 	envPrefix := ""
@@ -570,7 +579,7 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 	}
 
 	return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen --out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
-		out, export, envPrefix, out, cleanPrompt, export, agent, modelArg)
+		out, export, envPrefix, out, cleanPrompt, export, cliAgent, modelArg)
 }
 
 // designExportPath is where a design mock's PNG export lands:
