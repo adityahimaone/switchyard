@@ -354,9 +354,9 @@ func canvasDevScript(s *CanvasSession, base string) string {
 PIDF=%[2]s; LOG=%[3]s; PORT=%[4]d
 if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then echo running; exit 0; fi
 [ -f package.json ] || { echo "no package.json in worktree"; exit 2; }
-if [ ! -e node_modules ] && [ -d %[5]s/node_modules ]; then ln -s %[5]s/node_modules node_modules; fi
+if [ -d %[5]s/node_modules ] && [ ! -L node_modules ]; then rm -rf node_modules && ln -s %[5]s/node_modules node_modules; fi
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)/bin:$PATH"
-if grep -q '"next"' package.json; then FW=next; CMD="npx --no-install next dev -p $PORT -H 127.0.0.1"
+if grep -q '"next"' package.json; then FW=next; CMD="npx --no-install next dev --webpack -p $PORT -H 127.0.0.1"
 elif grep -q '"vite"' package.json; then FW=vite; CMD="npx --no-install vite --port $PORT --host 127.0.0.1 --strictPort --base %[6]s"
 else echo "unsupported framework (need next or vite)"; exit 3; fi
 nohup sh -c "$CMD" >"$LOG" 2>&1 &
@@ -428,6 +428,7 @@ func CreateCanvasSession(wsRef, title, executor, model string, dialkit bool, par
 	if out, code := workerShell(ws.Path, "canvas: worktree", gitWorktreeAddScript(plan)); code != 0 {
 		return nil, fmt.Errorf("git worktree add failed: %s", truncateWorktreeOutput(out))
 	}
+	_, _ = workerShell(plan.Path, "canvas: link-deps", fmt.Sprintf(`cd %[1]s && if [ -d %[2]s/node_modules ] && [ ! -L node_modules ]; then rm -rf node_modules && ln -s %[2]s/node_modules node_modules; fi`, shellQuotePath(plan.Path), shellQuotePath(ws.Path)))
 	now := time.Now().Unix()
 	s := &CanvasSession{
 		ID: id, Title: title, WorkspaceID: ws.ID, WorkspacePath: ws.Path, Host: ws.Host,
