@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { AppWindow, Brain, Database, Expand, GitPullRequest, Kanban, Laptop, Minimize2, Radio, Search, Server, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { AppWindow, Brain, Database, Expand, GitPullRequest, Kanban, Laptop, Minimize2, Palette, Radio, Search, Server, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import { PageHeader } from "@/components/app/page-header"
 import { NODES, EDGES, taskCardPositions, type FlowNodeId, type Point } from "./layout"
 import { elbowPath, elbowPathV, pathLength } from "./elbow"
@@ -21,24 +21,24 @@ const GRAPH_H = 700
 const MINIMAP_W = 176
 const MINIMAP_H = 112
 const POS: Record<FlowNodeId, Point> = {
-  kanban: { x: 120, y: 350 }, orchestrator: { x: 400, y: 160 }, dispatcher: { x: 400, y: 350 }, memory: { x: 400, y: 540 },
+  "pen-dev": { x: 120, y: 160 }, kanban: { x: 120, y: 350 }, orchestrator: { x: 400, y: 160 }, dispatcher: { x: 400, y: 350 }, memory: { x: 400, y: 540 },
   "node-agent-server": { x: 680, y: 350 }, tailscale: { x: 960, y: 350 }, mac: { x: 1240, y: 230 }, windows: { x: 1240, y: 470 }, review: { x: 960, y: 600 },
 }
 const GROUP: Record<FlowNodeId, string> = {
-  kanban: "TASK STATE", orchestrator: "CONTROL PLANE", dispatcher: "SCHEDULING", memory: "CONTEXT", "node-agent-server": "DISPATCH",
+  "pen-dev": "DESIGN & SPECS", kanban: "TASK STATE", orchestrator: "CONTROL PLANE", dispatcher: "SCHEDULING", memory: "CONTEXT", "node-agent-server": "DISPATCH",
   tailscale: "NETWORK", mac: "EXECUTION", windows: "EXECUTION", review: "QUALITY GATE",
 }
 const LABEL: Record<FlowNodeId, string> = {
-  kanban: "Kanban State", orchestrator: "Orchestrator", dispatcher: "Task Dispatcher", memory: "Memory + Prequest", "node-agent-server": "Node-agent Server",
+  "pen-dev": "pen.dev Canvas", kanban: "Kanban State", orchestrator: "Orchestrator", dispatcher: "Task Dispatcher", memory: "Memory + Prequest", "node-agent-server": "Node-agent Server",
   tailscale: "Tailscale Transport", mac: "Mac Worker", windows: "Windows Worker", review: "Review Gate",
 }
-const ICON: Record<FlowNodeId, typeof Brain> = { kanban: Kanban, orchestrator: Brain, dispatcher: Server, memory: Database, "node-agent-server": Server, tailscale: Radio, mac: Laptop, windows: AppWindow, review: GitPullRequest }
+const ICON: Record<FlowNodeId, typeof Brain> = { "pen-dev": Palette, kanban: Kanban, orchestrator: Brain, dispatcher: Server, memory: Database, "node-agent-server": Server, tailscale: Radio, mac: Laptop, windows: AppWindow, review: GitPullRequest }
 // Every node colour is a token or a status hue. These used to be four raw hex
 // values, which meant they never followed the palette into dark mode and had no
 // measured contrast. `kanban` takes the review violet and `dispatcher` the
 // warning amber, so each node still reads as its own thing while staying in the
 // system.
-const COLORS: Record<FlowNodeId, string> = { kanban: "var(--c-review)", orchestrator: "var(--c-accent)", dispatcher: "var(--c-warning)", memory: "var(--c-st-running)", "node-agent-server": "var(--c-warning)", tailscale: "var(--c-st-ready)", mac: "var(--c-success-text)", windows: "var(--c-success-text)", review: "var(--c-success-text)" }
+const COLORS: Record<FlowNodeId, string> = { "pen-dev": "var(--c-accent)", kanban: "var(--c-review)", orchestrator: "var(--c-accent)", dispatcher: "var(--c-warning)", memory: "var(--c-st-running)", "node-agent-server": "var(--c-warning)", tailscale: "var(--c-st-ready)", mac: "var(--c-success-text)", windows: "var(--c-success-text)", review: "var(--c-success-text)" }
 const STAGE_COLOR: Record<FlowStage, string> = { dispatched: "var(--c-warning)", running: "var(--c-success-text)", done: "var(--c-success-text)", failed: "var(--c-danger)" }
 type View = { x: number; y: number; scale: number }
 

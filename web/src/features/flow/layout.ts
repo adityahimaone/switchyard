@@ -1,7 +1,7 @@
 import { elbowPath, pathLength } from "./elbow"
 import type { FlowStage } from "./useFlowTasks"
 
-export type FlowNodeId = "orchestrator" | "kanban" | "dispatcher" | "memory" | "node-agent-server" | "tailscale" | "mac" | "windows" | "review"
+export type FlowNodeId = "orchestrator" | "kanban" | "dispatcher" | "memory" | "node-agent-server" | "tailscale" | "mac" | "windows" | "review" | "pen-dev"
 export interface Point { x: number; y: number }
 export interface FlowTaskCard { task_id: string; title: string }
 export interface LayoutNode { id: FlowNodeId; label: string; sub: string; row: number; col: number; x: number; y: number; hue: string; group: string }
@@ -13,6 +13,7 @@ const PAD_X = 120
 const PAD_Y = 70
 
 export const NODES: LayoutNode[] = [
+  { id: "pen-dev", label: "pen.dev Canvas", sub: "visual prototype · dialkit", row: 0, col: 0, x: PAD_X + COL_W * 0, y: PAD_Y + ROW_H * 0, hue: "var(--c-accent)", group: "Design & Specs" },
   { id: "orchestrator", label: "Orchestrator", sub: "intent + memory", row: 0, col: 1, x: PAD_X + COL_W * 1, y: PAD_Y + ROW_H * 0, hue: "#10e0dd", group: "Control Plane" },
   { id: "kanban", label: "Kanban", sub: "SQLite · task lifecycle", row: 1, col: 0, x: PAD_X + COL_W * 0, y: PAD_Y + ROW_H * 1, hue: "#9a5cff", group: "Task Intake" },
   { id: "dispatcher", label: "Dispatcher", sub: "claim · resolve route", row: 1, col: 1, x: PAD_X + COL_W * 1, y: PAD_Y + ROW_H * 1, hue: "#f59e0b", group: "Control Plane" },
@@ -25,6 +26,7 @@ export const NODES: LayoutNode[] = [
 ]
 
 export const EDGES: LayoutEdge[] = [
+  { from: "pen-dev", to: "kanban", color: "#10e0dd" },
   { from: "orchestrator", to: "kanban", color: "#8f83ff" },
   { from: "orchestrator", to: "memory", color: "#6477ff" },
   { from: "kanban", to: "dispatcher", color: "#e5a84b" },

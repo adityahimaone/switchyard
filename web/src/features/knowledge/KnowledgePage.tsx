@@ -1,335 +1,629 @@
-import { BookOpen, BrainCircuit, CheckCircle2, Command, Fingerprint, GitBranch, KeyRound, MessageSquare, Sparkles, Terminal, Workflow, XCircle } from "lucide-react"
-import { PageHeader } from "@/components/app/page-header"
-import { CollectionBody } from "@/components/app/collection"
-import { Integration, IntegrationCard } from "@/components/ui/integration-card"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  Menu,
+  Palette,
+  Search,
+  Sparkles,
+  Workflow,
+  X,
+  FileCode2,
+} from "lucide-react"
+import { DOCS, type DocItem } from "./docsData"
+import type { Page } from "@/lib/sidebar-preferences"
 
-const kanbanSections = [
-  {
-    title: "A–H · Intent and dispatch",
-    icon: Workflow,
-    body: "A board task stores the intent, title and body, plus the exact workspace, profile, executor and priority. Validation happens in the API, not just the UI. The dispatcher claims a todo/ready task into running, routes it to the exact workspace over SSH/node-agent, and the shell agent then plans and runs bounded commands.",
-  },
-  {
-    title: "I–Q · Execution to review",
-    icon: GitBranch,
-    body: "The worker runs hermes/codex/shell in the exact working directory. Live progress flows through the progress buffer into the worker log. Results are guarded into review: diff, status, commit and commit_push travel over the worker channel for node-agent workspaces, while legacy SSH tasks still use SSH directly.",
-  },
-  {
-    title: "R–Z · Retry, safety, proof",
-    icon: CheckCircle2,
-    body: "A review or blocked comment automatically requeues the task to todo and the newest comment enters the continuation prompt; done tasks stay mention-gated. A timeout retry is given the error source, a repeated continuation timeout is blocked, and a silent or lost run is released automatically after 10 minutes.",
-  },
-]
+export default function KnowledgePage({
+  onSelectPage,
+}: {
+  onSelectPage?: (page: Page) => void
+}) {
+  const [activeId, setActiveId] = useState<string>("pen-dev-canvas")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const articleContentRef = useRef<HTMLDivElement>(null)
 
-const chatSections = [
-  {
-    title: "A–K · Session and streaming",
-    icon: MessageSquare,
-    body: "Chat uses a session/room at /chat/:sessionID with a durable hermes_session_id. The composer posts and returns 202, the run moves loading → running → done/error, and SSE chat_run_event carries tool_output and message invalidation.",
-  },
-  {
-    title: "L–R · Context and identity",
-    icon: Terminal,
-    body: "Context is assembled from the profile/model/workspace, the session messages, and memory/skills. The resume key is always sent to the daemon or CLI and persisted back once completed. Remote workspaces still go through node-agent on the exact path.",
-  },
-  {
-    title: "S–Z · Stop, failure, boundary",
-    icon: XCircle,
-    body: "Stop cancels the terminal run, and late output must never flip the state back. Chat does not use the Kanban dispatcher or review gate. The chat history page and the board stay separate.",
-  },
-]
+  // Find active doc
+  const activeDoc = useMemo(
+    () => DOCS.find((d) => d.id === activeId) ?? DOCS[0],
+    [activeId]
+  )
 
-const kanbanMatrix = [
-  ["hermes", "hermes chat -q", "CodeGraph + prerequisites"],
-  ["codex", "codex exec --full-auto", "CodeGraph + prerequisites"],
-  ["dsh", "dsh --profile headless --json", "health check + CodeGraph"],
-  ["commandcode", "cmd -p --yolo --output-format json", "binary probe"],
-  ["omp", "omp -p --auto-approve --mode json", "binary probe"],
-  ["claude", "claude -p --output-format json --permission-mode bypassPermissions", "binary probe + account auth"],
-  ["shell", "planner → bash -lc", "read-only plan + bounded iterations"],
-  ["auto", "Hermes first; fallback", "Resolved executor decides"],
-]
+  // Filter docs by search query
+  const filteredDocs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return DOCS
+    return DOCS.filter(
+      (doc) =>
+        doc.title.toLowerCase().includes(q) ||
+        doc.subtitle.toLowerCase().includes(q) ||
+        doc.category.toLowerCase().includes(q) ||
+        doc.sections.some(
+          (s) =>
+            s.title.toLowerCase().includes(q) ||
+            s.content.toLowerCase().includes(q)
+        )
+    )
+  }, [searchQuery])
 
-const dshContinuity = [
-  ["binding", "harness_bindings per card", "workspace + session + cursors"],
-  ["first run", "no --session-id sent", "DSH creates; worker returns real id"],
-  ["continuation", "--session-id <bound>", "same session, never cold"],
-  ["cursor", "last_turn_seq advances", "stale result rejected"],
-  ["comments", "last_comment_id advances on success", "failed turn replays comment"],
-  ["worker home", "isolated DSH_HOME", "keeps off dsh web flock"],
-]
+  // Group filtered docs by category
+  const categories = useMemo(() => {
+    const map = new Map<string, DocItem[]>()
+    for (const doc of filteredDocs) {
+      const list = map.get(doc.category) ?? []
+      list.push(doc)
+      map.set(doc.category, list)
+    }
+    return Array.from(map.entries())
+  }, [filteredDocs])
 
-const chatMatrix = [
-  ["loading", "run created", "SSE + streamBuffer"],
-  ["running", "hermes process/daemon", "elapsed + Stop"],
-  ["done", "assistant message", "footer model · HH:MM"],
-  ["error/cancelled", "terminal failure", "retry explicit"],
-]
+  // Keyboard shortcut: '/' to focus search, 'Esc' to clear
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === "/" &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      } else if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
+        setSearchQuery("")
+        searchInputRef.current?.blur()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
-const commandCodeContinuity = [
-  ["harness_kind", "commandcode", "binds one card to one Command Code session"],
-  ["session id", "switchyard-commandcode-<hash>", "deterministic, minted by Switchyard"],
-  ["first run", "empty commandcode_session_id", "worker mints the real id, returns it"],
-  ["continuation", "--resume <bound id>", "same session, never cold"],
-  ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
-  ["worker home", "none required", "headless sessions stay out of /resume by design"],
-]
+  // Copy code handler with momentary checkmark feedback
+  const handleCopyCode = useCallback((code: string, id: string) => {
+    navigator.clipboard.writeText(code).catch(() => {})
+    setCopiedCodeId(id)
+    setTimeout(() => {
+      setCopiedCodeId((cur) => (cur === id ? null : cur))
+    }, 1800)
+  }, [])
 
-const continuityFences = [
-  ["workspace identity", "required", "not required", "not required", "not required", "only dsh keys its session store by workspace"],
-  ["turn cursor", "last_turn_seq checked", "not returned", "not returned", "not returned", "only dsh can reject a stale turn"],
-  ["session id on success", "required", "required", "required", "required", "mismatch → identity_rejected, card blocked"],
-  ["session id on failure", "required", "may be omitted", "may be omitted", "may be omitted", "a failed first run legitimately has none"],
-  ["home isolation", "isolated DSH_HOME", "none", "none", "none", "dsh alone takes a daemon session lock"],
-  ["stale-result guard", "turn seq + run fence", "run fence only", "run fence only", "run fence only", "current_run_id drops a superseded result"],
-]
+  // Copy link handler
+  const handleCopyPageLink = useCallback(() => {
+    const url = window.location.origin + window.location.pathname + "#" + activeDoc.slug
+    navigator.clipboard.writeText(url).catch(() => {})
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 1800)
+  }, [activeDoc.slug])
 
-const ompContinuity = [
-  ["harness_kind", "omp", "binds one card to one omp session"],
-  ["session id", "switchyard-omp-<hash>", "deterministic, minted by Switchyard"],
-  ["first run", "empty omp_session_id", "worker mints the real id, returns it"],
-  ["continuation", "--resume <bound id>", "same session, never cold"],
-  ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
-  ["binary", "omp / omp.exe", "no alias; probed directly on each host"],
-]
+  // Scroll to section smoothly
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
 
-const claudeContinuity = [
-  ["harness_kind", "claude", "binds one card to one Claude Code session"],
-  ["session id", "switchyard-claude-<hash>", "deterministic, minted by Switchyard"],
-  ["first run", "empty claude_session_id", "the CLI mints the real id and returns session_id"],
-  ["continuation", "--resume <bound id>", "same session, never cold"],
-  ["stale guard", "current_run_id ownership fence", "late result for an old run is discarded"],
-  ["worker home", "none required", "the CLI session lives in the worker account's own config dir"],
-]
+  // Active doc index for previous/next pagination
+  const currentIndex = DOCS.findIndex((d) => d.id === activeDoc.id)
+  const prevDoc = currentIndex > 0 ? DOCS[currentIndex - 1] : null
+  const nextDoc = currentIndex < DOCS.length - 1 ? DOCS[currentIndex + 1] : null
 
-const commandCodeIdentity = [
-  ["binding", "harness_bindings row", "workspace + session + status"],
-  ["first run", "session id empty", "DSH/CommandCode creates; worker returns real id"],
-  ["continuation", "session id bound", "same session, never cold start"],
-  ["cursor", "last_turn_seq advances", "stale result rejected (dsh only)"],
-  ["comments", "last_comment_id advances on success", "failed turn replays the comment"],
-  ["run fence", "current_run_id", "late result for a superseded run is dropped"],
-]
-
-export default function KnowledgePage() {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-        <PageHeader
-          title="Execution Knowledge"
-          description="How work actually moves through Switchyard: the board flow, each executor harness, and the chat flow."
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-canvas">
+      {/* Top Bar / Breadcrumb Header */}
+      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line bg-surface/80 px-4 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen((v) => !v)}
+            className="rounded-control p-1.5 text-ink-3 transition-colors hover:bg-well hover:text-ink md:hidden"
+            aria-label="Toggle docs navigation"
+          >
+            {mobileNavOpen ? <X className="size-4" /> : <Menu className="size-4" />}
+          </button>
+
+          <nav className="flex items-center gap-1.5 font-mono text-xs text-ink-3">
+            <span className="flex items-center gap-1 text-ink-2 font-medium">
+              <BookOpen className="size-3.5 text-accent-text" />
+              <span>Knowledge</span>
+            </span>
+            <ChevronRight className="size-3 text-ink-4" />
+            <span className="hidden sm:inline">{activeDoc.category}</span>
+            <ChevronRight className="hidden sm:inline size-3 text-ink-4" />
+            <span className="text-ink font-semibold truncate max-w-[200px] sm:max-w-none">
+              {activeDoc.title}
+            </span>
+          </nav>
+        </div>
+
+        {/* Global Search and Quick Actions */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex items-center">
+            <Search className="pointer-events-none absolute left-2.5 size-3.5 text-ink-4" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search docs… (press /)"
+              className="h-8 w-44 sm:w-64 rounded-control border border-line bg-canvas/70 pl-8 pr-7 text-xs text-ink placeholder:text-ink-4 transition-all focus:border-accent focus:bg-canvas focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 p-0.5 text-ink-4 hover:text-ink"
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopyPageLink}
+            title="Copy shareable link"
+            className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-raised px-2.5 text-xs font-medium text-ink-2 transition-[transform,colors] duration-150 ease-[var(--ease-out-expo)] hover:bg-well active:scale-[0.97]"
+          >
+            {copiedLink ? (
+              <>
+                <Check className="size-3.5 text-success-text" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="size-3.5 text-ink-3" />
+                <span>Share</span>
+              </>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* Main Documentation Shell (3 columns: Nav, Content, Table of Contents) */}
+      <div className="flex min-h-0 flex-1 overflow-hidden relative">
+        {/* Column 1: Left Navigation Sidebar */}
+        <aside
+          className={`absolute inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-line bg-surface transition-transform duration-200 ease-[var(--ease-out-expo)] md:static md:translate-x-0 ${
+            mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+          }`}
         >
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            <a href="#kanban" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">kanban-board-flow.md</a>
-            <a href="#dsh" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">dsh-harness.md</a>
-            <a href="#commandcode" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">commandcode-executor.md</a>
-            <a href="#omp" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">omp-executor.md</a>
-            <a href="#claude" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">claude-code-executor.md</a>
-            <a href="#chat" className="rounded-control border border-line bg-raised px-3 py-1 font-mono text-accent-text">chat-flow.md</a>
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-2xs uppercase tracking-[0.16em] text-accent-text font-semibold">
+                Documentation
+              </span>
+              <span className="rounded-full bg-well px-1.5 py-0.2 font-mono text-[10px] text-ink-3">
+                {DOCS.length} guides
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded-control p-1 text-ink-3 hover:bg-well md:hidden"
+            >
+              <X className="size-4" />
+            </button>
           </div>
-        </PageHeader>
 
-        <CollectionBody className="flex flex-col gap-3 pt-5 pb-6">
+          <nav className="flex-1 overflow-y-auto p-3 space-y-6">
+            {categories.map(([category, docs]) => (
+              <div key={category} className="space-y-1">
+                <p className="px-2.5 font-mono text-2xs font-semibold uppercase tracking-[0.14em] text-ink-4">
+                  {category}
+                </p>
+                <div className="space-y-0.5">
+                  {docs.map((doc) => {
+                    const isSelected = doc.id === activeDoc.id
+                    const Icon = doc.icon
+                    return (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveId(doc.id)
+                          setMobileNavOpen(false)
+                          if (articleContentRef.current) {
+                            articleContentRef.current.scrollTop = 0
+                          }
+                        }}
+                        className={`group relative flex w-full items-center justify-between rounded-control px-2.5 py-1.5 text-left text-xs transition-[transform,background-color,color] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.98] ${
+                          isSelected
+                            ? "bg-accent-tint/70 font-semibold text-accent-text"
+                            : "text-ink-2 hover:bg-well hover:text-ink"
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon
+                            className={`size-3.5 shrink-0 transition-colors ${
+                              isSelected
+                                ? "text-accent-text"
+                                : "text-ink-3 group-hover:text-ink"
+                            }`}
+                          />
+                          <span className="truncate">{doc.title}</span>
+                        </div>
+                        {doc.badge && (
+                          <span
+                            className={`ml-2 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                              doc.badge === "Design"
+                                ? "bg-accent/20 text-accent-text font-medium"
+                                : doc.badge === "Core"
+                                ? "bg-review/20 text-review-text font-medium"
+                                : doc.badge === "Safety"
+                                ? "bg-danger/20 text-danger-text font-medium"
+                                : "bg-well text-ink-3"
+                            }`}
+                          >
+                            {doc.badge}
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
 
-        <IntegrationCard
-          visual={<Integration />}
-          title="Switchyard Integrations"
-          description="CodeGraph feeds every executor its context, pen.dev designs the canvas before a line of code, e2e verifies the flow — and hermes, codex, deepseek, omp, commandcode and Claude Code carry each card from intent to done over the node agent and git."
-          url="#full-reference"
-          ctaLabel="Full reference"
-        />
-
-        <section id="kanban" className="glass-card p-4">
-          <div className="flex items-center gap-2"><Workflow className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Kanban Board Flow — end to end</h2></div>
-          <p className="mt-1 text-[11px] text-ink-3">Intent → board/task → validate → exact workspace → dispatcher → node-agent → planner → shell+RTK → bounded decision loop → diff/provenance review → approve.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>Kanban UI → Create task</div><div className="pl-4">↓ validate profile/workspace/executor</div><div className="pl-4">↓ dispatcher claims todo/ready → running</div><div className="pl-4">↓ registered remote workspace → node-agent</div><div className="pl-4">↓ hermes | codex | dsh | commandcode | claude | omp | shell</div><div className="pl-4">↓ read-only plan → RTK shell → worker output</div><div className="pl-4">↓ bounded retry / complete / blocked decision</div><div className="pl-4">↓ review diff + provenance → commit / commit_push → done</div><div className="pl-4">↓ review/blocked comment → todo → running continuation</div>
+          {/* Sidebar Footer Link */}
+          <div className="border-t border-line p-3 bg-well/25">
+            <div className="flex items-center justify-between text-[11px] text-ink-3">
+              <span>Switchyard v0.2.0</span>
+              {onSelectPage && (
+                <button
+                  type="button"
+                  onClick={() => onSelectPage("agent-mapping")}
+                  className="font-mono text-accent-text hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Flow Map</span>
+                  <ExternalLink className="size-2.5" />
+                </button>
+              )}
+            </div>
           </div>
-          <p className="mt-3 text-[11px] leading-5 text-ink-3">The <span className="font-mono text-accent-text">dsh</span>, <span className="font-mono text-accent-text">commandcode</span>, <span className="font-mono text-accent-text">claude</span> and <span className="font-mono text-accent-text">omp</span> executors have one extra layer the others lack: <strong className="font-medium text-ink-2">session continuity</strong>. All four bind one card to one session through <span className="font-mono">harness_bindings</span>, so the Nth review round continues in the same session rather than cold starting. The other executors are stateless: every run is a new conversation.</p>
-        </section>
+        </aside>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><BrainCircuit className="size-4 text-accent-text" /><h3 className="text-xs font-semibold">dsh — DeepSeek Harness</h3></div>
-            <p className="mt-2 text-[11px] leading-5 text-ink-3">Runs <span className="font-mono">dsh --profile headless --json</span> in the host workspace with an isolated <span className="font-mono">DSH_HOME</span>, so the session lock does not collide with the <span className="font-mono">dsh web</span> daemon.</p>
-            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-ink-3">
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The session store is keyed by <span className="font-mono">workspace_id</span>, so the workspace must exist before resuming.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It reports a monotonic <span className="font-mono">last_turn_seq</span>, so a stale turn can be rejected.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The result must return <span className="font-mono">dsh_workspace_id</span>, <span className="font-mono">dsh_session_id</span> and the highest <span className="font-mono">last_turn_seq</span> it consumed.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>Completed sessions are published back to <span className="font-mono">~/.dsh</span> so they can be listed in the UI.</span></li>
-            </ul>
-          </section>
+        {/* Column 2: Center Reading Canvas */}
+        <main
+          ref={articleContentRef}
+          className="flex-1 overflow-y-auto px-4 py-8 sm:px-8 sm:py-10 lg:px-12 scroll-smooth"
+        >
+          <article className="mx-auto max-w-3xl space-y-8">
+            {/* Document Header */}
+            <header className="border-b border-line pb-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-line bg-raised p-1.5 text-accent-text">
+                  <activeDoc.icon className="size-4" />
+                </span>
+                <span className="font-mono text-2xs uppercase tracking-[0.16em] text-accent-text font-semibold">
+                  {activeDoc.category}
+                </span>
+              </div>
 
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><Command className="size-4 text-accent-text" /><h3 className="text-xs font-semibold">commandcode — Command Code CLI</h3></div>
-            <p className="mt-2 text-[11px] leading-5 text-ink-3">Runs <span className="font-mono">cmd -p --yolo --skip-onboarding --output-format json [--resume &lt;id&gt;]</span> in the host workspace. The binary is <span className="font-mono">cmdc</span> on Windows, with <span className="font-mono">command-code</span> as another alias.</p>
-            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-ink-3">
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It has no workspace identity, so resuming does not need a workspace id.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The <span className="font-mono">result</span> frame carries <span className="font-mono">sessionId</span>, <span className="font-mono">finalText</span> and <span className="font-mono">usage</span>, but there is no turn cursor.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>Because of that there is <strong className="font-medium text-ink-2">no stale-turn rejection</strong>; the only fence is <span className="font-mono">current_run_id</span>.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It needs no <span className="font-mono">DSH_HOME</span>: headless sessions stay hidden from the <span className="font-mono">/resume</span> picker by design.</span></li>
-            </ul>
-          </section>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
+                {activeDoc.title}
+              </h1>
 
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><Terminal className="size-4 text-accent-text" /><h3 className="text-xs font-semibold">omp — oh-my-pi coding agent</h3></div>
-            <p className="mt-2 text-[11px] leading-5 text-ink-3">Runs <span className="font-mono">omp -p --auto-approve --mode json [--resume &lt;id&gt;]</span> in the host workspace. The binary is <span className="font-mono">omp</span>, or <span className="font-mono">omp.exe</span> on Windows.</p>
-            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-ink-3">
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It resumes by session-id prefix, so it needs no workspace identity.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The <span className="font-mono">result</span> frame carries <span className="font-mono">sessionId</span> and <span className="font-mono">finalText</span>, with no turn cursor.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>Because of that there is <strong className="font-medium text-ink-2">no stale-turn rejection</strong>; the only fence is <span className="font-mono">current_run_id</span>.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span><span className="font-mono">--auto-approve</span> permits edits and shell without prompting; trusted nodes only.</span></li>
-            </ul>
-          </section>
+              <p className="text-sm sm:text-base leading-relaxed text-ink-2">
+                {activeDoc.subtitle}
+              </p>
 
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-text" /><h3 className="text-xs font-semibold">claude — Claude Code CLI</h3></div>
-            <p className="mt-2 text-[11px] leading-5 text-ink-3">Runs <span className="font-mono">claude -p --output-format json --permission-mode bypassPermissions [--resume &lt;id&gt;]</span> in the host workspace. The binary is <span className="font-mono">claude</span>; it is explicit-only and never part of the <span className="font-mono">auto</span> fallback.</p>
-            <ul className="mt-2 space-y-1 text-[11px] leading-5 text-ink-3">
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>It has no workspace identity, so resuming does not need a workspace id.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The terminal JSON must return <span className="font-mono">session_id</span>; Switchyard binds it per card and rejects a mismatch.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>Because there is no turn cursor there is <strong className="font-medium text-ink-2">no stale-turn rejection</strong>; the only fence is <span className="font-mono">current_run_id</span>.</span></li>
-              <li className="flex gap-1.5"><span className="text-accent-text">→</span><span>The CLI must be installed and authenticated as the same OS account that runs node-agent.</span></li>
-            </ul>
-          </section>
-        </div>
+              {/* Meta tags */}
+              <div className="flex flex-wrap items-center gap-3 pt-2 text-2xs text-ink-3 font-mono">
+                <span className="flex items-center gap-1">
+                  <span>⏱</span>
+                  <span>{activeDoc.readTime}</span>
+                </span>
+                <span>•</span>
+                <span>{activeDoc.updatedAt}</span>
+                {activeDoc.badge && (
+                  <>
+                    <span>•</span>
+                    <span className="rounded bg-well px-1.5 py-0.5 text-ink-2">
+                      {activeDoc.badge}
+                    </span>
+                  </>
+                )}
+              </div>
+            </header>
 
-        <section className="mt-3 glass-card p-4">
-          <h2 className="text-sm font-semibold">Continuity fence matrix</h2>
-          <p className="mt-1 text-[11px] text-ink-3">All four use the same binding table and resolver; only <span className="font-mono">harness_kind</span> and the checks below differ.</p>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Fence</th><th className="pb-2">dsh</th><th className="pb-2">commandcode</th><th className="pb-2">claude</th><th className="pb-2">omp</th><th className="pb-2">Effect</th></tr></thead><tbody>{continuityFences.map(([fence, dsh, cc, cl, ompv, effect]) => <tr key={fence} className="border-t border-line"><td className="py-2 text-ink-2">{fence}</td><td className="py-2 font-mono text-ink-3">{dsh}</td><td className="py-2 font-mono text-accent-text">{cc}</td><td className="py-2 font-mono text-accent-text">{cl}</td><td className="py-2 font-mono text-accent-text">{ompv}</td><td className="py-2 text-ink-3">{effect}</td></tr>)}</tbody></table></div>
-        </section>
+            {/* Quick Summary Banner */}
+            <div className="rounded-card border border-accent/25 bg-accent-tint/30 p-4 leading-relaxed">
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent-text font-mono">
+                Executive Summary
+              </p>
+              <p className="mt-1 text-sm text-ink-2">{activeDoc.summary}</p>
+            </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          {kanbanSections.map(({ title, icon: Icon, body }) => (
-            <section key={title} className="glass-card p-4">
-              <div className="flex items-center gap-2"><Icon className="size-4 text-accent-text" /><h2 className="text-xs font-semibold">{title}</h2></div>
-              <p className="mt-2 text-xs leading-5 text-ink-3">{body}</p>
-            </section>
-          ))}
-        </div>
+            {/* Document Content Sections */}
+            <div className="space-y-10">
+              {activeDoc.sections.map((section) => (
+                <section
+                  key={section.id}
+                  id={section.id}
+                  className="space-y-4 scroll-mt-20"
+                >
+                  <div className="group flex items-center gap-2">
+                    <h2 className="text-lg sm:text-xl font-semibold tracking-tight text-ink">
+                      {section.title}
+                    </h2>
+                    <a
+                      href={`#${section.id}`}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-ink-4 hover:text-ink"
+                      title="Link to section"
+                    >
+                      #
+                    </a>
+                  </div>
 
-        <section className="mt-3 glass-card p-4">
-          <h2 className="text-sm font-semibold">Kanban executor matrix</h2>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Mode</th><th className="pb-2">Process</th><th className="pb-2">Preflight</th></tr></thead><tbody>{kanbanMatrix.map(([mode, process, preflight]) => <tr key={mode} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{mode}</td><td className="py-2 font-mono text-ink-2">{process}</td><td className="py-2 text-ink-3">{preflight}</td></tr>)}</tbody></table></div>
-        </section>
+                  <p className="text-sm leading-relaxed text-ink-2">
+                    {section.content}
+                  </p>
 
-        <section id="chat" className="mt-6 glass-card p-4">
-          <div className="flex items-center gap-2"><MessageSquare className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Chat Flow — end to end</h2></div>
-          <p className="mt-1 text-[11px] text-ink-3">Direct chat with an agent (hermes-only at the moment) using a room/session rather than a board task. It does not go through the Kanban dispatcher.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>/chat/:sessionID → session + profile/model/workspace</div><div className="pl-4">↓ POST message → run loading</div><div className="pl-4">↓ validate → fast-path | daemon → CLI fallback | remote node-agent</div><div className="pl-4">↓ SSE chat_run_event → progressive rendering</div><div className="pl-4">↓ persist assistant message + hermes_session_id → resume next turn</div>
+                  {/* Callout Box */}
+                  {section.callout && (
+                    <div
+                      className={`rounded-card border p-4 text-xs leading-relaxed transition-all ${
+                        section.callout.type === "craft"
+                          ? "border-accent/40 bg-well/70 shadow-xs"
+                          : section.callout.type === "tip"
+                          ? "border-success/30 bg-success-tint/20 text-ink"
+                          : section.callout.type === "warning"
+                          ? "border-danger/30 bg-danger-tint/20 text-ink"
+                          : "border-line bg-well/40 text-ink-2"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-semibold text-ink">
+                        {section.callout.type === "craft" ? (
+                          <Sparkles className="size-3.5 text-accent-text" />
+                        ) : null}
+                        <span className="font-mono text-2xs uppercase tracking-wider">
+                          {section.callout.title}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-ink-2">
+                        {section.callout.body}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Code Snippet Box with Copy Button */}
+                  {section.codeSnippet && (
+                    <div className="overflow-hidden rounded-card border border-line bg-canvas">
+                      <div className="flex items-center justify-between border-b border-line bg-well/40 px-3 py-1.5 text-2xs font-mono text-ink-3">
+                        <div className="flex items-center gap-1.5">
+                          <FileCode2 className="size-3.5 text-ink-4" />
+                          <span>{section.codeSnippet.filename || "Terminal"}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopyCode(
+                              section.codeSnippet!.code,
+                              `${section.id}-code`
+                            )
+                          }
+                          className="flex items-center gap-1 rounded px-2 py-0.5 text-ink-3 hover:bg-raised hover:text-ink transition-[transform,colors] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.95]"
+                        >
+                          {copiedCodeId === `${section.id}-code` ? (
+                            <>
+                              <Check className="size-3 text-success-text" />
+                              <span className="text-success-text">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="size-3" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="overflow-x-auto p-3.5 font-mono text-xs leading-relaxed text-ink-2 selection:bg-accent-tint">
+                        <code>{section.codeSnippet.code}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Markdown-style Table */}
+                  {section.table && (
+                    <div className="overflow-x-auto rounded-card border border-line bg-surface/50">
+                      <table className="w-full text-left text-xs">
+                        <thead className="border-b border-line bg-well/50 text-[10px] uppercase font-mono tracking-wider text-ink-3">
+                          <tr>
+                            {section.table.headers.map((h, i) => (
+                              <th key={i} className="px-3.5 py-2.5 font-semibold">
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line text-ink-2">
+                          {section.table.rows.map((row, rIdx) => (
+                            <tr
+                              key={rIdx}
+                              className="transition-colors hover:bg-well/35"
+                            >
+                              {row.map((cell, cIdx) => (
+                                <td
+                                  key={cIdx}
+                                  className={`px-3.5 py-2.5 align-top ${
+                                    cIdx === 0
+                                      ? "font-mono font-medium text-ink"
+                                      : cIdx === 1
+                                      ? "text-ink-2"
+                                      : "text-ink-3"
+                                  }`}
+                                >
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
+
+            {/* Bottom Pagination Links */}
+            <footer className="border-t border-line pt-8 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {prevDoc ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveId(prevDoc.id)
+                      if (articleContentRef.current) {
+                        articleContentRef.current.scrollTop = 0
+                      }
+                    }}
+                    className="flex flex-col items-start rounded-card border border-line bg-surface p-4 text-left transition-[transform,background-color,border-color] duration-150 ease-[var(--ease-out-expo)] hover:border-accent/40 hover:bg-well/40 active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-1 font-mono text-2xs text-ink-3 uppercase tracking-wider">
+                      <ArrowLeft className="size-3" />
+                      <span>Previous</span>
+                    </span>
+                    <span className="mt-1 font-semibold text-sm text-ink truncate w-full">
+                      {prevDoc.title}
+                    </span>
+                  </button>
+                ) : <div />}
+
+                {nextDoc ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveId(nextDoc.id)
+                      if (articleContentRef.current) {
+                        articleContentRef.current.scrollTop = 0
+                      }
+                    }}
+                    className="flex flex-col items-end rounded-card border border-line bg-surface p-4 text-right transition-[transform,background-color,border-color] duration-150 ease-[var(--ease-out-expo)] hover:border-accent/40 hover:bg-well/40 active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-1 font-mono text-2xs text-ink-3 uppercase tracking-wider">
+                      <span>Next</span>
+                      <ArrowRight className="size-3" />
+                    </span>
+                    <span className="mt-1 font-semibold text-sm text-ink truncate w-full">
+                      {nextDoc.title}
+                    </span>
+                  </button>
+                ) : <div />}
+              </div>
+
+              {/* Helpful feedback micro-interaction */}
+              <div className="flex items-center justify-between rounded-card border border-line bg-well/30 px-4 py-3 text-xs text-ink-3">
+                <span>Was this guide accurate and helpful?</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const btn = e.currentTarget
+                      btn.textContent = "Thank you! ✨"
+                      btn.classList.add("text-success-text", "font-medium")
+                    }}
+                    className="rounded-control border border-line bg-raised px-2.5 py-1 text-ink-2 hover:bg-well active:scale-[0.97] transition-[transform,colors]"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const btn = e.currentTarget
+                      btn.textContent = "Feedback noted"
+                    }}
+                    className="rounded-control border border-line bg-raised px-2.5 py-1 text-ink-2 hover:bg-well active:scale-[0.97] transition-[transform,colors]"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            </footer>
+          </article>
+        </main>
+
+        {/* Column 3: Right Sidebar ("On This Page" / Quick Actions) */}
+        <aside className="hidden xl:flex w-64 shrink-0 flex-col border-l border-line bg-surface/50 p-6 overflow-y-auto">
+          <div className="space-y-6">
+            <div>
+              <p className="font-mono text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">
+                On This Page
+              </p>
+              <nav className="mt-3 space-y-1">
+                {activeDoc.sections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => scrollToSection(section.id)}
+                    className="block w-full text-left text-xs text-ink-3 hover:text-ink truncate py-1 transition-colors hover:translate-x-0.5"
+                  >
+                    {section.title}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {/* Quick Interactive Actions */}
+            <div className="border-t border-line pt-6 space-y-3">
+              <p className="font-mono text-2xs font-semibold uppercase tracking-[0.14em] text-ink-3">
+                Quick Actions
+              </p>
+
+              {onSelectPage && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onSelectPage("agent-mapping")}
+                    className="flex w-full items-center gap-2 rounded-control border border-line bg-raised p-2 text-left text-xs font-medium text-ink-2 hover:border-accent/30 hover:bg-well hover:text-ink transition-[transform,colors] active:scale-[0.97]"
+                  >
+                    <Workflow className="size-3.5 text-accent-text" />
+                    <span>View in Flow Map</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onSelectPage("canvas")}
+                    className="flex w-full items-center gap-2 rounded-control border border-line bg-raised p-2 text-left text-xs font-medium text-ink-2 hover:border-accent/30 hover:bg-well hover:text-ink transition-[transform,colors] active:scale-[0.97]"
+                  >
+                    <Palette className="size-3.5 text-accent-text" />
+                    <span>Open Canvas Studio</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCopyPageLink}
+                className="flex w-full items-center gap-2 rounded-control border border-line bg-raised p-2 text-left text-xs font-medium text-ink-2 hover:bg-well hover:text-ink transition-[transform,colors] active:scale-[0.97]"
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="size-3.5 text-success-text" />
+                    <span>Page Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="size-3.5 text-ink-3" />
+                    <span>Copy Page URL</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </section>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          {chatSections.map(({ title, icon: Icon, body }) => (
-            <section key={title} className="glass-card p-4">
-              <div className="flex items-center gap-2"><Icon className="size-4 text-accent-text" /><h2 className="text-xs font-semibold">{title}</h2></div>
-              <p className="mt-2 text-xs leading-5 text-ink-3">{body}</p>
-            </section>
-          ))}
-        </div>
-
-        <section className="mt-3 glass-card p-4">
-          <h2 className="text-sm font-semibold">Chat run matrix</h2>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">State</th><th className="pb-2">What</th><th className="pb-2">UI</th></tr></thead><tbody>{chatMatrix.map(([state, what, ui]) => <tr key={state} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{state}</td><td className="py-2 font-mono text-ink-2">{what}</td><td className="py-2 text-ink-3">{ui}</td></tr>)}</tbody></table></div>
-        </section>
-
-        <section id="dsh" className="mt-6 glass-card p-4">
-          <div className="flex items-center gap-2"><BrainCircuit className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">DSH Harness — session continuity</h2></div>
-          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">The DeepSeek Harness executor uses one session per card, so each review round continues in the same session instead of cold starting. Switchyard stores the binding, the worker preserves identity, and a result that does not match what was dispatched is rejected.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>card executor dsh → ResolveHarnessBinding</div><div className="pl-4">↓ first run: session_id empty → DSH creates → worker returns the id</div><div className="pl-4">↓ dispatch: workspace_id + session_id + last_turn_seq + last_comment_id + run_id</div><div className="pl-4">↓ worker: --session-id bound, isolated DSH_HOME, never a cold session</div><div className="pl-4">↓ result identity validated (session/workspace/cursor)</div><div className="pl-4">↓ binding updated → review | todo (new comment) | blocked</div><div className="pl-4">↓ comment + reopen-review → the next continuation round</div>
-          </div>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{dshContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
-          <p className="mt-3 text-[11px] leading-5 text-ink-3">Card loop: send a comment, then <span className="font-mono text-accent-text">reopen-review</span>. An ordinary comment does not reopen a card that is already in <span className="font-mono">review</span>.</p>
-        </section>
-
-        <section id="commandcode" className="mt-6 glass-card p-4">
-          <div className="flex items-center gap-2"><Command className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Command Code Executor — session continuity</h2></div>
-          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">The <span className="font-mono text-accent-text">commandcode</span> executor uses the same harness mechanism as DSH, with one important difference: Command Code has no workspace identity, so a session can be resumed without one. The binding is stored in <span className="font-mono">harness_bindings</span> with <span className="font-mono">harness_kind=commandcode</span>, and the first run sends an empty session id so the worker mints the real one.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>card executor commandcode → HarnessContinuityEnabled</div><div className="pl-4">↓ resolve binding: session id empty (first run) → worker mints</div><div className="pl-4">↓ POST /api/dispatch · harness_kind=commandcode · commandcode_session_id</div><div className="pl-4">↓ worker: cmd -p --yolo --skip-onboarding --output-format json [--resume &lt;id&gt;]</div><div className="pl-4">↓ result frame: sessionId + finalText + usage</div><div className="pl-4">↓ identity check: session mismatch rejected → commandcode_identity_rejected</div><div className="pl-4">↓ binding updated → review | todo (new comment) | blocked</div><div className="pl-4">↓ review comment → todo → running → --resume the same session</div>
-          </div>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{commandCodeContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
-        </section>
-
-        <section id="omp" className="mt-6 glass-card p-4">
-          <div className="flex items-center gap-2"><Terminal className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">omp Executor — session continuity</h2></div>
-          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">The <span className="font-mono text-accent-text">omp</span> executor uses the same harness mechanism as DSH and Command Code. omp re<span className="font-mono">sumes</span> a session by id prefix rather than by workspace, so it needs no workspace identity. The binding is stored in <span className="font-mono">harness_bindings</span> with <span className="font-mono">harness_kind=omp</span>.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>card executor omp → HarnessContinuityEnabled</div><div className="pl-4">↓ resolve binding: session id empty (first run) → worker mints</div><div className="pl-4">↓ POST /api/dispatch · harness_kind=omp · omp_session_id</div><div className="pl-4">↓ worker: omp -p --auto-approve --mode json [--resume &lt;id&gt;]</div><div className="pl-4">↓ result frame: sessionId + finalText</div><div className="pl-4">↓ identity check: session mismatch rejected → omp_identity_rejected</div><div className="pl-4">↓ binding updated → review | todo (new comment) | blocked</div><div className="pl-4">↓ review comment → todo → running → --resume the same session</div>
-          </div>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{ompContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
-        </section>
-
-        <section id="claude" className="mt-6 glass-card p-4">
-          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Claude Code Executor — session continuity</h2></div>
-          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">The <span className="font-mono text-accent-text">claude</span> executor uses the same harness mechanism as DSH, Command Code and omp. Claude Code resumes with its own CLI <span className="font-mono">--resume</span> session id and, like Command Code and omp, reports no workspace identity and no turn cursor. The binding is stored in <span className="font-mono">harness_bindings</span> with <span className="font-mono">harness_kind=claude</span>. It is explicit-only: <span className="font-mono">auto</span> never selects it.</p>
-          <div className="mt-3 font-mono text-[11px] leading-6 text-ink-2">
-            <div>card executor claude → HarnessContinuityEnabled</div><div className="pl-4">↓ resolve binding: session id empty (first run) → the CLI mints</div><div className="pl-4">↓ POST /api/dispatch · harness_kind=claude · claude_session_id</div><div className="pl-4">↓ worker: claude -p --output-format json --permission-mode bypassPermissions [--resume &lt;id&gt;]</div><div className="pl-4">↓ result frame: session_id + terminal JSON</div><div className="pl-4">↓ identity check: session mismatch rejected → claude_identity_rejected</div><div className="pl-4">↓ binding updated → review | todo (new comment) | blocked</div><div className="pl-4">↓ review comment → todo → running → --resume the same session</div>
-          </div>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Aspect</th><th className="pb-2">Behaviour</th><th className="pb-2">Note</th></tr></thead><tbody>{claudeContinuity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-accent-text">{aspect}</td><td className="py-2 font-mono text-ink-2">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
-          <p className="mt-3 text-[11px] leading-5 text-ink-3">Claude Code needs a trusted worker: <span className="font-mono">--permission-mode bypassPermissions</span> permits unattended file edits and shell, and the CLI must be installed and authenticated as the same OS account that runs node-agent. A successful run that returns no <span className="font-mono">session_id</span> fails deterministically with <span className="font-mono">claude_session_missing:</span> and is never retried.</p>
-        </section>
-
-        <section className="grid gap-3 md:grid-cols-2">
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><Fingerprint className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Identity fence</h2></div>
-            <ul className="mt-2 list-disc pl-5 text-xs leading-5 text-ink-3">
-              <li>The session id returned by a run must match the one that was dispatched. A mismatch → <span className="font-mono">commandcode_identity_rejected</span> and the card becomes <span className="font-mono">blocked</span>, not a retry.</li>
-              <li>A run that fails before the session resolves may omit <span className="font-mono">sessionId</span>, and that is accepted.</li>
-              <li>A card bound to a different workspace is rejected at resolve time, not at run time.</li>
-              <li>A late result from an old run is dropped by the <span className="font-mono">current_run_id</span> fence.</li>
-              <li>The comment cursor only advances on success; a failed turn replays the same comment.</li>
-            </ul>
-          </section>
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><Terminal className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Worker prerequisites</h2></div>
-            <ul className="mt-2 list-disc pl-5 text-xs leading-5 text-ink-3">
-              <li>The binary <span className="font-mono">cmd</span>, <span className="font-mono">cmdc</span> (Windows), or <span className="font-mono">command-code</span> on the worker host.</li>
-              <li>The version is reported through the <span className="font-mono">versions.commandcode</span> heartbeat; an old worker does not appear in the executor list.</li>
-              <li>CodeGraph is used as the preflight for <span className="font-mono">commandcode</span>, the same as for hermes/codex.</li>
-              <li>A build without <span className="font-mono">--output-format json</span> falls back to <span className="font-mono">text</span> once per binary, and such a run cannot prove continuity.</li>
-              <li><span className="font-mono">--yolo</span> lets the worker edit files and run shell. Trusted nodes only.</li>
-            </ul>
-          </section>
-        </section>
-
-        <section className="mt-3 glass-card p-4">
-          <div className="flex items-center gap-2"><KeyRound className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Retry policy</h2></div>
-          <p className="mt-1 max-w-3xl text-[11px] text-ink-3">A failure with the prefix <span className="font-mono text-accent-text">commandcode_session_missing</span> is deterministic and is not retried — it goes straight to <span className="font-mono">blocked</span>. Other transient failures are retried up to 3 times before <span className="font-mono">blocked</span>.</p>
-          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-ink-3"><tr><th className="pb-2">Signal</th><th className="pb-2">Retry?</th><th className="pb-2">Final status</th></tr></thead><tbody>{commandCodeIdentity.map(([aspect, behaviour, note]) => <tr key={aspect} className="border-t border-line"><td className="py-2 font-mono text-ink-2">{aspect}</td><td className="py-2 font-mono text-accent-text">{behaviour}</td><td className="py-2 text-ink-3">{note}</td></tr>)}</tbody></table></div>
-        </section>
-
-        <section className="grid gap-3 md:grid-cols-2">
-          <section className="glass-card p-4">
-            <div className="flex items-center gap-2"><KeyRound className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Important boundaries</h2></div>
-            <ul className="mt-2 list-disc pl-5 text-xs leading-5 text-ink-3">
-              <li>Chat does not use the dispatcher, board claim or review gate.</li>
-              <li>Kanban does not use a chat session as task state.</li>
-              <li>The remote path is fail-closed; register the exact workspace first. Registered remotes persist as node-agent transport.</li>
-              <li>Node-agent job timeout defaults to 10m; dispatcher wait = worker timeout + 2m.</li>
-              <li>The review panel shows CodeGraph status and provenance without SSHing to the worker.</li>
-              <li>Executor proof comes from provenance, not from output text.</li>
-              <li>A <span className="font-mono">dsh</span> card is bound to one workspace and one session; changing workspace or session is rejected, not retried.</li>
-            </ul>
-          </section>
-          <section id="full-reference" className="glass-card p-4">
-            <div className="flex items-center gap-2"><BookOpen className="size-4 text-accent-text" /><h2 className="text-sm font-semibold">Full reference</h2></div>
-            <ul className="mt-2 space-y-1 font-mono text-xs text-ink-3">
-              <li><span className="text-accent-text">docs/features/kanban-board-flow.md</span> — Kanban A–Z</li>
-              <li><span className="text-accent-text">docs/features/dsh-harness.md</span> — DSH session continuity</li>
-              <li><span className="text-accent-text">docs/features/commandcode-executor.md</span> — CommandCode execution</li>
-              <li><span className="text-accent-text">docs/features/claude-code-executor.md</span> — Claude Code execution</li>
-              <li><span className="text-accent-text">docs/features/omp-executor.md</span> — omp execution</li>
-              <li><span className="text-accent-text">docs/features/chat-flow.md</span> — Chat A–Z</li>
-              <li><span className="text-accent-text">docs/features/chat-flow-architecture.md</span> — Current chat internals</li>
-              <li><span className="text-accent-text">docs/execution-flow.md</span> — Legacy execution flow</li>
-            </ul>
-          </section>
-        </section>
-        </CollectionBody>
+        </aside>
+      </div>
     </div>
   )
 }
