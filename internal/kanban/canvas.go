@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -413,6 +414,21 @@ func GlobalScratchpadPath() string {
 	return filepath.Join(hermesHome(), "canvas-scratchpad")
 }
 
+func canvasExecShell(wsID, workspacePath, title, command string) (string, int) {
+	if wsID == "scratchpad" || strings.Contains(workspacePath, "canvas-scratchpad") {
+		cmd := exec.Command("sh", "-c", command)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return string(out), exitErr.ExitCode()
+			}
+			return string(out) + "\n" + err.Error(), 1
+		}
+		return string(out), 0
+	}
+	return workerShell(workspacePath, title, command)
+}
+
 func ensureGlobalScratchpad() (string, error) {
 	p := GlobalScratchpadPath()
 	if err := os.MkdirAll(p, 0o755); err != nil {
@@ -421,8 +437,9 @@ func ensureGlobalScratchpad() (string, error) {
 	gitDir := filepath.Join(p, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		cmd := fmt.Sprintf(`cd %s && git init -b main && git -c user.name=Canvas -c user.email=canvas@switchyard.local commit --allow-empty -m "initial scratchpad"`, shellQuotePath(p))
-		if out, code := workerShell(p, "scratchpad: init", cmd); code != 0 {
-			return "", fmt.Errorf("failed to init scratchpad git: %s", out)
+		execCmd := exec.Command("sh", "-c", cmd)
+		if out, err := execCmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to init scratchpad git: %s", string(out))
 		}
 	}
 	return p, nil
@@ -466,26 +483,26 @@ func CreateCanvasSession(wsRef, title, executor, model string, dialkit bool, par
 		plan.BaseBranch = parent.Branch
 	}
 
-	if out, code := workerShell(wsPath, "canvas: disk", fmt.Sprintf("cd %s && df -Pk . | awk 'NR==2{print $4}'", shellQuotePath(wsPath))); code == 0 {
+	if out, code := canvasExecShell(wsID, wsPath, "canvas: disk", fmt.Sprintf("cd %s && df -Pk . | awk 'NR==2{print $4}'", shellQuotePath(wsPath))); code == 0 {
 		if kb, perr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); perr == nil && kb < CanvasMinFreeKB {
 			return nil, fmt.Errorf("refusing to create a worktree: only %d MB free on the worker (need %d MB)", kb/1024, CanvasMinFreeKB/1024)
 		}
 	}
-	if out, code := workerShell(wsPath, "canvas: git", fmt.Sprintf("cd %s && git rev-parse --is-inside-work-tree", shellQuotePath(wsPath))); code != 0 || !strings.Contains(out, "true") {
+	if out, code := canvasExecShell(wsID, wsPath, "canvas: git", fmt.Sprintf("cd %s && git rev-parse --is-inside-work-tree", shellQuotePath(wsPath))); code != 0 || !strings.Contains(out, "true") {
 		return nil, fmt.Errorf("workspace is not a git repository: %s", truncateWorktreeOutput(out))
 	}
-	_, _ = workerShell(wsPath, "canvas: exclude", ensureWorktreeIgnoredScript(wsPath))
-	if out, code := workerShell(wsPath, "canvas: worktree", gitWorktreeAddScript(plan)); code != 0 {
+	_, _ = canvasExecShell(wsID, wsPath, "canvas: exclude", ensureWorktreeIgnoredScript(wsPath))
+	if out, code := canvasExecShell(wsID, wsPath, "canvas: worktree", gitWorktreeAddScript(plan)); code != 0 {
 		return nil, fmt.Errorf("git worktree add failed: %s", truncateWorktreeOutput(out))
 	}
 	if wsID != "scratchpad" {
-		_, _ = workerShell(plan.Path, "canvas: link-deps", fmt.Sprintf(`cd %[1]s && if [ -d %[2]s/node_modules ] && [ ! -L node_modules ]; then rm -rf node_modules && ln -s %[2]s/node_modules node_modules; fi`, shellQuotePath(plan.Path), shellQuotePath(wsPath)))
-		_, _ = workerShell(plan.Path, "canvas: scaffold-page", fmt.Sprintf(`cd %[1]s && if [ -d app ] && [ ! -f app/canvas/page.tsx ] && [ ! -f app/canvas/page.jsx ]; then mkdir -p app/canvas && printf "'use client'\nimport React from 'react'\nexport default function CanvasPage() {\n  return (\n    <div style={{minHeight:'100vh',padding:'2rem',background:'#0f1115',color:'#e6edf3',fontFamily:'sans-serif'}}>\n      <h1 style={{fontSize:'1.25rem',fontWeight:600,marginBottom:'0.5rem'}}>Canvas: %%s</h1>\n      <p style={{color:'#8b949e',fontSize:'0.875rem'}}>Waiting for canvas explorations...</p>\n    </div>\n  )\n}\n" %s > app/canvas/page.tsx && git add app/canvas/page.tsx && git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "scaffold: canvas entry page"; fi`, shellQuotePath(plan.Path), shellQuotePath(title)))
+		_, _ = canvasExecShell(wsID, plan.Path, "canvas: link-deps", fmt.Sprintf(`cd %[1]s && if [ -d %[2]s/node_modules ] && [ ! -L node_modules ]; then rm -rf node_modules && ln -s %[2]s/node_modules node_modules; fi`, shellQuotePath(plan.Path), shellQuotePath(wsPath)))
+		_, _ = canvasExecShell(wsID, plan.Path, "canvas: scaffold-page", fmt.Sprintf(`cd %[1]s && if [ -d app ] && [ ! -f app/canvas/page.tsx ] && [ ! -f app/canvas/page.jsx ]; then mkdir -p app/canvas && printf "'use client'\nimport React from 'react'\nexport default function CanvasPage() {\n  return (\n    <div style={{minHeight:'100vh',padding:'2rem',background:'#0f1115',color:'#e6edf3',fontFamily:'sans-serif'}}>\n      <h1 style={{fontSize:'1.25rem',fontWeight:600,marginBottom:'0.5rem'}}>Canvas: %%s</h1>\n      <p style={{color:'#8b949e',fontSize:'0.875rem'}}>Waiting for canvas explorations...</p>\n    </div>\n  )\n}\n" %s > app/canvas/page.tsx && git add app/canvas/page.tsx && git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "scaffold: canvas entry page"; fi`, shellQuotePath(plan.Path), shellQuotePath(title)))
 	}
 	// Always scaffold initial design/component.pen if not present
 	penDoc := fmt.Sprintf(`{"version":"2.20","name":%q,"children":[{"type":"frame","id":"frame_root","name":%q,"x":80,"y":80,"width":480,"height":320,"cornerRadius":16,"fill":"#121316","stroke":"rgba(255, 255, 255, 0.08)","strokeWidth":1,"layout":"vertical","gap":16,"padding":{"top":24,"right":24,"bottom":24,"left":24},"children":[{"type":"text","id":"text_title","text":%q,"fontSize":20,"fontWeight":"600","fill":"#ffffff"},{"type":"text","id":"text_subtitle","text":"Visual design prototype in pen.dev Canvas","fontSize":13,"fontWeight":"400","fill":"#9ca3af"}]}]}`, title, title, title)
 	scaffoldPenScript := fmt.Sprintf(`cd %s && mkdir -p design && [ ! -f design/component.pen ] && printf '%%s' %s > design/component.pen && git add design/component.pen && git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "scaffold: initial pen.dev design" || true`, shellQuotePath(plan.Path), shellQuotePath(penDoc))
-	_, _ = workerShell(plan.Path, "canvas: scaffold-pen", scaffoldPenScript)
+	_, _ = canvasExecShell(wsID, plan.Path, "canvas: scaffold-pen", scaffoldPenScript)
 
 	now := time.Now().Unix()
 	s := &CanvasSession{
@@ -508,7 +525,7 @@ func CreateCanvasSession(wsRef, title, executor, model string, dialkit bool, par
 	if _, err := db.Exec(`INSERT INTO canvas_sessions(`+canvasCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		s.ID, s.Title, s.WorkspaceID, s.WorkspacePath, s.Host, s.WorktreePath, s.Branch, 0, "", s.Status, s.Server,
 		s.Executor, s.Model, dk, 0, "", s.ParentID, now, now); err != nil {
-		_, _ = workerShell(wsPath, "canvas: rollback", gitWorktreeRemoveScript(plan))
+		_, _ = canvasExecShell(wsID, wsPath, "canvas: rollback", gitWorktreeRemoveScript(plan))
 		return nil, err
 	}
 	return s, nil
@@ -667,7 +684,7 @@ func DiscardCanvasSession(id string) error {
 	}
 	_ = StopCanvasServer(id)
 	plan := canvasPlan(s.WorkspacePath, id)
-	_, _ = workerShell(s.WorkspacePath, "canvas: discard", gitWorktreeRemoveScript(plan))
+	_, _ = canvasExecShell(s.WorkspaceID, s.WorkspacePath, "canvas: discard", gitWorktreeRemoveScript(plan))
 	return canvasUpdate(id, `status='discarded', server='stopped'`)
 }
 
@@ -780,7 +797,7 @@ func GetCanvasFiles(id string) (map[string]string, error) {
 	}
 	// Tar up canvas/ app/canvas/ src/canvas/ design/ and any root *.pen files with COPYFILE_DISABLE=1 to avoid AppleDouble ._* metadata
 	script := fmt.Sprintf(`cd %s && COPYFILE_DISABLE=1 tar -czf - $(for d in canvas app/canvas src/canvas design; do [ -d "$d" ] && echo "$d"; done; for f in *.pen; do [ -f "$f" ] && echo "$f"; done) 2>/dev/null | base64`, shellQuotePath(s.WorktreePath))
-	out, code := workerShell(s.WorktreePath, "canvas: get-files", script)
+	out, code := canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: get-files", script)
 	if code != 0 {
 		return nil, fmt.Errorf("read canvas files: %s", truncateWorktreeOutput(out))
 	}
@@ -846,12 +863,12 @@ func SaveCanvasFiles(id string, files map[string]string) error {
 EOF_SW_CANVAS
 git add -A -- %s
 `, shellQuotePath(s.WorktreePath), shellQuotePath(dir), shellQuotePath(rel), content, shellQuotePath(rel))
-		out, code := workerShell(s.WorktreePath, "canvas: save-file", script)
+		out, code := canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: save-file", script)
 		if code != 0 {
 			return fmt.Errorf("save file %s: %s", rel, truncateWorktreeOutput(out))
 		}
 	}
 	commitScript := fmt.Sprintf(`cd %s && git diff --cached --quiet || git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "canvas: sync dialkit tweaks"`, shellQuotePath(s.WorktreePath))
-	_, _ = workerShell(s.WorktreePath, "canvas: commit-save", commitScript)
+	_, _ = canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: commit-save", commitScript)
 	return canvasUpdate(id, `last_active_at=?`, time.Now().Unix())
 }
