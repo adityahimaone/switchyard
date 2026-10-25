@@ -27,6 +27,18 @@ import (
 // combined output. A non-zero exit is reported through code, not as an error, so
 // a caller can inspect git's own message.
 func workerShell(workspace, title, command string) (string, int) {
+	if strings.Contains(workspace, "canvas-scratchpad") {
+		cmd := exec.Command("sh", "-c", command)
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil {
+			if exitErr, ok := runErr.(*exec.ExitError); ok {
+				return string(out), exitErr.ExitCode()
+			}
+			return string(out) + "\n" + runErr.Error(), 1
+		}
+		return string(out), 0
+	}
+
 	res, err := DispatchRemoteRaw(NodeDispatchRequest{
 		TaskID:    "worktree",
 		Title:     title,

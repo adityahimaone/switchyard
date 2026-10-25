@@ -597,16 +597,16 @@ func runCanvasTurn(s CanvasSession, text string) {
 	}
 
 	// Path guard: revert anything outside the allow list, then commit the rest.
-	if out, code := workerShell(s.WorktreePath, "canvas: guard", canvasGuardScript(&s)); code == 0 {
+	if out, code := canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: guard", canvasGuardScript(&s)); code == 0 {
 		if bad := CanvasViolations(ParsePorcelainZ(out), s.DialKit); len(bad) > 0 {
-			_, _ = workerShell(s.WorktreePath, "canvas: revert", canvasRevertScript(&s, bad))
+			_, _ = canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: revert", canvasRevertScript(&s, bad))
 			addCanvasMessage(s.ID, "system", "Path guard reverted changes outside the canvas allow list:\n"+strings.Join(bad, "\n"))
 			if failure == "" {
 				failure = fmt.Sprintf("path guard reverted %d file(s) outside canvas/", len(bad))
 			}
 		}
 	}
-	_, _ = workerShell(s.WorktreePath, "canvas: commit", canvasCommitScript(&s))
+	_, _ = canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: commit", canvasCommitScript(&s))
 
 	status := "ready"
 	if failure != "" {
@@ -646,7 +646,7 @@ func StartCanvasServer(id string) (*CanvasSession, error) {
 		}
 	}
 	base := CanvasViewBase(s.ID)
-	out, code := workerShell(s.WorktreePath, "canvas: start", canvasDevScript(s, base))
+	out, code := canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: start", canvasDevScript(s, base))
 	if code != 0 {
 		return nil, fmt.Errorf("dev server did not start: %s", truncateWorktreeOutput(out))
 	}
@@ -671,7 +671,7 @@ func StopCanvasServer(id string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = workerShell(s.WorktreePath, "canvas: stop", canvasStopScript(id))
+	_, _ = canvasExecShell(s.WorkspaceID, s.WorktreePath, "canvas: stop", canvasStopScript(id))
 	closeCanvasTunnel(id)
 	return canvasUpdate(id, `server='stopped'`)
 }
@@ -697,7 +697,7 @@ func ForkCanvasSession(id, title string) (*CanvasSession, error) {
 	if p.Status == "working" {
 		return nil, fmt.Errorf("session is busy")
 	}
-	_, _ = workerShell(p.WorktreePath, "canvas: commit", canvasCommitScript(p))
+	_, _ = canvasExecShell(p.WorkspaceID, p.WorktreePath, "canvas: commit", canvasCommitScript(p))
 	if strings.TrimSpace(title) == "" {
 		title = p.Title + " (variation)"
 	}
