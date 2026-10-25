@@ -704,8 +704,8 @@ func GetCanvasFiles(id string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Tar up canvas/ app/canvas/ src/canvas/
-	script := fmt.Sprintf(`cd %s && tar -czf - $(for d in canvas app/canvas src/canvas; do [ -d "$d" ] && echo "$d"; done) 2>/dev/null | base64`, shellQuotePath(s.WorktreePath))
+	// Tar up canvas/ app/canvas/ src/canvas/ with COPYFILE_DISABLE=1 to avoid AppleDouble ._* metadata
+	script := fmt.Sprintf(`cd %s && COPYFILE_DISABLE=1 tar -czf - $(for d in canvas app/canvas src/canvas; do [ -d "$d" ] && echo "$d"; done) 2>/dev/null | base64`, shellQuotePath(s.WorktreePath))
 	out, code := workerShell(s.WorktreePath, "canvas: get-files", script)
 	if code != 0 {
 		return nil, fmt.Errorf("read canvas files: %s", truncateWorktreeOutput(out))
@@ -739,11 +739,17 @@ func GetCanvasFiles(id string) (map[string]string, error) {
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
+		relPath := filepath.ToSlash(hdr.Name)
+		base := path.Base(relPath)
+		// Ignore AppleDouble and OS metadata
+		if strings.HasPrefix(base, "._") || strings.HasPrefix(relPath, "__MACOSX") || base == ".DS_Store" {
+			continue
+		}
 		content, err := io.ReadAll(io.LimitReader(tr, 4<<20))
 		if err != nil {
 			return nil, err
 		}
-		files[filepath.ToSlash(hdr.Name)] = string(content)
+		files[relPath] = string(content)
 	}
 	return files, nil
 }

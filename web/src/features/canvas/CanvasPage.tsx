@@ -376,7 +376,20 @@ function StudioSessionView({
   })
 
   const s = detail.data?.session
-  const files = useMemo(() => filesQuery.data ?? {}, [filesQuery.data])
+  const rawFiles = useMemo(() => filesQuery.data ?? {}, [filesQuery.data])
+
+  // Filter out macOS AppleDouble files and OS metadata
+  const files = useMemo(() => {
+    const res: Record<string, string> = {}
+    for (const [k, v] of Object.entries(rawFiles)) {
+      const base = k.split("/").pop() || ""
+      if (base.startsWith("._") || base === ".DS_Store" || k.includes("__MACOSX")) {
+        continue
+      }
+      res[k] = v
+    }
+    return res
+  }, [rawFiles])
 
   // Pick first relevant file when files arrive
   useEffect(() => {
@@ -718,6 +731,7 @@ function StudioSessionView({
               </div>
             ) : (
               <CanvasSandbox
+                sessionId={id}
                 files={files}
                 entryFile={activeFile}
                 dialkitProps={dialkitProps}

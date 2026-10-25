@@ -172,11 +172,226 @@ func registerCanvasRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	// In-browser instant sandbox route for 0ms visual editing with DialKit.
+	mux.HandleFunc("GET /canvas-sandbox/{id}", canvasSandboxHandler)
+
 	// Token-gated proxy. It sits outside /api/ on purpose: the sandboxed iframe
 	// has an opaque origin and sends no cookie, so the URL token is the
 	// credential. The token only grants this one session's dev server.
 	mux.HandleFunc("GET /canvas-view/{id}/{token}/{rest...}", canvasProxyHandler)
 }
+
+func canvasSandboxHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := kanban.GetCanvasSession(id); err != nil {
+		http.Error(w, "canvas session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://esm.sh data: blob:; frame-ancestors 'self'")
+	w.Write([]byte(canvasSandboxHTML))
+}
+
+const canvasSandboxHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          borderRadius: {
+            'custom': 'var(--dialkit-radius, 16px)'
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19?dev",
+      "react-dom": "https://esm.sh/react-dom@19?dev",
+      "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
+      "lucide-react": "https://esm.sh/lucide-react@1.41.0?dev",
+      "clsx": "https://esm.sh/clsx@2.1.1",
+      "tailwind-merge": "https://esm.sh/tailwind-merge@2.5.4"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --dialkit-radius: 16px;
+      --dialkit-padding: 24px;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .dialkit-root {
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+  </style>
+</head>
+<body class="dialkit-root">
+  <div id="root"></div>
+
+  <script type="module">
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    import * as LucideIcons from 'lucide-react';
+
+    window.React = React;
+    window.ReactDOM = ReactDOM;
+    window.lucide = LucideIcons;
+
+    let currentFiles = {};
+    let currentEntry = '';
+    let currentProps = { theme: 'dark', radius: 16, padding: 24, scale: 100, accentColor: '#6366f1' };
+    let root = null;
+    const moduleCache = {};
+
+    function cleanPath(p) {
+      return (p || '').replace(/^[./@]+/, '');
+    }
+
+    function resolveCode(path) {
+      if (currentFiles[path]) return currentFiles[path];
+      const clean = cleanPath(path);
+      for (const k in currentFiles) {
+        if (cleanPath(k) === clean || k.endsWith(clean)) return currentFiles[k];
+      }
+      return null;
+    }
+
+    function requireModule(modulePath) {
+      if (modulePath === 'react') return React;
+      if (modulePath === 'react-dom' || modulePath === 'react-dom/client') return ReactDOM;
+      if (modulePath === 'lucide-react') return LucideIcons;
+
+      if (moduleCache[modulePath]) return moduleCache[modulePath];
+
+      const rawCode = resolveCode(modulePath);
+      if (!rawCode) {
+        console.warn('Could not resolve import:', modulePath);
+        return {};
+      }
+
+      const transformed = Babel.transform(rawCode, {
+        presets: ['react', 'typescript'],
+        filename: modulePath
+      }).code;
+
+      const exports = {};
+      const module = { exports };
+      const fn = new Function('require', 'exports', 'module', 'React', transformed);
+      fn(requireModule, exports, module, React);
+
+      moduleCache[modulePath] = module.exports;
+      return module.exports;
+    }
+
+    function renderComponent() {
+      try {
+        if (!currentEntry) {
+          const keys = Object.keys(currentFiles).filter(k => !k.includes('._') && !k.includes('.DS_Store'));
+          currentEntry = keys.find(k => k.endsWith('.tsx') && !k.endsWith('page.tsx')) || keys[0];
+        }
+        if (!currentEntry) {
+          window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
+          return;
+        }
+
+        const rawCode = resolveCode(currentEntry);
+        if (!rawCode) {
+          window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'error', error: 'File ' + currentEntry + ' not found' }, '*');
+          return;
+        }
+
+        for (const k in moduleCache) delete moduleCache[k];
+
+        const transformed = Babel.transform(rawCode, {
+          presets: ['react', 'typescript'],
+          filename: currentEntry
+        }).code;
+
+        const exports = {};
+        const module = { exports };
+        const fn = new Function('require', 'exports', 'module', 'React', transformed);
+        fn(requireModule, exports, module, React);
+
+        let Comp = module.exports.default;
+        if (!Comp) {
+          for (const key in module.exports) {
+            if (typeof module.exports[key] === 'function') {
+              Comp = module.exports[key];
+              break;
+            }
+          }
+        }
+
+        if (!Comp) {
+          throw new Error('No React component exported in ' + currentEntry);
+        }
+
+        document.documentElement.classList.toggle('dark', currentProps.theme === 'dark');
+        document.documentElement.style.setProperty('--dialkit-radius', (currentProps.radius || 16) + 'px');
+        document.documentElement.style.setProperty('--dialkit-padding', (currentProps.padding || 24) + 'px');
+
+        const container = document.getElementById('root');
+        if (!root) root = ReactDOM.createRoot(container);
+
+        root.render(
+          React.createElement('div', {
+            style: {
+              transform: 'scale(' + ((currentProps.scale || 100) / 100) + ')',
+              transformOrigin: 'top center',
+            },
+            className: 'p-6 flex flex-col items-center justify-center min-h-screen ' + (currentProps.theme === 'dark' ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]')
+          }, React.createElement(Comp, currentProps))
+        );
+
+        window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
+      } catch (err) {
+        console.error(err);
+        window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'error', error: err.message }, '*');
+        const container = document.getElementById('root');
+        if (!root) root = ReactDOM.createRoot(container);
+        root.render(
+          React.createElement('div', {
+            className: 'p-6 m-4 rounded-xl border border-rose-500/30 bg-rose-950/20 text-rose-300 font-mono text-xs'
+          }, [
+            React.createElement('div', { key: 't', className: 'font-semibold text-sm mb-2' }, 'Render Error'),
+            React.createElement('div', { key: 'm', className: 'whitespace-pre-wrap' }, err.message || String(err))
+          ])
+        );
+      }
+    }
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'LOAD_CANVAS') {
+        currentFiles = e.data.files || {};
+        currentEntry = e.data.entryFile || '';
+        if (e.data.props) currentProps = { ...currentProps, ...e.data.props };
+        renderComponent();
+      } else if (e.data?.type === 'UPDATE_DIALKIT') {
+        currentProps = { ...currentProps, ...e.data.props };
+        renderComponent();
+      }
+    });
+
+    window.parent.postMessage({ type: 'CANVAS_FRAME_READY' }, '*');
+  </script>
+</body>
+</html>`
 
 func canvasProxyHandler(w http.ResponseWriter, r *http.Request) {
 	id, token := r.PathValue("id"), r.PathValue("token")

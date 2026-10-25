@@ -215,6 +215,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/canvas/sessions": true,
 	"GET /api/canvas/sessions/{id}": true,
 	"GET /api/canvas/sessions/{id}/files": true,
+	"GET /canvas-sandbox/{id}": true,
 	"GET /canvas-view/{id}/{token}/{rest...}": true,
 	"POST /api/canvas/sessions": true,
 	"POST /api/canvas/sessions/{id}/discard": true,

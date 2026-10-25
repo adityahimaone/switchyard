@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { AlertCircle, Loader2 } from "lucide-react"
 
 export interface CanvasSandboxProps {
+  sessionId: string
   files: Record<string, string>
   entryFile?: string
   dialkitProps: Record<string, any>
   frame: "freeform" | "desktop" | "tablet" | "mobile"
-  zoom: number
+  zoom: number // Decimal scale, 1.0 = 100%
   pan: { x: number; y: number }
   onPanChange: (pan: { x: number; y: number }) => void
   onZoomChange: (zoom: number) => void
@@ -21,6 +22,7 @@ const FRAME_DIMENSIONS: Record<string, { width: string; height: string; label: s
 }
 
 export function CanvasSandbox({
+  sessionId,
   files,
   entryFile,
   dialkitProps,
@@ -35,223 +37,73 @@ export function CanvasSandbox({
   const containerRef = useRef<HTMLDivElement>(null)
   const isPanningRef = useRef(false)
   const panStartRef = useRef({ x: 0, y: 0 })
+  const isFrameReadyRef = useRef(false)
   const [isSpacePressed, setIsSpacePressed] = useState(false)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Determine entry point
+  // Filter out macOS AppleDouble files and OS metadata
+  const cleanFiles = useMemo(() => {
+    const res: Record<string, string> = {}
+    for (const [k, v] of Object.entries(files)) {
+      const base = k.split("/").pop() || ""
+      if (base.startsWith("._") || base === ".DS_Store" || k.includes("__MACOSX")) {
+        continue
+      }
+      res[k] = v
+    }
+    return res
+  }, [files])
+
+  // Determine valid entry point
   const activeEntry = useMemo(() => {
-    if (entryFile && files[entryFile]) return entryFile
-    const keys = Object.keys(files)
+    if (entryFile && cleanFiles[entryFile]) return entryFile
+    const keys = Object.keys(cleanFiles)
     const bento = keys.find((k) => k.includes("bento") || k.includes("component") || k.includes("hero"))
     if (bento) return bento
-    const page = keys.find((k) => k.endsWith("page.tsx") || k.endsWith("page.jsx"))
-    if (page) return page
-    return keys[0] || "canvas/component.tsx"
-  }, [entryFile, files])
+    const candidate = keys.find((k) => k.endsWith(".tsx") && !k.endsWith("page.tsx"))
+    if (candidate) return candidate
+    return keys[0] || ""
+  }, [entryFile, cleanFiles])
 
-  // Generate srcDoc bundle HTML
-  const srcDoc = useMemo(() => {
-    const serializedFiles = JSON.stringify(files)
-    const activeEntryEscaped = JSON.stringify(activeEntry)
-    const initialPropsEscaped = JSON.stringify(dialkitProps)
+  // Push current bundle to the iframe
+  const pushBundleToFrame = useCallback(() => {
+    if (!iframeRef.current?.contentWindow || !isFrameReadyRef.current) return
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "LOAD_CANVAS",
+        files: cleanFiles,
+        entryFile: activeEntry,
+        props: dialkitProps,
+      },
+      "*",
+    )
+  }, [cleanFiles, activeEntry, dialkitProps])
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          borderRadius: {
-            'custom': 'var(--dialkit-radius, 16px)'
-          }
-        }
-      }
+  // Send updates when files or entry change
+  useEffect(() => {
+    if (isFrameReadyRef.current && Object.keys(cleanFiles).length > 0) {
+      pushBundleToFrame()
     }
-  </script>
-  <!-- React 19, Lucide, Babel Standalone -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "https://esm.sh/react@19?dev",
-      "react-dom": "https://esm.sh/react-dom@19?dev",
-      "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
-      "lucide-react": "https://esm.sh/lucide-react@1.41.0?dev",
-      "framer-motion": "https://esm.sh/framer-motion@11.11.17?dev",
-      "clsx": "https://esm.sh/clsx@2.1.1",
-      "tailwind-merge": "https://esm.sh/tailwind-merge@2.5.4"
+  }, [cleanFiles, activeEntry, pushBundleToFrame])
+
+  // Send prop changes live to iframe without full bundle reload
+  useEffect(() => {
+    if (isFrameReadyRef.current && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "UPDATE_DIALKIT", props: dialkitProps },
+        "*",
+      )
     }
-  }
-  </script>
-  <style>
-    :root {
-      --dialkit-radius: 16px;
-      --dialkit-padding: 24px;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      min-height: 100%;
-      background: transparent;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    .dialkit-root {
-      transition: background-color 200ms ease, color 200ms ease;
-    }
-  </style>
-</head>
-<body class="dialkit-root">
-  <div id="root"></div>
-
-  <script type="module">
-    import React, { useState, useEffect } from 'react';
-    import ReactDOM from 'react-dom/client';
-    import * as LucideIcons from 'lucide-react';
-
-    window.React = React;
-    window.ReactDOM = ReactDOM;
-    window.lucide = LucideIcons;
-
-    const files = ${serializedFiles};
-    const entryFile = ${activeEntryEscaped};
-    let currentProps = ${initialPropsEscaped};
-
-    // Simple in-memory module registry
-    const moduleCache = {};
-
-    function resolveCode(path) {
-      if (files[path]) return files[path];
-      // strip relative prefixes
-      const clean = path.replace(/^[@.\/]+/, '');
-      for (const k in files) {
-        if (k.endsWith(clean) || k.includes(clean)) return files[k];
-      }
-      return null;
-    }
-
-    function requireModule(modulePath) {
-      if (modulePath === 'react') return React;
-      if (modulePath === 'react-dom' || modulePath === 'react-dom/client') return ReactDOM;
-      if (modulePath === 'lucide-react') return LucideIcons;
-
-      if (moduleCache[modulePath]) return moduleCache[modulePath];
-
-      const rawCode = resolveCode(modulePath);
-      if (!rawCode) {
-        console.warn('Could not resolve import:', modulePath);
-        return {};
-      }
-
-      // Transpile module TSX to CommonJS via Babel
-      const transformed = Babel.transform(rawCode, {
-        presets: ['react', 'typescript'],
-        filename: modulePath
-      }).code;
-
-      const exports = {};
-      const module = { exports };
-      
-      const fn = new Function('require', 'exports', 'module', 'React', transformed);
-      fn(requireModule, exports, module, React);
-
-      moduleCache[modulePath] = module.exports;
-      return module.exports;
-    }
-
-    function ErrorFallback({ error }) {
-      return React.createElement('div', {
-        className: 'p-6 m-4 rounded-xl border border-rose-500/30 bg-rose-950/20 text-rose-300 font-mono text-xs'
-      }, [
-        React.createElement('div', { key: 't', className: 'font-semibold text-sm mb-2 flex items-center gap-2' }, 'Component Render Error'),
-        React.createElement('div', { key: 'm', className: 'whitespace-pre-wrap leading-relaxed' }, error.message || String(error))
-      ]);
-    }
-
-    let root = null;
-
-    function renderActive() {
-      try {
-        const rawCode = resolveCode(entryFile);
-        if (!rawCode) {
-          window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'error', error: 'No code in ' + entryFile }, '*');
-          return;
-        }
-
-        // Clean module cache for hot reload
-        for (const k in moduleCache) delete moduleCache[k];
-
-        const transformed = Babel.transform(rawCode, {
-          presets: ['react', 'typescript'],
-          filename: entryFile
-        }).code;
-
-        const exports = {};
-        const module = { exports };
-        const fn = new Function('require', 'exports', 'module', 'React', transformed);
-        fn(requireModule, exports, module, React);
-
-        // Find primary component
-        let Component = module.exports.default;
-        if (!Component) {
-          for (const key in module.exports) {
-            if (typeof module.exports[key] === 'function') {
-              Component = module.exports[key];
-              break;
-            }
-          }
-        }
-
-        if (!Component) {
-          throw new Error('No exported React component found in ' + entryFile);
-        }
-
-        // Apply visual tokens
-        document.documentElement.classList.toggle('dark', currentProps.theme === 'dark');
-        document.documentElement.style.setProperty('--dialkit-radius', (currentProps.radius || 16) + 'px');
-        document.documentElement.style.setProperty('--dialkit-padding', (currentProps.padding || 24) + 'px');
-
-        const container = document.getElementById('root');
-        if (!root) root = ReactDOM.createRoot(container);
-
-        root.render(
-          React.createElement('div', {
-            className: 'p-6 flex flex-col items-center justify-center min-h-screen ' + (currentProps.theme === 'dark' ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]')
-          }, React.createElement(Component, currentProps))
-        );
-
-        window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
-      } catch (err) {
-        console.error(err);
-        window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'error', error: err.message }, '*');
-        if (root) {
-          root.render(React.createElement(ErrorFallback, { error: err }));
-        }
-      }
-    }
-
-    window.addEventListener('message', (e) => {
-      if (e.data?.type === 'UPDATE_DIALKIT') {
-        currentProps = { ...currentProps, ...e.data.props };
-        renderActive();
-      }
-    });
-
-    renderActive();
-  </script>
-</body>
-</html>`
-  }, [files, activeEntry, dialkitProps])
+  }, [dialkitProps])
 
   // Handle postMessage communication from iframe
   useEffect(() => {
     function handleMsg(e: MessageEvent) {
-      if (e.data?.type === "CANVAS_STATUS") {
+      if (e.data?.type === "CANVAS_FRAME_READY") {
+        isFrameReadyRef.current = true
+        pushBundleToFrame()
+      } else if (e.data?.type === "CANVAS_STATUS") {
         if (e.data.status === "ready") {
           setIsLoading(false)
           setRuntimeError(null)
@@ -266,17 +118,7 @@ export function CanvasSandbox({
     }
     window.addEventListener("message", handleMsg)
     return () => window.removeEventListener("message", handleMsg)
-  }, [])
-
-  // Send prop changes to iframe live
-  useEffect(() => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: "UPDATE_DIALKIT", props: dialkitProps },
-        "*"
-      )
-    }
-  }, [dialkitProps])
+  }, [pushBundleToFrame, onControlsDiscovered])
 
   // Spacebar panning listener
   useEffect(() => {
@@ -301,7 +143,7 @@ export function CanvasSandbox({
 
   // Mouse pan handlers
   const onMouseDown = (e: React.MouseEvent) => {
-    if (isSpacePressed || e.button === 1) { // Space or middle mouse
+    if (isSpacePressed || e.button === 1) {
       isPanningRef.current = true
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
       e.preventDefault()
@@ -321,12 +163,12 @@ export function CanvasSandbox({
     isPanningRef.current = false
   }
 
-  // Wheel zoom
+  // Wheel zoom with normalized scale (1.0 = 100%)
   const onWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? -10 : 10
-      const nextZoom = Math.min(Math.max(zoom + delta, 25), 250)
+      const delta = e.deltaY > 0 ? -0.05 : 0.05
+      const nextZoom = Math.min(Math.max(Math.round((zoom + delta) * 100) / 100, 0.2), 3.0)
       onZoomChange(nextZoom)
     } else if (isSpacePressed) {
       onPanChange({ x: pan.x - e.deltaX, y: pan.y - e.deltaY })
@@ -354,14 +196,16 @@ export function CanvasSandbox({
       <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none"
         style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: "center center",
           transition: isPanningRef.current ? "none" : "transform 100ms ease-out",
         }}
       >
         <div
           className={`pointer-events-auto relative shadow-2xl transition-all duration-200 ${
-            frame === "freeform" ? "h-full w-full max-w-6xl max-h-[85vh] rounded-2xl" : "rounded-3xl border border-[var(--c-line)] shadow-xl"
+            frame === "freeform"
+              ? "h-full w-full max-w-6xl max-h-[85vh] rounded-2xl"
+              : "rounded-3xl border border-[var(--c-line)] shadow-xl"
           }`}
           style={{
             width: dim.width,
@@ -372,13 +216,13 @@ export function CanvasSandbox({
           {/* Frame Header Tag */}
           <div className="absolute -top-7 left-2 flex items-center gap-2 text-[11px] font-mono text-ink-3">
             <span>{dim.label}</span>
-            {entryFile && <span className="opacity-60">• {entryFile}</span>}
+            {activeEntry && <span className="opacity-60">• {activeEntry}</span>}
           </div>
 
           {/* Sandboxed Live Evaluator */}
           <iframe
             ref={iframeRef}
-            srcDoc={srcDoc}
+            src={`/canvas-sandbox/${sessionId}`}
             title="Live Canvas Component"
             sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
             className="h-full w-full rounded-inherit border-0 bg-transparent"

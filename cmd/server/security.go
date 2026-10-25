@@ -35,9 +35,9 @@ func requestIsHTTPS(r *http.Request) bool {
 // wrap everything including the SPA shell.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/canvas-view/") {
-			// Embedded canvas preview iframe has its own isolated CSP and framing headers
-			// set by canvasProxyHandler; do not overwrite with global DENY or frame-ancestors 'none'.
+		if strings.HasPrefix(r.URL.Path, "/canvas-view/") || strings.HasPrefix(r.URL.Path, "/canvas-sandbox/") {
+			// Embedded canvas preview & sandbox iframes have their own isolated CSP and framing headers;
+			// do not overwrite with global DENY or frame-ancestors 'none'.
 			next.ServeHTTP(w, r)
 			return
 		}
