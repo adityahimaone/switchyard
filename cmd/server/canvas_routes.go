@@ -133,14 +133,15 @@ func registerCanvasRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/canvas/sessions/{id}/promote", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Board string `json:"board"`
+			Board         string `json:"board"`
+			WorkspacePath string `json:"workspace_path"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
 		if strings.TrimSpace(body.Board) == "" {
 			fail(w, fmt.Errorf("board required"), http.StatusBadRequest)
 			return
 		}
-		id, err := kanban.PromoteCanvasSession(r.PathValue("id"), body.Board)
+		id, err := kanban.PromoteCanvasSession(r.PathValue("id"), body.Board, body.WorkspacePath)
 		if err != nil {
 			fail(w, err, http.StatusBadRequest)
 			return

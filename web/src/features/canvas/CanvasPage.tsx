@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Loader2,
@@ -25,6 +25,11 @@ import {
   ChevronDown,
   FileCode,
   Radio,
+  Check,
+  Copy,
+  X,
+  Layers,
+  Code2,
 } from "lucide-react"
 import { api, toastGlobal, type Workspace } from "../../api"
 import { Button } from "@/components/ui/button"
@@ -38,6 +43,18 @@ import { cn } from "@/lib/utils"
 import { useExecutorModels } from "../board/modelCatalog"
 import { CANVAS_PREFILL_KEY, type CanvasPrefill } from "./canvasPrefill"
 import { CanvasSandbox } from "./CanvasSandbox"
+import {
+  type PenDocument,
+  type PenNode,
+  parsePenDocument,
+  createDefaultPenDocument,
+  findNodeById,
+  updateNodeInTree,
+  deleteNodeFromTree,
+} from "./penTypes"
+import { compilePenDocumentToReact } from "./penCompiler"
+import { PenCanvas } from "./PenCanvas"
+import { PenPropertyInspector } from "./PenPropertyInspector"
 import {
   DialKitInspector,
   type DialKitProps,
@@ -175,7 +192,14 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
                 <span className="truncate font-medium">{s.title}</span>
                 <StatusDot s={s} />
               </div>
-              <div className="truncate text-[11px] text-ink-3 mt-0.5">{s.branch}</div>
+              <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-3 mt-0.5">
+                {s.workspace_id === "scratchpad" && (
+                  <span className="rounded bg-accent/15 px-1 py-0.2 text-[9px] font-medium text-accent">
+                    Scratchpad
+                  </span>
+                )}
+                <span className="truncate">{s.branch}</span>
+              </div>
             </button>
           ))}
         </div>
@@ -199,6 +223,7 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
             key={selected}
             id={selected}
             boardSlug={boardSlug}
+            workspaces={workspaces}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
             onGone={() => {
@@ -262,13 +287,24 @@ function NewCanvas({
     () => workspaces.filter((w) => (w.os ?? "").toLowerCase() !== "windows" && !/^[A-Za-z]:|\\/.test(w.path)),
     [workspaces],
   )
-  const options: SearchSelectOption[] = usable.map((w) => ({
-    value: w.id,
-    label: w.name,
-    sublabel: w.path,
-    keywords: [w.path, ...(w.labels ?? [])],
-  }))
-  const [workspaceId, setWorkspaceId] = useState("")
+  const options: SearchSelectOption[] = useMemo(
+    () => [
+      {
+        value: "scratchpad",
+        label: "Global Scratchpad (No workspace required)",
+        sublabel: "Brainstorm visual design in pen.dev without a project workspace",
+        keywords: ["scratchpad", "global", "pen", "brainstorm", "design"],
+      },
+      ...usable.map((w) => ({
+        value: w.id,
+        label: w.name,
+        sublabel: w.path,
+        keywords: [w.path, ...(w.labels ?? [])],
+      })),
+    ],
+    [usable]
+  )
+  const [workspaceId, setWorkspaceId] = useState("scratchpad")
   const [title, setTitle] = useState(prefill?.title ?? "")
   const [brief, setBrief] = useState(prefill?.brief ?? "")
   const [executor, setExecutor] = useState("dsh")
@@ -277,10 +313,15 @@ function NewCanvas({
   const { models } = useExecutorModels(executor)
 
   useEffect(() => {
-    if (workspaceId || !prefill?.workspacePath) return
+    if (!prefill?.workspacePath) return
+    if (prefill.workspacePath === "scratchpad") {
+      setWorkspaceId("scratchpad")
+      return
+    }
     const hit = usable.find((w) => w.path === prefill.workspacePath)
     if (hit) setWorkspaceId(hit.id)
-  }, [prefill, usable, workspaceId])
+    else setWorkspaceId("scratchpad")
+  }, [prefill, usable])
 
   const create = useMutation({
     mutationFn: () => post<CanvasSession>("/api/canvas/sessions", { workspace_id: workspaceId, title, brief, executor, model, dialkit }),
@@ -293,12 +334,12 @@ function NewCanvas({
       <div>
         <h2 className="text-base font-semibold">New canvas</h2>
         <p className="text-xs text-ink-3">
-          Creates an isolated git worktree with Built-in Canvas Studio & DialKit. The agent only changes canvas files.
+          Creates an isolated git worktree with Built-in pen.dev Canvas Studio & DialKit. The agent only changes canvas files.
         </p>
       </div>
       <div>
         <Label className="text-xs text-ink-3">Workspace</Label>
-        <SearchSelect options={options} value={workspaceId} onValueChange={setWorkspaceId} placeholder="Search workspaces..." />
+        <SearchSelect options={options} value={workspaceId} onValueChange={setWorkspaceId} placeholder="Search workspaces or select Global Scratchpad..." />
       </div>
       <div>
         <Label className="text-xs text-ink-3" htmlFor="canvas-title">Title</Label>
@@ -340,9 +381,178 @@ function NewCanvas({
   )
 }
 
+function ConvertToReactModal({
+  open,
+  onClose,
+  doc,
+}: {
+  open: boolean
+  onClose: () => void
+  doc: PenDocument
+}) {
+  const [copied, setCopied] = useState(false)
+  const code = useMemo(() => compilePenDocumentToReact(doc, "CanvasComponent"), [doc])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#121316] shadow-2xl overflow-hidden">
+        <header className="flex h-12 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4">
+          <div className="flex items-center gap-2">
+            <Code2 className="size-4 text-accent" />
+            <h3 className="text-xs font-semibold text-neutral-200">React + Tailwind JSX</h3>
+            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-400">
+              0 Tokens Consumed
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </header>
+
+        <div className="relative min-h-0 flex-1 overflow-auto bg-[#0a0b0e] p-4 font-mono text-xs leading-relaxed text-neutral-300">
+          <pre className="select-text whitespace-pre overflow-x-auto">{code}</pre>
+        </div>
+
+        <footer className="flex items-center justify-between border-t border-[rgba(255,255,255,0.08)] bg-[#14151b] px-4 py-3">
+          <p className="text-[11px] text-neutral-400">
+            Copy and paste this component directly into your project.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(code)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            }}
+            className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-black hover:bg-accent/90 active:scale-[0.98] transition-all"
+          >
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            <span>{copied ? "Copied!" : "Copy Component"}</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+function PromoteTaskModal({
+  open,
+  onClose,
+  session,
+  workspaces,
+  boardSlug,
+  onPromoted,
+}: {
+  open: boolean
+  onClose: () => void
+  session: CanvasSession
+  workspaces: Workspace[]
+  boardSlug: string
+  onPromoted: (taskId: string) => void
+}) {
+  const [targetWorkspace, setTargetWorkspace] = useState(
+    session.workspace_id !== "scratchpad" ? session.workspace_path : workspaces[0]?.path || ""
+  )
+  const [board, setBoard] = useState(boardSlug)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  if (!open) return null
+
+  const handlePromote = async () => {
+    setIsSubmitting(true)
+    try {
+      const res = await post<{ task_id: string }>(`/api/canvas/sessions/${session.id}/promote`, {
+        board,
+        workspace_path: targetWorkspace,
+      })
+      toastGlobal(`Promoted to card #${res.task_id} on ${board}`, "success")
+      onPromoted(res.task_id)
+      onClose()
+    } catch (err: any) {
+      toastGlobal(err.message || "Failed to promote canvas", "error")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="flex w-full max-w-md flex-col rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#121316] shadow-2xl overflow-hidden">
+        <header className="flex h-12 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4">
+          <div className="flex items-center gap-2">
+            <ArrowUpRight className="size-4 text-accent" />
+            <h3 className="text-xs font-semibold text-neutral-200">Promote Canvas to Kanban Task</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </header>
+
+        <div className="space-y-4 p-4 text-xs">
+          <div>
+            <Label className="text-xs text-neutral-400">Target Kanban Board</Label>
+            <Input
+              value={board}
+              onChange={(e) => setBoard(e.target.value)}
+              className="mt-1 bg-[#18191f] text-neutral-200 border-[rgba(255,255,255,0.1)]"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs text-neutral-400">Target Project Workspace</Label>
+            <Select value={targetWorkspace} onValueChange={setTargetWorkspace}>
+              <SelectTrigger className="mt-1 bg-[#18191f] text-neutral-200 border-[rgba(255,255,255,0.1)]">
+                <SelectValue placeholder="Select workspace to bind..." />
+              </SelectTrigger>
+              <SelectContent className="bg-[#18191f] text-neutral-200 border-[rgba(255,255,255,0.1)]">
+                {workspaces.map((w) => (
+                  <SelectItem key={w.id} value={w.path}>
+                    {w.name} ({w.path})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {session.workspace_id === "scratchpad" && (
+              <p className="mt-1 text-[11px] text-accent">
+                ✦ Brainstormed in Global Scratchpad. Selecting a target workspace binds this task to the project repository.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <footer className="flex items-center justify-end gap-2 border-t border-[rgba(255,255,255,0.08)] bg-[#14151b] px-4 py-3">
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 text-neutral-400 hover:text-white">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handlePromote}
+            disabled={isSubmitting || !board.trim()}
+            className="h-8 bg-accent text-black font-medium hover:bg-accent/90"
+          >
+            {isSubmitting && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            Create Task Card
+          </Button>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
 function StudioSessionView({
   id,
   boardSlug,
+  workspaces,
   sidebarOpen,
   onToggleSidebar,
   onGone,
@@ -350,13 +560,14 @@ function StudioSessionView({
 }: {
   id: string
   boardSlug: string
+  workspaces: Workspace[]
   sidebarOpen: boolean
   onToggleSidebar: () => void
   onGone: () => void
   onOpen: (id: string) => void
 }) {
   const qc = useQueryClient()
-  const [viewMode, setViewMode] = useState<"sandbox" | "server">("sandbox")
+  const [viewMode, setViewMode] = useState<"pen" | "sandbox" | "server">("pen")
   const [frame, setFrame] = useState<"freeform" | "desktop" | "tablet" | "mobile">("desktop")
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -376,6 +587,8 @@ function StudioSessionView({
     Record<string, { title: string; schema: Record<string, any> }>
   >({})
   const [text, setText] = useState("")
+  const [reactModalOpen, setReactModalOpen] = useState(false)
+  const [promoteModalOpen, setPromoteModalOpen] = useState(false)
 
   const handleSelectElement = useCallback((el: SelectedElementInfo | null, _file: string) => {
     setSelectedElement(el)
@@ -438,6 +651,149 @@ function StudioSessionView({
     }
     return res
   }, [rawFiles])
+
+  // Identify if any .pen file exists
+  const penFileKey = useMemo(() => {
+    const keys = Object.keys(files)
+    return keys.find((k) => k.endsWith(".pen")) || "design/component.pen"
+  }, [files])
+
+  // In-memory PenDocument state
+  const [penDoc, setPenDoc] = useState<PenDocument>(() => createDefaultPenDocument(s?.title || "Canvas Component"))
+  const [selectedPenNodeId, setSelectedPenNodeId] = useState<string | null>(null)
+  const [penSaveStatus, setPenSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved")
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync penDoc from files when files load
+  useEffect(() => {
+    if (files[penFileKey]) {
+      const parsed = parsePenDocument(files[penFileKey])
+      setPenDoc(parsed)
+      if (parsed.children && parsed.children[0]) {
+        setSelectedPenNodeId(parsed.children[0].id)
+      }
+    } else if (s?.title) {
+      setPenDoc(createDefaultPenDocument(s.title))
+    }
+  }, [files, penFileKey, s?.title])
+
+  // Debounced auto-save function (300ms)
+  const triggerPenAutoSave = useCallback(
+    (docToSave: PenDocument) => {
+      setPenSaveStatus("unsaved")
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+      autoSaveTimerRef.current = setTimeout(async () => {
+        setPenSaveStatus("saving")
+        try {
+          const rawJson = JSON.stringify(docToSave, null, 2)
+          await api(`/api/canvas/sessions/${id}/files`, {
+            method: "PUT",
+            body: JSON.stringify({
+              files: {
+                [penFileKey]: rawJson,
+              },
+            }),
+          })
+          setPenSaveStatus("saved")
+        } catch {
+          setPenSaveStatus("unsaved")
+        }
+      }, 300)
+    },
+    [id, penFileKey]
+  )
+
+  // Handlers for PenNode mutations
+  const handleUpdatePenNode = useCallback(
+    (updated: PenNode) => {
+      setPenDoc((prev) => {
+        const nextChildren = updateNodeInTree(prev.children, updated.id, updated)
+        const nextDoc = { ...prev, children: nextChildren }
+        triggerPenAutoSave(nextDoc)
+        return nextDoc
+      })
+    },
+    [triggerPenAutoSave]
+  )
+
+  const handleDeletePenNode = useCallback(
+    (nodeId: string) => {
+      setPenDoc((prev) => {
+        const nextChildren = deleteNodeFromTree(prev.children, nodeId)
+        const nextDoc = { ...prev, children: nextChildren }
+        triggerPenAutoSave(nextDoc)
+        return nextDoc
+      })
+      setSelectedPenNodeId(null)
+    },
+    [triggerPenAutoSave]
+  )
+
+  const handleAddPenNode = useCallback(
+    (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => {
+      setPenDoc((prev) => {
+        const newNodeId = `node_${Date.now()}`
+        let newNode: PenNode
+        if (type === "text") {
+          newNode = {
+            type: "text",
+            id: newNodeId,
+            name: "Text Layer",
+            text: "Double click to edit",
+            fontSize: 14,
+            fontWeight: "400",
+            fill: "#ffffff",
+          }
+        } else {
+          newNode = {
+            type: "frame",
+            id: newNodeId,
+            name: "New Frame",
+            x: 80,
+            y: 80,
+            width: 360,
+            height: 200,
+            cornerRadius: 12,
+            fill: "#18191f",
+            stroke: "rgba(255,255,255,0.1)",
+            strokeWidth: 1,
+            layout: "vertical",
+            padding: 16,
+            gap: 12,
+          }
+        }
+
+        let nextChildren: PenNode[]
+        if (parentOrRoot === "root" || !parentOrRoot) {
+          nextChildren = [...prev.children, newNode]
+        } else {
+          const target = findNodeById(prev.children, parentOrRoot)
+          if (target && target.type === "frame") {
+            const updatedTarget = {
+              ...target,
+              children: [...(target.children || []), newNode],
+            }
+            nextChildren = updateNodeInTree(prev.children, parentOrRoot, updatedTarget)
+          } else {
+            nextChildren = [...prev.children, newNode]
+          }
+        }
+
+        const nextDoc = { ...prev, children: nextChildren }
+        triggerPenAutoSave(nextDoc)
+        setSelectedPenNodeId(newNodeId)
+        return nextDoc
+      })
+    },
+    [triggerPenAutoSave]
+  )
+
+  const selectedPenNode = useMemo(() => {
+    if (!selectedPenNodeId) return null
+    return findNodeById(penDoc.children, selectedPenNodeId)
+  }, [penDoc, selectedPenNodeId])
 
   // Pick first relevant file when files arrive
   useEffect(() => {
@@ -558,8 +914,18 @@ function StudioSessionView({
 
         {/* Center: Device Frame & Zoom Controls */}
         <div className="flex items-center gap-3">
-          {/* View Mode Toggle: Built-In Sandbox vs Dev Server */}
+          {/* View Mode Toggle: Built-In Canvas vs Sandbox vs Dev Server */}
           <div className="flex items-center rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("pen")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-all duration-100",
+                viewMode === "pen" ? "bg-background text-ink-1 shadow-sm font-medium" : "text-ink-3 hover:text-ink-1",
+              )}
+            >
+              <Sparkles className="size-3 text-accent" /> pen.dev Canvas
+            </button>
             <button
               type="button"
               onClick={() => setViewMode("sandbox")}
@@ -568,7 +934,7 @@ function StudioSessionView({
                 viewMode === "sandbox" ? "bg-background text-ink-1 shadow-sm font-medium" : "text-ink-3 hover:text-ink-1",
               )}
             >
-              <Sparkles className="size-3 text-accent" /> Sandbox (0ms)
+              <Layers className="size-3" /> Sandbox (0ms)
             </button>
             <button
               type="button"
@@ -718,17 +1084,23 @@ function StudioSessionView({
             <GitFork className="size-3 mr-1" /> Fork
           </Button>
 
+          {viewMode === "pen" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs active:scale-[0.97]"
+              onClick={() => setReactModalOpen(true)}
+            >
+              <Code2 className="size-3 mr-1 text-accent" /> Convert to React (0 Token)
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="outline"
             className="h-7 px-2 text-xs active:scale-[0.97]"
             disabled={busy}
-            onClick={() =>
-              run(
-                () => post<{ task_id: string }>(`/api/canvas/sessions/${id}/promote`, { board: boardSlug }),
-                `Promoted to triage card on ${boardSlug}`,
-              )
-            }
+            onClick={() => setPromoteModalOpen(true)}
           >
             <ArrowUpRight className="size-3 mr-1" /> Promote
           </Button>
@@ -764,7 +1136,19 @@ function StudioSessionView({
       <div className="flex min-h-0 flex-1 relative overflow-hidden">
         {/* Central Canvas Viewport */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col relative bg-[var(--c-canvas)] overflow-hidden">
-          {viewMode === "sandbox" ? (
+          {viewMode === "pen" ? (
+            <PenCanvas
+              document={penDoc}
+              selectedNodeId={selectedPenNodeId}
+              onSelectNode={setSelectedPenNodeId}
+              onUpdateNode={handleUpdatePenNode}
+              onAddNode={handleAddPenNode}
+              onResetDocument={(doc) => {
+                setPenDoc(doc)
+                triggerPenAutoSave(doc)
+              }}
+            />
+          ) : viewMode === "sandbox" ? (
             fileList.length === 0 && !filesQuery.isLoading ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ink-3 p-6 text-center">
                 <Palette className="size-8 text-ink-3/50" />
@@ -958,33 +1342,63 @@ function StudioSessionView({
           </div>
         </div>
 
-        {/* Right Inspector Drawer (DialKit) */}
+        {/* Right Inspector Drawer (DialKit or pen.dev Inspector) */}
         <aside
           className={cn(
             "flex shrink-0 flex-col border-l border-[var(--c-line)] bg-background transition-all duration-150 ease-out z-10",
-            inspectorOpen ? "w-72" : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
+            inspectorOpen
+              ? viewMode === "pen"
+                ? "w-80"
+                : "w-72"
+              : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
           )}
         >
-          <DialKitInspector
-            props={dialkitProps}
-            onChange={setDialkitProps}
-            onSyncCode={async () => {
-              await syncMutation.mutateAsync()
-            }}
-            isSyncing={syncMutation.isPending}
-            isDirty={isDirty}
-            selectedElement={selectedElement}
-            onUpdateElement={handleUpdateElement}
-            onDeselectElement={() => setSelectedElement(null)}
-            activeComponentTitle={
-              activeFile
-                ? discoveredSchemas[activeFile]?.title || activeFile.split("/").pop()
-                : "Component"
-            }
-            schema={activeFile ? discoveredSchemas[activeFile]?.schema : undefined}
-          />
+          {viewMode === "pen" ? (
+            <PenPropertyInspector
+              selectedNode={selectedPenNode}
+              onUpdateNode={handleUpdatePenNode}
+              onDeleteNode={handleDeletePenNode}
+              saveStatus={penSaveStatus}
+              onConvertToReact={() => setReactModalOpen(true)}
+              onPromoteToTask={() => setPromoteModalOpen(true)}
+            />
+          ) : (
+            <DialKitInspector
+              props={dialkitProps}
+              onChange={setDialkitProps}
+              onSyncCode={async () => {
+                await syncMutation.mutateAsync()
+              }}
+              isSyncing={syncMutation.isPending}
+              isDirty={isDirty}
+              selectedElement={selectedElement}
+              onUpdateElement={handleUpdateElement}
+              onDeselectElement={() => setSelectedElement(null)}
+              activeComponentTitle={
+                activeFile
+                  ? discoveredSchemas[activeFile]?.title || activeFile.split("/").pop()
+                  : "Component"
+              }
+              schema={activeFile ? discoveredSchemas[activeFile]?.schema : undefined}
+            />
+          )}
         </aside>
       </div>
+
+      {/* 0-Token React Transpiler & Promote Modals */}
+      <ConvertToReactModal
+        open={reactModalOpen}
+        onClose={() => setReactModalOpen(false)}
+        doc={penDoc}
+      />
+      <PromoteTaskModal
+        open={promoteModalOpen}
+        onClose={() => setPromoteModalOpen(false)}
+        session={s}
+        workspaces={workspaces}
+        boardSlug={boardSlug}
+        onPromoted={() => qc.invalidateQueries({ queryKey: ["tasks"] })}
+      />
     </div>
   )
 }

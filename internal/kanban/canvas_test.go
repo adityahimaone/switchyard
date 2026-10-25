@@ -13,6 +13,8 @@ func TestCanvasPathAllowed(t *testing.T) {
 		want    bool
 	}{
 		{"canvas/registry.ts", false, true},
+		{"design/component.pen", false, true},
+		{"component.pen", false, true},
 		{"app/canvas/page.tsx", false, true},
 		{"src/app/canvas/page.tsx", false, true},
 		{"src/pages/canvas.tsx", false, true},

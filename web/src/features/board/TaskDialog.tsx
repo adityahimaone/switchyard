@@ -1393,12 +1393,12 @@ export default function TaskDialog({
                 {onOpenCanvas && (
                   <button
                     type="button"
-                    onClick={() => onOpenCanvas({ workspacePath: ws, title: title.trim(), brief: body.trim() })}
+                    onClick={() => onOpenCanvas({ workspacePath: ws || "scratchpad", title: title.trim(), brief: body.trim() })}
                     className="glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium text-ink-3 transition-[color,transform] duration-150 ease-[var(--ease-out-expo)] hover:text-ink active:scale-[0.97]"
-                    title="Brainstorm this in Canvas Studio (live canvas in an isolated worktree) instead of creating a card"
+                    title={ws ? "Brainstorm this in Canvas Studio (live canvas in an isolated worktree)" : "Brainstorm visually in Global Scratchpad (pen.dev) without selecting a workspace"}
                   >
-                    <Palette className="size-3" />
-                    <span>Canvas</span>
+                    <Palette className="size-3 text-accent" />
+                    <span>{ws ? "Canvas" : "Canvas (Scratchpad)"}</span>
                   </button>
                 )}
               </div>
