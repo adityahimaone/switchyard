@@ -317,9 +317,9 @@ function SessionView({
               key={frameKey}
               title={`Canvas ${s.title}`}
               src={s.view_url}
-              // No allow-same-origin: agent-written code runs in an opaque origin
-              // and cannot read the board's cookie or call its API.
-              sandbox="allow-scripts allow-forms allow-modals allow-popups"
+              // Sandboxed execution with same-origin so Next.js hydration, storage
+              // and subresource loading work. The auth cookie is HttpOnly and stripped by the proxy.
+              sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
               className="h-full w-full bg-white"
             />
           ) : (

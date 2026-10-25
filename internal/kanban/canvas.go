@@ -429,6 +429,7 @@ func CreateCanvasSession(wsRef, title, executor, model string, dialkit bool, par
 		return nil, fmt.Errorf("git worktree add failed: %s", truncateWorktreeOutput(out))
 	}
 	_, _ = workerShell(plan.Path, "canvas: link-deps", fmt.Sprintf(`cd %[1]s && if [ -d %[2]s/node_modules ] && [ ! -L node_modules ]; then rm -rf node_modules && ln -s %[2]s/node_modules node_modules; fi`, shellQuotePath(plan.Path), shellQuotePath(ws.Path)))
+	_, _ = workerShell(plan.Path, "canvas: scaffold-page", fmt.Sprintf(`cd %[1]s && if [ -d app ] && [ ! -f app/canvas/page.tsx ] && [ ! -f app/canvas/page.jsx ]; then mkdir -p app/canvas && printf "'use client'\nimport React from 'react'\nexport default function CanvasPage() {\n  return (\n    <div style={{minHeight:'100vh',padding:'2rem',background:'#0f1115',color:'#e6edf3',fontFamily:'sans-serif'}}>\n      <h1 style={{fontSize:'1.25rem',fontWeight:600,marginBottom:'0.5rem'}}>Canvas: %%s</h1>\n      <p style={{color:'#8b949e',fontSize:'0.875rem'}}>Waiting for canvas explorations...</p>\n    </div>\n  )\n}\n" %s > app/canvas/page.tsx && git add app/canvas/page.tsx && git -c user.name=Canvas -c user.email=canvas@switchyard.local commit -m "scaffold: canvas entry page"; fi`, shellQuotePath(plan.Path), shellQuotePath(title)))
 	now := time.Now().Unix()
 	s := &CanvasSession{
 		ID: id, Title: title, WorkspaceID: ws.ID, WorkspacePath: ws.Path, Host: ws.Host,

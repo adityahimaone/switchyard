@@ -191,8 +191,9 @@ func canvasProxyHandler(w http.ResponseWriter, r *http.Request) {
 		ModifyResponse: func(resp *http.Response) error {
 			h := resp.Header
 			h.Del("Content-Security-Policy")
+			h.Del("X-Frame-Options")
 			h.Set("X-Frame-Options", "SAMEORIGIN")
-			h.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-modals allow-popups; frame-ancestors 'self'")
+			h.Set("Content-Security-Policy", "frame-ancestors 'self'")
 			if s.Framework == "next" && isRewritableType(h.Get("Content-Type")) {
 				raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 				resp.Body.Close()

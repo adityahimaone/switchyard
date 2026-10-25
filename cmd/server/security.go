@@ -35,6 +35,12 @@ func requestIsHTTPS(r *http.Request) bool {
 // wrap everything including the SPA shell.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/canvas-view/") {
+			// Embedded canvas preview iframe has its own isolated CSP and framing headers
+			// set by canvasProxyHandler; do not overwrite with global DENY or frame-ancestors 'none'.
+			next.ServeHTTP(w, r)
+			return
+		}
 		h := w.Header()
 		// Stops a browser from second-guessing a declared Content-Type, which
 		// is what turns an uploaded file into script execution.

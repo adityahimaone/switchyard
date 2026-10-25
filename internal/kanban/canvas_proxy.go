@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -25,15 +27,29 @@ import (
 // canvas code runs in an opaque origin and cannot read the board's cookie or
 // call the board API.
 
-var canvasSecret = func() []byte {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return b
-}()
+var (
+	canvasSecretOnce sync.Once
+	canvasSecret     []byte
+)
+
+func getCanvasSecret() []byte {
+	canvasSecretOnce.Do(func() {
+		p := filepath.Join(hermesHome(), "kanban", "canvas.key")
+		if b, err := os.ReadFile(p); err == nil && len(b) == 32 {
+			canvasSecret = b
+			return
+		}
+		canvasSecret = make([]byte, 32)
+		_, _ = rand.Read(canvasSecret)
+		_ = os.MkdirAll(filepath.Dir(p), 0o700)
+		_ = os.WriteFile(p, canvasSecret, 0o600)
+	})
+	return canvasSecret
+}
 
 // CanvasViewToken returns the URL token authorising the proxy for a session.
 func CanvasViewToken(id string) string {
-	m := hmac.New(sha256.New, canvasSecret)
+	m := hmac.New(sha256.New, getCanvasSecret())
 	m.Write([]byte(id))
 	return hex.EncodeToString(m.Sum(nil))[:32]
 }
