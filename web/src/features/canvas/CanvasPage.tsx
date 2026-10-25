@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Loader2,
   Palette,
-  Play,
-  Square,
   GitFork,
   Trash2,
   ArrowUpRight,
@@ -14,21 +12,11 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Monitor,
-  Tablet,
-  Smartphone,
-  Maximize2,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
   Sparkles,
   ChevronDown,
-  FileCode,
-  Radio,
   Check,
   Copy,
   X,
-  Layers,
   Code2,
 } from "lucide-react"
 import { api, toastGlobal, type Workspace } from "../../api"
@@ -42,7 +30,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils"
 import { useExecutorModels } from "../board/modelCatalog"
 import { CANVAS_PREFILL_KEY, type CanvasPrefill } from "./canvasPrefill"
-import { CanvasSandbox } from "./CanvasSandbox"
 import {
   type PenDocument,
   type PenNode,
@@ -55,12 +42,6 @@ import {
 import { compilePenDocumentToReact } from "./penCompiler"
 import { PenCanvas } from "./PenCanvas"
 import { PenPropertyInspector } from "./PenPropertyInspector"
-import {
-  DialKitInspector,
-  type DialKitProps,
-  DEFAULT_DIALKIT_PROPS,
-  type SelectedElementInfo,
-} from "./DialKitInspector"
 
 export interface CanvasSession {
   id: string
@@ -70,13 +51,13 @@ export interface CanvasSession {
   host: string
   worktree_path: string
   branch: string
-  port: number
+  port?: number
   framework?: string
   status: "ready" | "working" | "error" | "discarded"
-  server: "stopped" | "running"
+  server?: "stopped" | "running"
   executor: string
   model: string
-  dialkit: boolean
+  dialkit?: boolean
   turns: number
   last_error?: string
   parent_id?: string
@@ -171,8 +152,7 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
           {(sessions.data ?? []).length === 0 && !sessions.isLoading && (
             <p className="px-2 text-xs text-ink-3 leading-relaxed">
-              No canvases yet. A canvas is a live, source-backed brainstorm workspace built with /create-canvas in an
-              isolated git worktree.
+              No canvases yet. Brainstorm visual prototypes with 0-Token Native pen.dev Canvas in an isolated worktree.
             </p>
           )}
           {(sessions.data ?? []).map((s) => (
@@ -251,7 +231,7 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
               <Palette className="size-10 text-ink-3/40 mb-3" />
               <p className="text-sm font-medium text-ink-1">Select a canvas or create a new one</p>
               <p className="text-xs text-ink-3 mt-1">
-                Brainstorm, tune live React components with DialKit, and promote variations to tasks.
+                Brainstorm visually with pen.dev Canvas, compile to React in 0 tokens, and promote to tasks.
               </p>
               <Button
                 size="sm"
@@ -270,8 +250,8 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
 
 function StatusDot({ s }: { s: CanvasSession }) {
   if (s.status === "working") return <Loader2 className="size-3.5 animate-spin text-accent" />
-  const color = s.status === "error" ? "bg-red-500" : s.server === "running" ? "bg-emerald-500" : "bg-ink-3/50"
-  return <span className={cn("size-2 rounded-full", color)} title={`${s.status} · server ${s.server}`} />
+  const color = s.status === "error" ? "bg-red-500" : "bg-emerald-500"
+  return <span className={cn("size-2 rounded-full", color)} title={s.status} />
 }
 
 function NewCanvas({
@@ -309,7 +289,6 @@ function NewCanvas({
   const [brief, setBrief] = useState(prefill?.brief ?? "")
   const [executor, setExecutor] = useState("dsh")
   const [model, setModel] = useState("")
-  const [dialkit, setDialkit] = useState(true) // Auto-enabled by default for instant tuning
   const { models } = useExecutorModels(executor)
 
   useEffect(() => {
@@ -324,7 +303,7 @@ function NewCanvas({
   }, [prefill, usable])
 
   const create = useMutation({
-    mutationFn: () => post<CanvasSession>("/api/canvas/sessions", { workspace_id: workspaceId, title, brief, executor, model, dialkit }),
+    mutationFn: () => post<CanvasSession>("/api/canvas/sessions", { workspace_id: workspaceId, title, brief, executor, model }),
     onSuccess: onCreated,
     onError: (e: Error) => toastGlobal(e.message, "error"),
   })
@@ -334,7 +313,7 @@ function NewCanvas({
       <div>
         <h2 className="text-base font-semibold">New canvas</h2>
         <p className="text-xs text-ink-3">
-          Creates an isolated git worktree with Built-in pen.dev Canvas Studio & DialKit. The agent only changes canvas files.
+          Creates an isolated git worktree with 0-Token Native pen.dev Canvas Studio.
         </p>
       </div>
       <div>
@@ -343,7 +322,7 @@ function NewCanvas({
       </div>
       <div>
         <Label className="text-xs text-ink-3" htmlFor="canvas-title">Title</Label>
-        <Input id="canvas-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Pricing page explorations" />
+        <Input id="canvas-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Pricing card explorations" />
       </div>
       <div>
         <Label className="text-xs text-ink-3" htmlFor="canvas-brief">First request (optional)</Label>
@@ -368,12 +347,6 @@ function NewCanvas({
           </div>
         </div>
       </div>
-      <label className="flex items-start gap-2 text-xs text-ink-3">
-        <input type="checkbox" className="mt-0.5" checked={dialkit} onChange={(e) => setDialkit(e.target.checked)} />
-        <span>
-          DialKit live component editing (Recommended) — provides instant 0ms visual knobs and bi-directional code sync.
-        </span>
-      </label>
       <Button disabled={!workspaceId || !title.trim() || create.isPending} onClick={() => create.mutate()} className="active:scale-[0.97] transition-transform">
         {create.isPending && <Loader2 className="size-4 animate-spin mr-1.5" />} Create canvas
       </Button>
@@ -567,61 +540,11 @@ function StudioSessionView({
   onOpen: (id: string) => void
 }) {
   const qc = useQueryClient()
-  const [viewMode, setViewMode] = useState<"pen" | "sandbox" | "server">("pen")
-  const [frame, setFrame] = useState<"freeform" | "desktop" | "tablet" | "mobile">("desktop")
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
-  const [activeFile, setActiveFile] = useState<string | undefined>()
-  const [dialkitProps, setDialkitProps] = useState<DialKitProps>(DEFAULT_DIALKIT_PROPS)
-  const [initialDialkitProps, setInitialDialkitProps] = useState<DialKitProps>(DEFAULT_DIALKIT_PROPS)
-  const [selectedElement, setSelectedElement] = useState<SelectedElementInfo | null>(null)
-  const [elementUpdate, setElementUpdate] = useState<{
-    file: string
-    text?: string
-    matchedDialKey?: string
-    styles?: Record<string, string>
-  } | null>(null)
-  const [discoveredSchemas, setDiscoveredSchemas] = useState<
-    Record<string, { title: string; schema: Record<string, any> }>
-  >({})
   const [text, setText] = useState("")
   const [reactModalOpen, setReactModalOpen] = useState(false)
   const [promoteModalOpen, setPromoteModalOpen] = useState(false)
-
-  const handleSelectElement = useCallback((el: SelectedElementInfo | null, _file: string) => {
-    setSelectedElement(el)
-    if (el) {
-      setInspectorOpen(true)
-      if (el.matchedDialKey && el.text) {
-        setDialkitProps((prev) => ({ ...prev, [el.matchedDialKey!]: el.text }))
-      }
-    }
-  }, [])
-
-  const handleSchemaDiscovered = useCallback(
-    (info: { title: string; schema: Record<string, any> }, file: string) => {
-      setDiscoveredSchemas((prev) => ({ ...prev, [file]: info }))
-    },
-    [],
-  )
-
-  const handleUpdateElement = useCallback(
-    (update: { text?: string; matchedDialKey?: string; styles?: Record<string, string> }) => {
-      if (!activeFile) return
-      setElementUpdate({
-        file: activeFile,
-        ...update,
-      })
-      if (selectedElement) {
-        setSelectedElement((prev) =>
-          prev ? { ...prev, text: update.text !== undefined ? update.text : prev.text } : null,
-        )
-      }
-    },
-    [activeFile, selectedElement],
-  )
 
   const detail = useQuery({
     queryKey: ["canvas-session", id],
@@ -629,7 +552,7 @@ function StudioSessionView({
     refetchInterval: (q) => (q.state.data?.session.status === "working" ? 2500 : 8000),
   })
 
-  // Fetch canvas source files for in-browser instant sandbox
+  // Fetch canvas source files for .pen document
   const filesQuery = useQuery({
     queryKey: ["canvas-files", id],
     queryFn: () => api<Record<string, string>>(`/api/canvas/sessions/${id}/files`),
@@ -795,43 +718,6 @@ function StudioSessionView({
     return findNodeById(penDoc.children, selectedPenNodeId)
   }, [penDoc, selectedPenNodeId])
 
-  // Pick first relevant file when files arrive
-  useEffect(() => {
-    if (activeFile && files[activeFile]) return
-    const keys = Object.keys(files)
-    if (keys.length === 0) return
-    const candidate =
-      keys.find((k) => k.endsWith(".html")) ||
-      keys.find((k) => k.endsWith(".tsx") && !k.endsWith("page.tsx")) ||
-      keys[0]
-    setActiveFile(candidate)
-  }, [files, activeFile])
-
-  // Sync DialKit mutation
-  const syncMutation = useMutation({
-    mutationFn: async () => {
-      // Create or update canvas/dialkit.json in the worktree
-      const updatedFiles: Record<string, string> = {
-        ...files,
-        "canvas/dialkit.json": JSON.stringify(dialkitProps, null, 2),
-      }
-      return api(`/api/canvas/sessions/${id}/files`, {
-        method: "PUT",
-        body: JSON.stringify({ files: updatedFiles }),
-      })
-    },
-    onSuccess: () => {
-      setInitialDialkitProps(dialkitProps)
-      qc.invalidateQueries({ queryKey: ["canvas-files", id] })
-      toastGlobal("DialKit tweaks synced & committed to branch", "success")
-    },
-    onError: (e: Error) => toastGlobal(e.message, "error"),
-  })
-
-  const isDirty = useMemo(() => {
-    return JSON.stringify(dialkitProps) !== JSON.stringify(initialDialkitProps)
-  }, [dialkitProps, initialDialkitProps])
-
   const refresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["canvas-session", id] })
     qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
@@ -850,23 +736,12 @@ function StudioSessionView({
     [refresh],
   )
 
-  // Keyboard shortcuts
+  // Keyboard shortcut Cmd+] to toggle inspector
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return
-      if (e.key === "]") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "]") {
         e.preventDefault()
         setInspectorOpen((v) => !v)
-      } else if (e.key === "0") {
-        e.preventDefault()
-        setZoom(1)
-        setPan({ x: 0, y: 0 })
-      } else if (e.key === "=" || e.key === "+") {
-        e.preventDefault()
-        setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))
-      } else if (e.key === "-") {
-        e.preventDefault()
-        setZoom((z) => Math.max(0.4, Math.round((z - 0.1) * 10) / 10))
       }
     }
     window.addEventListener("keydown", handleKeyDown)
@@ -875,7 +750,6 @@ function StudioSessionView({
 
   if (!s) return <div className="flex flex-1 items-center justify-center text-sm text-ink-3">Loading canvas…</div>
   const busy = s.status === "working"
-  const fileList = Object.keys(files)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col h-full select-none">
@@ -900,11 +774,9 @@ function StudioSessionView({
               <Badge variant="outline" className="text-[10px] uppercase tracking-wider h-5 font-normal">
                 {s.status}
               </Badge>
-              {s.dialkit && (
-                <Badge variant="outline" className="text-[10px] text-accent border-accent/40 h-5 font-normal">
-                  DialKit
-                </Badge>
-              )}
+              <Badge variant="outline" className="text-[10px] text-accent border-accent/40 h-5 font-normal">
+                pen.dev
+              </Badge>
             </div>
             <div className="truncate text-[10px] text-ink-3">
               {s.branch} · {s.executor} · turn {s.turns}
@@ -912,163 +784,16 @@ function StudioSessionView({
           </div>
         </div>
 
-        {/* Center: Device Frame & Zoom Controls */}
-        <div className="flex items-center gap-3">
-          {/* View Mode Toggle: Built-In Canvas vs Sandbox vs Dev Server */}
-          <div className="flex items-center rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] p-0.5">
-            <button
-              type="button"
-              onClick={() => setViewMode("pen")}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-all duration-100",
-                viewMode === "pen" ? "bg-background text-ink-1 shadow-sm font-medium" : "text-ink-3 hover:text-ink-1",
-              )}
-            >
-              <Sparkles className="size-3 text-accent" /> pen.dev Canvas
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("sandbox")}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-all duration-100",
-                viewMode === "sandbox" ? "bg-background text-ink-1 shadow-sm font-medium" : "text-ink-3 hover:text-ink-1",
-              )}
-            >
-              <Layers className="size-3" /> Sandbox (0ms)
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("server")}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-all duration-100",
-                viewMode === "server" ? "bg-background text-ink-1 shadow-sm font-medium" : "text-ink-3 hover:text-ink-1",
-              )}
-            >
-              <Radio className="size-3" /> Dev Server
-            </button>
-          </div>
-
-          {/* Frames */}
-          {viewMode === "sandbox" && (
-            <div className="flex items-center rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setFrame("freeform")}
-                className={cn(
-                  "p-1 rounded-md text-ink-3 hover:text-ink-1 transition-colors",
-                  frame === "freeform" && "bg-background text-accent shadow-sm",
-                )}
-                title="Responsive Stage"
-              >
-                <Maximize2 className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setFrame("desktop")}
-                className={cn(
-                  "p-1 rounded-md text-ink-3 hover:text-ink-1 transition-colors",
-                  frame === "desktop" && "bg-background text-accent shadow-sm",
-                )}
-                title="Desktop 1200 × 800"
-              >
-                <Monitor className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setFrame("tablet")}
-                className={cn(
-                  "p-1 rounded-md text-ink-3 hover:text-ink-1 transition-colors",
-                  frame === "tablet" && "bg-background text-accent shadow-sm",
-                )}
-                title="Tablet 768 × 1024"
-              >
-                <Tablet className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setFrame("mobile")}
-                className={cn(
-                  "p-1 rounded-md text-ink-3 hover:text-ink-1 transition-colors",
-                  frame === "mobile" && "bg-background text-accent shadow-sm",
-                )}
-                title="Mobile 375 × 812"
-              >
-                <Smartphone className="size-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Zoom */}
-          {viewMode === "sandbox" && (
-            <div className="flex items-center gap-1 text-xs text-ink-3">
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.max(0.4, Math.round((z - 0.1) * 10) / 10))}
-                className="p-1 hover:text-ink-1 transition-colors"
-                title="Zoom Out (Cmd+-)"
-              >
-                <ZoomOut className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom(1)
-                  setPan({ x: 0, y: 0 })
-                }}
-                className="px-1.5 py-0.5 rounded text-[11px] font-mono hover:bg-accent-tint hover:text-ink-1 transition-colors"
-                title="Reset Zoom (Cmd+0)"
-              >
-                {Math.round(zoom * 100)}%
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))}
-                className="p-1 hover:text-ink-1 transition-colors"
-                title="Zoom In (Cmd++)"
-              >
-                <ZoomIn className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom(1)
-                  setPan({ x: 0, y: 0 })
-                }}
-                className="p-1 hover:text-ink-1 transition-colors"
-                title="Reset Position"
-              >
-                <RotateCcw className="size-3" />
-              </button>
-            </div>
-          )}
-        </div>
-
         {/* Right Actions */}
         <div className="flex items-center gap-1.5">
-          {viewMode === "server" && (
-            <>
-              {s.server === "running" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs active:scale-[0.97]"
-                  onClick={() => run(() => post(`/api/canvas/sessions/${id}/stop`))}
-                >
-                  <Square className="size-3 mr-1" /> Stop server
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs active:scale-[0.97]"
-                  disabled={busy}
-                  onClick={() => run(() => post(`/api/canvas/sessions/${id}/start`), "Dev server started")}
-                >
-                  <Play className="size-3 mr-1" /> Start server
-                </Button>
-              )}
-            </>
-          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs active:scale-[0.97]"
+            onClick={() => setReactModalOpen(true)}
+          >
+            <Code2 className="size-3 mr-1 text-accent" /> Convert to React (0 Token)
+          </Button>
 
           <Button
             size="sm"
@@ -1083,17 +808,6 @@ function StudioSessionView({
           >
             <GitFork className="size-3 mr-1" /> Fork
           </Button>
-
-          {viewMode === "pen" && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs active:scale-[0.97]"
-              onClick={() => setReactModalOpen(true)}
-            >
-              <Code2 className="size-3 mr-1 text-accent" /> Convert to React (0 Token)
-            </Button>
-          )}
 
           <Button
             size="sm"
@@ -1125,7 +839,7 @@ function StudioSessionView({
             variant={inspectorOpen ? "secondary" : "ghost"}
             className="size-7 active:scale-[0.97] transition-transform ml-1"
             onClick={() => setInspectorOpen((v) => !v)}
-            title="Toggle DialKit Inspector (Cmd+])"
+            title="Toggle pen.dev Inspector (Cmd+])"
           >
             {inspectorOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
           </Button>
@@ -1136,103 +850,17 @@ function StudioSessionView({
       <div className="flex min-h-0 flex-1 relative overflow-hidden">
         {/* Central Canvas Viewport */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col relative bg-[var(--c-canvas)] overflow-hidden">
-          {viewMode === "pen" ? (
-            <PenCanvas
-              document={penDoc}
-              selectedNodeId={selectedPenNodeId}
-              onSelectNode={setSelectedPenNodeId}
-              onUpdateNode={handleUpdatePenNode}
-              onAddNode={handleAddPenNode}
-              onResetDocument={(doc) => {
-                setPenDoc(doc)
-                triggerPenAutoSave(doc)
-              }}
-            />
-          ) : viewMode === "sandbox" ? (
-            fileList.length === 0 && !filesQuery.isLoading ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ink-3 p-6 text-center">
-                <Palette className="size-8 text-ink-3/50" />
-                <p className="text-sm font-medium text-ink-1">No canvas components found</p>
-                <p className="text-xs text-ink-3 max-w-sm">
-                  Ask the agent below to scaffold a component or variation for your brainstorm.
-                </p>
-                <Button
-                  size="sm"
-                  className="mt-2 gap-1.5 active:scale-[0.97]"
-                  onClick={() => setChatOpen(true)}
-                >
-                  <Sparkles className="size-3.5" /> Ask Agent to Create Component
-                </Button>
-              </div>
-            ) : (
-              <CanvasSandbox
-                sessionId={id}
-                files={files}
-                activeFile={activeFile}
-                onSelectFile={setActiveFile}
-                dialkitProps={dialkitProps}
-                frame={frame}
-                zoom={zoom}
-                pan={pan}
-                onPanChange={setPan}
-                onZoomChange={setZoom}
-                onSelectElement={handleSelectElement}
-                onSchemaDiscovered={handleSchemaDiscovered}
-                elementUpdate={elementUpdate}
-              />
-            )
-          ) : (
-            // Next.js dev server live iframe mode
-            <div className="h-full w-full">
-              {s.server === "running" && s.view_url ? (
-                <iframe
-                  title={`Canvas ${s.title}`}
-                  src={s.view_url}
-                  sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
-                  className="h-full w-full bg-white border-0"
-                />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-ink-3 p-6 text-center">
-                  <Play className="size-8 text-ink-3/50" />
-                  <p className="text-ink-1 font-medium">Dev server is stopped</p>
-                  <p className="text-xs text-ink-3 max-w-sm">
-                    Start the Next.js dev server to test full routing and server-side features, or switch to the 0ms instant Sandbox.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-1 gap-1.5 active:scale-[0.97]"
-                    disabled={busy}
-                    onClick={() => run(() => post(`/api/canvas/sessions/${id}/start`), "Dev server started")}
-                  >
-                    <Play className="size-3.5" /> Start Dev Server
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Active File Switcher Pill (if multiple files exist) */}
-          {fileList.length > 1 && viewMode === "sandbox" && (
-            <div className="absolute top-3 left-48 z-30 flex items-center gap-1 rounded-full border border-[var(--c-line)] bg-background/90 backdrop-blur-md px-2 py-1 shadow-sm">
-              <FileCode className="size-3 text-accent mr-1" />
-              {fileList.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setActiveFile(f)}
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[11px] font-mono transition-colors active:scale-95",
-                    activeFile === f
-                      ? "bg-accent text-white"
-                      : "text-ink-3 hover:text-ink-1 hover:bg-accent-tint",
-                  )}
-                >
-                  {f.split("/").pop()}
-                </button>
-              ))}
-            </div>
-          )}
+          <PenCanvas
+            document={penDoc}
+            selectedNodeId={selectedPenNodeId}
+            onSelectNode={setSelectedPenNodeId}
+            onUpdateNode={handleUpdatePenNode}
+            onAddNode={handleAddPenNode}
+            onResetDocument={(doc) => {
+              setPenDoc(doc)
+              triggerPenAutoSave(doc)
+            }}
+          />
 
           {/* Floating Agent Chat Drawer (Bottom Right) */}
           <div className="absolute bottom-4 right-4 z-30">
@@ -1342,46 +970,21 @@ function StudioSessionView({
           </div>
         </div>
 
-        {/* Right Inspector Drawer (DialKit or pen.dev Inspector) */}
+        {/* Right Inspector Drawer (pen.dev Inspector) */}
         <aside
           className={cn(
             "flex shrink-0 flex-col border-l border-[var(--c-line)] bg-background transition-all duration-150 ease-out z-10",
-            inspectorOpen
-              ? viewMode === "pen"
-                ? "w-80"
-                : "w-72"
-              : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
+            inspectorOpen ? "w-80" : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
           )}
         >
-          {viewMode === "pen" ? (
-            <PenPropertyInspector
-              selectedNode={selectedPenNode}
-              onUpdateNode={handleUpdatePenNode}
-              onDeleteNode={handleDeletePenNode}
-              saveStatus={penSaveStatus}
-              onConvertToReact={() => setReactModalOpen(true)}
-              onPromoteToTask={() => setPromoteModalOpen(true)}
-            />
-          ) : (
-            <DialKitInspector
-              props={dialkitProps}
-              onChange={setDialkitProps}
-              onSyncCode={async () => {
-                await syncMutation.mutateAsync()
-              }}
-              isSyncing={syncMutation.isPending}
-              isDirty={isDirty}
-              selectedElement={selectedElement}
-              onUpdateElement={handleUpdateElement}
-              onDeselectElement={() => setSelectedElement(null)}
-              activeComponentTitle={
-                activeFile
-                  ? discoveredSchemas[activeFile]?.title || activeFile.split("/").pop()
-                  : "Component"
-              }
-              schema={activeFile ? discoveredSchemas[activeFile]?.schema : undefined}
-            />
-          )}
+          <PenPropertyInspector
+            selectedNode={selectedPenNode}
+            onUpdateNode={handleUpdatePenNode}
+            onDeleteNode={handleDeletePenNode}
+            saveStatus={penSaveStatus}
+            onConvertToReact={() => setReactModalOpen(true)}
+            onPromoteToTask={() => setPromoteModalOpen(true)}
+          />
         </aside>
       </div>
 
