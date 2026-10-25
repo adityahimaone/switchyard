@@ -37,6 +37,7 @@ import {
   findNodeById,
   updateNodeInTree,
   deleteNodeFromTree,
+  duplicateNodeInTree,
 } from "./penTypes"
 import { compilePenDocumentToReact } from "./penCompiler"
 import { PenCanvas } from "./PenCanvas"
@@ -676,6 +677,22 @@ function StudioSessionView({
     [triggerPenAutoSave]
   )
 
+  const handleDuplicatePenNode = useCallback(
+    (nodeId: string) => {
+      setPenDoc((prev) => {
+        const { nodes: nextChildren, newId } = duplicateNodeInTree(prev.children, nodeId)
+        const nextDoc = { ...prev, children: nextChildren }
+        triggerPenAutoSave(nextDoc)
+        if (newId) {
+          setSelectedPenNodeId(newId)
+        }
+        return nextDoc
+      })
+      toastGlobal("Layer duplicated", "success")
+    },
+    [triggerPenAutoSave]
+  )
+
   const handleAddPenNode = useCallback(
     (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => {
       setPenDoc((prev) => {
@@ -790,71 +807,70 @@ function StudioSessionView({
       />
 
       {/* Top Application Header matching Design System */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card/60 px-4 backdrop-blur-md z-20">
-        {/* Left: Back to Hub + File Breadcrumb + Save Badge */}
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card/60 px-4 backdrop-blur-md z-20 gap-3">
+        {/* Left: Back to Hub + File Breadcrumb + Status Badge */}
+        <div className="flex items-center gap-2.5 min-w-0 shrink">
           <Button
             variant="ghost"
             size="sm"
             onClick={onBackToHub}
-            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground active:scale-95"
+            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground active:scale-95 shrink-0"
             title="Return to Canvas Hub"
           >
             <ArrowLeft className="size-3.5" />
             <span className="font-medium">Canvas Hub</span>
           </Button>
 
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px bg-border shrink-0" />
 
-          {/* Active File Breadcrumb */}
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground font-mono shadow-xs">
-            <Folder className="size-3.5 text-muted-foreground" />
-            <span className="truncate max-w-56 font-sans">
+          {/* Active File Breadcrumb with embedded save status */}
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground font-mono shadow-xs min-w-0">
+            <Folder className="size-3.5 text-muted-foreground shrink-0" />
+            <span className="truncate max-w-40 md:max-w-64 font-sans">
               design / {s.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pen
             </span>
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5 shrink-0" />
+            <span className="text-[10px] text-muted-foreground border-l border-border/80 pl-2 font-sans shrink-0 hidden sm:inline">
+              {penSaveStatus === "saved" ? "Saved ✨" : penSaveStatus === "saving" ? "Saving…" : "Unsaved"}
+            </span>
           </div>
-
-          <span className="font-mono text-[10px] text-muted-foreground">
-            {penSaveStatus === "saved" ? "Saved ✨" : penSaveStatus === "saving" ? "Saving…" : "Unsaved"}
-          </span>
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Import .pen file */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            className="h-7 px-2 text-xs border-border hover:bg-muted active:scale-[0.97]"
             onClick={() => studioFileInputRef.current?.click()}
             title="Import .pen into this canvas"
           >
-            <Upload className="size-3 mr-1.5 text-muted-foreground" />
-            <span>Import .pen</span>
+            <Upload className="size-3 mr-1 text-muted-foreground" />
+            <span>Import</span>
           </Button>
 
           {/* Export .pen file */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            className="h-7 px-2 text-xs border-border hover:bg-muted active:scale-[0.97]"
             onClick={handleExportPen}
             title="Export design as .pen file"
           >
-            <Download className="size-3 mr-1.5 text-muted-foreground" />
-            <span>Export .pen</span>
+            <Download className="size-3 mr-1 text-muted-foreground" />
+            <span>Export</span>
           </Button>
 
           {/* Convert to React */}
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            className="h-7 px-2.5 text-xs border-border bg-accent-text/10 text-accent-text hover:bg-accent-text/20 font-medium active:scale-[0.97]"
             onClick={() => setReactModalOpen(true)}
           >
-            <Code2 className="size-3.5 mr-1.5 text-accent-text" />
-            <span>Convert to React (0 Token)</span>
+            <Code2 className="size-3.5 mr-1 text-accent-text" />
+            <span>React (0 Token)</span>
           </Button>
 
           {/* Promote to Task Card */}
@@ -865,24 +881,24 @@ function StudioSessionView({
             disabled={busy}
             onClick={() => setPromoteModalOpen(true)}
           >
-            <ArrowUpRight className="size-3.5 mr-1.5 text-accent-text" />
-            <span>Promote to Task</span>
+            <ArrowUpRight className="size-3.5 mr-1 text-accent-text" />
+            <span>Promote</span>
           </Button>
 
           {/* Duplicate / Fork */}
           <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs border-border hover:bg-muted active:scale-[0.97]"
+            size="icon"
+            variant="ghost"
+            className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.97]"
             disabled={busy}
             onClick={() =>
               run(() => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}), "Variation created", (n) =>
                 onOpen(n.id)
               )
             }
-            title="Duplicate / Fork"
+            title="Duplicate / Fork Canvas Session"
           >
-            <GitFork className="size-3.5 text-muted-foreground" />
+            <GitFork className="size-3.5" />
           </Button>
 
           {/* Discard Canvas */}
@@ -923,6 +939,8 @@ function StudioSessionView({
           selectedNodeId={selectedPenNodeId}
           onSelectNode={setSelectedPenNodeId}
           onUpdateNode={handleUpdatePenNode}
+          onDeleteNode={handleDeletePenNode}
+          onDuplicateNode={handleDuplicatePenNode}
           onAddNode={handleAddPenNode}
           onResetDocument={(doc) => {
             setPenDoc(doc)

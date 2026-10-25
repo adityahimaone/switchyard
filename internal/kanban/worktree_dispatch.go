@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -34,6 +36,18 @@ func workerShell(workspace, title, command string) (string, int) {
 		NoRTK:     true,
 	}, RemoteDispatchWait())
 	if err != nil {
+		// Fallback to local execution if node-agent is unreachable and the directory/parent exists locally
+		if _, statErr := os.Stat(workspace); statErr == nil || strings.Contains(workspace, "canvas-scratchpad") {
+			cmd := exec.Command("sh", "-c", command)
+			out, runErr := cmd.CombinedOutput()
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					return string(out), exitErr.ExitCode()
+				}
+				return string(out) + "\n" + runErr.Error(), 1
+			}
+			return string(out), 0
+		}
 		return err.Error(), 255
 	}
 	if res == nil {

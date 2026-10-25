@@ -44,7 +44,7 @@ const (
 	CanvasIdleStop     = 20 * time.Minute
 	CanvasPortStart    = 4300
 	CanvasPortEnd      = 4399
-	CanvasMinFreeKB    = 1 << 20 // 1 GiB
+	CanvasMinFreeKB    = 50 * 1024 // 50 MiB (canvas documents take <100KB)
 	CanvasMaxTurns     = 40
 	canvasBranchPrefix = "canvas-"
 )

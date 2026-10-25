@@ -187,3 +187,43 @@ export function deleteNodeFromTree(nodes: PenNode[], id: string): PenNode[] {
     })
 }
 
+function cloneNodeWithNewIds(node: PenNode): PenNode {
+  const newId = `node_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  return {
+    ...node,
+    id: newId,
+    name: node.name ? `${node.name} Copy` : undefined,
+    x: node.x !== undefined ? node.x + 24 : undefined,
+    y: node.y !== undefined ? node.y + 24 : undefined,
+    children: node.children ? node.children.map(cloneNodeWithNewIds) : undefined,
+  }
+}
+
+export function duplicateNodeInTree(nodes: PenNode[], id: string): { nodes: PenNode[]; newId: string | null } {
+  let createdId: string | null = null
+
+  function traverse(list: PenNode[]): PenNode[] {
+    const result: PenNode[] = []
+    for (const item of list) {
+      if (item.id === id) {
+        result.push(item)
+        const cloned = cloneNodeWithNewIds(item)
+        createdId = cloned.id
+        result.push(cloned)
+      } else if (item.children) {
+        result.push({
+          ...item,
+          children: traverse(item.children),
+        })
+      } else {
+        result.push(item)
+      }
+    }
+    return result
+  }
+
+  const nextNodes = traverse(nodes)
+  return { nodes: nextNodes, newId: createdId }
+}
+
+

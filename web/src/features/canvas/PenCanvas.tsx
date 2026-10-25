@@ -22,6 +22,8 @@ interface PenCanvasProps {
   selectedNodeId: string | null
   onSelectNode: (id: string | null) => void
   onUpdateNode: (updated: PenNode) => void
+  onDeleteNode?: (id: string) => void
+  onDuplicateNode?: (id: string) => void
   onAddNode?: (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => void
   onResetDocument?: (doc: PenDocument) => void
   onOpenChat?: () => void
@@ -32,7 +34,7 @@ interface PenCanvasProps {
 }
 
 function resolveFillStyle(fill?: PenFill): React.CSSProperties {
-  if (!fill) return {}
+  if (!fill || fill === "transparent") return {}
   if (typeof fill === "string") {
     return { backgroundColor: fill }
   }
@@ -121,6 +123,74 @@ function NodeRenderer({
     }
   }
 
+  // 8-Point Interactive Resizing (1:1 Figma direct manipulation)
+  const handleResizeStart = (e: ReactMouseEvent, direction: "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w") => {
+    e.stopPropagation()
+    e.preventDefault()
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const startW = node.width || 390
+    const startH = node.height || 844
+    const startNodeX = node.x || 80
+    const startNodeY = node.y || 80
+    const aspectRatio = startW / startH
+
+    const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
+      const dx = (moveEvent.clientX - startX) / zoom
+      const dy = (moveEvent.clientY - startY) / zoom
+      const shift = moveEvent.shiftKey
+
+      let newW = startW
+      let newH = startH
+      let newX = startNodeX
+      let newY = startNodeY
+
+      // Width & horizontal position
+      if (direction.includes("e")) {
+        newW = Math.max(20, startW + dx)
+      } else if (direction.includes("w")) {
+        const potentialW = startW - dx
+        if (potentialW >= 20) {
+          newW = potentialW
+          newX = startNodeX + dx
+        }
+      }
+
+      // Height & vertical position
+      if (direction.includes("s")) {
+        newH = Math.max(20, startH + dy)
+      } else if (direction.includes("n")) {
+        const potentialH = startH - dy
+        if (potentialH >= 20) {
+          newH = potentialH
+          newY = startNodeY + dy
+        }
+      }
+
+      // Shift key constrains aspect ratio
+      if (shift && (direction === "se" || direction === "sw" || direction === "ne" || direction === "nw")) {
+        newH = Math.round(newW / aspectRatio)
+      }
+
+      onUpdateNode({
+        ...node,
+        width: Math.round(newW),
+        height: Math.round(newH),
+        x: Math.round(newX),
+        y: Math.round(newY),
+      })
+    }
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+  }
+
   // Handle text edit commit
   const handleCommitText = () => {
     setIsEditingText(false)
@@ -169,7 +239,7 @@ function NodeRenderer({
         style={textStyle}
       >
         {isSelected && (
-          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow">
+          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow pointer-events-none">
             <span>{node.name || "Text"}</span>
           </div>
         )}
@@ -281,26 +351,70 @@ function NodeRenderer({
       )}
       style={baseStyle}
     >
-      {/* Selection Bounding Box Details & Dimension Badge */}
+      {/* Selection Bounding Box Details & 8 Interactive Resize Handles */}
       {isSelected && (
         <>
           {/* Top-left Layer Name Badge */}
-          <div className="absolute -top-6 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white shadow">
+          <div className="absolute -top-6 left-0 z-20 flex items-center gap-1 rounded bg-accent-text px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white shadow pointer-events-none">
             <span>{node.name || "Frame"}</span>
           </div>
 
           {/* Underneath Blue Dimension Pill: "[W] × [H]" */}
-          <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-md bg-accent-text px-2 py-0.5 font-mono text-[10px] font-semibold text-white shadow">
+          <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-md bg-accent-text px-2 py-0.5 font-mono text-[10px] font-semibold text-white shadow pointer-events-none">
             <span>
               {node.width ?? "auto"} × {node.height ?? "auto"}
             </span>
           </div>
 
-          {/* Corner resize handle decorations */}
-          <div className="absolute -top-1 -left-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
-          <div className="absolute -top-1 -right-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
-          <div className="absolute -bottom-1 -left-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
-          <div className="absolute -bottom-1 -right-1 size-2 rounded-xs bg-white border border-accent-text z-20" />
+          {/* 8 Interactive Resize Handles (Figma Style) */}
+          {/* NW - Top Left */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "nw")}
+            className="absolute -top-1.5 -left-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-nwse-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Top-Left"
+          />
+          {/* N - Top Center */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "n")}
+            className="absolute -top-1.5 left-1/2 -translate-x-1/2 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-ns-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Top"
+          />
+          {/* NE - Top Right */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "ne")}
+            className="absolute -top-1.5 -right-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-nesw-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Top-Right"
+          />
+          {/* E - Middle Right */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "e")}
+            className="absolute top-1/2 -translate-y-1/2 -right-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-ew-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Right"
+          />
+          {/* SE - Bottom Right */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "se")}
+            className="absolute -bottom-1.5 -right-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-nwse-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Bottom-Right"
+          />
+          {/* S - Bottom Center */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "s")}
+            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-ns-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Bottom"
+          />
+          {/* SW - Bottom Left */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "sw")}
+            className="absolute -bottom-1.5 -left-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-nesw-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Bottom-Left"
+          />
+          {/* W - Middle Left */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, "w")}
+            className="absolute top-1/2 -translate-y-1/2 -left-1.5 size-2.5 rounded-xs bg-white border-2 border-accent-text z-30 cursor-ew-resize shadow-xs hover:scale-125 transition-transform"
+            title="Resize Left"
+          />
         </>
       )}
 
@@ -325,13 +439,14 @@ export function PenCanvas({
   selectedNodeId,
   onSelectNode,
   onUpdateNode,
+  onDeleteNode,
+  onDuplicateNode,
   onAddNode,
   onResetDocument,
   onOpenChat,
   onImportPenFile,
   activeModel = "DeepSeek V4.1 Flash",
   turnCount: _turnCount = 1,
-  inspectorOpen = true,
 }: PenCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan, setPan] = useState({ x: 80, y: 60 })
@@ -423,9 +538,78 @@ export function PenCanvas({
     }
   }
 
-  // Keyboard zoom shortcuts
+  const hasChildren = document.children && document.children.length > 0
+
+  // Selected node lookup
+  const selectedNode = selectedNodeId
+    ? document.children.find((c) => c.id === selectedNodeId) || { name: "Mellow" }
+    : { name: document.children[0]?.name || "Mellow" }
+
+  // 1:1 Figma & Pen.dev Keyboard Shortcuts (Delete, Nudge, Duplicate, Escape, Tool Switching)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in an input, textarea, or contentEditable
+      const target = e.target as HTMLElement | null
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      if (isInput) return
+
+      // Delete or Backspace to delete selected layer
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId && onDeleteNode) {
+        e.preventDefault()
+        onDeleteNode(selectedNodeId)
+        return
+      }
+
+      // Escape to deselect
+      if (e.key === "Escape") {
+        e.preventDefault()
+        onSelectNode(null)
+        return
+      }
+
+      // Cmd/Ctrl + D to duplicate selected node
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d" && selectedNodeId && onDuplicateNode) {
+        e.preventDefault()
+        onDuplicateNode(selectedNodeId)
+        return
+      }
+
+      // Arrow keys to nudge selected element (1px normally, 10px with Shift)
+      if (selectedNodeId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        const found = document.children.find((c) => c.id === selectedNodeId)
+        if (found) {
+          e.preventDefault()
+          const step = e.shiftKey ? 10 : 1
+          let dx = 0
+          let dy = 0
+          if (e.key === "ArrowLeft") dx = -step
+          if (e.key === "ArrowRight") dx = step
+          if (e.key === "ArrowUp") dy = -step
+          if (e.key === "ArrowDown") dy = step
+          onUpdateNode({
+            ...found,
+            x: (found.x || 80) + dx,
+            y: (found.y || 80) + dy,
+          })
+          return
+        }
+      }
+
+      // Tool Switching (V, F, T, H)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.key.toLowerCase() === "v") setActiveTool("pointer")
+        if (e.key.toLowerCase() === "f") {
+          setActiveTool("frame")
+          if (onAddNode) onAddNode(selectedNodeId || "root", "frame")
+        }
+        if (e.key.toLowerCase() === "t") {
+          setActiveTool("text")
+          if (onAddNode) onAddNode(selectedNodeId || "root", "text")
+        }
+        if (e.key.toLowerCase() === "h") setActiveTool("hand")
+      }
+
+      // Zoom Shortcuts
       if ((e.metaKey || e.ctrlKey) && e.key === "0") {
         e.preventDefault()
         setZoom(1.0)
@@ -438,16 +622,10 @@ export function PenCanvas({
         setZoom((z) => Math.max(0.2, z / 1.15))
       }
     }
+
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
-  const hasChildren = document.children && document.children.length > 0
-
-  // Selected node name
-  const selectedNode = selectedNodeId
-    ? document.children.find((c) => c.id === selectedNodeId) || { name: "Mellow" }
-    : { name: document.children[0]?.name || "Mellow" }
+  }, [selectedNodeId, onDeleteNode, onDuplicateNode, onSelectNode, onUpdateNode, onAddNode, document.children])
 
   return (
     <div
@@ -522,7 +700,7 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Left Slim Vertical Tool Rail */}
+      {/* Left Slim Vertical Tool Rail (Select, Frame, Text, Hand) */}
       <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card/90 p-1.5 shadow-2xl backdrop-blur-md">
         <button
           type="button"
@@ -592,44 +770,8 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Bottom Floating AI Command Capsule */}
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md">
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
-          title="Add Prompt Attachment"
-        >
-          <Plus className="size-4" />
-        </button>
-
-        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground">
-          <Hash className="size-3 text-muted-foreground" />
-          <span className="truncate max-w-32">{selectedNode.name || "Frame"}</span>
-        </div>
-
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
-          <span className="truncate max-w-28">{activeModel}</span>
-          <ChevronDown className="size-3 opacity-60" />
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-xs"
-          title="Send AI Prompt"
-        >
-          <ArrowUp className="size-3.5 stroke-[2.5]" />
-        </button>
-      </div>
-
-      {/* Bottom Floating Zoom Pill — Offset when inspector is open so they never collide */}
-      <div
-        className={cn(
-          "absolute bottom-5 z-20 flex items-center gap-1 rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-md transition-all duration-200",
-          inspectorOpen ? "right-84" : "right-5"
-        )}
-      >
+      {/* Bottom-Left Zoom Controls Pill — Completely separated from Bottom-Center AI Capsule! */}
+      <div className="absolute bottom-5 left-5 z-20 flex items-center gap-1 rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-md">
         <button
           type="button"
           title="Zoom Out (Ctrl -)"
@@ -658,6 +800,37 @@ export function PenCanvas({
           className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <ZoomIn className="size-3.5" />
+        </button>
+      </div>
+
+      {/* Bottom-Center Floating AI Command Capsule — Full unobstructed center space! */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md max-w-[calc(100vw-32rem)]">
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all shrink-0"
+          title="Add Prompt Attachment"
+        >
+          <Plus className="size-4" />
+        </button>
+
+        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground shrink-0">
+          <Hash className="size-3 text-muted-foreground" />
+          <span className="truncate max-w-28">{selectedNode.name || "Frame"}</span>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground shrink-0">
+          <span className="truncate max-w-32">{activeModel}</span>
+          <ChevronDown className="size-3 opacity-60" />
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-xs shrink-0"
+          title="Send AI Prompt"
+        >
+          <ArrowUp className="size-3.5 stroke-[2.5]" />
         </button>
       </div>
     </div>
