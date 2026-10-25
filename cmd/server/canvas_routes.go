@@ -248,6 +248,8 @@ const canvasSandboxHTML = `<!DOCTYPE html>
     import React from 'react';
     import ReactDOM from 'react-dom/client';
     import * as LucideIcons from 'lucide-react';
+    import clsx from 'clsx';
+    import { twMerge } from 'tailwind-merge';
 
     window.React = React;
     window.ReactDOM = ReactDOM;
@@ -276,6 +278,8 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       if (modulePath === 'react') return React;
       if (modulePath === 'react-dom' || modulePath === 'react-dom/client') return ReactDOM;
       if (modulePath === 'lucide-react') return LucideIcons;
+      if (modulePath === 'clsx') return clsx;
+      if (modulePath === 'tailwind-merge') return { twMerge };
 
       if (moduleCache[modulePath]) return moduleCache[modulePath];
 
@@ -286,7 +290,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       }
 
       const transformed = Babel.transform(rawCode, {
-        presets: ['react', 'typescript'],
+        presets: ['env', 'react', 'typescript'],
         filename: modulePath
       }).code;
 
@@ -295,8 +299,8 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       const fn = new Function('require', 'exports', 'module', 'React', transformed);
       fn(requireModule, exports, module, React);
 
-      moduleCache[modulePath] = module.exports;
-      return module.exports;
+      moduleCache[modulePath] = module.exports || exports;
+      return moduleCache[modulePath];
     }
 
     function renderComponent() {
@@ -319,7 +323,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         for (const k in moduleCache) delete moduleCache[k];
 
         const transformed = Babel.transform(rawCode, {
-          presets: ['react', 'typescript'],
+          presets: ['env', 'react', 'typescript'],
           filename: currentEntry
         }).code;
 
@@ -328,11 +332,19 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         const fn = new Function('require', 'exports', 'module', 'React', transformed);
         fn(requireModule, exports, module, React);
 
-        let Comp = module.exports.default;
+        let Comp = module.exports?.default || exports.default;
         if (!Comp) {
           for (const key in module.exports) {
             if (typeof module.exports[key] === 'function') {
               Comp = module.exports[key];
+              break;
+            }
+          }
+        }
+        if (!Comp) {
+          for (const key in exports) {
+            if (typeof exports[key] === 'function') {
+              Comp = exports[key];
               break;
             }
           }
