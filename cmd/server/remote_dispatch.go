@@ -568,7 +568,7 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 		}
 	}
 
-	return fmt.Sprintf(`mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen --out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
+	return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen --out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
 		out, export, envPrefix, out, cleanPrompt, export, agent, modelArg)
 }
 
