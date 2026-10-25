@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Segmented } from "@/components/ui/segmented"
-import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle, FileCode, Code2, Layers, BookOpen } from "lucide-react"
+import { Sparkles, Loader2, Paperclip, ChevronRight, PenTool, SlidersHorizontal, X, Puzzle, FileCode, Code2, Layers, BookOpen, Zap, Palette } from "lucide-react"
 import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
@@ -228,6 +228,9 @@ export default function TaskDialog({
   // "none" is the form's sentinel for "no pen.dev design" — Radix
   // Select items need non-empty values, the API wants the absence.
   const [designTool, setDesignTool] = useState<"none" | "pen_cli" | "pencil_mcp">("none")
+  const [designScope, setDesignScope] = useState<"design_only" | "design_and_code">("design_only")
+  const [penModel, setPenModel] = useState("gemini:gemini-3.6-flash")
+  const { models: penDynamicModels } = useExecutorModels("pen")
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMode, setAiMode] = useState<"fast" | "deep" | null>(null)
@@ -716,6 +719,9 @@ export default function TaskDialog({
     verifyProfile,
     designSource,
     designTool: designTool === "none" ? "" : designTool,
+    designScope: designTool === "none" ? undefined : designScope,
+    penAgent: designTool === "none" ? undefined : (penModel.includes(":") ? penModel.split(":")[0] : "gemini"),
+    penModel: designTool === "none" ? undefined : (penModel.includes(":") ? penModel.split(":")[1] : penModel),
     model: executor === "dsh" ? dshModel : executor === "commandcode" ? cmdModel : undefined,
     effort: executor === "dsh" || executor === "commandcode" ? effort : undefined,
     commandCodeMode: executor === "commandcode" ? commandCodeMode : undefined,
@@ -745,7 +751,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, dshModel, cmdModel, effort, commandCodeMode, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, designScope, penModel, dshModel, cmdModel, effort, commandCodeMode, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -1350,9 +1356,18 @@ export default function TaskDialog({
                 <button
                   type="button"
                   aria-pressed={designTool !== "none"}
-                  onClick={() =>
-                    setDesignTool((prev) => (prev === "none" ? "pen_cli" : "none"))
-                  }
+                  onClick={() => {
+                    if (designTool === "none") {
+                      setDesignTool("pen_cli")
+                      setDesignScope("design_only")
+                      setExecutor("shell")
+                    } else {
+                      setDesignTool("none")
+                      if (executor === "shell") {
+                        setExecutor("dsh")
+                      }
+                    }
+                  }}
                   className={cn(
                     "glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97]",
                     designTool !== "none"
@@ -1365,7 +1380,7 @@ export default function TaskDialog({
                   <span>pen.dev</span>
                   {designTool !== "none" && (
                     <span className="rounded bg-[var(--c-canvas)]/70 px-1 py-0.5 font-mono text-[10px] leading-none text-accent">
-                      {designTool === "pen_cli" ? "CLI" : "MCP"}
+                      {designScope === "design_only" ? "Design Only" : "Design & Code"}
                     </span>
                   )}
                 </button>
@@ -1483,40 +1498,133 @@ export default function TaskDialog({
             )}
 
             {designTool !== "none" && (
-              <div className="mt-2 grid grid-cols-2 gap-3 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)]/50 p-3">
-                <div className="min-w-0">
-                  <Label className="block text-xs text-ink-3" htmlFor="task-design-tool-inline">
-                    Design tool
-                  </Label>
-                  <Select
-                    value={designTool}
-                    onValueChange={(v) => setDesignTool(v as "none" | "pen_cli" | "pencil_mcp")}
-                  >
-                    <SelectTrigger
-                      id="task-design-tool-inline"
-                      className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="">
-                      <SelectItem value="pen_cli" className="text-sm">
-                        pen CLI — headless .pen + PNG
-                      </SelectItem>
-                      <SelectItem value="pencil_mcp" className="text-sm">
-                        pencil MCP — live canvas
-                      </SelectItem>
-                      <SelectItem value="none" className="text-sm">
-                        Off — disable pen.dev
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {issuesForField(issues, "design_tool").map((i) => (
-                    <FieldIssue key={i.code + i.message} issue={i} />
-                  ))}
+              <div className="mt-2 space-y-3 rounded-card border border-[var(--c-accent)]/30 bg-[var(--c-surface)]/60 p-3">
+                <div className="flex items-center justify-between border-b border-[var(--c-line)] pb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-ink">
+                    <PenTool className="size-3.5 text-accent" />
+                    <span>pen.dev Design Workflow</span>
+                  </div>
+                  <Badge variant="outline" className="border-accent/30 text-[10px] font-normal text-accent">
+                    {designScope === "design_only" ? "Design Only" : "Design + Implementation"}
+                  </Badge>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="min-w-0">
+                    <Label className="block text-xs text-ink-3" htmlFor="task-design-scope-inline">
+                      Workflow scope
+                    </Label>
+                    <Select
+                      value={designScope}
+                      onValueChange={(v) => setDesignScope(v as "design_only" | "design_and_code")}
+                    >
+                      <SelectTrigger
+                        id="task-design-scope-inline"
+                        className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="design_only" className="text-sm">
+                          Design Only (.pen + PNG mock, 0 code edits)
+                        </SelectItem>
+                        <SelectItem value="design_and_code" className="text-sm">
+                          Design &amp; Implement (Mockup then code)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {issuesForField(issues, "design_scope").map((i) => (
+                      <FieldIssue key={i.code + i.message} issue={i} />
+                    ))}
+                  </div>
+
+                  <div className="min-w-0">
+                    <Label className="block text-xs text-ink-3" htmlFor="task-design-tool-inline">
+                      Design tool
+                    </Label>
+                    <Select
+                      value={designTool}
+                      onValueChange={(v) => {
+                        const next = v as "none" | "pen_cli" | "pencil_mcp"
+                        setDesignTool(next)
+                        if (next === "none" && executor === "shell") {
+                          setExecutor("dsh")
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        id="task-design-tool-inline"
+                        className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pen_cli" className="text-sm">
+                          pen CLI — headless .pen + PNG
+                        </SelectItem>
+                        <SelectItem value="pencil_mcp" className="text-sm">
+                          pencil MCP — live canvas
+                        </SelectItem>
+                        <SelectItem value="none" className="text-sm">
+                          Off — disable pen.dev
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {issuesForField(issues, "design_tool").map((i) => (
+                      <FieldIssue key={i.code + i.message} issue={i} />
+                    ))}
+                  </div>
+                </div>
+
+                {designTool === "pen_cli" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0">
+                      <Label className="block text-xs text-ink-3" htmlFor="task-design-harness-inline">
+                        Execution harness
+                      </Label>
+                      <Select
+                        value={executor}
+                        onValueChange={(v) => setExecutor(v)}
+                      >
+                        <SelectTrigger
+                          id="task-design-harness-inline"
+                          className={`mt-1 ${selCls} min-w-0 [&>span]:truncate`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="shell" className="text-sm">
+                            Direct pen CLI (Fast shell — ~20s, 0 tokens)
+                          </SelectItem>
+                          <SelectItem value="dsh" className="text-sm">
+                            dsh (multi-turn harness agent)
+                          </SelectItem>
+                          <SelectItem value="commandcode" className="text-sm">
+                            Command Code (agent)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="min-w-0">
+                      <Label className="block text-xs text-ink-3">
+                        pen.dev Model / Agent
+                      </Label>
+                      <div className="mt-1">
+                        <SearchSelect
+                          options={penDynamicModels}
+                          value={penModel}
+                          onValueChange={(v) => v && setPenModel(v)}
+                          placeholder="Search pen models & agents..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="min-w-0">
                   <Label className="block text-xs text-ink-3" htmlFor="task-design-source-inline">
-                    Design source (.pen)
+                    Design source (.pen output path)
                   </Label>
                   <Input
                     id="task-design-source-inline"
@@ -1529,6 +1637,22 @@ export default function TaskDialog({
                     <FieldIssue key={i.code + i.message} issue={i} />
                   ))}
                 </div>
+
+                {executor === "shell" ? (
+                  <div className="flex items-center gap-2 rounded border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-2xs text-emerald-400">
+                    <Zap className="size-3.5 shrink-0" />
+                    <span>
+                      <strong>Direct pen CLI:</strong> Generates mockup &amp; PNG export in ~20–30s directly on worker node with <strong>0 LLM harness tokens</strong>.
+                    </span>
+                  </div>
+                ) : designScope === "design_only" ? (
+                  <div className="flex items-center gap-2 rounded border border-purple-500/20 bg-purple-500/5 px-3 py-2 text-2xs text-purple-400">
+                    <Palette className="size-3.5 shrink-0" />
+                    <span>
+                      <strong>Design Only:</strong> Agent harness is strictly mandated to commit mockup artifacts (.pen + PNG) and stop immediately without modifying app code.
+                    </span>
+                  </div>
+                ) : null}
               </div>
             )}
 

@@ -67,6 +67,12 @@ export interface Task {
    * in the app). Undefined means no pen.dev design is involved.
    */
   design_tool?: "pen_cli" | "pencil_mcp"
+  /** Scope of pen.dev design: "design_only" (mock + PNG only) or "design_and_code". */
+  design_scope?: "design_only" | "design_and_code"
+  /** pen.dev CLI agent (gemini, claude, codex, deepseek, etc.). */
+  pen_agent?: string
+  /** Specific model for pen.dev CLI. */
+  pen_model?: string
   /** Explicit model override for dsh or commandcode execution. */
   model?: string
   /** Reasoning effort override ("auto", "off", "low", "medium", "high", "max"). */
@@ -230,7 +236,14 @@ export function rerunVerify(slug: string, taskId: string) {
 export function patchTaskFields(
   slug: string,
   taskId: string,
-  fields: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" },
+  fields: {
+    verify_profile?: VerifyProfile | ""
+    design_source?: string
+    design_tool?: "pen_cli" | "pencil_mcp" | ""
+    design_scope?: "design_only" | "design_and_code" | ""
+    pen_agent?: string
+    pen_model?: string
+  },
 ) {
   return api<Task>(`/api/boards/${slug}/tasks/${taskId}/fields`, {
     method: "PATCH",

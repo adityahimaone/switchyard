@@ -9050,13 +9050,45 @@ export const FALLBACK_COMMANDCODE_MODELS: SearchSelectOption[] = [
   }
 ]
 
+export const FALLBACK_PEN_MODELS: SearchSelectOption[] = [
+  {
+    value: "gemini:gemini-3.6-flash",
+    label: "Gemini 3.6 Flash (Fast & Efficient)",
+    badge: "Default",
+    sublabel: "fastest headless design generator",
+  },
+  {
+    value: "gemini:gemini-2.5-pro",
+    label: "Gemini 2.5 Pro",
+    badge: "Gemini",
+    sublabel: "complex UI hierarchy & layouts",
+  },
+  {
+    value: "claude:claude-3-7-sonnet",
+    label: "Claude 3.7 Sonnet",
+    badge: "Claude",
+    sublabel: "detailed aesthetics & component design",
+  },
+  {
+    value: "deepseek:deepseek-chat",
+    label: "DeepSeek V3",
+    badge: "DeepSeek",
+    sublabel: "open-weights design model",
+  },
+]
+
 export function useExecutorModels(executor: string): {
   models: SearchSelectOption[]
   isLoading: boolean
   isError: boolean
 } {
-  const norm = executor === "cmd" ? "commandcode" : executor
-  const isApplicable = norm === "dsh" || norm === "commandcode"
+  const norm =
+    executor === "cmd"
+      ? "commandcode"
+      : executor === "pen_cli" || executor === "pencil" || executor === "pen"
+        ? "pen"
+        : executor
+  const isApplicable = norm === "dsh" || norm === "commandcode" || norm === "pen"
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["models", norm],
@@ -9070,7 +9102,12 @@ export function useExecutorModels(executor: string): {
     return { models: [], isLoading: false, isError: false }
   }
 
-  const fallback = norm === "dsh" ? FALLBACK_DSH_MODELS : FALLBACK_COMMANDCODE_MODELS
+  const fallback =
+    norm === "dsh"
+      ? FALLBACK_DSH_MODELS
+      : norm === "pen"
+        ? FALLBACK_PEN_MODELS
+        : FALLBACK_COMMANDCODE_MODELS
   const models = data?.models && data.models.length > 0 ? (data.models as SearchSelectOption[]) : fallback
 
   return { models, isLoading, isError }

@@ -115,6 +115,12 @@ type Task struct {
 	Effort string `json:"effort,omitempty"`
 	// CommandCodeMode selects the Command Code permission mode ("yolo", "plan", "accept-edits", "standard").
 	CommandCodeMode string `json:"commandcode_mode,omitempty"`
+	// DesignScope selects the scope of a pen.dev task: "design_only" (default: mock + PNG only) or "design_and_code".
+	DesignScope string `json:"design_scope,omitempty"`
+	// PenAgent selects the pen.dev CLI agent ("gemini", "claude", "codex", "deepseek", etc.).
+	PenAgent string `json:"pen_agent,omitempty"`
+	// PenModel selects an optional specific model for pen.dev (e.g., "gemini-3.6-flash", "deepseek-flash").
+	PenModel string `json:"pen_model,omitempty"`
 }
 
 type TaskEvent struct {
@@ -373,6 +379,9 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		`ALTER TABLE tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN effort TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN commandcode_mode TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN design_scope TEXT NOT NULL DEFAULT 'design_only'`,
+		`ALTER TABLE tasks ADD COLUMN pen_agent TEXT NOT NULL DEFAULT 'gemini'`,
+		`ALTER TABLE tasks ADD COLUMN pen_model TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -499,6 +508,15 @@ func CreateTask(slug string, t *Task) error {
 	if (t.DesignTool == "pen_cli" || t.DesignTool == "pencil_mcp") && strings.TrimSpace(t.DesignSource) == "" {
 		t.DesignSource = DesignPathForTitle(t.Title)
 	}
+	t.DesignScope = strings.ToLower(strings.TrimSpace(t.DesignScope))
+	if t.DesignScope == "" && (t.DesignTool != "" || t.DesignSource != "") {
+		t.DesignScope = "design_only"
+	}
+	t.PenAgent = strings.ToLower(strings.TrimSpace(t.PenAgent))
+	if t.PenAgent == "" && (t.DesignTool != "" || t.DesignSource != "") {
+		t.PenAgent = "gemini"
+	}
+	t.PenModel = strings.TrimSpace(t.PenModel)
 	for _, hint := range TaskDesignWarnings(t) {
 		log.Printf("kanban: %s (task %q)", hint.Message, strings.TrimSpace(t.Title))
 	}
@@ -559,12 +577,12 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool, model, effort, commandcode_mode)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool, model, effort, commandcode_mode, design_scope, pen_agent, pen_model)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation, t.BaseBranch,
 		// verify_profile_effective/verify_status are intentionally not inserted:
 		// they are decided by routing after the run, not by the author of the card.
-		t.VerifyProfile, t.DesignSource, t.DesignTool, strings.TrimSpace(t.Model), strings.TrimSpace(t.Effort), strings.TrimSpace(t.CommandCodeMode)); err != nil {
+		t.VerifyProfile, t.DesignSource, t.DesignTool, strings.TrimSpace(t.Model), strings.TrimSpace(t.Effort), strings.TrimSpace(t.CommandCodeMode), t.DesignScope, t.PenAgent, t.PenModel); err != nil {
 		return err
 	}
 	if len(t.DependsOn) > 0 {

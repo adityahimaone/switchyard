@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -122,7 +124,7 @@ func startRemoteDispatcher(ctx context.Context) {
 // dispatchCandidate is one card the dispatch selection surfaced.
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
-	baseBranch, model, effort, commandCodeMode                                                                                                                     string
+	baseBranch, model, effort, commandCodeMode, designScope, penAgent, penModel                                                                                   string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -135,7 +137,7 @@ type dispatchCandidate struct {
 // both rules at claim time; this keeps the poll itself from even
 // considering a card that cannot run.
 func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
-	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,''), COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
+	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,''), COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,''), COALESCE(design_scope,'design_only'), COALESCE(pen_agent,'gemini'), COALESCE(pen_model,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
 		AND NOT EXISTS (
 			SELECT 1 FROM task_dependencies d
 			LEFT JOIN tasks dt ON dt.id = d.depends_on_id
@@ -149,7 +151,7 @@ func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
 	var pending []dispatchCandidate
 	for rows.Next() {
 		var r dispatchCandidate
-		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool, &r.model, &r.effort, &r.commandCodeMode); err != nil {
+		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool, &r.model, &r.effort, &r.commandCodeMode, &r.designScope, &r.penAgent, &r.penModel); err != nil {
 			return nil, err
 		}
 		if r.ws != "" {
@@ -263,12 +265,16 @@ func dispatchPendingRemoteTasks() {
 			if strings.TrimSpace(r.designTool) == "" {
 				msg = appendDesignReference(msg, r.designSource)
 			}
-			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title)
+			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title, r.designScope, r.penAgent, r.penModel)
 			command := r.command
 			if r.executor == "shell" && r.executionMode != "agentic" && command == "" {
-				log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
-				releaseSlot()
-				continue
+				if r.designTool == "pen_cli" {
+					command = buildDirectPenCommand(r.designSource, r.title, r.body, r.penAgent, r.penModel)
+				} else {
+					log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
+					releaseSlot()
+					continue
+				}
 			}
 
 			// WS-3: Cached Task Identity lookup
@@ -446,11 +452,9 @@ func appendDesignReference(msg, designSource string) string {
 // appendDesignMandate renders the design-tool switch into a task's
 // dispatch prompt. A pen_cli card is told to generate its mock with
 // the headless pen CLI — the only pen.dev surface that can create a
-// new .pen file on a worker — and then implement to the result. The
-// mandate is structural (read from the design_tool column) rather
-// than a sentence in the card body, so it cannot go stale the way
-// t_e44e7e9b's "the pen CLI is NOT installed" did.
-func appendDesignMandate(msg, designTool, designSource, title string) string {
+// new .pen file on a worker. When designScope is "design_only", it strictly
+// forbids application code changes.
+func appendDesignMandate(msg, designTool, designSource, title, designScope, penAgent, penModel string) string {
 	tool := strings.ToLower(strings.TrimSpace(designTool))
 	if tool != "pen_cli" && tool != "pencil_mcp" {
 		return msg
@@ -459,22 +463,56 @@ func appendDesignMandate(msg, designTool, designSource, title string) string {
 	if out == "" {
 		out = kanban.DesignPathForTitle(title)
 	}
+
+	agent := strings.ToLower(strings.TrimSpace(penAgent))
+	if agent == "" {
+		agent = "gemini"
+	}
+	model := strings.TrimSpace(penModel)
+	if strings.Contains(model, ":") {
+		parts := strings.SplitN(model, ":", 2)
+		agent = strings.ToLower(parts[0])
+		model = parts[1]
+	}
+	modelArg := ""
+	if model != "" {
+		modelArg = " --model " + model
+	}
+
+	scope := strings.ToLower(strings.TrimSpace(designScope))
+	if scope == "" {
+		scope = "design_only"
+	}
+
+	if scope == "design_only" {
+		return msg + "\n\n--- pen.dev Design Only (pen CLI) ---\n" +
+			"CRITICAL: This card is strictly DESIGN ONLY. Do NOT create, edit, or modify application source code, components, routes, or styles.\n" +
+			"Do NOT touch files in app/, features/, components/, or src/.\n" +
+			"1. Generate the design mock using the pen.dev CLI:\n" +
+			"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
+			"2. Assert " + out + " parses as valid JSON and " + designExportPath(out) + " exists.\n" +
+			"3. Register the surface in design/manifest.json (and optional design/system.md).\n" +
+			"4. Commit only design artifacts (" + out + ", " + designExportPath(out) + ", design/manifest.json) and STOP immediately.\n" +
+			"Your task is fully accomplished once the design files are produced and verified.\n" +
+			"--- End pen.dev Design Only ---"
+	}
+
 	if tool == "pencil_mcp" {
 		return msg + "\n\n--- pen.dev Design (pencil MCP / pen CLI) ---\n" +
 			"This card requires a pen.dev design file at " + out + " (with PNG export at " + designExportPath(out) + ").\n" +
 			"1. If " + out + " does not exist yet (or is empty), generate it first with the headless pen CLI:\n" +
-			"   pen --out " + out + " --prompt \"<concise design intent from this card>\" --export " + designExportPath(out) + " --export-scale 1 --agent gemini\n" +
+			"   pen --out " + out + " --prompt \"<concise design intent from this card>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
 			"   (If the Pencil desktop MCP server has the document open, you may also inspect/edit it via MCP, but ensure " + out + " and " + designExportPath(out) + " are saved on disk.)\n" +
 			"2. Verify " + out + " is valid JSON and " + designExportPath(out) + " exists.\n" +
 			"3. Implement the application code to match the design.\n" +
 			"--- End pen.dev Design ---"
 	}
-	return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
+	return msg + "\n\n--- pen.dev Design & Code (pen CLI) ---\n" +
 		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +
 		"authenticated on the worker node. Do not use the desktop app or the pencil MCP to create\n" +
 		"the file: the MCP edits only the document already open in the app and cannot save a new one.\n" +
 		"1. Generate the mock:\n" +
-		"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent gemini\n" +
+		"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
 		"   (the default claude agent may have no API key on the node; gemini is the reliable backend)\n" +
 		"2. Assert " + out + " parses as JSON and " + designExportPath(out) + " exists.\n" +
 		"3. Register the surface in design/manifest.json (route, export, viewport measured from the\n" +
@@ -482,6 +520,56 @@ func appendDesignMandate(msg, designTool, designSource, title string) string {
 		"4. Commit only the design artifacts, then implement this card to the committed design.\n" +
 		"If " + out + " already exists and is non-empty, keep it and implement to it — do not regenerate.\n" +
 		"--- End pen.dev Design ---"
+}
+
+func buildDirectPenCommand(designSource, title, body, penAgent, penModel string) string {
+	out := strings.TrimSpace(designSource)
+	if out == "" {
+		out = kanban.DesignPathForTitle(title)
+	}
+	export := designExportPath(out)
+	prompt := strings.TrimSpace(body)
+	if prompt == "" {
+		prompt = strings.TrimSpace(title)
+	}
+	cleanPrompt := strings.ReplaceAll(prompt, `"`, `\"`)
+	cleanPrompt = strings.ReplaceAll(cleanPrompt, "`", `\`+"`")
+	cleanPrompt = strings.ReplaceAll(cleanPrompt, "$", `\$`)
+
+	agent := strings.ToLower(strings.TrimSpace(penAgent))
+	if agent == "" {
+		agent = "gemini"
+	}
+	model := strings.TrimSpace(penModel)
+	if strings.Contains(model, ":") {
+		parts := strings.SplitN(model, ":", 2)
+		agent = strings.ToLower(parts[0])
+		model = parts[1]
+	}
+	modelArg := ""
+	if model != "" {
+		modelArg = " --model " + model
+	}
+
+	envPrefix := ""
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		agentAuthPath := filepath.Join(home, ".pencil", "agent-auth")
+		if data, err := os.ReadFile(agentAuthPath); err == nil {
+			var parsed map[string]struct {
+				Type string `json:"type"`
+				Key  string `json:"key"`
+			}
+			if err := json.Unmarshal(data, &parsed); err == nil {
+				if entry, ok := parsed[agent]; ok && entry.Key != "" {
+					envPrefix = fmt.Sprintf("PEN_AGENT_API_KEY=%q ", entry.Key)
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf(`mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen --out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
+		out, export, envPrefix, out, cleanPrompt, export, agent, modelArg)
 }
 
 // designExportPath is where a design mock's PNG export lands:

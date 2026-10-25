@@ -133,6 +133,32 @@ describe("buildCreatePayload", () => {
     expect(buildCreatePayload({ ...base, designTool: "pencil_mcp" }).design_tool).toBe("pencil_mcp")
   })
 
+  it("sends design_scope, pen_agent and pen_model when designTool is set", () => {
+    const payload = buildCreatePayload({
+      ...base,
+      designTool: "pen_cli",
+      designScope: "design_only",
+      penAgent: "deepseek",
+      penModel: "deepseek-chat",
+    })
+    expect(payload.design_tool).toBe("pen_cli")
+    expect(payload.design_scope).toBe("design_only")
+    expect(payload.pen_agent).toBe("deepseek")
+    expect(payload.pen_model).toBe("deepseek-chat")
+
+    // Without designTool, these should not be sent
+    const offPayload = buildCreatePayload({
+      ...base,
+      designTool: "",
+      designScope: "design_only",
+      penAgent: "deepseek",
+      penModel: "deepseek-chat",
+    })
+    expect("design_scope" in offPayload).toBe(false)
+    expect("pen_agent" in offPayload).toBe(false)
+    expect("pen_model" in offPayload).toBe(false)
+  })
+
   it("sends model, effort and commandcode_mode when configured", () => {
     const dshPayload = buildCreatePayload({
       ...base,

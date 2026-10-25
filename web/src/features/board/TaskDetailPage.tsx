@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { addTaskDependency, api, cancelRun, parseTaskExecutionMeta, patchTaskFields, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskEvent, type VerifyProfile, type Workspace, type TaskHealth as TH } from "../../api"
+import { addTaskDependency, api, cancelRun, parseTaskExecutionMeta, patchTaskFields, queueReason, removeTaskDependency, runControl, runTask, taskDependencies, taskHealth, taskRuns, toastGlobal, type Profile, type Task, type TaskEvent, type Workspace, type TaskHealth as TH } from "../../api"
 import { parseEventCards, TONE_BORDER, TONE_DOT, TONE_TEXT, FIELD_TRUNCATE_LEN, type EventGroup, type EventCard } from "./eventCards"
 import { VerifySettings } from "./VerifySettings"
 import { ArrowLeft, ChevronDown, ChevronRight, GitBranch, History, MessageSquare, Trash2 } from "lucide-react"
@@ -222,7 +222,7 @@ export default function TaskDetailPage({
   })
   const canRelease = health.data?.health === "stuck" || health.data?.health === "lost"
   const fields = useMutation({
-    mutationFn: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" }) =>
+    mutationFn: (patch: Parameters<typeof patchTaskFields>[2]) =>
       patchTaskFields(slug, task.id, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks", slug] })

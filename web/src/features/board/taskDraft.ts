@@ -48,6 +48,12 @@ export interface CreateTaskDraft {
    * every card that is not a design task.
    */
   designTool: "" | "pen_cli" | "pencil_mcp"
+  /** Scope of pen.dev design: "design_only" | "design_and_code". */
+  designScope?: "design_only" | "design_and_code"
+  /** pen.dev CLI agent. */
+  penAgent?: string
+  /** Specific model for pen.dev CLI. */
+  penModel?: string
   /** Explicit model override for dsh or commandcode execution. */
   model?: string
   /** Reasoning effort override ("auto", "off", "low", "medium", "high", "max"). */
@@ -111,6 +117,9 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // tool's mandate into the dispatch prompt from this field, so the
     // agent's instructions cannot go stale the way body text can.
     ...(draft.designTool ? { design_tool: draft.designTool } : {}),
+    ...(draft.designTool && draft.designScope ? { design_scope: draft.designScope } : {}),
+    ...(draft.designTool && draft.penAgent?.trim() ? { pen_agent: draft.penAgent.trim() } : {}),
+    ...(draft.designTool && draft.penModel?.trim() ? { pen_model: draft.penModel.trim() } : {}),
     ...(draft.model?.trim() && draft.model.trim() !== "auto" && draft.model.trim() !== "default"
       ? { model: draft.model.trim() }
       : {}),

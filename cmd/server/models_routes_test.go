@@ -93,4 +93,43 @@ func TestModelsRoutes(t *testing.T) {
 	if !foundModel {
 		t.Errorf("expected sample model not found in Command Code models")
 	}
+
+	// 3. Test Pen.dev models
+	reqPen := httptest.NewRequest("GET", "/api/models?executor=pen", nil)
+	recPen := httptest.NewRecorder()
+	mux.ServeHTTP(recPen, reqPen)
+
+	if recPen.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pen models, got %d: %s", recPen.Code, recPen.Body.String())
+	}
+
+	var penResp ModelsResponse
+	if err := json.Unmarshal(recPen.Body.Bytes(), &penResp); err != nil {
+		t.Fatalf("unmarshal json: %v", err)
+	}
+
+	if penResp.Executor != "pen" {
+		t.Fatalf("expected executor pen, got %s", penResp.Executor)
+	}
+	if len(penResp.Models) == 0 {
+		t.Fatal("expected at least 1 pen.dev model")
+	}
+
+	// Verify Gemini and DeepSeek models are discovered
+	hasGemini := false
+	hasDeepSeek := false
+	for _, m := range penResp.Models {
+		if m.Value == "gemini:gemini-3.6-flash" {
+			hasGemini = true
+		}
+		if m.Value == "deepseek:deepseek-flash" {
+			hasDeepSeek = true
+		}
+	}
+	if !hasGemini {
+		t.Errorf("gemini:gemini-3.6-flash not found in pen models")
+	}
+	if !hasDeepSeek {
+		t.Errorf("deepseek:deepseek-flash not found in pen models")
+	}
 }

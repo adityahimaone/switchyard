@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { api, parseTaskExecutionMeta, runControl, taskHealth, toastGlobal, type Attachment, type Profile, type Task, type TaskEvent, type Workspace, type TaskHealth } from "../../api"
 import { ExternalLink, X } from "lucide-react"
 import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
@@ -214,7 +215,33 @@ export default function TaskDetail({
                       </span>
                     </Field>
                   )}
-                  {task.design_tool && <Field label="Design tool">{task.design_tool}</Field>}
+                  {task.design_tool && (
+                    <Field label="Design tool">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{task.design_tool}</span>
+                        {task.design_scope && (
+                          <span
+                            className={cn(
+                              "rounded px-1.5 py-0.5 font-mono text-[10px] leading-none",
+                              task.design_scope === "design_only"
+                                ? "border border-purple-500/20 bg-purple-500/10 text-purple-400"
+                                : "border border-blue-500/20 bg-blue-500/10 text-blue-400",
+                            )}
+                          >
+                            {task.design_scope === "design_only" ? "Design Only" : "Design & Code"}
+                          </span>
+                        )}
+                        {task.pen_model && (
+                          <span
+                            className="rounded border border-accent/20 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-accent"
+                            title={`Agent: ${task.pen_agent || "gemini"}, Model: ${task.pen_model}`}
+                          >
+                            {task.pen_model}
+                          </span>
+                        )}
+                      </div>
+                    </Field>
+                  )}
                 </FieldList>
               </Section>
 

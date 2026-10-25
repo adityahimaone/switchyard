@@ -27,7 +27,12 @@ export function VerifySettings({
   slug: string
   task: Task
   saving: boolean
-  onSave: (patch: { verify_profile?: VerifyProfile | ""; design_source?: string; design_tool?: "pen_cli" | "pencil_mcp" | "" }) => void
+  onSave: (patch: {
+    verify_profile?: VerifyProfile | ""
+    design_source?: string
+    design_tool?: "pen_cli" | "pencil_mcp" | ""
+    design_scope?: "design_only" | "design_and_code"
+  }) => void
 }) {
   const [profile, setProfile] = useState<VerifyProfile | "">(task.verify_profile ?? "")
   const [design, setDesign] = useState(task.design_source ?? "")
@@ -35,6 +40,9 @@ export function VerifySettings({
   // wants the empty string to clear the switch.
   const [tool, setTool] = useState<"none" | "pen_cli" | "pencil_mcp">(
     task.design_tool ?? "none",
+  )
+  const [scope, setScope] = useState<"design_only" | "design_and_code">(
+    task.design_scope || "design_only",
   )
 
   // Re-sync when the card changes underneath us — after a save, or when
@@ -44,18 +52,21 @@ export function VerifySettings({
     setProfile(task.verify_profile ?? "")
     setDesign(task.design_source ?? "")
     setTool(task.design_tool ?? "none")
-  }, [task.id, task.verify_profile, task.design_source, task.design_tool])
+    setScope(task.design_scope || "design_only")
+  }, [task.id, task.verify_profile, task.design_source, task.design_tool, task.design_scope])
 
   const profileDirty = profile !== (task.verify_profile ?? "")
   const designDirty = design.trim() !== (task.design_source ?? "")
   const toolDirty = tool !== (task.design_tool ?? "none")
-  const dirty = profileDirty || designDirty || toolDirty
+  const scopeDirty = tool !== "none" && scope !== (task.design_scope || "design_only")
+  const dirty = profileDirty || designDirty || toolDirty || scopeDirty
 
   function save() {
     onSave({
       verify_profile: profile,
       design_source: design.trim(),
       design_tool: tool === "none" ? "" : tool,
+      design_scope: tool === "none" ? undefined : scope,
     })
   }
 
@@ -130,6 +141,30 @@ export function VerifySettings({
             </SelectContent>
           </Select>
         </div>
+
+        {tool !== "none" && (
+          <div className="min-w-0">
+            <Label className="block text-xs text-ink-3" htmlFor="detail-design-scope">
+              Workflow scope
+            </Label>
+            <Select
+              value={scope}
+              onValueChange={(v) => setScope(v as "design_only" | "design_and_code")}
+            >
+              <SelectTrigger id="detail-design-scope" className="mt-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="design_only" className="text-sm">
+                  Design Only (.pen + PNG mock, 0 code edits)
+                </SelectItem>
+                <SelectItem value="design_and_code" className="text-sm">
+                  Design &amp; Implement (Mockup then code)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       <p className="mt-1.5 text-2xs text-ink-3">
@@ -159,6 +194,7 @@ export function VerifySettings({
               setProfile(task.verify_profile ?? "")
               setDesign(task.design_source ?? "")
               setTool(task.design_tool ?? "none")
+              setScope(task.design_scope || "design_only")
             }}
           >
             Discard

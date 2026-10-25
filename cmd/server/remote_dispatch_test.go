@@ -55,6 +55,50 @@ func TestAppendDesignReference(t *testing.T) {
 	}
 }
 
+func TestAppendDesignMandateDesignOnly(t *testing.T) {
+	prompt := appendDesignMandate("Build a contact card", "pen_cli", "design/contact.pen", "Contact Card", "design_only", "gemini", "gemini-3.6-flash")
+	if !strings.Contains(prompt, "--- pen.dev Design Only (pen CLI) ---") {
+		t.Errorf("missing Design Only header in prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "CRITICAL: This card is strictly DESIGN ONLY") {
+		t.Errorf("missing critical design only instruction in prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "pen --out design/contact.pen") {
+		t.Errorf("missing pen CLI command in prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "--agent gemini --model gemini-3.6-flash") {
+		t.Errorf("missing agent and model flags in prompt:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "implement this card to the committed design") {
+		t.Errorf("design_only prompt must NOT tell agent to implement code")
+	}
+
+	// Test Design & Code
+	codePrompt := appendDesignMandate("Build a contact card", "pen_cli", "design/contact.pen", "Contact Card", "design_and_code", "claude", "")
+	if !strings.Contains(codePrompt, "--- pen.dev Design & Code (pen CLI) ---") {
+		t.Errorf("missing Design & Code header in prompt:\n%s", codePrompt)
+	}
+	if !strings.Contains(codePrompt, "then implement this card to the committed design") {
+		t.Errorf("design_and_code must contain implementation instruction:\n%s", codePrompt)
+	}
+}
+
+func TestBuildDirectPenCommand(t *testing.T) {
+	cmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "deepseek", "deepseek-flash")
+	if !strings.Contains(cmd, "pen --out \"design/hero.pen\"") {
+		t.Errorf("command missing output path:\n%s", cmd)
+	}
+	if !strings.Contains(cmd, "--export \"design/exports/hero.png\"") {
+		t.Errorf("command missing export path:\n%s", cmd)
+	}
+	if !strings.Contains(cmd, "--agent \"deepseek\"") {
+		t.Errorf("command missing agent:\n%s", cmd)
+	}
+	if !strings.Contains(cmd, "--model deepseek-flash") {
+		t.Errorf("command missing model:\n%s", cmd)
+	}
+}
+
 // TestDispatchSelectionOrdersPriorityAndSkipsBlocked covers the
 // starvation the old query had: five dependency-blocked cards ahead
 // of free ones in the table, plus an urgent free card. A bare

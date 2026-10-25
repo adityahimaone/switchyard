@@ -181,10 +181,13 @@ func ValidateNewTask(t *Task) []Issue {
 		add(CodeBadRequest, "design_tool", "design_tool %q is not one of %s",
 			t.DesignTool, strings.Join(DesignToolLadder, "/"))
 	}
+	if t.DesignScope != "" && t.DesignScope != "design_only" && t.DesignScope != "design_and_code" {
+		add(CodeBadRequest, "design_scope", "design_scope %q must be 'design_only' or 'design_and_code'", t.DesignScope)
+	}
 
 	// Existing rules, restated so the dry run reports them with the same codes
 	// rather than as a bare error string.
-	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" {
+	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" && t.DesignTool != "pen_cli" {
 		add(CodeBadRequest, "command", "shell executor requires a command in direct mode")
 	}
 	if t.Executor != "" && !ValidExecutors[t.Executor] {

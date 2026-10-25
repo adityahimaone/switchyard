@@ -27,6 +27,9 @@ type TaskFields struct {
 	VerifyProfile *string `json:"verify_profile,omitempty"`
 	DesignSource  *string `json:"design_source,omitempty"`
 	DesignTool    *string `json:"design_tool,omitempty"`
+	DesignScope   *string `json:"design_scope,omitempty"`
+	PenAgent      *string `json:"pen_agent,omitempty"`
+	PenModel      *string `json:"pen_model,omitempty"`
 	Executor      *string `json:"executor,omitempty"`
 	Model         *string `json:"model,omitempty"`
 }
@@ -96,6 +99,27 @@ func UpdateTaskFields(slug, taskID string, f TaskFields) error {
 				changed = append(changed, "design_source")
 			}
 		}
+	}
+	if f.DesignScope != nil {
+		scope := strings.ToLower(strings.TrimSpace(*f.DesignScope))
+		if scope != "" && scope != "design_only" && scope != "design_and_code" {
+			return &RunControlError{Code: 400, Err: fmt.Errorf("design_scope must be design_only or design_and_code")}
+		}
+		sets = append(sets, "design_scope=?")
+		args = append(args, scope)
+		changed = append(changed, "design_scope")
+	}
+	if f.PenAgent != nil {
+		agent := strings.ToLower(strings.TrimSpace(*f.PenAgent))
+		sets = append(sets, "pen_agent=?")
+		args = append(args, agent)
+		changed = append(changed, "pen_agent")
+	}
+	if f.PenModel != nil {
+		m := strings.TrimSpace(*f.PenModel)
+		sets = append(sets, "pen_model=?")
+		args = append(args, m)
+		changed = append(changed, "pen_model")
 	}
 	if f.Executor != nil {
 		exec := strings.ToLower(strings.TrimSpace(*f.Executor))

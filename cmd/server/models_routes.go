@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,6 +70,8 @@ func registerModelsRoutes(mux *http.ServeMux) {
 			models = fetchDSHModels()
 		} else if executor == "commandcode" {
 			models = fetchCommandCodeModels()
+		} else if executor == "pen" || executor == "pen_cli" || executor == "pencil" {
+			models = fetchPenModels()
 		} else {
 			models = []ModelOption{}
 		}
@@ -336,4 +339,140 @@ func formatCleanModelLabel(id string) string {
 	name = strings.ReplaceAll(name, " 1 1", " 1.1")
 	name = strings.ReplaceAll(name, " 1 0", " 1.0")
 	return name
+}
+
+func fetchPenModels() []ModelOption {
+	var models []ModelOption
+	home, _ := os.UserHomeDir()
+	pencilDir := ""
+	if home != "" {
+		pencilDir = filepath.Join(home, ".pencil")
+	}
+
+	// 1. Detect API keys from ~/.pencil/agent-auth
+	agentAuth := make(map[string]string)
+	if pencilDir != "" {
+		if data, err := os.ReadFile(filepath.Join(pencilDir, "agent-auth")); err == nil {
+			var parsed map[string]struct {
+				Type string `json:"type"`
+				Key  string `json:"key"`
+			}
+			if err := json.Unmarshal(data, &parsed); err == nil {
+				for prov, entry := range parsed {
+					if entry.Key != "" {
+						agentAuth[strings.ToLower(prov)] = entry.Key
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Check active pen.dev session
+	hasActiveSession := false
+	if pencilDir != "" {
+		if _, err := os.Stat(filepath.Join(pencilDir, "session-desktop.json")); err == nil {
+			hasActiveSession = true
+		} else if _, err := os.Stat(filepath.Join(pencilDir, "session-cli.json")); err == nil {
+			hasActiveSession = true
+		}
+	}
+	if os.Getenv("PEN_CLI_KEY") != "" {
+		hasActiveSession = true
+	}
+
+	sessionBadge := "Active Session"
+	if !hasActiveSession {
+		sessionBadge = "pen.dev"
+	}
+
+	// 3. Add Gemini models (primary pen.dev engine)
+	geminiModels := []struct{ id, label string }{
+		{"gemini-3.6-flash", "Gemini 3.6 Flash"},
+		{"gemini-3.7-flash", "Gemini 3.7 Flash"},
+		{"gemini-3.5-flash", "Gemini 3.5 Flash"},
+		{"gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite"},
+		{"gemini-3.1-pro-preview", "Gemini 3.1 Pro"},
+	}
+	for i, gm := range geminiModels {
+		models = append(models, ModelOption{
+			Value:    "gemini:" + gm.id,
+			Label:    gm.label,
+			Sublabel: "Google · pen.dev built-in",
+			Badge:    sessionBadge,
+			Pinned:   i < 2,
+		})
+	}
+
+	// 4. Custom models from ~/.pencil/models-store.json (e.g. DeepSeek)
+	hasDeepSeekKey := agentAuth["deepseek"] != "" || os.Getenv("DEEPSEEK_API_KEY") != ""
+	deepseekBadge := "DeepSeek"
+	if hasDeepSeekKey {
+		deepseekBadge = "DeepSeek • API Key Set"
+	}
+	models = append(models, ModelOption{
+		Value:    "deepseek:deepseek-flash",
+		Label:    "DeepSeek V4.1 Flash",
+		Sublabel: "DeepSeek API",
+		Badge:    deepseekBadge,
+		Pinned:   true,
+	})
+	models = append(models, ModelOption{
+		Value:    "deepseek:deepseek-v4-pro",
+		Label:    "DeepSeek V4 Pro",
+		Sublabel: "DeepSeek API",
+		Badge:    deepseekBadge,
+	})
+
+	// 5. 9Router models if configured
+	if agentAuth["9router"] != "" || os.Getenv("NINEROUTER_API_KEY") != "" {
+		models = append(models, ModelOption{
+			Value:    "9router:codex",
+			Label:    "9Router Codex",
+			Sublabel: "9Router Proxy",
+			Badge:    "9router • API Key Set",
+			Pinned:   true,
+		})
+	}
+
+	// 6. Claude models
+	hasClaudeKey := agentAuth["claude"] != "" || agentAuth["anthropic"] != "" || os.Getenv("ANTHROPIC_API_KEY") != ""
+	claudeBadge := "Anthropic"
+	if hasClaudeKey {
+		claudeBadge = "Anthropic • API Key Set"
+	}
+	claudeModels := []struct{ id, label string }{
+		{"claude-sonnet-5", "Claude Sonnet 5"},
+		{"claude-haiku-4-5", "Claude Haiku 4.5"},
+		{"claude-opus-5-5", "Claude Opus 5.5"},
+	}
+	for _, cm := range claudeModels {
+		models = append(models, ModelOption{
+			Value:    "claude:" + cm.id,
+			Label:    cm.label,
+			Sublabel: "Anthropic",
+			Badge:    claudeBadge,
+		})
+	}
+
+	// 7. Codex models
+	hasCodexKey := agentAuth["codex"] != "" || agentAuth["openai"] != "" || os.Getenv("OPENAI_API_KEY") != ""
+	codexBadge := "OpenAI Codex"
+	if hasCodexKey {
+		codexBadge = "OpenAI • API Key Set"
+	}
+	codexModels := []struct{ id, label string }{
+		{"gpt-5.6-terra", "GPT-5.6 Terra"},
+		{"gpt-6-sol", "GPT-6 Sol"},
+		{"gpt-5.5", "GPT-5.5"},
+	}
+	for _, om := range codexModels {
+		models = append(models, ModelOption{
+			Value:    "codex:" + om.id,
+			Label:    om.label,
+			Sublabel: "OpenAI Codex",
+			Badge:    codexBadge,
+		})
+	}
+
+	return models
 }
