@@ -2,14 +2,10 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Loader2,
-  Palette,
   GitFork,
   Trash2,
   ArrowUpRight,
   Send,
-  Plus,
-  PanelLeftClose,
-  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Sparkles,
@@ -18,13 +14,14 @@ import {
   Copy,
   X,
   Code2,
+  Home,
+  Folder,
 } from "lucide-react"
 import { api, toastGlobal, type Workspace } from "../../api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
@@ -42,6 +39,7 @@ import {
 import { compilePenDocumentToReact } from "./penCompiler"
 import { PenCanvas } from "./PenCanvas"
 import { PenPropertyInspector } from "./PenPropertyInspector"
+import { CanvasHub } from "./CanvasHub"
 
 export interface CanvasSession {
   id: string
@@ -62,6 +60,7 @@ export interface CanvasSession {
   last_error?: string
   parent_id?: string
   last_active_at: number
+  created_at: number
   view_url?: string
 }
 
@@ -80,7 +79,6 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
   const [selected, setSelected] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [prefill, setPrefill] = useState<CanvasPrefill | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     const raw = sessionStorage.getItem(CANVAS_PREFILL_KEY)
@@ -100,168 +98,102 @@ export default function CanvasPage({ workspaces, boardSlug }: { workspaces: Work
     refetchInterval: 5000,
   })
 
-  // Keyboard shortcut Cmd+[ to toggle sidebar
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "[") {
-        e.preventDefault()
-        setSidebarOpen((prev) => !prev)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+  const createMutation = useMutation({
+    mutationFn: (params: { workspace_id: string; title: string; brief: string; executor?: string; model?: string }) =>
+      post<CanvasSession>("/api/canvas/sessions", params),
+    onSuccess: (s) => {
+      qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+      setSelected(s.id)
+      setCreating(false)
+      setPrefill(null)
+    },
+    onError: (e: Error) => toastGlobal(e.message, "error"),
+  })
+
+  const forkMutation = useMutation({
+    mutationFn: (id: string) => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}),
+    onSuccess: (s) => {
+      qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+      setSelected(s.id)
+      toastGlobal("Variation created", "success")
+    },
+    onError: (e: Error) => toastGlobal(e.message, "error"),
+  })
+
+  const discardMutation = useMutation({
+    mutationFn: (id: string) => post(`/api/canvas/sessions/${id}/discard`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+      setSelected(null)
+      toastGlobal("Canvas discarded", "success")
+    },
+    onError: (e: Error) => toastGlobal(e.message, "error"),
+  })
 
   return (
-    <div className="flex min-h-0 flex-1 relative overflow-hidden bg-background">
-      {/* Left Sidebar */}
-      <aside
-        className={cn(
-          "flex shrink-0 flex-col border-r border-[var(--c-line)] bg-background/50 transition-all duration-150 ease-out z-10",
-          sidebarOpen ? "w-72" : "w-0 border-r-0 overflow-hidden opacity-0 pointer-events-none",
-        )}
-      >
-        <div className="flex items-center justify-between px-3 py-3 border-b border-[var(--c-line)]">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Palette className="size-4 text-accent" /> Canvas Studio
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs active:scale-[0.97] transition-transform"
-              onClick={() => {
-                setCreating(true)
-                setSelected(null)
-              }}
-            >
-              <Plus className="size-3.5 mr-1" /> New
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-7 text-ink-3 hover:text-ink-1"
-              onClick={() => setSidebarOpen(false)}
-              title="Collapse Sidebar (Cmd+[)"
-            >
-              <PanelLeftClose className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
-          {(sessions.data ?? []).length === 0 && !sessions.isLoading && (
-            <p className="px-2 text-xs text-ink-3 leading-relaxed">
-              No canvases yet. Brainstorm visual prototypes with 0-Token Native pen.dev Canvas in an isolated worktree.
-            </p>
-          )}
-          {(sessions.data ?? []).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => {
-                setSelected(s.id)
-                setCreating(false)
-              }}
-              className={cn(
-                "w-full rounded-control px-2.5 py-2 text-left text-sm transition-colors duration-100 hover:bg-accent-tint group relative",
-                selected === s.id && "bg-accent-tint font-medium",
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-medium">{s.title}</span>
-                <StatusDot s={s} />
-              </div>
-              <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-3 mt-0.5">
-                {s.workspace_id === "scratchpad" && (
-                  <span className="rounded bg-accent/15 px-1 py-0.2 text-[9px] font-medium text-accent">
-                    Scratchpad
-                  </span>
-                )}
-                <span className="truncate">{s.branch}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </aside>
-
-      {/* Main Studio Viewport */}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col relative">
-        {creating ? (
-          <NewCanvas
-            workspaces={workspaces}
-            prefill={prefill}
-            onCreated={(s) => {
-              qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
-              setSelected(s.id)
-              setCreating(false)
-              setPrefill(null)
-            }}
-          />
-        ) : selected ? (
-          <StudioSessionView
-            key={selected}
-            id={selected}
-            boardSlug={boardSlug}
-            workspaces={workspaces}
-            sidebarOpen={sidebarOpen}
-            onToggleSidebar={() => setSidebarOpen((v) => !v)}
-            onGone={() => {
-              setSelected(null)
-              qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
-            }}
-            onOpen={(id) => {
-              setSelected(id)
-              qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
-            }}
-          />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ink-3">
-            {!sidebarOpen && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 active:scale-[0.97]"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <PanelLeftOpen className="size-3.5" /> Show Canvases
-              </Button>
-            )}
-            <div className="flex flex-col items-center text-center max-w-sm px-4">
-              <Palette className="size-10 text-ink-3/40 mb-3" />
-              <p className="text-sm font-medium text-ink-1">Select a canvas or create a new one</p>
-              <p className="text-xs text-ink-3 mt-1">
-                Brainstorm visually with pen.dev Canvas, compile to React in 0 tokens, and promote to tasks.
-              </p>
-              <Button
-                size="sm"
-                className="mt-4 gap-1.5 active:scale-[0.97]"
-                onClick={() => setCreating(true)}
-              >
-                <Plus className="size-3.5" /> Create Canvas
-              </Button>
-            </div>
-          </div>
-        )}
-      </main>
+    <div className="flex min-h-0 flex-1 relative overflow-hidden bg-[#0d0e12]">
+      {creating ? (
+        <NewCanvas
+          workspaces={workspaces}
+          prefill={prefill}
+          onCreated={(s) => {
+            qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+            setSelected(s.id)
+            setCreating(false)
+            setPrefill(null)
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : selected ? (
+        <StudioSessionView
+          key={selected}
+          id={selected}
+          boardSlug={boardSlug}
+          workspaces={workspaces}
+          onBackToHub={() => setSelected(null)}
+          onGone={() => {
+            setSelected(null)
+            qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+          }}
+          onOpen={(id) => {
+            setSelected(id)
+            qc.invalidateQueries({ queryKey: ["canvas-sessions"] })
+          }}
+        />
+      ) : (
+        <CanvasHub
+          sessions={sessions.data ?? []}
+          onSelectSession={setSelected}
+          onCreateSession={(params) =>
+            createMutation.mutate({
+              workspace_id: "scratchpad",
+              title: params.title,
+              brief: params.brief,
+              executor: "dsh",
+              model: params.model,
+            })
+          }
+          onForkSession={(id) => forkMutation.mutate(id)}
+          onDiscardSession={(id) => discardMutation.mutate(id)}
+          onPromoteSession={(session) => {
+            setSelected(session.id)
+          }}
+        />
+      )}
     </div>
   )
-}
-
-function StatusDot({ s }: { s: CanvasSession }) {
-  if (s.status === "working") return <Loader2 className="size-3.5 animate-spin text-accent" />
-  const color = s.status === "error" ? "bg-red-500" : "bg-emerald-500"
-  return <span className={cn("size-2 rounded-full", color)} title={s.status} />
 }
 
 function NewCanvas({
   workspaces,
   prefill,
   onCreated,
+  onCancel,
 }: {
   workspaces: Workspace[]
   prefill: CanvasPrefill | null
   onCreated: (s: CanvasSession) => void
+  onCancel?: () => void
 }) {
   const usable = useMemo(
     () => workspaces.filter((w) => (w.os ?? "").toLowerCase() !== "windows" && !/^[A-Za-z]:|\\/.test(w.path)),
@@ -309,31 +241,38 @@ function NewCanvas({
   })
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-4 overflow-y-auto p-6">
-      <div>
-        <h2 className="text-base font-semibold">New canvas</h2>
-        <p className="text-xs text-ink-3">
-          Creates an isolated git worktree with 0-Token Native pen.dev Canvas Studio.
-        </p>
+    <div className="mx-auto w-full max-w-xl space-y-4 overflow-y-auto p-6 text-neutral-200">
+      <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] pb-3">
+        <div>
+          <h2 className="text-base font-semibold text-white">New canvas</h2>
+          <p className="text-xs text-neutral-400">
+            Creates an isolated git worktree with 0-Token Native pen.dev Canvas Studio.
+          </p>
+        </div>
+        {onCancel && (
+          <Button variant="ghost" size="icon" onClick={onCancel} className="size-8 text-neutral-400 hover:text-white">
+            <X className="size-4" />
+          </Button>
+        )}
       </div>
       <div>
-        <Label className="text-xs text-ink-3">Workspace</Label>
+        <Label className="text-xs text-neutral-400">Workspace</Label>
         <SearchSelect options={options} value={workspaceId} onValueChange={setWorkspaceId} placeholder="Search workspaces or select Global Scratchpad..." />
       </div>
       <div>
-        <Label className="text-xs text-ink-3" htmlFor="canvas-title">Title</Label>
-        <Input id="canvas-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Pricing card explorations" />
+        <Label className="text-xs text-neutral-400" htmlFor="canvas-title">Title</Label>
+        <Input id="canvas-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Pricing card explorations" className="bg-[#14151c] text-white border-[rgba(255,255,255,0.1)]" />
       </div>
       <div>
-        <Label className="text-xs text-ink-3" htmlFor="canvas-brief">First request (optional)</Label>
-        <Textarea id="canvas-brief" rows={4} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Compare 3 hero layouts for the landing page…" />
+        <Label className="text-xs text-neutral-400" htmlFor="canvas-brief">First request (optional)</Label>
+        <Textarea id="canvas-brief" rows={4} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Compare 3 hero layouts for the landing page…" className="bg-[#14151c] text-white border-[rgba(255,255,255,0.1)] resize-none" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-xs text-ink-3">Harness</Label>
+          <Label className="text-xs text-neutral-400">Harness</Label>
           <Select value={executor} onValueChange={(v) => { setExecutor(v); setModel("") }}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
+            <SelectTrigger className="mt-1 bg-[#14151c] text-white border-[rgba(255,255,255,0.1)]"><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-[#14151c] text-white border-[rgba(255,255,255,0.1)]">
               <SelectItem value="dsh">dsh (DeepSeek Harness)</SelectItem>
               <SelectItem value="commandcode">Command Code</SelectItem>
               <SelectItem value="claude">Claude Code</SelectItem>
@@ -341,15 +280,22 @@ function NewCanvas({
           </Select>
         </div>
         <div>
-          <Label className="text-xs text-ink-3">Model</Label>
+          <Label className="text-xs text-neutral-400">Model</Label>
           <div className="mt-1">
             <SearchSelect options={models} value={model} onValueChange={setModel} placeholder="Default model" />
           </div>
         </div>
       </div>
-      <Button disabled={!workspaceId || !title.trim() || create.isPending} onClick={() => create.mutate()} className="active:scale-[0.97] transition-transform">
-        {create.isPending && <Loader2 className="size-4 animate-spin mr-1.5" />} Create canvas
-      </Button>
+      <div className="flex items-center justify-end gap-2 pt-2">
+        {onCancel && (
+          <Button variant="ghost" size="sm" onClick={onCancel} className="text-neutral-400 hover:text-white">
+            Cancel
+          </Button>
+        )}
+        <Button disabled={!workspaceId || !title.trim() || create.isPending} onClick={() => create.mutate()} className="active:scale-[0.97] transition-transform bg-white text-black font-semibold hover:bg-neutral-200">
+          {create.isPending && <Loader2 className="size-4 animate-spin mr-1.5" />} Create canvas
+        </Button>
+      </div>
     </div>
   )
 }
@@ -373,7 +319,7 @@ function ConvertToReactModal({
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#121316] shadow-2xl overflow-hidden">
         <header className="flex h-12 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4">
           <div className="flex items-center gap-2">
-            <Code2 className="size-4 text-accent" />
+            <Code2 className="size-4 text-accent-text" />
             <h3 className="text-xs font-semibold text-neutral-200">React + Tailwind JSX</h3>
             <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-400">
               0 Tokens Consumed
@@ -526,16 +472,14 @@ function StudioSessionView({
   id,
   boardSlug,
   workspaces,
-  sidebarOpen,
-  onToggleSidebar,
+  onBackToHub,
   onGone,
   onOpen,
 }: {
   id: string
   boardSlug: string
   workspaces: Workspace[]
-  sidebarOpen: boolean
-  onToggleSidebar: () => void
+  onBackToHub: () => void
   onGone: () => void
   onOpen: (id: string) => void
 }) {
@@ -676,9 +620,9 @@ function StudioSessionView({
             name: "New Frame",
             x: 80,
             y: 80,
-            width: 360,
-            height: 200,
-            cornerRadius: 12,
+            width: 390,
+            height: 844,
+            cornerRadius: 16,
             fill: "#18191f",
             stroke: "rgba(255,255,255,0.1)",
             strokeWidth: 1,
@@ -748,81 +692,88 @@ function StudioSessionView({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  if (!s) return <div className="flex flex-1 items-center justify-center text-sm text-ink-3">Loading canvas…</div>
+  if (!s) return <div className="flex flex-1 items-center justify-center text-sm text-neutral-400">Loading canvas…</div>
   const busy = s.status === "working"
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col h-full select-none">
-      {/* Top Floating Pro Toolbar */}
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--c-line)] bg-background/80 backdrop-blur-md px-3 py-2 z-20">
-        {/* Left: Toggles & Title */}
-        <div className="flex items-center gap-2 min-w-0">
-          {!sidebarOpen && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-7 text-ink-3 hover:text-ink-1 active:scale-[0.97]"
-              onClick={onToggleSidebar}
-              title="Show Sidebar (Cmd+[)"
-            >
-              <PanelLeftOpen className="size-4" />
-            </Button>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-xs font-semibold">{s.title}</span>
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider h-5 font-normal">
-                {s.status}
-              </Badge>
-              <Badge variant="outline" className="text-[10px] text-accent border-accent/40 h-5 font-normal">
-                pen.dev
-              </Badge>
+    <div className="flex min-h-0 flex-1 flex-col h-full select-none bg-[#0d0e12]">
+      {/* Top Floating Pro Toolbar (Matches pen.dev Image 1) */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.08)] bg-[#0f1015]/90 px-4 backdrop-blur-md z-20">
+        {/* Left: Traffic Lights + Pen.dev Logo + Home (Back to Hub) + File Tab */}
+        <div className="flex items-center gap-3 min-w-0">
+          {/* macOS window traffic lights */}
+          <div className="flex items-center gap-1.5">
+            <span className="size-3 rounded-full bg-[#ff5f56]" />
+            <span className="size-3 rounded-full bg-[#ffbd2e]" />
+            <span className="size-3 rounded-full bg-[#27c93f]" />
+          </div>
+
+          {/* Logo & Back to Menu Hub */}
+          <button
+            type="button"
+            onClick={onBackToHub}
+            className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-all active:scale-95"
+            title="Back to Canvas Menu (Image 2)"
+          >
+            <div className="flex size-5 items-center justify-center rounded bg-[#10e0dd]/20 text-[#10e0dd]">
+              <Sparkles className="size-3" />
             </div>
-            <div className="truncate text-[10px] text-ink-3">
-              {s.branch} · {s.executor} · turn {s.turns}
-            </div>
+            <span className="font-bold tracking-tight">pen.dev</span>
+            <Home className="size-3.5 text-neutral-400 ml-1" />
+          </button>
+
+          {/* Active File Tab matching Image 1 */}
+          <div className="flex items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#14151c] px-3 py-1 text-xs text-neutral-200 font-mono shadow-sm">
+            <Folder className="size-3.5 text-neutral-400" />
+            <span className="truncate max-w-56 font-sans">
+              design / {s.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pen
+            </span>
+            <span className="size-1.5 rounded-full bg-emerald-400 ml-1" />
           </div>
         </div>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-1.5">
+        {/* Right Actions matching Image 1 */}
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs active:scale-[0.97]"
+            className="h-7 px-2.5 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-200 hover:bg-[#1a1b24] active:scale-[0.97]"
             onClick={() => setReactModalOpen(true)}
           >
-            <Code2 className="size-3 mr-1 text-accent" /> Convert to React (0 Token)
+            <Code2 className="size-3.5 mr-1.5 text-accent-text" />
+            <span>Convert to React (0 Token)</span>
           </Button>
 
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs active:scale-[0.97]"
-            disabled={busy}
-            onClick={() =>
-              run(() => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}), "Variation created", (n) =>
-                onOpen(n.id),
-              )
-            }
-          >
-            <GitFork className="size-3 mr-1" /> Fork
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs active:scale-[0.97]"
+            className="h-7 px-2.5 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-200 hover:bg-[#1a1b24] active:scale-[0.97]"
             disabled={busy}
             onClick={() => setPromoteModalOpen(true)}
           >
-            <ArrowUpRight className="size-3 mr-1" /> Promote
+            <ArrowUpRight className="size-3.5 mr-1.5 text-emerald-400" />
+            <span>Promote to Task</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs bg-[#14151c] border-[rgba(255,255,255,0.1)] text-neutral-300 hover:bg-[#1a1b24] active:scale-[0.97]"
+            disabled={busy}
+            onClick={() =>
+              run(() => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}), "Variation created", (n) =>
+                onOpen(n.id)
+              )
+            }
+            title="Duplicate / Fork"
+          >
+            <GitFork className="size-3.5" />
           </Button>
 
           <Button
             size="icon"
             variant="ghost"
-            className="size-7 text-ink-3 hover:text-red-500 active:scale-[0.97]"
+            className="size-7 text-neutral-400 hover:text-red-400 active:scale-[0.97]"
             onClick={() => {
               if (window.confirm("Discard this canvas? The worktree and branch will be deleted.")) {
                 run(() => post(`/api/canvas/sessions/${id}/discard`), "Canvas discarded", onGone)
@@ -833,23 +784,29 @@ function StudioSessionView({
             <Trash2 className="size-3.5" />
           </Button>
 
+          <div className="h-4 w-px bg-[rgba(255,255,255,0.1)] mx-0.5" />
+
           {/* Toggle Inspector */}
           <Button
             size="icon"
             variant={inspectorOpen ? "secondary" : "ghost"}
-            className="size-7 active:scale-[0.97] transition-transform ml-1"
+            className="size-7 text-neutral-300 active:scale-[0.97]"
             onClick={() => setInspectorOpen((v) => !v)}
             title="Toggle pen.dev Inspector (Cmd+])"
           >
             {inspectorOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
           </Button>
+
+          <div className="flex size-7 items-center justify-center rounded-full bg-neutral-800 font-mono text-xs font-semibold text-neutral-200 ml-1">
+            A
+          </div>
         </div>
       </header>
 
       {/* Main Body */}
       <div className="flex min-h-0 flex-1 relative overflow-hidden">
         {/* Central Canvas Viewport */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col relative bg-[var(--c-canvas)] overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col relative bg-[#0c0d10] overflow-hidden">
           <PenCanvas
             document={penDoc}
             selectedNodeId={selectedPenNodeId}
@@ -860,25 +817,28 @@ function StudioSessionView({
               setPenDoc(doc)
               triggerPenAutoSave(doc)
             }}
+            onOpenChat={() => setChatOpen(true)}
+            activeModel={s.model || "DeepSeek V4.1 Flash"}
+            turnCount={s.turns}
           />
 
           {/* Floating Agent Chat Drawer (Bottom Right) */}
           <div className="absolute bottom-4 right-4 z-30">
-            {chatOpen ? (
-              <div className="w-96 max-w-[calc(100vw-2rem)] h-[440px] rounded-xl border border-[var(--c-line)] bg-background/95 backdrop-blur-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {chatOpen && (
+              <div className="w-96 max-w-[calc(100vw-2rem)] h-[440px] rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#14151d]/95 backdrop-blur-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                 {/* Chat Header */}
-                <div className="flex items-center justify-between border-b border-[var(--c-line)] px-3 py-2 bg-[var(--c-canvas)]/40">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold">
-                    <Sparkles className="size-3.5 text-accent" />
+                <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-3 py-2 bg-[#181924]/60">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-200">
+                    <Sparkles className="size-3.5 text-accent-text" />
                     <span>Agent Brainstorm</span>
-                    <Badge variant="outline" className="text-[10px] font-normal h-4 px-1">
+                    <span className="rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
                       turn {s.turns}
-                    </Badge>
+                    </span>
                   </div>
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="size-6 text-ink-3 hover:text-ink-1 active:scale-90"
+                    className="size-6 text-neutral-400 hover:text-white active:scale-90"
                     onClick={() => setChatOpen(false)}
                   >
                     <ChevronDown className="size-3.5" />
@@ -893,26 +853,26 @@ function StudioSessionView({
                       className={cn(
                         "rounded-lg px-2.5 py-1.5 whitespace-pre-wrap leading-relaxed",
                         m.role === "user"
-                          ? "bg-accent-tint ml-4 text-ink-1"
+                          ? "bg-accent-text/15 text-white ml-4"
                           : m.role === "system"
-                          ? "border border-amber-500/30 text-amber-600 bg-amber-500/5"
-                          : "bg-[var(--c-canvas)] mr-4 border border-[var(--c-line)]",
+                          ? "border border-amber-500/30 text-amber-400 bg-amber-500/10"
+                          : "bg-[#181922] mr-4 border border-[rgba(255,255,255,0.08)] text-neutral-300",
                       )}
                     >
-                      <div className="mb-0.5 text-[9px] uppercase tracking-wider text-ink-3 font-semibold">
+                      <div className="mb-0.5 text-[9px] uppercase tracking-wider text-neutral-500 font-semibold font-mono">
                         {m.role}
                       </div>
                       {m.content}
                     </div>
                   ))}
                   {busy && (
-                    <div className="flex items-center gap-2 text-xs text-ink-3 py-1">
-                      <Loader2 className="size-3.5 animate-spin text-accent" />
-                      Agent is working…
+                    <div className="flex items-center gap-2 text-xs text-neutral-400 py-1 font-mono">
+                      <Loader2 className="size-3.5 animate-spin text-accent-text" />
+                      Agent is generating design variations…
                     </div>
                   )}
                   {s.last_error && (
-                    <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-2 text-xs text-red-500">
+                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-400">
                       {s.last_error}
                     </div>
                   )}
@@ -920,7 +880,7 @@ function StudioSessionView({
 
                 {/* Prompt Box */}
                 <form
-                  className="flex gap-2 border-t border-[var(--c-line)] p-2.5 bg-background"
+                  className="flex gap-2 border-t border-[rgba(255,255,255,0.08)] p-2.5 bg-[#121319]"
                   onSubmit={(e) => {
                     e.preventDefault()
                     if (!text.trim() || busy) return
@@ -934,7 +894,7 @@ function StudioSessionView({
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     placeholder="Ask for variations, alternate styling, component tweaks…"
-                    className="text-xs resize-none min-h-[44px]"
+                    className="text-xs resize-none min-h-[44px] bg-[#181922] text-white border-[rgba(255,255,255,0.08)]"
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                         e.currentTarget.form?.requestSubmit()
@@ -944,7 +904,7 @@ function StudioSessionView({
                   <Button
                     type="submit"
                     size="icon"
-                    className="size-9 shrink-0 active:scale-[0.97]"
+                    className="size-9 shrink-0 active:scale-[0.97] bg-white text-black hover:bg-neutral-200"
                     disabled={busy || !text.trim()}
                     aria-label="Send message"
                   >
@@ -952,20 +912,6 @@ function StudioSessionView({
                   </Button>
                 </form>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setChatOpen(true)}
-                className="flex items-center gap-2 rounded-full border border-[var(--c-line)] bg-background/95 backdrop-blur-md px-3.5 py-2 shadow-lg text-xs font-medium text-ink-1 hover:border-accent hover:shadow-xl transition-all duration-150 active:scale-[0.97]"
-              >
-                {busy ? (
-                  <Loader2 className="size-3.5 animate-spin text-accent" />
-                ) : (
-                  <Sparkles className="size-3.5 text-accent" />
-                )}
-                <span>✦ Ask Agent</span>
-                <span className="text-[10px] text-ink-3">· turn {s.turns}</span>
-              </button>
             )}
           </div>
         </div>
@@ -973,7 +919,7 @@ function StudioSessionView({
         {/* Right Inspector Drawer (pen.dev Inspector) */}
         <aside
           className={cn(
-            "flex shrink-0 flex-col border-l border-[var(--c-line)] bg-background transition-all duration-150 ease-out z-10",
+            "flex shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121318] transition-all duration-150 ease-out z-10",
             inspectorOpen ? "w-80" : "w-0 border-l-0 overflow-hidden opacity-0 pointer-events-none",
           )}
         >

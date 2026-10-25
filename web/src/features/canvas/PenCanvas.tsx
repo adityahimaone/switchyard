@@ -2,15 +2,19 @@ import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouse
 import {
   ZoomIn,
   ZoomOut,
-  Maximize2,
-  Move,
   Plus,
   Type,
   Square,
   Sparkles,
+  MousePointer,
+  Hand,
+  ArrowUp,
+  Hash,
+  ChevronDown,
 } from "lucide-react"
 import type { PenDocument, PenFill, PenFillGradient, PenNode, PenPadding } from "./penTypes"
 import { createDefaultPenDocument } from "./penTypes"
+import { cn } from "@/lib/utils"
 
 interface PenCanvasProps {
   document: PenDocument
@@ -19,6 +23,9 @@ interface PenCanvasProps {
   onUpdateNode: (updated: PenNode) => void
   onAddNode?: (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => void
   onResetDocument?: (doc: PenDocument) => void
+  onOpenChat?: () => void
+  activeModel?: string
+  turnCount?: number
 }
 
 function resolveFillStyle(fill?: PenFill): React.CSSProperties {
@@ -80,7 +87,7 @@ function NodeRenderer({
     e.stopPropagation()
     onSelectNode(node.id)
 
-    if (isRoot && (e.button === 0)) {
+    if (isRoot && e.button === 0) {
       isDraggingRoot.current = true
       dragStart.current = {
         x: e.clientX,
@@ -151,13 +158,14 @@ function NodeRenderer({
           setIsEditingText(true)
           setEditTextVal(node.text || "")
         }}
-        className={`relative inline-block transition-shadow group ${
-          isSelected ? "ring-2 ring-[#10e0dd] ring-offset-1 ring-offset-[#121316]" : "hover:ring-1 hover:ring-[rgba(255,255,255,0.2)]"
-        }`}
+        className={cn(
+          "relative inline-block transition-shadow group",
+          isSelected ? "ring-2 ring-[#2563eb] ring-offset-1 ring-offset-[#121316]" : "hover:ring-1 hover:ring-[rgba(255,255,255,0.2)]"
+        )}
         style={textStyle}
       >
         {isSelected && (
-          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-[#10e0dd] px-1 py-0.5 font-mono text-[9px] font-semibold text-black shadow">
+          <div className="absolute -top-5 left-0 z-20 flex items-center gap-1 rounded bg-[#2563eb] px-1 py-0.5 font-mono text-[9px] font-semibold text-white shadow">
             <span>{node.name || "Text"}</span>
           </div>
         )}
@@ -194,6 +202,7 @@ function NodeRenderer({
     borderRadius: node.cornerRadius ? `${node.cornerRadius}px` : undefined,
     opacity: node.opacity !== undefined ? node.opacity : 1,
     overflow: node.clip ? "hidden" : "visible",
+    transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
   }
 
   // Dimensioning & positioning
@@ -251,33 +260,36 @@ function NodeRenderer({
         }
       }}
       onMouseDown={handleMouseDown}
-      className={`relative select-none box-border transition-[box-shadow] duration-75 ${
+      className={cn(
+        "relative select-none box-border transition-[box-shadow] duration-75",
         isSelected
-          ? "ring-2 ring-[#10e0dd] shadow-[0_0_20px_rgba(16,224,221,0.2)]"
+          ? "ring-2 ring-[#2563eb] shadow-[0_0_25px_rgba(37,99,235,0.25)]"
           : "hover:ring-1 hover:ring-[rgba(255,255,255,0.2)]"
-      }`}
+      )}
       style={baseStyle}
     >
-      {/* Node selection label */}
+      {/* Node tag at top-right (matching pen.dev Image 1) */}
       {isSelected && (
-        <div className="absolute -top-6 left-0 z-20 flex items-center gap-1.5 rounded-t bg-[#10e0dd] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-black shadow">
-          <span>{node.name || (isRoot ? "Frame" : node.type)}</span>
-          {node.width && node.height && (
-            <span className="opacity-75 font-normal">
-              {Math.round(node.width)}×{Math.round(node.height)}
-            </span>
-          )}
+        <div className="absolute -top-3 -right-3 z-20 flex size-6 items-center justify-center rounded-full bg-[#2563eb] text-white shadow-md">
+          <Sparkles className="size-3" />
         </div>
       )}
 
-      {/* Resize handles when selected */}
+      {/* Resize corner handles when selected */}
       {isSelected && (
         <>
-          <div className="absolute -top-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#10e0dd] shadow pointer-events-none" />
-          <div className="absolute -top-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#10e0dd] shadow pointer-events-none" />
-          <div className="absolute -bottom-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#10e0dd] shadow pointer-events-none" />
-          <div className="absolute -bottom-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#10e0dd] shadow pointer-events-none" />
+          <div className="absolute -top-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
+          <div className="absolute -top-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
+          <div className="absolute -bottom-1.5 -left-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
+          <div className="absolute -bottom-1.5 -right-1.5 size-3 rounded-full border border-black bg-[#2563eb] shadow pointer-events-none" />
         </>
+      )}
+
+      {/* Dimension Badge underneath frame (Exact match of pen.dev Image 1: e.g. "390 × 844") */}
+      {isSelected && isRoot && node.width && node.height && (
+        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center rounded bg-[#2563eb] px-2 py-0.5 font-mono text-[11px] font-semibold text-white shadow-md pointer-events-none">
+          <span>{Math.round(node.width)} × {Math.round(node.height)}</span>
+        </div>
       )}
 
       {/* Nested children */}
@@ -303,11 +315,15 @@ export function PenCanvas({
   onUpdateNode,
   onAddNode,
   onResetDocument,
+  onOpenChat,
+  activeModel = "DeepSeek V4.1 Flash",
+  turnCount: _turnCount = 1,
 }: PenCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [pan, setPan] = useState({ x: 40, y: 40 })
+  const [pan, setPan] = useState({ x: 80, y: 60 })
   const [zoom, setZoom] = useState(1.0)
   const [isPanning, setIsPanning] = useState(false)
+  const [activeTool, setActiveTool] = useState<"pointer" | "frame" | "text" | "hand">("pointer")
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
 
   // Focal zoom on trackpad pinch or Ctrl + Wheel
@@ -325,7 +341,6 @@ export function PenCanvas({
         const zoomDelta = -e.deltaY * 0.005
         const newZoom = Math.min(Math.max(0.2, zoom + zoomDelta), 3.0)
 
-        // Adjust pan to keep cursor position fixed
         const scaleFactor = newZoom / zoom
         const newPanX = mouseX - (mouseX - pan.x) * scaleFactor
         const newPanY = mouseY - (mouseY - pan.y) * scaleFactor
@@ -343,14 +358,10 @@ export function PenCanvas({
     [zoom, pan]
   )
 
-  // Space+drag or Middle-click pan
+  // Mouse pan
   const handleMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
-    // If middle click or space key held or clicking on background
-    if (e.button === 1 || (e.button === 0 && e.target === containerRef.current)) {
+    if (activeTool === "hand" || e.button === 1 || (e.button === 0 && e.target === containerRef.current)) {
       onSelectNode(null)
-    }
-
-    if (e.button === 1 || e.altKey || (e.button === 0 && e.target === containerRef.current)) {
       setIsPanning(true)
       panStart.current = {
         x: e.clientX,
@@ -381,7 +392,7 @@ export function PenCanvas({
       if ((e.metaKey || e.ctrlKey) && e.key === "0") {
         e.preventDefault()
         setZoom(1.0)
-        setPan({ x: 60, y: 60 })
+        setPan({ x: 80, y: 60 })
       } else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
         e.preventDefault()
         setZoom((z) => Math.min(3.0, z * 1.15))
@@ -396,6 +407,11 @@ export function PenCanvas({
 
   const hasChildren = document.children && document.children.length > 0
 
+  // Selected node name
+  const selectedNode = selectedNodeId
+    ? document.children.find((c) => c.id === selectedNodeId) || { name: "Mellow" }
+    : { name: document.children[0]?.name || "Mellow" }
+
   return (
     <div
       ref={containerRef}
@@ -403,12 +419,13 @@ export function PenCanvas({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      className={`relative h-full w-full overflow-hidden bg-[#0c0d10] ${
-        isPanning ? "cursor-grabbing" : "cursor-default"
-      }`}
+      className={cn(
+        "relative h-full w-full overflow-hidden bg-[#0d0e12]",
+        isPanning || activeTool === "hand" ? "cursor-grabbing" : "cursor-default"
+      )}
       style={{
         backgroundImage: `
-          radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0)
+          radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0)
         `,
         backgroundSize: `${32 * zoom}px ${32 * zoom}px`,
         backgroundPosition: `${pan.x}px ${pan.y}px`,
@@ -447,7 +464,7 @@ export function PenCanvas({
                   onResetDocument(createDefaultPenDocument("Visual Component"))
                 }
               }}
-              className="mt-4 flex items-center gap-1.5 rounded-md border border-[rgba(255,255,255,0.12)] bg-[#18191f] px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-[#20212a] active:scale-[0.98] transition-all"
+              className="mt-4 flex items-center gap-1.5 rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#18191f] px-3.5 py-2 text-xs font-medium text-neutral-100 hover:bg-[#20212a] active:scale-[0.98] transition-all"
             >
               <Plus className="size-3.5 text-accent-text" />
               <span>Scaffold Sample Frame</span>
@@ -456,25 +473,132 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Floating Toolbar: Zoom & Viewport Navigation */}
-      <div className="absolute bottom-5 left-5 z-30 flex items-center gap-1 rounded-xl border border-[rgba(255,255,255,0.1)] bg-[#14151b]/90 p-1.5 shadow-2xl backdrop-blur-md">
+      {/* Left Slim Vertical Tool Rail (Exact match of pen.dev Image 1) */}
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#14151c]/90 p-1.5 shadow-2xl backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => setActiveTool("pointer")}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-xl transition-all",
+            activeTool === "pointer" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+          )}
+          title="Select / Move (V)"
+        >
+          <MousePointer className="size-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTool("frame")
+            if (onAddNode) onAddNode("root", "frame")
+          }}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-xl transition-all",
+            activeTool === "frame" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+          )}
+          title="Frame tool (F)"
+        >
+          <Square className="size-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTool("text")
+            if (onAddNode) onAddNode(selectedNodeId || "root", "text")
+          }}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-xl transition-all",
+            activeTool === "text" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+          )}
+          title="Text tool (T)"
+        >
+          <Type className="size-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTool("hand")}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-xl transition-all",
+            activeTool === "hand" ? "bg-[#252735] text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-[rgba(255,255,255,0.06)]"
+          )}
+          title="Hand / Pan tool (H)"
+        >
+          <Hand className="size-4" />
+        </button>
+
+        <div className="h-px w-5 bg-[rgba(255,255,255,0.08)] my-0.5" />
+
+        {onOpenChat && (
+          <button
+            type="button"
+            onClick={onOpenChat}
+            className="flex size-8 items-center justify-center rounded-xl text-neutral-400 hover:text-accent-text hover:bg-[rgba(255,255,255,0.06)] transition-all"
+            title="Ask AI Agent"
+          >
+            <Sparkles className="size-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Bottom Floating AI Command Capsule (Exact match of pen.dev Image 1) */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[#14151c]/90 px-3 py-2 shadow-2xl backdrop-blur-md">
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex size-7 items-center justify-center rounded-xl text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-all"
+        >
+          <Plus className="size-4" />
+        </button>
+
+        <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1b24] px-2.5 py-1 text-xs font-medium text-neutral-200">
+          <Hash className="size-3 text-neutral-400" />
+          <span>{selectedNode.name || "Frame"}</span>
+        </div>
+
+        <span className="flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[11px] text-amber-400">
+          <span>⚡ 1x</span>
+        </span>
+
+        <span className="flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[11px] text-neutral-400">
+          <span>⚅ 1x</span>
+        </span>
+
+        <div className="flex items-center gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1b24] px-2.5 py-1 text-xs text-neutral-300">
+          <span>{activeModel}</span>
+          <ChevronDown className="size-3 text-neutral-500" />
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex size-7 items-center justify-center rounded-full bg-neutral-200 text-black hover:bg-white active:scale-95 transition-all shadow"
+        >
+          <ArrowUp className="size-3.5 stroke-[2.5]" />
+        </button>
+      </div>
+
+      {/* Bottom Right Floating Zoom Pill (Exact match of pen.dev Image 1) */}
+      <div className="absolute bottom-5 right-5 z-30 flex items-center gap-1 rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[#14151c]/90 p-1.5 shadow-2xl backdrop-blur-md">
         <button
           type="button"
           title="Zoom Out (Ctrl -)"
           onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))}
-          className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
+          className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
         >
           <ZoomOut className="size-3.5" />
         </button>
 
         <button
           type="button"
-          title="Reset Zoom to 100% (Ctrl 0)"
+          title="Reset Zoom (Ctrl 0)"
           onClick={() => {
             setZoom(1.0)
-            setPan({ x: 60, y: 60 })
+            setPan({ x: 80, y: 60 })
           }}
-          className="min-w-14 px-2 py-1 font-mono text-[11px] font-medium text-neutral-300 hover:text-white transition-colors"
+          className="min-w-12 px-2 py-1 text-center font-mono text-[11px] font-medium text-neutral-300 hover:text-white transition-colors"
         >
           {Math.round(zoom * 100)}%
         </button>
@@ -483,55 +607,10 @@ export function PenCanvas({
           type="button"
           title="Zoom In (Ctrl +)"
           onClick={() => setZoom((z) => Math.min(3.0, z * 1.2))}
-          className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
+          className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
         >
           <ZoomIn className="size-3.5" />
         </button>
-
-        <div className="h-4 w-px bg-[rgba(255,255,255,0.1)] mx-0.5" />
-
-        <button
-          type="button"
-          title="Fit to Center"
-          onClick={() => {
-            setZoom(1.0)
-            setPan({ x: 60, y: 60 })
-          }}
-          className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-[rgba(255,255,255,0.06)] hover:text-neutral-100 transition-colors"
-        >
-          <Maximize2 className="size-3.5" />
-        </button>
-      </div>
-
-      {/* Floating Toolbar: Quick Insert */}
-      {onAddNode && (
-        <div className="absolute top-4 left-4 z-30 flex items-center gap-1 rounded-xl border border-[rgba(255,255,255,0.1)] bg-[#14151b]/90 p-1.5 shadow-xl backdrop-blur-md">
-          <button
-            type="button"
-            title="Add Root Frame"
-            onClick={() => onAddNode("root", "frame")}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-neutral-300 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-colors"
-          >
-            <Square className="size-3.5 text-blue-400" />
-            <span>Frame</span>
-          </button>
-
-          <button
-            type="button"
-            title="Add Text"
-            onClick={() => onAddNode(selectedNodeId || "root", "text")}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-neutral-300 hover:bg-[rgba(255,255,255,0.08)] hover:text-white transition-colors"
-          >
-            <Type className="size-3.5 text-teal-400" />
-            <span>Text</span>
-          </button>
-        </div>
-      )}
-
-      {/* Trackpad tips pill */}
-      <div className="absolute bottom-5 right-5 z-20 hidden md:flex items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#121316]/70 px-3 py-1 font-mono text-[10px] text-neutral-400 backdrop-blur-sm pointer-events-none">
-        <Move className="size-3 opacity-60" />
-        <span>Two-finger drag to Pan • Pinch or Ctrl+Wheel to Zoom</span>
       </div>
     </div>
   )

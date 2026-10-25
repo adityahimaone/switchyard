@@ -35,6 +35,10 @@ export interface PenNode {
   cornerRadius?: number
   opacity?: number
   clip?: boolean
+  rotation?: number
+  fillWidth?: boolean
+  fillHeight?: boolean
+  effects?: string
   layout?: "none" | "vertical" | "horizontal"
   gap?: number
   padding?: number | PenPadding

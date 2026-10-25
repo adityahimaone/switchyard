@@ -1,17 +1,28 @@
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
-  Layers,
-  Palette,
-  Type,
-  Maximize2,
-  Trash2,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  ArrowDown,
   ArrowRight,
+  ChevronDown,
+  ChevronRight,
   Code2,
+  Hash,
+  Layers,
+  LayoutGrid,
+  Minus,
+  Palette,
+  Plus,
+  Sparkles,
+  Trash2,
+  Type,
 } from "lucide-react"
-import type { PenFillGradient, PenNode, PenPadding } from "./penTypes"
+import type { PenNode, PenPadding } from "./penTypes"
+import { cn } from "@/lib/utils"
 
 interface PenPropertyInspectorProps {
   selectedNode: PenNode | null
@@ -43,6 +54,9 @@ export function PenPropertyInspector({
   onConvertToReact,
   onPromoteToTask,
 }: PenPropertyInspectorProps) {
+  const [contextOpen, setContextOpen] = useState(false)
+  const [fillPickerOpen, setFillPickerOpen] = useState(false)
+
   // Update helpers
   const handlePropChange = useCallback(
     <K extends keyof PenNode>(prop: K, val: PenNode[K]) => {
@@ -52,26 +66,13 @@ export function PenPropertyInspector({
     [selectedNode, onUpdateNode]
   )
 
-  const handlePaddingChange = useCallback(
-    (side: keyof PenPadding, val: number) => {
-      if (!selectedNode) return
-      const cur =
-        typeof selectedNode.padding === "object"
-          ? { ...selectedNode.padding }
-          : { top: selectedNode.padding, right: selectedNode.padding, bottom: selectedNode.padding, left: selectedNode.padding }
-      cur[side] = val
-      onUpdateNode({ ...selectedNode, padding: cur })
-    },
-    [selectedNode, onUpdateNode]
-  )
-
   if (!selectedNode) {
     return (
-      <aside className="flex h-full w-80 shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121316] font-sans text-xs text-neutral-300">
+      <aside className="flex h-full w-80 shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121318] font-sans text-xs text-neutral-300 select-none">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4">
           <div className="flex items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-neutral-400">
-            <Layers className="size-3.5 text-accent-text" />
-            <span>pen.dev Inspector</span>
+            <Hash className="size-3.5 text-accent-text" />
+            <span>Inspector</span>
           </div>
           <span className="font-mono text-[10px] text-neutral-400">
             {saveStatus === "saved" ? "Saved ✨" : saveStatus === "saving" ? "Saving…" : "Unsaved"}
@@ -82,14 +83,14 @@ export function PenPropertyInspector({
           <Layers className="size-8 opacity-40 mb-2" />
           <p className="text-xs font-medium text-neutral-400">No element selected</p>
           <p className="mt-1 text-2xs leading-relaxed text-neutral-500">
-            Click any frame, shape, or text layer on the canvas to inspect and edit its properties.
+            Click any frame, layer, or text on the canvas to inspect and edit its properties.
           </p>
 
           <div className="mt-6 w-full space-y-2">
             <button
               type="button"
               onClick={onConvertToReact}
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-[rgba(255,255,255,0.1)] bg-[#18191f] px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-[#20212a] active:scale-[0.98] transition-all"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.1)] bg-[#181922] px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-[#20212a] active:scale-[0.98] transition-all"
             >
               <Code2 className="size-3.5 text-accent-text" />
               <span>Convert to React (0 Token)</span>
@@ -98,10 +99,10 @@ export function PenPropertyInspector({
             <button
               type="button"
               onClick={onPromoteToTask}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-white hover:bg-accent/90 active:scale-[0.98] transition-all shadow-sm"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent-text/30 bg-accent-text/10 px-3 py-2 text-xs font-medium text-accent-text hover:bg-accent-text/20 active:scale-[0.98] transition-all"
             >
-              <ArrowRight className="size-3.5" />
-              <span>Promote to Task / Project</span>
+              <Sparkles className="size-3.5" />
+              <span>Promote to Kanban Task</span>
             </button>
           </div>
         </div>
@@ -110,375 +111,478 @@ export function PenPropertyInspector({
   }
 
   const isText = selectedNode.type === "text"
-  const isFrame = selectedNode.type === "frame"
+  const isFrame = selectedNode.type === "frame" || selectedNode.type === "rectangle"
 
-  // Resolve fill string for color picker
-  const currentFillHex =
-    typeof selectedNode.fill === "string"
-      ? selectedNode.fill
-      : typeof selectedNode.fill === "object" && (selectedNode.fill as PenFillGradient)?.colors?.[0]?.color
-      ? (selectedNode.fill as PenFillGradient).colors[0].color
-      : "#18191f"
-
-  const paddingObj: PenPadding =
-    typeof selectedNode.padding === "object"
-      ? selectedNode.padding
-      : typeof selectedNode.padding === "number"
-      ? { top: selectedNode.padding, right: selectedNode.padding, bottom: selectedNode.padding, left: selectedNode.padding }
-      : {}
+  // Current fill value
+  const curFillColor = typeof selectedNode.fill === "string" ? selectedNode.fill : "#121316"
+  const isGradient = typeof selectedNode.fill === "object" && selectedNode.fill !== null
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121316] font-sans text-xs text-neutral-300">
-      {/* Top Header */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 font-mono text-[10px] uppercase text-accent-text font-semibold">
-            {selectedNode.type}
-          </span>
-          <span className="truncate font-medium text-neutral-200">
-            {selectedNode.name || selectedNode.id}
-          </span>
+    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-[rgba(255,255,255,0.08)] bg-[#121318] font-sans text-xs text-neutral-300 select-none overflow-y-auto">
+      {/* Header matching pen.dev Image 1 */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4 bg-[#14151d]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Hash className="size-3.5 text-neutral-400 shrink-0" />
+          <input
+            type="text"
+            value={selectedNode.name || selectedNode.id}
+            onChange={(e) => handlePropChange("name", e.target.value)}
+            className="w-36 truncate bg-transparent font-medium text-xs text-white outline-none focus:border-b focus:border-accent-text"
+          />
         </div>
-
-        <span className="font-mono text-[10px] text-neutral-400">
-          {saveStatus === "saved" ? "Saved ✨" : saveStatus === "saving" ? "Saving…" : "Unsaved"}
-        </span>
-      </header>
-
-      {/* Main Scrollable Inspector Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        {/* Text Content Editor (If Text Node) */}
-        {isText && (
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="font-mono text-2xs uppercase tracking-wider text-neutral-400">
-                Text Content
-              </label>
-            </div>
-            <textarea
-              value={selectedNode.text || ""}
-              onChange={(e) => handlePropChange("text", e.target.value)}
-              rows={3}
-              className="w-full resize-y rounded-md border border-[rgba(255,255,255,0.1)] bg-[#18191f] p-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-accent focus:outline-none"
-              placeholder="Type text copy…"
-            />
-          </section>
-        )}
-
-        {/* Geometry & Dimensions */}
-        <section className="space-y-2">
-          <div className="flex items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-neutral-400">
-            <Maximize2 className="size-3" />
-            <span>Dimensions</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-              <span className="w-5 font-mono text-2xs text-neutral-500">W</span>
-              <input
-                type="number"
-                value={selectedNode.width ?? ""}
-                onChange={(e) => handlePropChange("width", Number(e.target.value))}
-                className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                placeholder="auto"
-              />
-            </div>
-
-            <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-              <span className="w-5 font-mono text-2xs text-neutral-500">H</span>
-              <input
-                type="number"
-                value={selectedNode.height ?? ""}
-                onChange={(e) => handlePropChange("height", Number(e.target.value))}
-                className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                placeholder="auto"
-              />
-            </div>
-
-            <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-              <span className="w-5 font-mono text-2xs text-neutral-500">X</span>
-              <input
-                type="number"
-                value={selectedNode.x ?? 0}
-                onChange={(e) => handlePropChange("x", Number(e.target.value))}
-                className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-              <span className="w-5 font-mono text-2xs text-neutral-500">Y</span>
-              <input
-                type="number"
-                value={selectedNode.y ?? 0}
-                onChange={(e) => handlePropChange("y", Number(e.target.value))}
-                className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Corner Radius */}
-          {!isText && (
-            <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1 mt-1">
-              <span className="w-14 font-mono text-2xs text-neutral-500">Radius</span>
-              <input
-                type="number"
-                value={selectedNode.cornerRadius ?? 0}
-                onChange={(e) => handlePropChange("cornerRadius", Number(e.target.value))}
-                className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-              />
-            </div>
-          )}
-        </section>
-
-        {/* Layout & Flexbox (For Frame Nodes) */}
-        {isFrame && (
-          <section className="space-y-2">
-            <div className="flex items-center justify-between font-mono text-2xs uppercase tracking-wider text-neutral-400">
-              <span>Auto Layout</span>
-              <span className="text-neutral-500 font-mono text-[10px]">
-                {selectedNode.layout || "none"}
-              </span>
-            </div>
-
-            {/* Layout Direction */}
-            <div className="flex rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] p-0.5">
-              <button
-                type="button"
-                onClick={() => handlePropChange("layout", "none")}
-                className={`flex-1 rounded py-1 text-center font-mono text-2xs transition-colors ${
-                  !selectedNode.layout || selectedNode.layout === "none"
-                    ? "bg-accent/20 text-accent-text font-semibold"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                None
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePropChange("layout", "vertical")}
-                className={`flex-1 rounded py-1 text-center font-mono text-2xs transition-colors ${
-                  selectedNode.layout === "vertical"
-                    ? "bg-accent/20 text-accent-text font-semibold"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                Vertical (Col)
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePropChange("layout", "horizontal")}
-                className={`flex-1 rounded py-1 text-center font-mono text-2xs transition-colors ${
-                  selectedNode.layout === "horizontal"
-                    ? "bg-accent/20 text-accent-text font-semibold"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                Horizontal (Row)
-              </button>
-            </div>
-
-            {/* Gap & Padding */}
-            {selectedNode.layout && selectedNode.layout !== "none" && (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                  <span className="w-14 font-mono text-2xs text-neutral-500">Gap</span>
-                  <input
-                    type="number"
-                    value={selectedNode.gap ?? 0}
-                    onChange={(e) => handlePropChange("gap", Number(e.target.value))}
-                    className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                    <span className="w-7 font-mono text-2xs text-neutral-500">Pad T</span>
-                    <input
-                      type="number"
-                      value={paddingObj.top ?? 0}
-                      onChange={(e) => handlePaddingChange("top", Number(e.target.value))}
-                      className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                    <span className="w-7 font-mono text-2xs text-neutral-500">Pad R</span>
-                    <input
-                      type="number"
-                      value={paddingObj.right ?? 0}
-                      onChange={(e) => handlePaddingChange("right", Number(e.target.value))}
-                      className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                    <span className="w-7 font-mono text-2xs text-neutral-500">Pad B</span>
-                    <input
-                      type="number"
-                      value={paddingObj.bottom ?? 0}
-                      onChange={(e) => handlePaddingChange("bottom", Number(e.target.value))}
-                      className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                    <span className="w-7 font-mono text-2xs text-neutral-500">Pad L</span>
-                    <input
-                      type="number"
-                      value={paddingObj.left ?? 0}
-                      onChange={(e) => handlePaddingChange("left", Number(e.target.value))}
-                      className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Fill / Color Picker */}
-        <section className="space-y-2">
-          <div className="flex items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-neutral-400">
-            <Palette className="size-3" />
-            <span>Fill / Color</span>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] p-1.5">
-            <input
-              type="color"
-              value={currentFillHex.startsWith("#") ? currentFillHex.slice(0, 7) : "#ffffff"}
-              onChange={(e) => handlePropChange("fill", e.target.value)}
-              className="size-6 cursor-pointer rounded border-0 bg-transparent p-0"
-            />
-            <input
-              type="text"
-              value={typeof selectedNode.fill === "string" ? selectedNode.fill : currentFillHex}
-              onChange={(e) => handlePropChange("fill", e.target.value)}
-              className="flex-1 bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-              placeholder="#18191f"
-            />
-          </div>
-
-          {/* Quick Swatches */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {COLOR_SWATCHES.map((hex) => (
-              <button
-                key={hex}
-                type="button"
-                onClick={() => handlePropChange("fill", hex)}
-                style={{ backgroundColor: hex }}
-                className="size-5 rounded border border-[rgba(255,255,255,0.15)] transition-transform hover:scale-110 active:scale-95"
-                title={hex}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* Typography (If Text Node) */}
-        {isText && (
-          <section className="space-y-2">
-            <div className="flex items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-neutral-400">
-              <Type className="size-3" />
-              <span>Typography</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                <span className="w-10 font-mono text-2xs text-neutral-500">Size</span>
-                <input
-                  type="number"
-                  value={selectedNode.fontSize ?? 14}
-                  onChange={(e) => handlePropChange("fontSize", Number(e.target.value))}
-                  className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] px-2 py-1">
-                <span className="w-12 font-mono text-2xs text-neutral-500">Weight</span>
-                <select
-                  value={String(selectedNode.fontWeight ?? "400")}
-                  onChange={(e) => handlePropChange("fontWeight", e.target.value)}
-                  className="w-full bg-transparent font-mono text-xs text-neutral-200 focus:outline-none"
-                >
-                  <option value="400" className="bg-[#121316]">400 Regular</option>
-                  <option value="500" className="bg-[#121316]">500 Medium</option>
-                  <option value="600" className="bg-[#121316]">600 Semibold</option>
-                  <option value="700" className="bg-[#121316]">700 Bold</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Align Buttons */}
-            <div className="flex rounded-md border border-[rgba(255,255,255,0.08)] bg-[#18191f] p-0.5">
-              <button
-                type="button"
-                onClick={() => handlePropChange("textAlign", "left")}
-                className={`flex-1 py-1 flex justify-center rounded ${
-                  selectedNode.textAlign === "left" || !selectedNode.textAlign
-                    ? "bg-accent/20 text-accent-text"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <AlignLeft className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePropChange("textAlign", "center")}
-                className={`flex-1 py-1 flex justify-center rounded ${
-                  selectedNode.textAlign === "center"
-                    ? "bg-accent/20 text-accent-text"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <AlignCenter className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePropChange("textAlign", "right")}
-                className={`flex-1 py-1 flex justify-center rounded ${
-                  selectedNode.textAlign === "right"
-                    ? "bg-accent/20 text-accent-text"
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <AlignRight className="size-3.5" />
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* Delete action */}
-        {onDeleteNode && (
-          <div className="pt-2">
+        <div className="flex items-center gap-1">
+          <span className="font-mono text-[10px] text-neutral-400 mr-1">
+            {saveStatus === "saved" ? "Saved ✨" : saveStatus === "saving" ? "Saving…" : "Unsaved"}
+          </span>
+          {onDeleteNode && (
             <button
               type="button"
               onClick={() => onDeleteNode(selectedNode.id)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 py-1.5 text-xs text-red-400 hover:bg-red-500/20 active:scale-[0.98] transition-colors"
+              className="flex size-7 items-center justify-center rounded-md text-neutral-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+              title="Delete element"
             >
               <Trash2 className="size-3.5" />
-              <span>Delete Layer</span>
             </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </header>
 
-      {/* Footer Actions */}
-      <footer className="border-t border-[rgba(255,255,255,0.08)] p-3 space-y-2 bg-[#101114]">
+      {/* Prominent Action Button matching Image 1: "+ Create Component" */}
+      <div className="p-3 border-b border-[rgba(255,255,255,0.06)]">
         <button
           type="button"
           onClick={onConvertToReact}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-[rgba(255,255,255,0.1)] bg-[#18191f] py-2 text-xs font-medium text-neutral-200 hover:bg-[#20212a] active:scale-[0.98] transition-all"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1e202a] hover:bg-[#262836] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-xs font-semibold text-white shadow-sm active:scale-[0.98] transition-all"
         >
           <Code2 className="size-3.5 text-accent-text" />
           <span>Convert to React (0 Token)</span>
         </button>
+      </div>
 
+      {/* Section: Context (Collapsible) */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-2.5">
         <button
           type="button"
-          onClick={onPromoteToTask}
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent py-2 text-xs font-semibold text-white hover:bg-accent/90 active:scale-[0.98] transition-all shadow-sm"
+          onClick={() => setContextOpen(!contextOpen)}
+          className="flex w-full items-center justify-between text-2xs uppercase tracking-wider font-semibold text-neutral-400 hover:text-neutral-200"
         >
-          <ArrowRight className="size-3.5" />
-          <span>Promote to Task / Project</span>
+          <span>Context</span>
+          {contextOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </button>
-      </footer>
+        {contextOpen && (
+          <div className="mt-2 text-2xs text-neutral-500 font-mono">
+            ID: {selectedNode.id} • Type: {selectedNode.type}
+          </div>
+        )}
+      </div>
+
+      {/* Section: Alignment matching Image 1 */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mb-2">Alignment</h4>
+        <div className="flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] p-1">
+          <button
+            type="button"
+            title="Align Left"
+            onClick={() => handlePropChange("justifyContent", "start")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignLeft className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Align Center Horizontal"
+            onClick={() => handlePropChange("alignItems", "center")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignCenter className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Align Right"
+            onClick={() => handlePropChange("justifyContent", "end")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignRight className="size-3.5" />
+          </button>
+          <div className="h-4 w-px bg-[rgba(255,255,255,0.1)]" />
+          <button
+            type="button"
+            title="Align Top"
+            onClick={() => handlePropChange("alignItems", "start")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignVerticalJustifyStart className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Align Center Vertical"
+            onClick={() => handlePropChange("justifyContent", "center")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignVerticalJustifyCenter className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Align Bottom"
+            onClick={() => handlePropChange("alignItems", "end")}
+            className="flex size-7 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            <AlignVerticalJustifyEnd className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Section: Position matching Image 1 */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mb-2">Position</h4>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="font-mono text-neutral-500 text-2xs mr-2">X</span>
+            <input
+              type="number"
+              value={selectedNode.x ?? 0}
+              onChange={(e) => handlePropChange("x", parseInt(e.target.value) || 0)}
+              className="w-full bg-transparent font-mono text-xs text-white outline-none"
+            />
+          </div>
+          <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="font-mono text-neutral-500 text-2xs mr-2">Y</span>
+            <input
+              type="number"
+              value={selectedNode.y ?? 0}
+              onChange={(e) => handlePropChange("y", parseInt(e.target.value) || 0)}
+              className="w-full bg-transparent font-mono text-xs text-white outline-none"
+            />
+          </div>
+          <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="font-mono text-neutral-500 text-2xs mr-2">∠</span>
+            <input
+              type="number"
+              value={selectedNode.rotation ?? 0}
+              onChange={(e) => handlePropChange("rotation", parseInt(e.target.value) || 0)}
+              placeholder="0°"
+              className="w-full bg-transparent font-mono text-xs text-white outline-none"
+            />
+            <span className="text-neutral-500 text-2xs">°</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Section: Layout (Auto-Layout / Flexbox) matching Image 1 */}
+      {isFrame && (
+        <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400">Layout</h4>
+            <LayoutGrid className="size-3 text-neutral-500" />
+          </div>
+
+          {/* Direction toggle: Auto / Vertical / Horizontal */}
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] p-0.5">
+            <button
+              type="button"
+              onClick={() => handlePropChange("layout", "none")}
+              className={cn(
+                "py-1 text-2xs font-medium rounded transition-colors text-center",
+                (!selectedNode.layout || selectedNode.layout === "none") ? "bg-[#252735] text-white" : "text-neutral-400 hover:text-white"
+              )}
+            >
+              Free
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePropChange("layout", "vertical")}
+              className={cn(
+                "flex items-center justify-center py-1 text-2xs font-medium rounded transition-colors",
+                selectedNode.layout === "vertical" ? "bg-[#252735] text-accent-text" : "text-neutral-400 hover:text-white"
+              )}
+            >
+              <ArrowDown className="size-3 mr-1" /> Col
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePropChange("layout", "horizontal")}
+              className={cn(
+                "flex items-center justify-center py-1 text-2xs font-medium rounded transition-colors",
+                selectedNode.layout === "horizontal" ? "bg-[#252735] text-accent-text" : "text-neutral-400 hover:text-white"
+              )}
+            >
+              <ArrowRight className="size-3 mr-1" /> Row
+            </button>
+          </div>
+
+          {/* Dimensions W and H matching Image 1 */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+              <span className="font-mono text-neutral-500 text-2xs mr-2">W</span>
+              <input
+                type="number"
+                value={selectedNode.width ?? 390}
+                onChange={(e) => handlePropChange("width", parseInt(e.target.value) || 0)}
+                className="w-full bg-transparent font-mono text-xs text-white outline-none"
+              />
+            </div>
+            <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+              <span className="font-mono text-neutral-500 text-2xs mr-2">H</span>
+              <input
+                type="number"
+                value={selectedNode.height ?? 844}
+                onChange={(e) => handlePropChange("height", parseInt(e.target.value) || 0)}
+                className="w-full bg-transparent font-mono text-xs text-white outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Fill Width & Fill Height checkboxes matching Image 1 */}
+          <div className="mt-2.5 flex items-center justify-between text-2xs text-neutral-400">
+            <label className="flex items-center gap-1.5 cursor-pointer hover:text-neutral-200">
+              <input
+                type="checkbox"
+                checked={selectedNode.fillWidth || false}
+                onChange={(e) => handlePropChange("fillWidth", e.target.checked)}
+                className="size-3.5 rounded bg-[#161720] border-[rgba(255,255,255,0.1)]"
+              />
+              <span>Fill Width</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer hover:text-neutral-200">
+              <input
+                type="checkbox"
+                checked={selectedNode.fillHeight || false}
+                onChange={(e) => handlePropChange("fillHeight", e.target.checked)}
+                className="size-3.5 rounded bg-[#161720] border-[rgba(255,255,255,0.1)]"
+              />
+              <span>Fill Height</span>
+            </label>
+          </div>
+
+          {/* Gap & Padding */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <span className="font-mono text-[10px] text-neutral-500 uppercase">Gap</span>
+              <div className="mt-1 flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+                <input
+                  type="number"
+                  value={selectedNode.gap ?? 0}
+                  onChange={(e) => handlePropChange("gap", parseInt(e.target.value) || 0)}
+                  className="w-full bg-transparent font-mono text-xs text-white outline-none"
+                />
+                <span className="text-neutral-500 text-2xs">px</span>
+              </div>
+            </div>
+            <div>
+              <span className="font-mono text-[10px] text-neutral-500 uppercase">Padding</span>
+              <div className="mt-1 flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+                <input
+                  type="number"
+                  value={typeof selectedNode.padding === "number" ? selectedNode.padding : (selectedNode.padding as PenPadding)?.top ?? 16}
+                  onChange={(e) => handlePropChange("padding", parseInt(e.target.value) || 0)}
+                  className="w-full bg-transparent font-mono text-xs text-white outline-none"
+                />
+                <span className="text-neutral-500 text-2xs">px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section: Typography (if text layer) */}
+      {isText && (
+        <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400">Typography</h4>
+            <Type className="size-3 text-neutral-500" />
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <span className="font-mono text-[10px] text-neutral-500">CONTENT</span>
+              <textarea
+                rows={2}
+                value={selectedNode.text || ""}
+                onChange={(e) => handlePropChange("text", e.target.value)}
+                className="mt-1 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] p-2 text-xs text-white outline-none focus:border-accent-text"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+                <span className="text-neutral-500 text-2xs mr-2 font-mono">Size</span>
+                <input
+                  type="number"
+                  value={selectedNode.fontSize ?? 14}
+                  onChange={(e) => handlePropChange("fontSize", parseInt(e.target.value) || 14)}
+                  className="w-full bg-transparent font-mono text-xs text-white outline-none"
+                />
+              </div>
+
+              <select
+                value={String(selectedNode.fontWeight ?? "400")}
+                onChange={(e) => handlePropChange("fontWeight", e.target.value)}
+                className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5 font-mono text-xs text-white outline-none"
+              >
+                <option value="400">Regular (400)</option>
+                <option value="500">Medium (500)</option>
+                <option value="600">Semibold (600)</option>
+                <option value="700">Bold (700)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section: Appearance matching Image 1 */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mb-2">Appearance</h4>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="text-neutral-500 text-2xs mr-2 font-mono">Opacity</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={Math.round((selectedNode.opacity ?? 1) * 100)}
+              onChange={(e) => handlePropChange("opacity", (parseInt(e.target.value) || 100) / 100)}
+              className="w-full bg-transparent font-mono text-xs text-white outline-none"
+            />
+            <span className="text-neutral-500 text-2xs">%</span>
+          </div>
+
+          <div className="flex items-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="text-neutral-500 text-2xs mr-2 font-mono">Radius</span>
+            <input
+              type="number"
+              value={selectedNode.cornerRadius ?? 0}
+              onChange={(e) => handlePropChange("cornerRadius", parseInt(e.target.value) || 0)}
+              className="w-full bg-transparent font-mono text-xs text-white outline-none"
+            />
+            <span className="text-neutral-500 text-2xs">px</span>
+          </div>
+        </div>
+
+        <div className="mt-2.5">
+          <label className="flex items-center gap-2 cursor-pointer text-2xs text-neutral-400 hover:text-neutral-200">
+            <input
+              type="checkbox"
+              checked={selectedNode.clip || false}
+              onChange={(e) => handlePropChange("clip", e.target.checked)}
+              className="size-3.5 rounded bg-[#161720] border-[rgba(255,255,255,0.1)]"
+            />
+            <span>Clip Content</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Section: Fill matching Image 1 */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400">Fill</h4>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title="Add fill"
+              onClick={() => handlePropChange("fill", "#1e2029")}
+              className="flex size-5 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Fill Row matching Image 1 */}
+        <div className="flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] p-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="size-5 shrink-0 rounded border border-[rgba(255,255,255,0.2)] shadow-sm"
+              style={{ backgroundColor: curFillColor }}
+            />
+            <span className="font-mono text-xs text-neutral-200 truncate">
+              {isGradient ? "gradient" : curFillColor}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setFillPickerOpen(!fillPickerOpen)}
+              className="p-1 rounded text-neutral-400 hover:text-white"
+              title="Choose color"
+            >
+              <Palette className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePropChange("fill", undefined)}
+              className="p-1 rounded text-neutral-400 hover:text-red-400"
+              title="Remove fill"
+            >
+              <Minus className="size-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Color Palette dropdown */}
+        {fillPickerOpen && (
+          <div className="mt-2 grid grid-cols-5 gap-1.5 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1b24] p-2">
+            {COLOR_SWATCHES.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                onClick={() => {
+                  handlePropChange("fill", swatch)
+                  setFillPickerOpen(false)
+                }}
+                className="size-6 rounded-md border border-[rgba(255,255,255,0.15)] hover:scale-110 active:scale-95 transition-transform"
+                style={{ backgroundColor: swatch }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Section: Stroke matching Image 1 */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400">Stroke</h4>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedNode.stroke) {
+                handlePropChange("stroke", undefined)
+              } else {
+                handlePropChange("stroke", "rgba(255,255,255,0.15)")
+                handlePropChange("strokeWidth", 1)
+              }
+            }}
+            className="flex size-5 items-center justify-center rounded text-neutral-400 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+          >
+            {selectedNode.stroke ? <Minus className="size-3.5" /> : <Plus className="size-3.5" />}
+          </button>
+        </div>
+        {selectedNode.stroke && (
+          <div className="flex items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#161720] px-2 py-1.5">
+            <span className="font-mono text-neutral-400 text-2xs truncate flex-1">{selectedNode.stroke}</span>
+            <input
+              type="number"
+              min={1}
+              max={12}
+              value={selectedNode.strokeWidth ?? 1}
+              onChange={(e) => handlePropChange("strokeWidth", parseInt(e.target.value) || 1)}
+              className="w-10 bg-transparent font-mono text-xs text-white text-right outline-none"
+            />
+            <span className="text-neutral-500 text-2xs">px</span>
+          </div>
+        )}
+      </div>
+
+      {/* Section: Effects matching Image 1 */}
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-2xs font-semibold uppercase tracking-wider text-neutral-400">Effects</h4>
+          <Plus className="size-3.5 text-neutral-500" />
+        </div>
+        <div className="rounded-lg border border-dashed border-[rgba(255,255,255,0.08)] bg-[#14151e]/50 p-2 text-center text-2xs text-neutral-500">
+          Drop shadow, inner blur & glassmorphic depth
+        </div>
+      </div>
     </aside>
   )
 }
