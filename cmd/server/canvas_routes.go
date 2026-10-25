@@ -308,6 +308,47 @@ const canvasSandboxHTML = `<!DOCTYPE html>
       return moduleCache[modulePath];
     }
 
+    function applyDialKitStyles() {
+      const isDark = currentProps.theme === 'dark';
+      const themeVal = isDark ? 'dark' : 'light';
+
+      document.documentElement.setAttribute('data-theme', themeVal);
+      document.documentElement.setAttribute('data-color-scheme', themeVal);
+      if (document.body) {
+        document.body.setAttribute('data-theme', themeVal);
+        document.body.setAttribute('data-color-scheme', themeVal);
+      }
+
+      document.documentElement.classList.toggle('dark', isDark);
+      document.documentElement.classList.toggle('light', !isDark);
+      if (document.body) {
+        document.body.classList.toggle('dark', isDark);
+        document.body.classList.toggle('light', !isDark);
+      }
+
+      const r = (currentProps.radius !== undefined ? currentProps.radius : 16) + 'px';
+      const p = (currentProps.padding !== undefined ? currentProps.padding : 24) + 'px';
+      const a = currentProps.accentColor || '#6366f1';
+
+      document.documentElement.style.setProperty('--dialkit-radius', r, 'important');
+      document.documentElement.style.setProperty('--dialkit-padding', p, 'important');
+      document.documentElement.style.setProperty('--dialkit-accent', a, 'important');
+      document.documentElement.style.setProperty('--accent', a, 'important');
+
+      if (document.body) {
+        document.body.style.setProperty('--dialkit-radius', r, 'important');
+        document.body.style.setProperty('--dialkit-padding', p, 'important');
+        document.body.style.setProperty('--dialkit-accent', a, 'important');
+        document.body.style.setProperty('--accent', a, 'important');
+      }
+
+      const scaler = document.getElementById('canvas-scaler');
+      if (scaler) {
+        scaler.style.transform = 'scale(' + ((currentProps.scale || 100) / 100) + ')';
+        scaler.className = 'p-6 flex flex-col items-center justify-center min-h-screen ' + (isDark ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]');
+      }
+    }
+
     function renderComponent() {
       try {
         if (!currentEntry) {
@@ -327,11 +368,6 @@ const canvasSandboxHTML = `<!DOCTYPE html>
 
         // --- Dual Engine Branch 1: Pure Vanilla HTML + Tailwind + Lucide CDN ---
         if (currentEntry.endsWith('.html') || (!currentEntry.endsWith('.tsx') && !currentEntry.endsWith('.jsx') && rawCode.trim().startsWith('<'))) {
-          document.documentElement.classList.toggle('dark', currentProps.theme === 'dark');
-          document.documentElement.style.setProperty('--dialkit-radius', (currentProps.radius || 16) + 'px');
-          document.documentElement.style.setProperty('--dialkit-padding', (currentProps.padding || 24) + 'px');
-          document.documentElement.style.setProperty('--dialkit-accent', currentProps.accentColor || '#6366f1');
-
           let markup = rawCode;
           const bodyMatch = rawCode.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
           if (bodyMatch) markup = bodyMatch[1];
@@ -341,7 +377,11 @@ const canvasSandboxHTML = `<!DOCTYPE html>
             try { root.unmount(); } catch (_) {}
             root = null;
           }
-          container.innerHTML = '<div style="transform: scale(' + ((currentProps.scale || 100) / 100) + '); transform-origin: top center;" class="p-6 flex flex-col items-center justify-center min-h-screen ' + (currentProps.theme === 'dark' ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]') + '">' + markup + '</div>';
+          const isDark = currentProps.theme === 'dark';
+          container.innerHTML = '<div id="canvas-scaler" style="transform: scale(' + ((currentProps.scale || 100) / 100) + '); transform-origin: top center;" class="p-6 flex flex-col items-center justify-center min-h-screen ' + (isDark ? 'bg-[#0f1115] text-[#e6edf3]' : 'bg-[#f8f9fa] text-[#1a1a1a]') + '">' + markup + '</div>';
+
+          // Apply DialKit tokens with !important
+          applyDialKitStyles();
 
           // Auto-render Lucide icons (<i data-lucide="..."></i>)
           if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -396,15 +436,12 @@ const canvasSandboxHTML = `<!DOCTYPE html>
           throw new Error('No React component exported in ' + currentEntry);
         }
 
-        document.documentElement.classList.toggle('dark', currentProps.theme === 'dark');
-        document.documentElement.style.setProperty('--dialkit-radius', (currentProps.radius || 16) + 'px');
-        document.documentElement.style.setProperty('--dialkit-padding', (currentProps.padding || 24) + 'px');
-
         const container = document.getElementById('root');
         if (!root) root = ReactDOM.createRoot(container);
 
         root.render(
           React.createElement('div', {
+            id: 'canvas-scaler',
             style: {
               transform: 'scale(' + ((currentProps.scale || 100) / 100) + ')',
               transformOrigin: 'top center',
@@ -413,6 +450,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
           }, React.createElement(Comp, currentProps))
         );
 
+        applyDialKitStyles();
         window.parent.postMessage({ type: 'CANVAS_STATUS', status: 'ready' }, '*');
       } catch (err) {
         console.error(err);
@@ -438,7 +476,7 @@ const canvasSandboxHTML = `<!DOCTYPE html>
         renderComponent();
       } else if (e.data?.type === 'UPDATE_DIALKIT') {
         currentProps = { ...currentProps, ...e.data.props };
-        renderComponent();
+        applyDialKitStyles();
       }
     });
 

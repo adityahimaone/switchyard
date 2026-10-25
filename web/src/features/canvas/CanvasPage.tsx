@@ -736,7 +736,8 @@ function StudioSessionView({
               <CanvasSandbox
                 sessionId={id}
                 files={files}
-                entryFile={activeFile}
+                activeFile={activeFile}
+                onSelectFile={setActiveFile}
                 dialkitProps={dialkitProps}
                 frame={frame}
                 zoom={zoom}
@@ -778,7 +779,7 @@ function StudioSessionView({
 
           {/* Active File Switcher Pill (if multiple files exist) */}
           {fileList.length > 1 && viewMode === "sandbox" && (
-            <div className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-full border border-[var(--c-line)] bg-background/90 backdrop-blur-md px-2 py-1 shadow-sm">
+            <div className="absolute top-3 left-48 z-30 flex items-center gap-1 rounded-full border border-[var(--c-line)] bg-background/90 backdrop-blur-md px-2 py-1 shadow-sm">
               <FileCode className="size-3 text-accent mr-1" />
               {fileList.map((f) => (
                 <button
