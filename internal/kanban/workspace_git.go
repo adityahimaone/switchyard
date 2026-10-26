@@ -62,6 +62,7 @@ type GitBranches struct {
 	Branches []string `json:"branches"`
 	// Current is the checked-out branch. Empty when HEAD is detached.
 	Current string `json:"current"`
+	Warning string `json:"warning,omitempty"`
 }
 
 // gitIn runs git inside root and returns its combined output, trimmed.

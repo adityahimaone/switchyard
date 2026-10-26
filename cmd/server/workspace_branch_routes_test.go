@@ -258,3 +258,87 @@ func TestWorkspaceBranchRoutesResolveByPathToo(t *testing.T) {
 		t.Errorf("current = %q, want main", got.Current)
 	}
 }
+
+// TestWorkspaceBranchRoutesRemoteNodeOfflineGracefulFallback verifies that
+// when a remote workspace's worker node is offline or node-agent fails,
+// GET /api/workspaces/{id}/branches gracefully returns 200 with an empty list
+// and a friendly warning, rather than blowing up with HTTP 502 and crashing
+// the BranchPicker in Create Task.
+func TestWorkspaceBranchRoutesRemoteNodeOfflineGracefulFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	t.Setenv("KANBAN_NODE_AGENT", "http://127.0.0.1:59999") // deliberately unreachable node-agent
+	t.Setenv("SWITCHYARD_DEV", "1")
+	if err := kanban.EnsureAuthSeed(); err != nil {
+		t.Fatal(err)
+	}
+
+	rawManifest, err := json.Marshal(map[string]any{
+		"version": 1,
+		"workspaces": []map[string]any{
+			{
+				"id":   "remote-ws",
+				"name": "Remote WS",
+				"path": "/Users/test/remote-repo",
+				"host": "mac-tailscale",
+				"os":   "mac",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "workspaces.json"), rawManifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	registerBoardsRoutes(mux)
+	mux.HandleFunc("POST /api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		session, err := kanban.CreateSession()
+		if err != nil {
+			http.Error(w, "session error", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "kanban_session", Value: session, Path: "/"})
+	})
+	srv := httptest.NewServer(authHandler(mux))
+	defer srv.Close()
+
+	login, err := http.Post(srv.URL+"/api/auth/login", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.Body.Close()
+	cookies := login.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("no session cookie")
+	}
+
+	res := branchRequest(t, srv, cookies[0], "GET", "/api/workspaces/remote-ws/branches", "")
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("expected HTTP 200 graceful fallback, got %d: %s", res.StatusCode, body)
+	}
+
+	var got struct {
+		Branches []string `json:"branches"`
+		Current  string   `json:"current"`
+		Warning  string   `json:"warning"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatalf("decode branches response: %v", err)
+	}
+	if len(got.Branches) != 0 {
+		t.Errorf("branches = %v, want empty", got.Branches)
+	}
+	if got.Current != "" {
+		t.Errorf("current = %q, want empty", got.Current)
+	}
+	if !strings.Contains(got.Warning, "Worker node is offline") {
+		t.Errorf("warning = %q, want Worker node is offline message", got.Warning)
+	}
+}
+

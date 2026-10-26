@@ -34,6 +34,18 @@ function firstLine(text: string): string {
   return line
 }
 
+function formatBranchLoadError(msg: string): string {
+  if (
+    msg.includes("node-agent") ||
+    msg.includes("no node owns workspace") ||
+    msg.includes("unreachable") ||
+    msg.includes("remote workspace requires")
+  ) {
+    return "Worker node is offline or unreachable"
+  }
+  return msg
+}
+
 export function BranchPicker({
   workspaceId,
   value,
@@ -139,13 +151,15 @@ export function BranchPicker({
 
   const branches = branchesQuery.data?.branches ?? []
   const current = branchesQuery.data?.current ?? ""
+  const warning = branchesQuery.data?.warning ?? ""
   const busy = pull.isPending || checkout.isPending
-  const loadError = branchesQuery.error ? (branchesQuery.error as Error).message : ""
+  const rawLoadError = branchesQuery.error ? (branchesQuery.error as Error).message : ""
+  const loadError = rawLoadError ? formatBranchLoadError(rawLoadError) : warning
   // Radix SelectValue only renders its placeholder when value is "" (or
   // undefined). Passing a sentinel with no mounted SelectItem leaves the
   // trigger completely blank while loading, on error, or on detached HEAD.
   const hasHeadSentinel = mode === "base" && !selectDisabled
-  const selected = !branchesQuery.data
+  const selected = !branchesQuery.data && !hasHeadSentinel
     ? ""
     : mode === "switch"
       ? current || ""
@@ -157,9 +171,11 @@ export function BranchPicker({
         : loadError
           ? "Branches unavailable"
           : "No branches"
-      : branches.length === 0
-        ? "No branches"
-        : "Detached HEAD"
+      : warning
+        ? "Branches unavailable"
+        : branches.length === 0
+          ? "No branches"
+          : "Detached HEAD"
 
   const branchOptions = useMemo<SearchSelectOption[]>(() => {
     if (!workspaceId) return []
@@ -168,7 +184,7 @@ export function BranchPicker({
       list.push({
         value: "__head",
         label: "Current HEAD",
-        sublabel: current ? `Checked out: ${current}` : undefined,
+        sublabel: current ? `Checked out: ${current}` : (warning || loadError || undefined),
         icon: <GitBranch className="size-3.5 text-ink-3" aria-hidden />,
       })
     }
@@ -181,7 +197,7 @@ export function BranchPicker({
       })
     }
     return list
-  }, [branches, current, mode, selectDisabled, workspaceId])
+  }, [branches, current, loadError, mode, selectDisabled, warning, workspaceId])
 
   if (!workspaceId) return null
 
@@ -194,7 +210,7 @@ export function BranchPicker({
           onOpenChange={onOpenChange}
           modal={modal}
           side={side}
-          disabled={disabled || selectDisabled || busy || !branchesQuery.data}
+          disabled={disabled || selectDisabled || busy || (!branchesQuery.data && !hasHeadSentinel)}
           onValueChange={(next) => {
             setNote(null)
             if (mode === "switch") checkout.mutate(next)
@@ -237,10 +253,12 @@ export function BranchPicker({
 
       {feedback === "inline" && (note || loadError) && (
         <p
-          role={note?.kind === "err" || (!note && loadError) ? "alert" : "status"}
+          role={note?.kind === "err" || (!note && !warning && loadError) ? "alert" : "status"}
           className={cn(
             "truncate text-2xs",
-            note?.kind === "err" || (!note && loadError) ? "text-danger-text" : "text-ink-3",
+            note?.kind === "err" || (!note && !warning && loadError)
+              ? "text-danger-text"
+              : "text-amber-600 dark:text-amber-400 font-medium",
           )}
           title={note?.text ?? loadError}
         >

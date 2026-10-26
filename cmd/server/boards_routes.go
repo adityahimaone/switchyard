@@ -739,6 +739,14 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 		}
 		branches, err := kanban.ListGitBranches(*ws)
 		if err != nil {
+			if strings.Contains(err.Error(), "node-agent") {
+				writeJSON(w, http.StatusOK, kanban.GitBranches{
+					Branches: []string{},
+					Current:  "",
+					Warning:  "Worker node is offline or unreachable",
+				})
+				return
+			}
 			fail(w, err, 502)
 			return
 		}

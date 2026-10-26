@@ -431,6 +431,7 @@ export interface WorkspaceBranches {
   branches: string[]
   /** Empty when HEAD is detached — there is no branch name to show. */
   current: string
+  warning?: string
 }
 export function listWorkspaceFiles(id: string, path = ".") { return api<WorkspaceFilesResponse>(`/api/workspaces/${id}/files?path=${encodeURIComponent(path)}`) }
 export function previewWorkspaceFile(id: string, path: string) { return api<WorkspacePreview>(`/api/workspaces/${id}/files/preview?path=${encodeURIComponent(path)}`) }
