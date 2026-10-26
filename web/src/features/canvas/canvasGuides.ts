@@ -11,6 +11,8 @@ export interface CanvasNodeRect {
   bottom: number
   centerX: number
   centerY: number
+  parentId?: string
+  isRoot?: boolean
 }
 
 export interface GuideLine {
@@ -54,6 +56,9 @@ export function scanCanvasNodeRects(
     const width = r.width / zoom
     const height = r.height / zoom
 
+    const parentEl = el.parentElement?.closest<HTMLElement>("[data-node-id]")
+    const parentId = parentEl?.getAttribute("data-node-id") || undefined
+
     result.set(id, {
       id,
       name: el.getAttribute("data-node-name") || undefined,
@@ -67,6 +72,8 @@ export function scanCanvasNodeRects(
       bottom: y + height,
       centerX: x + width / 2,
       centerY: y + height / 2,
+      parentId,
+      isRoot: !parentId,
     })
   })
 
@@ -75,13 +82,13 @@ export function scanCanvasNodeRects(
 
 /**
  * Calculates smart alignment ruler lines (matching pen.dev auto ruler) between
- * the active/dragged target element and all surrounding canvas elements.
+ * the active/dragged target element and surrounding canvas elements.
  */
 export function calculateSmartGuides(
   targetId: string,
   rectMap: Map<string, CanvasNodeRect>,
   activeOverrideRect?: { x: number; y: number; width?: number; height?: number },
-  snapThreshold: number = 6
+  snapThreshold: number = 8
 ): SmartGuideResult {
   const target = rectMap.get(targetId)
   if (!target && !activeOverrideRect) {
@@ -144,8 +151,24 @@ export function calculateSmartGuides(
     verticalAlignments.set(xCoord, existing)
   }
 
+  // Helper to verify if nodeA is descendant of nodeB
+  const isDescendant = (childId: string, potentialAncestorId: string): boolean => {
+    let cur = rectMap.get(childId)
+    let depth = 0
+    while (cur && cur.parentId && depth < 20) {
+      if (cur.parentId === potentialAncestorId) return true
+      cur = rectMap.get(cur.parentId)
+      depth++
+    }
+    return false
+  }
+
   rectMap.forEach((other, otherId) => {
     if (otherId === targetId) return
+    // Skip descendants of target (don't align a moving frame to its own children!)
+    if (isDescendant(otherId, targetId)) return
+    // Skip ancestors of target (don't align to own parent container edges directly)
+    if (isDescendant(targetId, otherId)) return
 
     // 1. HORIZONTAL ALIGNMENTS (Top, Center, Bottom)
     const hChecks = [
@@ -192,11 +215,11 @@ export function calculateSmartGuides(
     }
   })
 
-  // Also scan all other elements to see if any share the same active horizontal or vertical lines
-  // (e.g. 9:41, wifi, battery in a status bar all sharing top and bottom horizontal lines)
+  // Format horizontal guides
   horizontalAlignments.forEach((data, yCoord) => {
     rectMap.forEach((node) => {
-      if (Math.abs(node.top - yCoord) <= 1.5 || Math.abs(node.bottom - yCoord) <= 1.5) {
+      if (node.id === targetId || isDescendant(node.id, targetId)) return
+      if (Math.abs(node.top - yCoord) <= 2 || Math.abs(node.bottom - yCoord) <= 2) {
         data.ticks.add(node.left)
         data.ticks.add(node.right)
         data.bounds.min = Math.min(data.bounds.min, node.left)
@@ -208,15 +231,17 @@ export function calculateSmartGuides(
       id: `guide_h_${yCoord}`,
       type: "horizontal",
       coord: yCoord,
-      start: data.bounds.min - 12,
-      end: data.bounds.max + 12,
+      start: data.bounds.min - 16,
+      end: data.bounds.max + 16,
       ticks: Array.from(data.ticks).sort((a, b) => a - b),
     })
   })
 
+  // Format vertical guides
   verticalAlignments.forEach((data, xCoord) => {
     rectMap.forEach((node) => {
-      if (Math.abs(node.left - xCoord) <= 1.5 || Math.abs(node.right - xCoord) <= 1.5) {
+      if (node.id === targetId || isDescendant(node.id, targetId)) return
+      if (Math.abs(node.left - xCoord) <= 2 || Math.abs(node.right - xCoord) <= 2) {
         data.ticks.add(node.top)
         data.ticks.add(node.bottom)
         data.bounds.min = Math.min(data.bounds.min, node.top)
@@ -228,8 +253,8 @@ export function calculateSmartGuides(
       id: `guide_v_${xCoord}`,
       type: "vertical",
       coord: xCoord,
-      start: data.bounds.min - 12,
-      end: data.bounds.max + 12,
+      start: data.bounds.min - 16,
+      end: data.bounds.max + 16,
       ticks: Array.from(data.ticks).sort((a, b) => a - b),
     })
   })

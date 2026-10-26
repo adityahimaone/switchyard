@@ -6,7 +6,6 @@ import {
   Plus,
   Sparkles,
   Upload,
-  Ruler,
 } from "lucide-react"
 import type { PenDocument, PenNode, PenVariable } from "./penTypes"
 import {
@@ -690,18 +689,24 @@ export function PenCanvas({
   const toggleAutoRuler = onToggleAutoRuler || (() => setInternalAutoRuler((v) => !v))
   const [activeGuides, setActiveGuides] = useState<GuideLine[]>([])
   const rectsCacheRef = useRef<Map<string, CanvasNodeRect>>(new Map())
+  const isDraggingNodeRef = useRef(false)
 
   // Recalculate smart alignment ruler lines for the currently selected node (even when idle or nudged)
   useEffect(() => {
     if (!autoRulerEnabled || !selectedNodeId || !containerRef.current) {
-      setActiveGuides([])
+      if (!isDraggingNodeRef.current) {
+        setActiveGuides([])
+      }
       return
     }
+    // Prevent clearing active guides during live mouse drag
+    if (isDraggingNodeRef.current) return
+
     const timer = setTimeout(() => {
-      if (!containerRef.current) return
+      if (!containerRef.current || isDraggingNodeRef.current) return
       const rectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
       rectsCacheRef.current = rectMap
-      const { guides } = calculateSmartGuides(selectedNodeId, rectMap, undefined, 4)
+      const { guides } = calculateSmartGuides(selectedNodeId, rectMap, undefined, 8)
       setActiveGuides(guides)
     }, 25)
     return () => clearTimeout(timer)
@@ -715,34 +720,39 @@ export function PenCanvas({
 
       if (!containerRef.current || e.button !== 0) return
 
+      isDraggingNodeRef.current = true
+      const isRoot = document.children.some((c) => c.id === node.id)
       const rectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
       rectsCacheRef.current = rectMap
+
       const startX = e.clientX
       const startY = e.clientY
-      const initialNodeX = node.x || 0
-      const initialNodeY = node.y || 0
       const targetRect = rectMap.get(node.id)
+      const initialNodeX = node.x !== undefined ? node.x : (targetRect?.x ?? (isRoot ? 80 : 0))
+      const initialNodeY = node.y !== undefined ? node.y : (targetRect?.y ?? (isRoot ? 80 : 0))
+      const initialGlobalX = targetRect?.x ?? initialNodeX
+      const initialGlobalY = targetRect?.y ?? initialNodeY
       const targetW = targetRect?.width ?? (typeof node.width === "number" ? node.width : 100)
       const targetH = targetRect?.height ?? (typeof node.height === "number" ? node.height : 100)
 
-      let isDragging = true
-
       const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
-        if (!isDragging) return
+        if (!isDraggingNodeRef.current) return
         const rawDx = (moveEvent.clientX - startX) / zoom
         const rawDy = (moveEvent.clientY - startY) / zoom
-        let candidateX = initialNodeX + rawDx
-        let candidateY = initialNodeY + rawDy
+        let candidateGlobalX = initialGlobalX + rawDx
+        let candidateGlobalY = initialGlobalY + rawDy
+        let candidateNodeX = initialNodeX + rawDx
+        let candidateNodeY = initialNodeY + rawDy
 
         if (autoRulerEnabled) {
           const { guides, snapOffset } = calculateSmartGuides(
             node.id,
             rectMap,
-            { x: candidateX, y: candidateY, width: targetW, height: targetH },
-            6
+            { x: candidateGlobalX, y: candidateGlobalY, width: targetW, height: targetH },
+            8
           )
-          candidateX += snapOffset.dx
-          candidateY += snapOffset.dy
+          candidateNodeX += snapOffset.dx
+          candidateNodeY += snapOffset.dy
           setActiveGuides(guides)
         } else {
           setActiveGuides([])
@@ -750,19 +760,19 @@ export function PenCanvas({
 
         onUpdateNode({
           ...node,
-          x: Math.round(candidateX),
-          y: Math.round(candidateY),
+          x: Math.round(candidateNodeX),
+          y: Math.round(candidateNodeY),
         })
       }
 
       const handleMouseUp = () => {
-        isDragging = false
+        isDraggingNodeRef.current = false
         window.removeEventListener("mousemove", handleMouseMove)
         window.removeEventListener("mouseup", handleMouseUp)
         if (containerRef.current && autoRulerEnabled) {
           const freshRectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
           rectsCacheRef.current = freshRectMap
-          const { guides } = calculateSmartGuides(node.id, freshRectMap, undefined, 4)
+          const { guides } = calculateSmartGuides(node.id, freshRectMap, undefined, 6)
           setActiveGuides(guides)
         }
       }
@@ -770,7 +780,7 @@ export function PenCanvas({
       window.addEventListener("mousemove", handleMouseMove)
       window.addEventListener("mouseup", handleMouseUp)
     },
-    [autoRulerEnabled, onSelectNode, onUpdateNode, pan, zoom]
+    [autoRulerEnabled, onSelectNode, onUpdateNode, pan, zoom, document.children]
   )
 
   // Focal zoom on trackpad pinch or Ctrl + Wheel
@@ -1059,42 +1069,6 @@ export function PenCanvas({
                 onStartDragNode={handleStartDragNode}
               />
             ))}
-
-            {/* Dynamic Auto Ruler / Smart Guides Alignment Lines (Matching pen.dev) */}
-            {autoRulerEnabled && activeGuides.length > 0 && (
-              <svg
-                className="absolute inset-0 pointer-events-none overflow-visible z-50"
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
-              >
-                {activeGuides.map((g) => (
-                  <g key={g.id}>
-                    {/* Main Alignment Line in Crisp Coral/Orange-Red */}
-                    <line
-                      x1={g.type === "horizontal" ? g.start : g.coord}
-                      y1={g.type === "horizontal" ? g.coord : g.start}
-                      x2={g.type === "horizontal" ? g.end : g.coord}
-                      y2={g.type === "horizontal" ? g.coord : g.end}
-                      stroke="#ff5533"
-                      strokeWidth={1 / zoom}
-                      shapeRendering="crispEdges"
-                    />
-
-                    {/* "×" Boundary Tick Marks matching pen.dev reference */}
-                    {g.ticks.map((tick, idx) => {
-                      const tx = g.type === "horizontal" ? tick : g.coord
-                      const ty = g.type === "horizontal" ? g.coord : tick
-                      const s = 3.5 / zoom
-                      return (
-                        <g key={`${g.id}_tick_${idx}`} stroke="#ff5533" strokeWidth={1.2 / zoom} strokeLinecap="round">
-                          <line x1={tx - s} y1={ty - s} x2={tx + s} y2={ty + s} />
-                          <line x1={tx - s} y1={ty + s} x2={tx + s} y2={ty - s} />
-                        </g>
-                      )
-                    })}
-                  </g>
-                ))}
-              </svg>
-            )}
           </>
         ) : (
           <div className="flex h-72 w-96 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/60 p-6 text-center backdrop-blur-sm">
@@ -1155,25 +1129,48 @@ export function PenCanvas({
         >
           <ZoomIn className="size-3.5" />
         </button>
-
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
-
-        {/* Auto Ruler / Smart Guides Toggle Button */}
-        <button
-          type="button"
-          title={`Auto Ruler Alignment Guides (Shift+R) - ${autoRulerEnabled ? "Enabled" : "Disabled"}`}
-          onClick={() => toggleAutoRuler()}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all active:scale-[0.97]",
-            autoRulerEnabled
-              ? "bg-[#ff5533]/15 text-[#ff5533] border border-[#ff5533]/30 font-semibold shadow-xs"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          )}
-        >
-          <Ruler className="size-3.5" />
-          <span className="font-mono text-[10px]">Ruler</span>
-        </button>
       </div>
+
+      {/* Dynamic Auto Ruler / Smart Guides Alignment Overlay (Crisp 1px screen coordinates, matching pen.dev) */}
+      {autoRulerEnabled && activeGuides.length > 0 && (
+        <svg className="absolute inset-0 pointer-events-none overflow-visible z-40 w-full h-full">
+          {activeGuides.map((g) => {
+            const isHoriz = g.type === "horizontal"
+            const screenCoord = isHoriz ? g.coord * zoom + pan.y : g.coord * zoom + pan.x
+            const screenStart = isHoriz ? g.start * zoom + pan.x : g.start * zoom + pan.y
+            const screenEnd = isHoriz ? g.end * zoom + pan.x : g.end * zoom + pan.y
+
+            return (
+              <g key={g.id}>
+                {/* 1px crisp alignment line in coral-red */}
+                <line
+                  x1={isHoriz ? screenStart : screenCoord}
+                  y1={isHoriz ? screenCoord : screenStart}
+                  x2={isHoriz ? screenEnd : screenCoord}
+                  y2={isHoriz ? screenCoord : screenEnd}
+                  stroke="#ff5533"
+                  strokeWidth={1}
+                  shapeRendering="crispEdges"
+                />
+
+                {/* "×" Boundary crosshair ticks matching pen.dev reference */}
+                {g.ticks.map((tick, idx) => {
+                  const screenTick = tick * zoom + (isHoriz ? pan.x : pan.y)
+                  const tx = isHoriz ? screenTick : screenCoord
+                  const ty = isHoriz ? screenCoord : screenTick
+                  const s = 4
+                  return (
+                    <g key={`${g.id}_tick_${idx}`} stroke="#ff5533" strokeWidth={1.5} strokeLinecap="round">
+                      <line x1={tx - s} y1={ty - s} x2={tx + s} y2={ty + s} />
+                      <line x1={tx - s} y1={ty + s} x2={tx + s} y2={ty - s} />
+                    </g>
+                  )
+                })}
+              </g>
+            )
+          })}
+        </svg>
+      )}
     </div>
   )
 }
