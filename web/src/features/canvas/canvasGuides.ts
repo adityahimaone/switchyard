@@ -80,15 +80,26 @@ export function scanCanvasNodeRects(
   return result
 }
 
+interface AlignmentCluster {
+  ticks: Set<number>
+  bounds: { min: number; max: number }
+  count: number
+  diff: number
+  delta: number
+}
+
 /**
- * Calculates smart alignment ruler lines (matching pen.dev auto ruler) between
- * the active/dragged target element and surrounding canvas elements.
+ * Context-aware smart alignment guides matching pen.dev Image 2:
+ * - Only aligns against direct siblings, parent edges, or peer root frames.
+ * - Merges coordinates within 3px to avoid duplicate parallel lines.
+ * - Caps guides at max 1-2 lines per axis.
+ * - Consolidates boundary ticks closer than 6px for flawless visual clarity.
  */
 export function calculateSmartGuides(
   targetId: string,
   rectMap: Map<string, CanvasNodeRect>,
   activeOverrideRect?: { x: number; y: number; width?: number; height?: number },
-  snapThreshold: number = 8
+  snapThreshold: number = 6
 ): SmartGuideResult {
   const target = rectMap.get(targetId)
   if (!target && !activeOverrideRect) {
@@ -113,42 +124,73 @@ export function calculateSmartGuides(
     bottom: ty + th,
     centerX: tx + tw / 2,
     centerY: ty + th / 2,
+    parentId: target?.parentId,
+    isRoot: target?.isRoot ?? !target?.parentId,
   }
 
-  const guides: GuideLine[] = []
   let snapDx = 0
   let snapDy = 0
   let minDiffX = snapThreshold + 1
   let minDiffY = snapThreshold + 1
 
-  // Maps of aligned coordinates to gather all intersecting tick marks
-  const horizontalAlignments = new Map<number, { ticks: Set<number>; bounds: { min: number; max: number } }>()
-  const verticalAlignments = new Map<number, { ticks: Set<number>; bounds: { min: number; max: number } }>()
+  // Maps of clustered aligned coordinates (merged within 3px)
+  const horizontalClusters = new Map<number, AlignmentCluster>()
+  const verticalClusters = new Map<number, AlignmentCluster>()
 
-  // Helper to record horizontal alignment
-  const addHorizontal = (yCoord: number, tickX1: number, tickX2: number) => {
-    const existing = horizontalAlignments.get(yCoord) || {
-      ticks: new Set<number>(),
-      bounds: { min: Math.min(tickX1, tickX2), max: Math.max(tickX1, tickX2) },
+  const addHorizontalCluster = (yCoord: number, tickX1: number, tickX2: number, diff: number, delta: number) => {
+    let bestKey: number | null = null
+    for (const k of horizontalClusters.keys()) {
+      if (Math.abs(k - yCoord) <= 3) {
+        bestKey = k
+        break
+      }
     }
-    existing.ticks.add(tickX1)
-    existing.ticks.add(tickX2)
+    const key = bestKey !== null ? bestKey : Math.round(yCoord)
+    const existing = horizontalClusters.get(key) || {
+      ticks: new Set<number>(),
+      bounds: { min: Infinity, max: -Infinity },
+      count: 0,
+      diff: 999,
+      delta: 0,
+    }
+    existing.ticks.add(Math.round(tickX1))
+    existing.ticks.add(Math.round(tickX2))
     existing.bounds.min = Math.min(existing.bounds.min, tickX1, tickX2)
     existing.bounds.max = Math.max(existing.bounds.max, tickX1, tickX2)
-    horizontalAlignments.set(yCoord, existing)
+    existing.count += 1
+    if (diff < existing.diff) {
+      existing.diff = diff
+      existing.delta = delta
+    }
+    horizontalClusters.set(key, existing)
   }
 
-  // Helper to record vertical alignment
-  const addVertical = (xCoord: number, tickY1: number, tickY2: number) => {
-    const existing = verticalAlignments.get(xCoord) || {
-      ticks: new Set<number>(),
-      bounds: { min: Math.min(tickY1, tickY2), max: Math.max(tickY1, tickY2) },
+  const addVerticalCluster = (xCoord: number, tickY1: number, tickY2: number, diff: number, delta: number) => {
+    let bestKey: number | null = null
+    for (const k of verticalClusters.keys()) {
+      if (Math.abs(k - xCoord) <= 3) {
+        bestKey = k
+        break
+      }
     }
-    existing.ticks.add(tickY1)
-    existing.ticks.add(tickY2)
+    const key = bestKey !== null ? bestKey : Math.round(xCoord)
+    const existing = verticalClusters.get(key) || {
+      ticks: new Set<number>(),
+      bounds: { min: Infinity, max: -Infinity },
+      count: 0,
+      diff: 999,
+      delta: 0,
+    }
+    existing.ticks.add(Math.round(tickY1))
+    existing.ticks.add(Math.round(tickY2))
     existing.bounds.min = Math.min(existing.bounds.min, tickY1, tickY2)
     existing.bounds.max = Math.max(existing.bounds.max, tickY1, tickY2)
-    verticalAlignments.set(xCoord, existing)
+    existing.count += 1
+    if (diff < existing.diff) {
+      existing.diff = diff
+      existing.delta = delta
+    }
+    verticalClusters.set(key, existing)
   }
 
   // Helper to verify if nodeA is descendant of nodeB
@@ -163,12 +205,25 @@ export function calculateSmartGuides(
     return false
   }
 
+  // Filter candidates: context-aware selection (direct siblings, direct parent, or peer root frames)
+  const isTargetRoot = curTarget.isRoot
+  const targetParentId = curTarget.parentId
+
   rectMap.forEach((other, otherId) => {
     if (otherId === targetId) return
-    // Skip descendants of target (don't align a moving frame to its own children!)
+    // Skip descendants of target
     if (isDescendant(otherId, targetId)) return
-    // Skip ancestors of target (don't align to own parent container edges directly)
-    if (isDescendant(targetId, otherId)) return
+    // Skip ancestors unless it's the direct parent container
+    if (isDescendant(targetId, otherId) && otherId !== targetParentId) return
+
+    // Context filter: If moving inside a container, ONLY align to direct siblings and the direct parent frame!
+    if (!isTargetRoot && targetParentId) {
+      const isSibling = other.parentId === targetParentId
+      const isDirectParent = other.id === targetParentId
+      if (!isSibling && !isDirectParent) {
+        return // Ignore elements in unrelated nested cards!
+      }
+    }
 
     // 1. HORIZONTAL ALIGNMENTS (Top, Center, Bottom)
     const hChecks = [
@@ -182,8 +237,8 @@ export function calculateSmartGuides(
     for (const chk of hChecks) {
       const diff = Math.abs(chk.delta)
       if (diff <= snapThreshold) {
-        addHorizontal(chk.otherVal, curTarget.left, curTarget.right)
-        addHorizontal(chk.otherVal, other.left, other.right)
+        addHorizontalCluster(chk.otherVal, curTarget.left, curTarget.right, diff, chk.delta)
+        addHorizontalCluster(chk.otherVal, other.left, other.right, diff, chk.delta)
 
         if (diff < minDiffY) {
           minDiffY = diff
@@ -204,8 +259,8 @@ export function calculateSmartGuides(
     for (const chk of vChecks) {
       const diff = Math.abs(chk.delta)
       if (diff <= snapThreshold) {
-        addVertical(chk.otherVal, curTarget.top, curTarget.bottom)
-        addVertical(chk.otherVal, other.top, other.bottom)
+        addVerticalCluster(chk.otherVal, curTarget.top, curTarget.bottom, diff, chk.delta)
+        addVerticalCluster(chk.otherVal, other.top, other.bottom, diff, chk.delta)
 
         if (diff < minDiffX) {
           minDiffX = diff
@@ -215,47 +270,49 @@ export function calculateSmartGuides(
     }
   })
 
-  // Format horizontal guides
-  horizontalAlignments.forEach((data, yCoord) => {
-    rectMap.forEach((node) => {
-      if (node.id === targetId || isDescendant(node.id, targetId)) return
-      if (Math.abs(node.top - yCoord) <= 2 || Math.abs(node.bottom - yCoord) <= 2) {
-        data.ticks.add(node.left)
-        data.ticks.add(node.right)
-        data.bounds.min = Math.min(data.bounds.min, node.left)
-        data.bounds.max = Math.max(data.bounds.max, node.right)
-      }
-    })
+  const guides: GuideLine[] = []
 
+  // Helper to deduplicate ticks closer than 6px
+  const cleanAndDeduplicateTicks = (rawTicks: Set<number>): number[] => {
+    const sorted = Array.from(rawTicks).sort((a, b) => a - b)
+    const cleaned: number[] = []
+    for (const t of sorted) {
+      if (cleaned.length === 0 || Math.abs(t - cleaned[cleaned.length - 1]) >= 6) {
+        cleaned.push(t)
+      }
+    }
+    return cleaned
+  }
+
+  // Format horizontal guides: cap at top 2 most prominent/relevant lines (e.g. top and bottom)
+  const sortedHorizontal = Array.from(horizontalClusters.entries())
+    .sort((a, b) => a[1].diff - b[1].diff || b[1].count - a[1].count)
+    .slice(0, 2)
+
+  sortedHorizontal.forEach(([yCoord, data]) => {
     guides.push({
       id: `guide_h_${yCoord}`,
       type: "horizontal",
       coord: yCoord,
       start: data.bounds.min - 16,
       end: data.bounds.max + 16,
-      ticks: Array.from(data.ticks).sort((a, b) => a - b),
+      ticks: cleanAndDeduplicateTicks(data.ticks),
     })
   })
 
-  // Format vertical guides
-  verticalAlignments.forEach((data, xCoord) => {
-    rectMap.forEach((node) => {
-      if (node.id === targetId || isDescendant(node.id, targetId)) return
-      if (Math.abs(node.left - xCoord) <= 2 || Math.abs(node.right - xCoord) <= 2) {
-        data.ticks.add(node.top)
-        data.ticks.add(node.bottom)
-        data.bounds.min = Math.min(data.bounds.min, node.top)
-        data.bounds.max = Math.max(data.bounds.max, node.bottom)
-      }
-    })
+  // Format vertical guides: cap at top 1-2 most prominent lines (matching pen.dev Image 2)
+  const sortedVertical = Array.from(verticalClusters.entries())
+    .sort((a, b) => a[1].diff - b[1].diff || b[1].count - a[1].count)
+    .slice(0, 2)
 
+  sortedVertical.forEach(([xCoord, data]) => {
     guides.push({
       id: `guide_v_${xCoord}`,
       type: "vertical",
       coord: xCoord,
       start: data.bounds.min - 16,
       end: data.bounds.max + 16,
-      ticks: Array.from(data.ticks).sort((a, b) => a - b),
+      ticks: cleanAndDeduplicateTicks(data.ticks),
     })
   })
 

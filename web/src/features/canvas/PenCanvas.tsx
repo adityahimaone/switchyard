@@ -706,7 +706,7 @@ export function PenCanvas({
       if (!containerRef.current || isDraggingNodeRef.current) return
       const rectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
       rectsCacheRef.current = rectMap
-      const { guides } = calculateSmartGuides(selectedNodeId, rectMap, undefined, 8)
+      const { guides } = calculateSmartGuides(selectedNodeId, rectMap, undefined, 6)
       setActiveGuides(guides)
     }, 25)
     return () => clearTimeout(timer)
@@ -749,7 +749,7 @@ export function PenCanvas({
             node.id,
             rectMap,
             { x: candidateGlobalX, y: candidateGlobalY, width: targetW, height: targetH },
-            8
+            6
           )
           candidateNodeX += snapOffset.dx
           candidateNodeY += snapOffset.dy
