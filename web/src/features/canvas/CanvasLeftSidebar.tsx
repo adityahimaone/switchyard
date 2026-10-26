@@ -26,6 +26,7 @@ import {
   Folder,
   Sliders,
   LayoutGrid,
+  Ruler,
 } from "lucide-react"
 import type { PenDocument, PenNode } from "./penTypes"
 import type { CanvasMessage } from "./CanvasPage"
@@ -58,6 +59,8 @@ interface CanvasLeftSidebarProps {
   onUndo?: () => void
   onRedo?: () => void
   activeModel?: string
+  autoRulerEnabled?: boolean
+  onToggleAutoRuler?: () => void
 }
 
 function getNodeIcon(node: PenNode) {
@@ -263,6 +266,8 @@ export function CanvasLeftSidebar({
   onUndo,
   onRedo,
   activeModel,
+  autoRulerEnabled = true,
+  onToggleAutoRuler,
 }: CanvasLeftSidebarProps) {
   const [promptText, setPromptText] = useState("")
   const [layersSearch, setLayersSearch] = useState("")
@@ -695,6 +700,23 @@ export function CanvasLeftSidebar({
           >
             <Hand className="size-4" />
           </button>
+
+          {/* Auto Ruler / Smart Guides Tool */}
+          {onToggleAutoRuler && (
+            <button
+              type="button"
+              onClick={onToggleAutoRuler}
+              className={cn(
+                "flex size-8 items-center justify-center rounded-xl transition-all active:scale-[0.96]",
+                autoRulerEnabled
+                  ? "bg-[#ff5533]/20 text-[#ff5533] border border-[#ff5533]/40 shadow-xs font-semibold"
+                  : "text-neutral-400 hover:text-white hover:bg-white/10"
+              )}
+              title={`Auto Ruler / Smart Guides (Shift+R) - ${autoRulerEnabled ? "Active" : "Off"}`}
+            >
+              <Ruler className="size-4" />
+            </button>
+          )}
         </div>
 
         {/* Bottom Rail Actions: Undo / Redo / Chat Trigger */}

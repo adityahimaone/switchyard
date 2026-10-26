@@ -523,6 +523,7 @@ function StudioSessionView({
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [leftSidebarTab, setLeftSidebarTab] = useState<LeftSidebarTab>("layers")
   const [activeTool, setActiveTool] = useState<"pointer" | "frame" | "rectangle" | "ellipse" | "text" | "hand">("pointer")
+  const [autoRulerEnabled, setAutoRulerEnabled] = useState(true)
   const [reactModalOpen, setReactModalOpen] = useState(false)
   const [promoteModalOpen, setPromoteModalOpen] = useState(false)
 
@@ -855,6 +856,8 @@ function StudioSessionView({
           onUndo={handleUndo}
           onRedo={handleRedo}
           activeModel={s.model}
+          autoRulerEnabled={autoRulerEnabled}
+          onToggleAutoRuler={() => setAutoRulerEnabled((v) => !v)}
         />
 
         {/* Spatial Canvas Viewport */}
@@ -884,6 +887,8 @@ function StudioSessionView({
           onUndo={handleUndo}
           onRedo={handleRedo}
           onReorderNode={handleReorderPenNode}
+          autoRulerEnabled={autoRulerEnabled}
+          onToggleAutoRuler={() => setAutoRulerEnabled((v) => !v)}
         />
 
         {/* Floating Property Inspector matching Image 1 (Reduced width ~264px, dedicated self-collapse) */}

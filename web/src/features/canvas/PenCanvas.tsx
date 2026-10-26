@@ -9,6 +9,7 @@ import {
   Hash,
   ChevronDown,
   Upload,
+  Ruler,
 } from "lucide-react"
 import type { PenDocument, PenNode, PenVariable } from "./penTypes"
 import {
@@ -21,6 +22,7 @@ import {
   normalizeFlexAlign,
   ensureGoogleFontsLoaded,
 } from "./penTypes"
+import { scanCanvasNodeRects, calculateSmartGuides, type GuideLine, type CanvasNodeRect } from "./canvasGuides"
 import { cn } from "@/lib/utils"
 
 interface PenCanvasProps {
@@ -43,6 +45,8 @@ interface PenCanvasProps {
   onUndo?: () => void
   onRedo?: () => void
   onReorderNode?: (id: string, direction: "forward" | "backward" | "front" | "back") => void
+  autoRulerEnabled?: boolean
+  onToggleAutoRuler?: () => void
 }
 
 /**
@@ -70,6 +74,7 @@ interface NodeRendererProps {
   onSelectNode: (id: string | null) => void
   onUpdateNode: (updated: PenNode) => void
   zoom: number
+  onStartDragNode?: (node: PenNode, e: ReactMouseEvent) => void
 }
 
 function NodeRenderer({
@@ -81,6 +86,7 @@ function NodeRenderer({
   onSelectNode,
   onUpdateNode,
   zoom,
+  onStartDragNode,
 }: NodeRendererProps) {
   const isSelected = selectedNodeId === node.id
   const [isEditingText, setIsEditingText] = useState(false)
@@ -99,8 +105,14 @@ function NodeRenderer({
     e.stopPropagation()
     onSelectNode(node.id)
 
-    // Direct manipulation dragging: root frames or absolute / unconstrained layers
-    const canDrag = (isRoot || parentLayout === "none" || !parentLayout) && e.button === 0
+    // Hand off to centralized Auto Ruler / Smart Guide drag handler if provided
+    if (onStartDragNode && e.button === 0) {
+      onStartDragNode(node, e)
+      return
+    }
+
+    // Fallback direct manipulation dragging
+    const canDrag = (isRoot || parentLayout === "none" || !parentLayout || isSelected) && e.button === 0
     if (canDrag) {
       isDraggingRoot.current = true
       dragStart.current = {
@@ -232,6 +244,8 @@ function NodeRenderer({
       <div
         role="button"
         tabIndex={0}
+        data-node-id={node.id}
+        data-node-name={node.name || node.icon || "Icon"}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
         }}
@@ -239,6 +253,7 @@ function NodeRenderer({
           e.stopPropagation()
           onSelectNode(node.id)
         }}
+        onMouseDown={handleMouseDown}
         className={cn(
           "relative inline-flex items-center justify-center transition-shadow cursor-pointer shrink-0 select-none",
           isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
@@ -294,6 +309,8 @@ function NodeRenderer({
       <div
         role="button"
         tabIndex={0}
+        data-node-id={node.id}
+        data-node-name={node.name || node.text || "Text"}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             onSelectNode(node.id)
@@ -303,6 +320,7 @@ function NodeRenderer({
           e.stopPropagation()
           onSelectNode(node.id)
         }}
+        onMouseDown={handleMouseDown}
         onDoubleClick={(e) => {
           e.stopPropagation()
           setIsEditingText(true)
@@ -381,6 +399,8 @@ function NodeRenderer({
         <div
           role="button"
           tabIndex={0}
+          data-node-id={node.id}
+          data-node-name={node.name || "Donut Ring"}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
           }}
@@ -388,6 +408,7 @@ function NodeRenderer({
             e.stopPropagation()
             onSelectNode(node.id)
           }}
+          onMouseDown={handleMouseDown}
           className={cn(
             "relative cursor-pointer select-none shrink-0",
             isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
@@ -422,6 +443,8 @@ function NodeRenderer({
       <div
         role="button"
         tabIndex={0}
+        data-node-id={node.id}
+        data-node-name={node.name || "Ellipse"}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") onSelectNode(node.id)
         }}
@@ -429,6 +452,7 @@ function NodeRenderer({
           e.stopPropagation()
           onSelectNode(node.id)
         }}
+        onMouseDown={handleMouseDown}
         className={cn(
           "relative transition-shadow cursor-pointer select-none shrink-0",
           isSelected ? "ring-2 ring-accent-text ring-offset-1 ring-offset-background" : "hover:ring-1 hover:ring-border"
@@ -525,6 +549,8 @@ function NodeRenderer({
     <div
       role="button"
       tabIndex={0}
+      data-node-id={node.id}
+      data-node-name={node.name || "Frame"}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           onSelectNode(node.id)
@@ -623,6 +649,7 @@ function NodeRenderer({
             onSelectNode={onSelectNode}
             onUpdateNode={onUpdateNode}
             zoom={zoom}
+            onStartDragNode={onStartDragNode}
           />
         ))}
     </div>
@@ -649,6 +676,8 @@ export function PenCanvas({
   onUndo,
   onRedo,
   onReorderNode,
+  autoRulerEnabled: propAutoRulerEnabled,
+  onToggleAutoRuler,
 }: PenCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan, setPan] = useState({ x: 80, y: 60 })
@@ -657,6 +686,95 @@ export function PenCanvas({
   const [activeTool, setActiveTool] = useState<"pointer" | "frame" | "text" | "hand">("pointer")
   const [isDraggingPenFile, setIsDraggingPenFile] = useState(false)
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+
+  // Auto Ruler / Smart Guides Alignment State (Matching pen.dev auto ruler)
+  const [internalAutoRuler, setInternalAutoRuler] = useState(true)
+  const autoRulerEnabled = propAutoRulerEnabled !== undefined ? propAutoRulerEnabled : internalAutoRuler
+  const toggleAutoRuler = onToggleAutoRuler || (() => setInternalAutoRuler((v) => !v))
+  const [activeGuides, setActiveGuides] = useState<GuideLine[]>([])
+  const rectsCacheRef = useRef<Map<string, CanvasNodeRect>>(new Map())
+
+  // Recalculate smart alignment ruler lines for the currently selected node (even when idle or nudged)
+  useEffect(() => {
+    if (!autoRulerEnabled || !selectedNodeId || !containerRef.current) {
+      setActiveGuides([])
+      return
+    }
+    const timer = setTimeout(() => {
+      if (!containerRef.current) return
+      const rectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
+      rectsCacheRef.current = rectMap
+      const { guides } = calculateSmartGuides(selectedNodeId, rectMap, undefined, 4)
+      setActiveGuides(guides)
+    }, 25)
+    return () => clearTimeout(timer)
+  }, [selectedNodeId, autoRulerEnabled, pan, zoom, document])
+
+  // Centralized interactive component dragging with Auto Ruler snapping & smart guides
+  const handleStartDragNode = useCallback(
+    (node: PenNode, e: ReactMouseEvent) => {
+      e.stopPropagation()
+      onSelectNode(node.id)
+
+      if (!containerRef.current || e.button !== 0) return
+
+      const rectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
+      rectsCacheRef.current = rectMap
+      const startX = e.clientX
+      const startY = e.clientY
+      const initialNodeX = node.x || 0
+      const initialNodeY = node.y || 0
+      const targetRect = rectMap.get(node.id)
+      const targetW = targetRect?.width ?? (typeof node.width === "number" ? node.width : 100)
+      const targetH = targetRect?.height ?? (typeof node.height === "number" ? node.height : 100)
+
+      let isDragging = true
+
+      const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
+        if (!isDragging) return
+        const rawDx = (moveEvent.clientX - startX) / zoom
+        const rawDy = (moveEvent.clientY - startY) / zoom
+        let candidateX = initialNodeX + rawDx
+        let candidateY = initialNodeY + rawDy
+
+        if (autoRulerEnabled) {
+          const { guides, snapOffset } = calculateSmartGuides(
+            node.id,
+            rectMap,
+            { x: candidateX, y: candidateY, width: targetW, height: targetH },
+            6
+          )
+          candidateX += snapOffset.dx
+          candidateY += snapOffset.dy
+          setActiveGuides(guides)
+        } else {
+          setActiveGuides([])
+        }
+
+        onUpdateNode({
+          ...node,
+          x: Math.round(candidateX),
+          y: Math.round(candidateY),
+        })
+      }
+
+      const handleMouseUp = () => {
+        isDragging = false
+        window.removeEventListener("mousemove", handleMouseMove)
+        window.removeEventListener("mouseup", handleMouseUp)
+        if (containerRef.current && autoRulerEnabled) {
+          const freshRectMap = scanCanvasNodeRects(containerRef.current, pan, zoom)
+          rectsCacheRef.current = freshRectMap
+          const { guides } = calculateSmartGuides(node.id, freshRectMap, undefined, 4)
+          setActiveGuides(guides)
+        }
+      }
+
+      window.addEventListener("mousemove", handleMouseMove)
+      window.addEventListener("mouseup", handleMouseUp)
+    },
+    [autoRulerEnabled, onSelectNode, onUpdateNode, pan, zoom]
+  )
 
   // Focal zoom on trackpad pinch or Ctrl + Wheel
   const handleWheel = useCallback(
@@ -845,6 +963,13 @@ export function PenCanvas({
         }
       }
 
+      // Toggle Auto Ruler (Shift+R)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "r" && e.shiftKey) {
+        e.preventDefault()
+        toggleAutoRuler()
+        return
+      }
+
       // Tool Switching (V, F, T, H)
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key.toLowerCase() === "v") setActiveTool("pointer")
@@ -927,19 +1052,58 @@ export function PenCanvas({
         }}
       >
         {hasChildren ? (
-          document.children.map((rootNode) => (
-            <NodeRenderer
-              key={rootNode.id}
-              node={rootNode}
-              isRoot
-              parentLayout="none"
-              variables={document.variables}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={onSelectNode}
-              onUpdateNode={onUpdateNode}
-              zoom={zoom}
-            />
-          ))
+          <>
+            {document.children.map((rootNode) => (
+              <NodeRenderer
+                key={rootNode.id}
+                node={rootNode}
+                isRoot
+                parentLayout="none"
+                variables={document.variables}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={onSelectNode}
+                onUpdateNode={onUpdateNode}
+                zoom={zoom}
+                onStartDragNode={handleStartDragNode}
+              />
+            ))}
+
+            {/* Dynamic Auto Ruler / Smart Guides Alignment Lines (Matching pen.dev) */}
+            {autoRulerEnabled && activeGuides.length > 0 && (
+              <svg
+                className="absolute inset-0 pointer-events-none overflow-visible z-50"
+                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+              >
+                {activeGuides.map((g) => (
+                  <g key={g.id}>
+                    {/* Main Alignment Line in Crisp Coral/Orange-Red */}
+                    <line
+                      x1={g.type === "horizontal" ? g.start : g.coord}
+                      y1={g.type === "horizontal" ? g.coord : g.start}
+                      x2={g.type === "horizontal" ? g.end : g.coord}
+                      y2={g.type === "horizontal" ? g.coord : g.end}
+                      stroke="#ff5533"
+                      strokeWidth={1 / zoom}
+                      shapeRendering="crispEdges"
+                    />
+
+                    {/* "×" Boundary Tick Marks matching pen.dev reference */}
+                    {g.ticks.map((tick, idx) => {
+                      const tx = g.type === "horizontal" ? tick : g.coord
+                      const ty = g.type === "horizontal" ? g.coord : tick
+                      const s = 3.5 / zoom
+                      return (
+                        <g key={`${g.id}_tick_${idx}`} stroke="#ff5533" strokeWidth={1.2 / zoom} strokeLinecap="round">
+                          <line x1={tx - s} y1={ty - s} x2={tx + s} y2={ty + s} />
+                          <line x1={tx - s} y1={ty + s} x2={tx + s} y2={ty - s} />
+                        </g>
+                      )
+                    })}
+                  </g>
+                ))}
+              </svg>
+            )}
+          </>
         ) : (
           <div className="flex h-72 w-96 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/60 p-6 text-center backdrop-blur-sm">
             <Sparkles className="size-8 text-accent-text opacity-60 mb-2" />
@@ -963,10 +1127,10 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Zoom Controls Pill (Bottom Right) */}
+      {/* Zoom Controls & Auto Ruler Pill (Bottom Right) */}
       <div
         className={cn(
-          "absolute bottom-5 z-20 flex items-center gap-1 rounded-2xl border border-border/80 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          "absolute bottom-5 z-20 flex items-center gap-1.5 rounded-2xl border border-border/80 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]",
           inspectorOpen ? "right-[276px]" : "right-5"
         )}
       >
@@ -998,6 +1162,24 @@ export function PenCanvas({
           className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <ZoomIn className="size-3.5" />
+        </button>
+
+        <div className="h-4 w-px bg-border/60 mx-0.5" />
+
+        {/* Auto Ruler / Smart Guides Toggle Button */}
+        <button
+          type="button"
+          title={`Auto Ruler Alignment Guides (Shift+R) - ${autoRulerEnabled ? "Enabled" : "Disabled"}`}
+          onClick={() => toggleAutoRuler()}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all active:scale-[0.97]",
+            autoRulerEnabled
+              ? "bg-[#ff5533]/15 text-[#ff5533] border border-[#ff5533]/30 font-semibold shadow-xs"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          )}
+        >
+          <Ruler className="size-3.5" />
+          <span className="font-mono text-[10px]">Ruler</span>
         </button>
       </div>
 
