@@ -5,11 +5,7 @@ import {
   GitFork,
   Trash2,
   ArrowUpRight,
-  Send,
-  PanelRightClose,
   PanelRightOpen,
-  Sparkles,
-  ChevronDown,
   Check,
   Copy,
   X,
@@ -26,22 +22,19 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { cn } from "@/lib/utils"
 import { useExecutorModels } from "../board/modelCatalog"
 import { CANVAS_PREFILL_KEY, type CanvasPrefill } from "./canvasPrefill"
 import {
   type PenDocument,
-  type PenNode,
   parsePenDocument,
   createDefaultPenDocument,
   findNodeById,
-  updateNodeInTree,
-  deleteNodeFromTree,
-  duplicateNodeInTree,
 } from "./penTypes"
 import { compilePenDocumentToReact } from "./penCompiler"
 import { PenCanvas } from "./PenCanvas"
 import { PenPropertyInspector } from "./PenPropertyInspector"
+import { CanvasLeftSidebar, type LeftSidebarTab } from "./CanvasLeftSidebar"
+import { usePenHistory } from "./usePenHistory"
 import { CanvasHub } from "./CanvasHub"
 
 export interface CanvasSession {
@@ -527,8 +520,9 @@ function StudioSessionView({
 }) {
   const qc = useQueryClient()
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [chatOpen, setChatOpen] = useState(false)
-  const [text, setText] = useState("")
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
+  const [leftSidebarTab, setLeftSidebarTab] = useState<LeftSidebarTab>("layers")
+  const [activeTool, setActiveTool] = useState<"pointer" | "frame" | "rectangle" | "ellipse" | "text" | "hand">("pointer")
   const [reactModalOpen, setReactModalOpen] = useState(false)
   const [promoteModalOpen, setPromoteModalOpen] = useState(false)
 
@@ -567,25 +561,10 @@ function StudioSessionView({
     return keys.find((k) => k.endsWith(".pen")) || "design/component.pen"
   }, [files])
 
-  // In-memory PenDocument state
-  const [penDoc, setPenDoc] = useState<PenDocument>(() => createDefaultPenDocument(s?.title || "Canvas Component"))
   const [selectedPenNodeId, setSelectedPenNodeId] = useState<string | null>(null)
   const [penSaveStatus, setPenSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved")
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studioFileInputRef = useRef<HTMLInputElement>(null)
-
-  // Sync penDoc from files when files load
-  useEffect(() => {
-    if (files[penFileKey]) {
-      const parsed = parsePenDocument(files[penFileKey])
-      setPenDoc(parsed)
-      if (parsed.children && parsed.children[0]) {
-        setSelectedPenNodeId(parsed.children[0].id)
-      }
-    } else if (s?.title) {
-      setPenDoc(createDefaultPenDocument(s.title))
-    }
-  }, [files, penFileKey, s?.title])
 
   // Debounced auto-save function (300ms)
   const triggerPenAutoSave = useCallback(
@@ -615,6 +594,37 @@ function StudioSessionView({
     [id, penFileKey]
   )
 
+  // Complete undo/redo history manager for .pen declarative document
+  const {
+    doc: penDoc,
+    resetDoc: resetPenDoc,
+    undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
+    updateNode: handleUpdatePenNode,
+    deleteNode: handleDeletePenNode,
+    duplicateNode: handleDuplicatePenNode,
+    reorderNode: handleReorderPenNode,
+    addNode: handleAddPenNode,
+  } = usePenHistory(
+    createDefaultPenDocument(s?.title || "Canvas Component"),
+    triggerPenAutoSave
+  )
+
+  // Sync penDoc from files when files load
+  useEffect(() => {
+    if (files[penFileKey]) {
+      const parsed = parsePenDocument(files[penFileKey])
+      resetPenDoc(parsed)
+      if (parsed.children && parsed.children[0]) {
+        setSelectedPenNodeId(parsed.children[0].id)
+      }
+    } else if (s?.title) {
+      resetPenDoc(createDefaultPenDocument(s.title))
+    }
+  }, [files, penFileKey, s?.title, resetPenDoc])
+
   const handleImportIntoCurrentSession = useCallback(
     async (file: File) => {
       try {
@@ -624,7 +634,7 @@ function StudioSessionView({
           toastGlobal("Invalid .pen file format", "error")
           return
         }
-        setPenDoc(parsed)
+        resetPenDoc(parsed)
         if (parsed.children[0]) {
           setSelectedPenNodeId(parsed.children[0].id)
         }
@@ -634,7 +644,7 @@ function StudioSessionView({
         toastGlobal(err.message || "Failed to import .pen file", "error")
       }
     },
-    [triggerPenAutoSave]
+    [resetPenDoc, triggerPenAutoSave]
   )
 
   const handleExportPen = useCallback(() => {
@@ -650,107 +660,6 @@ function StudioSessionView({
     URL.revokeObjectURL(url)
     toastGlobal("Exported .pen file successfully", "success")
   }, [penDoc, s?.title])
-
-  // Handlers for PenNode mutations
-  const handleUpdatePenNode = useCallback(
-    (updated: PenNode) => {
-      setPenDoc((prev) => {
-        const nextChildren = updateNodeInTree(prev.children, updated.id, updated)
-        const nextDoc = { ...prev, children: nextChildren }
-        triggerPenAutoSave(nextDoc)
-        return nextDoc
-      })
-    },
-    [triggerPenAutoSave]
-  )
-
-  const handleDeletePenNode = useCallback(
-    (nodeId: string) => {
-      setPenDoc((prev) => {
-        const nextChildren = deleteNodeFromTree(prev.children, nodeId)
-        const nextDoc = { ...prev, children: nextChildren }
-        triggerPenAutoSave(nextDoc)
-        return nextDoc
-      })
-      setSelectedPenNodeId(null)
-    },
-    [triggerPenAutoSave]
-  )
-
-  const handleDuplicatePenNode = useCallback(
-    (nodeId: string) => {
-      setPenDoc((prev) => {
-        const { nodes: nextChildren, newId } = duplicateNodeInTree(prev.children, nodeId)
-        const nextDoc = { ...prev, children: nextChildren }
-        triggerPenAutoSave(nextDoc)
-        if (newId) {
-          setSelectedPenNodeId(newId)
-        }
-        return nextDoc
-      })
-      toastGlobal("Layer duplicated", "success")
-    },
-    [triggerPenAutoSave]
-  )
-
-  const handleAddPenNode = useCallback(
-    (parentOrRoot: "root" | string, type: "frame" | "rectangle" | "text") => {
-      setPenDoc((prev) => {
-        const newNodeId = `node_${Date.now()}`
-        let newNode: PenNode
-        if (type === "text") {
-          newNode = {
-            type: "text",
-            id: newNodeId,
-            name: "Text Layer",
-            text: "Double click to edit",
-            fontSize: 14,
-            fontWeight: "400",
-            fill: "#ffffff",
-          }
-        } else {
-          newNode = {
-            type: "frame",
-            id: newNodeId,
-            name: "New Frame",
-            x: 80,
-            y: 80,
-            width: 390,
-            height: 844,
-            cornerRadius: 16,
-            fill: "#18191f",
-            stroke: "rgba(255,255,255,0.1)",
-            strokeWidth: 1,
-            layout: "vertical",
-            padding: 16,
-            gap: 12,
-          }
-        }
-
-        let nextChildren: PenNode[]
-        if (parentOrRoot === "root" || !parentOrRoot) {
-          nextChildren = [...prev.children, newNode]
-        } else {
-          const target = findNodeById(prev.children, parentOrRoot)
-          if (target && target.type === "frame") {
-            const updatedTarget = {
-              ...target,
-              children: [...(target.children || []), newNode],
-            }
-            nextChildren = updateNodeInTree(prev.children, parentOrRoot, updatedTarget)
-          } else {
-            nextChildren = [...prev.children, newNode]
-          }
-        }
-
-        const nextDoc = { ...prev, children: nextChildren }
-        triggerPenAutoSave(nextDoc)
-        setSelectedPenNodeId(newNodeId)
-        return nextDoc
-      })
-    },
-    [triggerPenAutoSave]
-  )
 
   const selectedPenNode = useMemo(() => {
     if (!selectedPenNodeId) return null
@@ -915,25 +824,40 @@ function StudioSessionView({
           >
             <Trash2 className="size-3.5" />
           </Button>
-
-          <div className="h-4 w-px bg-border mx-0.5" />
-
-          {/* Toggle Floating Inspector */}
-          <Button
-            size="icon"
-            variant={inspectorOpen ? "secondary" : "ghost"}
-            className="size-7 text-foreground active:scale-[0.97]"
-            onClick={() => setInspectorOpen((v) => !v)}
-            title="Toggle Property Inspector (Cmd+])"
-          >
-            {inspectorOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
-          </Button>
         </div>
       </header>
 
-      {/* Main Spatial Body: Full-width spatial canvas with floating inspector */}
+      {/* Main Spatial Body: Left Sidebar (Agent, Layers, Assets + Tool Rail) + Canvas + Right Inspector */}
       <div className="flex min-h-0 flex-1 relative overflow-hidden bg-background">
-        {/* Full-bleed Canvas Viewport */}
+        {/* Docked Left Sidebar matching Image 1 & Image 2 */}
+        <CanvasLeftSidebar
+          isOpen={leftSidebarOpen}
+          onToggleOpen={() => setLeftSidebarOpen((v) => !v)}
+          activeTab={leftSidebarTab}
+          onSelectTab={setLeftSidebarTab}
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          document={penDoc}
+          selectedNodeId={selectedPenNodeId}
+          onSelectNode={setSelectedPenNodeId}
+          onUpdateNode={handleUpdatePenNode}
+          onDeleteNode={handleDeletePenNode}
+          onDuplicateNode={handleDuplicatePenNode}
+          onReorderNode={handleReorderPenNode}
+          onAddNode={handleAddPenNode}
+          messages={detail.data?.messages ?? []}
+          busy={busy}
+          turnCount={s.turns}
+          lastError={s.last_error}
+          onSendMessage={(msg) => run(() => post(`/api/canvas/sessions/${id}/messages`, { message: msg }))}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          activeModel={s.model}
+        />
+
+        {/* Spatial Canvas Viewport */}
         <PenCanvas
           document={penDoc}
           selectedNodeId={selectedPenNodeId}
@@ -943,111 +867,27 @@ function StudioSessionView({
           onDuplicateNode={handleDuplicatePenNode}
           onAddNode={handleAddPenNode}
           onResetDocument={(doc) => {
-            setPenDoc(doc)
+            resetPenDoc(doc)
             triggerPenAutoSave(doc)
           }}
           onImportPenFile={handleImportIntoCurrentSession}
-          onOpenChat={() => setChatOpen(true)}
+          onOpenChat={() => {
+            setLeftSidebarTab("agent")
+            setLeftSidebarOpen(true)
+          }}
           activeModel={s.model || "DeepSeek V4.1 Flash"}
           turnCount={s.turns}
           inspectorOpen={inspectorOpen}
+          leftSidebarOpen={leftSidebarOpen}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onReorderNode={handleReorderPenNode}
         />
 
-        {/* Floating Agent Chat Drawer (Bottom Right) */}
-        <div className="absolute bottom-4 right-4 z-30">
-          {chatOpen && (
-            <div className="w-96 max-w-[calc(100vw-2rem)] h-[440px] rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-              {/* Chat Header */}
-              <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/40">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <Sparkles className="size-3.5 text-accent-text" />
-                  <span>Agent Brainstorm</span>
-                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground border border-border">
-                    turn {s.turns}
-                  </span>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-6 text-muted-foreground hover:text-foreground active:scale-90"
-                  onClick={() => setChatOpen(false)}
-                >
-                  <ChevronDown className="size-3.5" />
-                </Button>
-              </div>
-
-              {/* Message Log */}
-              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 text-xs">
-                {(detail.data?.messages ?? []).map((m) => (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      "rounded-lg px-2.5 py-1.5 whitespace-pre-wrap leading-relaxed",
-                      m.role === "user"
-                        ? "bg-accent-text/15 text-foreground ml-4 border border-accent-text/20"
-                        : m.role === "system"
-                        ? "border border-amber-500/30 text-amber-500 bg-amber-500/10"
-                        : "bg-muted mr-4 border border-border text-foreground",
-                    )}
-                  >
-                    <div className="mb-0.5 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold font-mono">
-                      {m.role}
-                    </div>
-                    {m.content}
-                  </div>
-                ))}
-                {busy && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-1 font-mono">
-                    <Loader2 className="size-3.5 animate-spin text-accent-text" />
-                    Agent is generating design variations…
-                  </div>
-                )}
-                {s.last_error && (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-                    {s.last_error}
-                  </div>
-                )}
-              </div>
-
-              {/* Prompt Box */}
-              <form
-                className="flex gap-2 border-t border-border p-2.5 bg-card"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (!text.trim() || busy) return
-                  const msg = text
-                  setText("")
-                  run(() => post(`/api/canvas/sessions/${id}/messages`, { message: msg }))
-                }}
-              >
-                <Textarea
-                  rows={2}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Ask for variations, alternate styling, component tweaks…"
-                  className="text-xs resize-none min-h-[44px] bg-muted text-foreground border-border"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.currentTarget.form?.requestSubmit()
-                    }
-                  }}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="size-9 shrink-0 active:scale-[0.97] bg-primary text-primary-foreground hover:opacity-90"
-                  disabled={busy || !text.trim()}
-                  aria-label="Send message"
-                >
-                  <Send className="size-3.5" />
-                </Button>
-              </form>
-            </div>
-          )}
-        </div>
-
-        {/* Floating Property Inspector matching Attached Reference Image */}
-        {inspectorOpen && (
+        {/* Floating Property Inspector matching Image 1 (Reduced width ~264px, dedicated self-collapse) */}
+        {inspectorOpen ? (
           <PenPropertyInspector
             selectedNode={selectedPenNode}
             onUpdateNode={handleUpdatePenNode}
@@ -1057,6 +897,16 @@ function StudioSessionView({
             onConvertToReact={() => setReactModalOpen(true)}
             onPromoteToTask={() => setPromoteModalOpen(true)}
           />
+        ) : (
+          /* Subtle reopen pill on right edge when collapsed */
+          <button
+            type="button"
+            onClick={() => setInspectorOpen(true)}
+            className="absolute top-4 right-4 z-20 flex size-8 items-center justify-center rounded-xl border border-border/80 bg-card/90 text-neutral-400 hover:text-white hover:bg-muted shadow-lg backdrop-blur-md transition-all active:scale-95"
+            title="Open Property Inspector (Cmd+])"
+          >
+            <PanelRightOpen className="size-4" />
+          </button>
         )}
       </div>
 

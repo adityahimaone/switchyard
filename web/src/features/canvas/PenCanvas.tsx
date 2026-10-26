@@ -4,11 +4,7 @@ import {
   ZoomIn,
   ZoomOut,
   Plus,
-  Type,
-  Square,
   Sparkles,
-  MousePointer,
-  Hand,
   ArrowUp,
   Hash,
   ChevronDown,
@@ -41,6 +37,12 @@ interface PenCanvasProps {
   activeModel?: string
   turnCount?: number
   inspectorOpen?: boolean
+  leftSidebarOpen?: boolean
+  canUndo?: boolean
+  canRedo?: boolean
+  onUndo?: () => void
+  onRedo?: () => void
+  onReorderNode?: (id: string, direction: "forward" | "backward" | "front" | "back") => void
 }
 
 /**
@@ -97,7 +99,9 @@ function NodeRenderer({
     e.stopPropagation()
     onSelectNode(node.id)
 
-    if (isRoot && e.button === 0) {
+    // Direct manipulation dragging: root frames or absolute / unconstrained layers
+    const canDrag = (isRoot || parentLayout === "none" || !parentLayout) && e.button === 0
+    if (canDrag) {
       isDraggingRoot.current = true
       dragStart.current = {
         x: e.clientX,
@@ -638,6 +642,13 @@ export function PenCanvas({
   onImportPenFile,
   activeModel = "DeepSeek V4.1 Flash",
   turnCount: _turnCount = 1,
+  inspectorOpen = false,
+  leftSidebarOpen = false,
+  canUndo: _canUndo = false,
+  canRedo: _canRedo = false,
+  onUndo,
+  onRedo,
+  onReorderNode,
 }: PenCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan, setPan] = useState({ x: 80, y: 60 })
@@ -756,13 +767,41 @@ export function PenCanvas({
     ? findNodeById(document.children, selectedNodeId) || { name: "Mellow" }
     : { name: document.children[0]?.name || "Mellow" }
 
-  // 1:1 Figma & Pen.dev Keyboard Shortcuts (Delete, Nudge, Duplicate, Escape, Tool Switching)
+  // 1:1 Figma & Pen.dev Keyboard Shortcuts (Undo, Redo, Delete, Nudge, Duplicate, Escape, Layer Reorder, Tool Switching)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if user is typing in an input, textarea, or contentEditable
       const target = e.target as HTMLElement | null
       const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
       if (isInput) return
+
+      // Undo (Cmd+Z)
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z" && onUndo) {
+        e.preventDefault()
+        onUndo()
+        return
+      }
+
+      // Redo (Cmd+Shift+Z or Cmd+Y)
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z")) &&
+        onRedo
+      ) {
+        e.preventDefault()
+        onRedo()
+        return
+      }
+
+      // Layer Reordering: Cmd+] (forward) or Cmd+[ (backward)
+      if ((e.metaKey || e.ctrlKey) && (e.key === "]" || e.key === "[") && selectedNodeId && onReorderNode) {
+        e.preventDefault()
+        const direction = e.shiftKey
+          ? (e.key === "]" ? "front" : "back")
+          : (e.key === "]" ? "forward" : "backward")
+        onReorderNode(selectedNodeId, direction)
+        return
+      }
 
       // Delete or Backspace to delete selected layer
       if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId && onDeleteNode) {
@@ -836,7 +875,18 @@ export function PenCanvas({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [selectedNodeId, onDeleteNode, onDuplicateNode, onSelectNode, onUpdateNode, onAddNode, document.children])
+  }, [
+    selectedNodeId,
+    onDeleteNode,
+    onDuplicateNode,
+    onSelectNode,
+    onUpdateNode,
+    onAddNode,
+    onUndo,
+    onRedo,
+    onReorderNode,
+    document.children,
+  ])
 
   return (
     <div
@@ -913,78 +963,13 @@ export function PenCanvas({
         )}
       </div>
 
-      {/* Left Slim Vertical Tool Rail (Select, Frame, Text, Hand) */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card/90 p-1.5 shadow-2xl backdrop-blur-md">
-        <button
-          type="button"
-          onClick={() => setActiveTool("pointer")}
-          className={cn(
-            "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "pointer" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          )}
-          title="Select / Move tool (V)"
-        >
-          <MousePointer className="size-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTool("frame")
-            if (onAddNode) onAddNode(selectedNodeId || "root", "frame")
-          }}
-          className={cn(
-            "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "frame" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          )}
-          title="Frame tool (F)"
-        >
-          <Square className="size-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTool("text")
-            if (onAddNode) onAddNode(selectedNodeId || "root", "text")
-          }}
-          className={cn(
-            "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "text" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          )}
-          title="Text tool (T)"
-        >
-          <Type className="size-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTool("hand")}
-          className={cn(
-            "flex size-8 items-center justify-center rounded-xl transition-all",
-            activeTool === "hand" ? "bg-muted text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          )}
-          title="Hand / Pan tool (H)"
-        >
-          <Hand className="size-4" />
-        </button>
-
-        <div className="h-px w-5 bg-border my-0.5" />
-
-        {onOpenChat && (
-          <button
-            type="button"
-            onClick={onOpenChat}
-            className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:text-accent-text hover:bg-muted/60 transition-all"
-            title="Ask AI Designer"
-          >
-            <Sparkles className="size-4" />
-          </button>
+      {/* Zoom Controls Pill (Bottom Right) */}
+      <div
+        className={cn(
+          "absolute bottom-5 z-20 flex items-center gap-1 rounded-2xl border border-border/80 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          inspectorOpen ? "right-[276px]" : "right-5"
         )}
-      </div>
-
-      {/* Bottom-Left Zoom Controls Pill — Completely separated from Bottom-Center AI Capsule! */}
-      <div className="absolute bottom-5 left-5 z-20 flex items-center gap-1 rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-md">
+      >
         <button
           type="button"
           title="Zoom Out (Ctrl -)"
@@ -1016,24 +1001,37 @@ export function PenCanvas({
         </button>
       </div>
 
-      {/* Bottom-Center Floating AI Command Capsule — Full unobstructed center space! */}
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md max-w-[calc(100vw-32rem)]">
+      {/* Floating AI Command Capsule (Image 1: Docked bottom-left when sidebar open, Image 2: Centered when minimized) */}
+      <div
+        className={cn(
+          "absolute bottom-5 z-20 flex items-center gap-2 rounded-2xl border border-border/80 bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md max-w-[calc(100vw-24rem)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          leftSidebarOpen ? "left-6 md:left-8" : "left-1/2 -translate-x-1/2"
+        )}
+      >
         <button
           type="button"
           onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all shrink-0"
+          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all shrink-0 active:scale-95"
           title="Add Prompt Attachment"
         >
           <Plus className="size-4" />
         </button>
 
-        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground shrink-0">
-          <Hash className="size-3 text-muted-foreground" />
-          <span className="truncate max-w-28">{selectedNode.name || "Frame"}</span>
+        <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground shrink-0 shadow-2xs">
+          <Hash className="size-3 text-accent-text" />
+          <span className="truncate max-w-28 font-mono text-[11px]">{selectedNode.name || "Canvas"}</span>
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground shrink-0">
-          <span className="truncate max-w-32">{activeModel}</span>
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex-1 min-w-36 md:min-w-56 text-left px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors truncate"
+        >
+          Design anything…
+        </button>
+
+        <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground shrink-0 hidden sm:flex">
+          <span className="truncate max-w-28 font-mono text-[11px]">{activeModel}</span>
           <ChevronDown className="size-3 opacity-60" />
         </div>
 
@@ -1041,7 +1039,7 @@ export function PenCanvas({
           type="button"
           onClick={onOpenChat}
           className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-xs shrink-0"
-          title="Send AI Prompt"
+          title="Ask AI"
         >
           <ArrowUp className="size-3.5 stroke-[2.5]" />
         </button>

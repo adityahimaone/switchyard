@@ -262,6 +262,44 @@ export function duplicateNodeInTree(nodes: PenNode[], id: string): { nodes: PenN
   return { nodes: nextNodes, newId: createdId }
 }
 
+export function moveNodeLayer(
+  nodes: PenNode[],
+  id: string,
+  direction: "forward" | "backward" | "front" | "back"
+): PenNode[] {
+  // Check if target id is among direct siblings
+  const idx = nodes.findIndex((n) => n.id === id)
+  if (idx !== -1) {
+    const list = [...nodes]
+    const item = list[idx]
+    if (direction === "forward" && idx < list.length - 1) {
+      list[idx] = list[idx + 1]
+      list[idx + 1] = item
+    } else if (direction === "backward" && idx > 0) {
+      list[idx] = list[idx - 1]
+      list[idx - 1] = item
+    } else if (direction === "front") {
+      list.splice(idx, 1)
+      list.push(item)
+    } else if (direction === "back") {
+      list.splice(idx, 1)
+      list.unshift(item)
+    }
+    return list
+  }
+
+  // Otherwise search nested children
+  return nodes.map((node) => {
+    if (node.children) {
+      return {
+        ...node,
+        children: moveNodeLayer(node.children, id, direction),
+      }
+    }
+    return node
+  })
+}
+
 /**
  * Resolves a token (e.g. "$bg", "$jade") from the document variables table.
  */

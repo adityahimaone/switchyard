@@ -82,13 +82,13 @@ export function PenPropertyInspector({
   // Floating empty state when no layer is selected
   if (!selectedNode) {
     return (
-      <aside className="absolute top-3 right-3 bottom-3 w-72 sm:w-80 z-30 flex flex-col rounded-2xl border border-border/80 bg-card/95 dark:bg-[#15161d]/95 backdrop-blur-xl shadow-2xl overflow-hidden font-sans text-xs text-foreground select-none">
-        <header className="flex h-11 shrink-0 items-center justify-between border-b border-border/50 px-3.5 bg-muted/30">
+      <aside className="absolute top-3 right-3 bottom-3 w-[264px] z-30 flex flex-col rounded-2xl border border-border/80 bg-card/95 dark:bg-[#121319]/95 backdrop-blur-xl shadow-2xl overflow-hidden font-sans text-xs text-foreground select-none">
+        <header className="flex h-11 shrink-0 items-center justify-between border-b border-border/50 px-3 bg-muted/30">
           <div className="flex items-center gap-1.5 font-mono text-[11px] font-semibold text-muted-foreground">
             <Hash className="size-3.5 text-accent-text" />
             <span>Canvas Root</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="font-mono text-[10px] text-muted-foreground">
               {saveStatus === "saved" ? "Saved ✨" : saveStatus === "saving" ? "Saving…" : "Unsaved"}
             </span>
@@ -96,25 +96,25 @@ export function PenPropertyInspector({
               <button
                 type="button"
                 onClick={onCloseInspector}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                title="Close Inspector"
+                className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/10 hover:text-white transition-all active:scale-[0.96]"
+                title="Collapse Inspector (Cmd+])"
               >
-                <PanelRightClose className="size-3.5" />
+                <PanelRightClose className="size-4" />
               </button>
             )}
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col items-center justify-center p-5 text-center text-muted-foreground">
-          <div className="flex size-10 items-center justify-center rounded-2xl bg-muted/60 mb-3 text-muted-foreground">
-            <LayoutGrid className="size-5 opacity-70" />
+        <div className="flex flex-1 flex-col items-center justify-center p-4 text-center text-muted-foreground">
+          <div className="flex size-9 items-center justify-center rounded-2xl bg-muted/60 mb-2.5 text-muted-foreground">
+            <LayoutGrid className="size-4 opacity-70" />
           </div>
           <p className="text-xs font-semibold text-foreground">Select a layer</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground max-w-56">
-            Click any frame, layer, or text on the canvas to inspect and edit its physical properties.
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground max-w-48">
+            Click any frame, layer, or text on the canvas to inspect and edit properties.
           </p>
 
-          <div className="mt-6 w-full space-y-2">
+          <div className="mt-5 w-full space-y-2">
             <button
               type="button"
               onClick={onConvertToReact}
@@ -143,16 +143,16 @@ export function PenPropertyInspector({
   const isFillHidden = selectedNode.fill === "transparent" || selectedNode.fill === ""
 
   return (
-    <aside className="absolute top-3 right-3 bottom-3 w-72 sm:w-80 z-30 flex flex-col rounded-2xl border border-border/80 bg-card/95 dark:bg-[#15161d]/95 backdrop-blur-xl shadow-2xl overflow-hidden font-sans text-xs text-foreground select-none">
-      {/* 1. Header matching Reference Image: "# Mellow" and Dock icon */}
-      <header className="flex h-11 shrink-0 items-center justify-between border-b border-border/50 px-3.5 bg-muted/30">
+    <aside className="absolute top-3 right-3 bottom-3 w-[264px] z-30 flex flex-col rounded-2xl border border-border/80 bg-card/95 dark:bg-[#121319]/95 backdrop-blur-xl shadow-2xl overflow-hidden font-sans text-xs text-foreground select-none">
+      {/* 1. Header matching Reference Image: "# Mellow" and self-collapse icon */}
+      <header className="flex h-11 shrink-0 items-center justify-between border-b border-border/50 px-3 bg-muted/30">
         <div className="flex items-center gap-1.5 min-w-0">
           <Hash className="size-3.5 text-muted-foreground shrink-0" />
           <input
             type="text"
             value={selectedNode.name || selectedNode.id}
             onChange={(e) => handlePropChange("name", e.target.value)}
-            className="w-36 truncate bg-transparent font-semibold text-xs text-foreground outline-none focus:border-b focus:border-accent-text"
+            className="w-28 truncate bg-transparent font-semibold text-xs text-foreground outline-none focus:border-b focus:border-accent-text"
             placeholder="Layer Name"
           />
         </div>
@@ -171,10 +171,10 @@ export function PenPropertyInspector({
             <button
               type="button"
               onClick={onCloseInspector}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-0.5"
-              title="Close panel"
+              className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/10 hover:text-white transition-all active:scale-[0.96]"
+              title="Collapse panel (Cmd+])"
             >
-              <PanelRightClose className="size-3.5" />
+              <PanelRightClose className="size-4" />
             </button>
           )}
         </div>
