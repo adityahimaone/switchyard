@@ -5,9 +5,6 @@ import {
   ZoomOut,
   Plus,
   Sparkles,
-  ArrowUp,
-  Hash,
-  ChevronDown,
   Upload,
   Ruler,
 } from "lucide-react"
@@ -665,12 +662,12 @@ export function PenCanvas({
   onDuplicateNode,
   onAddNode,
   onResetDocument,
-  onOpenChat,
+  onOpenChat: _onOpenChat,
   onImportPenFile,
-  activeModel = "DeepSeek V4.1 Flash",
+  activeModel: _activeModel = "DeepSeek V4.1 Flash",
   turnCount: _turnCount = 1,
   inspectorOpen = false,
-  leftSidebarOpen = false,
+  leftSidebarOpen: _leftSidebarOpen = false,
   canUndo: _canUndo = false,
   canRedo: _canRedo = false,
   onUndo,
@@ -879,11 +876,6 @@ export function PenCanvas({
     if (document.children) scanFonts(document.children)
     ensureGoogleFontsLoaded(fonts)
   }, [document.variables, document.children])
-
-  // Selected node lookup
-  const selectedNode = selectedNodeId
-    ? findNodeById(document.children, selectedNodeId) || { name: "Mellow" }
-    : { name: document.children[0]?.name || "Mellow" }
 
   // 1:1 Figma & Pen.dev Keyboard Shortcuts (Undo, Redo, Delete, Nudge, Duplicate, Escape, Layer Reorder, Tool Switching)
   useEffect(() => {
@@ -1180,50 +1172,6 @@ export function PenCanvas({
         >
           <Ruler className="size-3.5" />
           <span className="font-mono text-[10px]">Ruler</span>
-        </button>
-      </div>
-
-      {/* Floating AI Command Capsule (Image 1: Docked bottom-left when sidebar open, Image 2: Centered when minimized) */}
-      <div
-        className={cn(
-          "absolute bottom-5 z-20 flex items-center gap-2 rounded-2xl border border-border/80 bg-card/95 px-3 py-2 shadow-2xl backdrop-blur-md max-w-[calc(100vw-24rem)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]",
-          leftSidebarOpen ? "left-6 md:left-8" : "left-1/2 -translate-x-1/2"
-        )}
-      >
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all shrink-0 active:scale-95"
-          title="Add Prompt Attachment"
-        >
-          <Plus className="size-4" />
-        </button>
-
-        <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground shrink-0 shadow-2xs">
-          <Hash className="size-3 text-accent-text" />
-          <span className="truncate max-w-28 font-mono text-[11px]">{selectedNode.name || "Canvas"}</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="flex-1 min-w-36 md:min-w-56 text-left px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors truncate"
-        >
-          Design anything…
-        </button>
-
-        <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground shrink-0 hidden sm:flex">
-          <span className="truncate max-w-28 font-mono text-[11px]">{activeModel}</span>
-          <ChevronDown className="size-3 opacity-60" />
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-xs shrink-0"
-          title="Ask AI"
-        >
-          <ArrowUp className="size-3.5 stroke-[2.5]" />
         </button>
       </div>
     </div>

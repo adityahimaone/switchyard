@@ -858,6 +858,12 @@ function StudioSessionView({
           activeModel={s.model}
           autoRulerEnabled={autoRulerEnabled}
           onToggleAutoRuler={() => setAutoRulerEnabled((v) => !v)}
+          onConvertToReact={() => setReactModalOpen(true)}
+          onNewSession={() =>
+            run(() => post<CanvasSession>(`/api/canvas/sessions/${id}/fork`, {}), "Variation created", (n) =>
+              onOpen(n.id)
+            )
+          }
         />
 
         {/* Spatial Canvas Viewport */}
