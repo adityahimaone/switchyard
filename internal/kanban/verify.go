@@ -229,11 +229,11 @@ const VerifyFlowsRelPath = "web/e2e-flows.txt"
 
 // remoteProbeWait bounds the control plane's wait for a remote probe —
 // a trivial shell command (like the git diff below) that should return
-// in seconds once the node picks it up. The full job budget would be
-// wrong here: a slow node would stall the dispatcher's poll loop for
-// the entire budget, wedging every other board. A probe that misses
-// this window fails the verify honestly (verify_unavailable) instead.
-const remoteProbeWait = 90 * time.Second
+// in seconds once the node picks it up. It has to tolerate the node-agent
+// queueing the probe behind another long job: the worker runs one job at a
+// time, and a pen.dev design run can hold the queue for ten minutes. A probe
+// that still misses this window fails honestly (verify_unavailable) instead.
+const remoteProbeWait = 15 * time.Minute
 
 // verifyChangedFiles runs git in the task's workdir and returns the paths the
 // reviewer is about to see.
