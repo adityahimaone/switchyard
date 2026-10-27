@@ -3,6 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -146,6 +149,37 @@ func TestBuildDirectPenCommandAttachesDesignSkillBrief(t *testing.T) {
 	// expanded or executed by the worker shell.
 	if strings.Contains(cmd, "cat > \"$BRIEF\" <<SWITCHYARD") {
 		t.Errorf("brief heredoc must be quoted:\n%s", cmd)
+	}
+}
+
+func TestBuildDirectPenCommandDoesNotLeakAgentKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".pencil")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agent-auth"), []byte(`{"deepseek":{"type":"api","key":"sk-leak-test"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := buildDirectPenCommand("design/hero.pen", "Hero", "Draw a hero", "deepseek", "", "brief")
+	if strings.Contains(cmd, "sk-leak-test") {
+		t.Fatalf("command leaked the agent API key:\n%s", cmd)
+	}
+	if strings.Contains(cmd, "PEN_AGENT_API_KEY") {
+		t.Fatalf("command still injects PEN_AGENT_API_KEY; the worker must use its own auth:\n%s", cmd)
+	}
+}
+
+func TestBuildDirectPenCommandPreservesPromptText(t *testing.T) {
+	body := "Create a hero\nwith $tokens, `type` and 'quotes'"
+	cmd := buildDirectPenCommand("design/hero.pen", "Hero", body, "claude", "claude-sonnet-5", "brief")
+	if !strings.Contains(cmd, "Create a hero\nwith $tokens") {
+		t.Fatalf("prompt newlines or metacharacters were escaped into literals:\n%s", cmd)
+	}
+	if err := exec.Command("sh", "-n", "-c", cmd).Run(); err != nil {
+		t.Fatalf("generated command is not valid POSIX shell: %v\n%s", err, cmd)
 	}
 }
 

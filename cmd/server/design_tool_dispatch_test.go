@@ -176,6 +176,12 @@ func TestCreateTaskDesignToolDispatch(t *testing.T) {
 	if !strings.Contains(direct.Command, "SWITCHYARD_DESIGN_BRIEF") {
 		t.Errorf("direct pen command has no quoted brief heredoc:\n%s", direct.Command)
 	}
+	if !direct.NoRTK {
+		t.Error("direct pen dispatch must set NoRTK; rtk mangles the heredoc command")
+	}
+	if strings.Contains(direct.Command, "PEN_AGENT_API_KEY") {
+		t.Errorf("direct pen command must not embed an API key:\n%s", direct.Command)
+	}
 }
 
 // TestDesignToolPlainCardUnaffected is the guard's other half:

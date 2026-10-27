@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -275,6 +273,7 @@ func dispatchPendingRemoteTasks() {
 				log.Printf("remote-dispatcher: %s design skills unavailable: %s", r.id, strings.Join(skillPack.Missing, ", "))
 			}
 			command := r.command
+			noRTK := false
 			if r.executor == "shell" && command == "" {
 				if r.designTool == "pen_cli" && strings.EqualFold(r.designScope, "design_and_code") {
 					// Older cards predate the create-time validation. The
@@ -287,6 +286,10 @@ func dispatchPendingRemoteTasks() {
 				if r.designTool == "pen_cli" {
 					command = buildDirectPenCommand(r.designSource, r.title, r.body, r.penAgent, r.penModel, skillPack.Markdown)
 					r.executionMode = "direct"
+					// This command is a heredoc plus a quoted brief. rtk's
+					// rewriter has misread multi-line commands and emitted its
+					// banner as the command; bypass it for generated designs.
+					noRTK = true
 				} else if r.executionMode != "agentic" {
 					log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
 					releaseSlot()
@@ -336,6 +339,7 @@ func dispatchPendingRemoteTasks() {
 				Executor:            r.executor,
 				Command:             command,
 				ExecutionMode:       r.executionMode,
+				NoRTK:               noRTK,
 				MaxIterations:       r.maxIterations,
 				Acceptance:          strings.TrimSpace(r.title + "\n" + r.body),
 				DSHWorkspaceID:      binding.HarnessWorkspaceID,
@@ -555,9 +559,7 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string,
 		// text files but does not feed them to the design agent.
 		promptForPen = prompt + "\n\n" + directPenDesignContract
 	}
-	cleanPrompt := strings.ReplaceAll(promptForPen, `"`, `\"`)
-	cleanPrompt = strings.ReplaceAll(cleanPrompt, "`", `\`+"`")
-	cleanPrompt = strings.ReplaceAll(cleanPrompt, "$", `\$`)
+	promptArg := shellQuote(promptForPen)
 
 	agent := strings.ToLower(strings.TrimSpace(penAgent))
 	if agent == "" {
@@ -591,29 +593,16 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string,
 		modelArg = " --model " + cliModel
 	}
 
-	envPrefix := ""
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		agentAuthPath := filepath.Join(home, ".pencil", "agent-auth")
-		if data, err := os.ReadFile(agentAuthPath); err == nil {
-			var parsed map[string]struct {
-				Type string `json:"type"`
-				Key  string `json:"key"`
-			}
-			if err := json.Unmarshal(data, &parsed); err == nil {
-				if entry, ok := parsed[agent]; ok && entry.Key != "" {
-					envPrefix = fmt.Sprintf("PEN_AGENT_API_KEY=%q ", entry.Key)
-				}
-			}
-		}
-	}
-
-	penArgs := fmt.Sprintf(`--out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
-		out, cleanPrompt, export, cliAgent, modelArg)
+	// Auth is the worker's business: pen reads the node's stored session or
+	// ~/.pencil/agent-auth. Never put PEN_AGENT_API_KEY in this command — the
+	// command is part of the job payload, the failed-event output and the logs,
+	// and a key there is a leaked key.
+	penArgs := fmt.Sprintf(`--out %q --prompt %s --export %q --export-scale 1 --agent %q%s`,
+		out, promptArg, export, cliAgent, modelArg)
 
 	if skillBrief == "" {
-		return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen %s`,
-			out, export, envPrefix, penArgs)
+		return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && pen %s`,
+			out, export, penArgs)
 	}
 
 	// A design brief is attached rather than pasted into --prompt: the pen
@@ -630,11 +619,11 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string,
 %s
 %s
 if pen --help 2>&1 | grep -q -- '--prompt-file'; then
-  %spen %s --prompt-file "$BRIEF"
+  pen %s --prompt-file "$BRIEF"
 else
-  %spen --out %q --prompt "$(cat "$BRIEF")" --export %q --export-scale 1 --agent %q%s
+  pen --out %q --prompt "$(cat "$BRIEF")" --export %q --export-scale 1 --agent %q%s
 fi
-)`, out, export, delim, brief, delim, envPrefix, penArgs, envPrefix, out, export, cliAgent, modelArg)
+)`, out, export, delim, brief, delim, penArgs, out, export, cliAgent, modelArg)
 }
 
 // shellHeredocDelimiter returns a delimiter that does not occur in the

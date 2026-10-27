@@ -1641,9 +1641,12 @@ export default function TaskDialog({
                 {designTool === "pen_cli" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="min-w-0">
-                      <Label className="block text-xs text-ink-3" htmlFor="task-design-harness-inline">
-                        Execution harness
-                      </Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="block text-xs text-ink-3" htmlFor="task-design-harness-inline">
+                          Execution harness
+                        </Label>
+                        <span className="text-[9px] uppercase tracking-wide text-ink-3">runs the card</span>
+                      </div>
                       <Select
                         value={executor}
                         onValueChange={(v) => setExecutor(v)}
@@ -1671,9 +1674,12 @@ export default function TaskDialog({
                     </div>
 
                     <div className="min-w-0">
-                      <Label className="block text-xs text-ink-3">
-                        pen.dev Model / Agent
-                      </Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="block text-xs text-ink-3">
+                          pen.dev Model / Agent
+                        </Label>
+                        <span className="text-[9px] uppercase tracking-wide text-ink-3">independent</span>
+                      </div>
                       <div className="mt-1">
                         <SearchSelect
                           options={penDynamicModels}
@@ -1682,7 +1688,24 @@ export default function TaskDialog({
                           placeholder="Search pen models & agents..."
                         />
                       </div>
+                      <p className="mt-1 text-[10px] leading-4 text-ink-3">
+                        The harness only runs the card. This is the engine pen uses to draw; switching harness does not change it.
+                      </p>
                     </div>
+
+                    {(executor === "dsh" || executor === "commandcode") && (
+                      <div className="col-span-2 flex items-start gap-2 rounded border border-warning/30 bg-warning-tint px-3 py-2 text-2xs text-warning">
+                        <Palette className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          <strong>
+                            {executor === "dsh" ? "dsh" : "Command Code"} runs the card; pen still draws with{" "}
+                            {penModel.replace(":", " / ")}.
+                          </strong>{" "}
+                          Design Only is fastest on Direct pen CLI. If the harness is offline or cannot authenticate
+                          pen, the card blocks before pen runs.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
