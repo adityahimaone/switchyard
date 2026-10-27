@@ -67,6 +67,7 @@ func TestValidateNewTaskRejections(t *testing.T) {
 		{"running status", Task{Title: "ok", Status: "running"}, CodeBadRequest, "status"},
 		{"unknown executor", Task{Title: "ok", Executor: "gpt"}, CodeBadRequest, "executor"},
 		{"shell direct without command", Task{Title: "ok", Executor: "shell", ExecutionMode: "direct"}, CodeBadRequest, "command"},
+		{"design and code on direct shell", Task{Title: "ok", DesignTool: "pen_cli", DesignSource: "design/x.pen", DesignScope: "design_and_code", Executor: "shell", ExecutionMode: "direct"}, CodeBadRequest, "executor"},
 		{"bad isolation value", Task{Title: "ok", WorkspacePath: "/tmp", Isolation: "container"}, CodeBadRequest, "isolation"},
 		{"worktree with no workspace", Task{Title: "ok", Isolation: "worktree"}, CodeBadRequest, "isolation"},
 		{"worktree with a blank workspace", Task{Title: "ok", WorkspacePath: "   ", Isolation: "worktree"}, CodeBadRequest, "isolation"},

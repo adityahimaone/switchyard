@@ -48,6 +48,12 @@ const EXECUTOR_LABELS: Record<string, string> = {
   shell: "Shell agent (workspace access)",
 }
 
+/* The dispatcher auto-loads these for every pen.dev card. Keep the list in
+   sync with internal/kanban/design_skills.go: the UI is a read-out of what
+   the server will inject, not a second source of truth. */
+const AUTO_DESIGN_SKILLS = ["sunnyside-brand-system", "pen-dev", "better-typography"] as const
+const OPTIONAL_DESIGN_SKILL = "implement-brand-system"
+
 export {
   FALLBACK_DSH_MODELS as DSH_MODEL_OPTIONS,
   FALLBACK_COMMANDCODE_MODELS as COMMANDCODE_MODEL_OPTIONS,
@@ -559,6 +565,12 @@ export default function TaskDialog({
     return Array.from(new Set(matches.map((m) => m.trim().slice(1))))
   }, [body])
 
+  const installedSkills = useMemo(
+    () => new Set((skillsQuery.data ?? []).map((s) => s.name)),
+    [skillsQuery.data],
+  )
+  const hasImplementSkill = summonedSkills.includes(OPTIONAL_DESIGN_SKILL)
+
   const summonedRefs = useMemo(() => {
     const matches = body.match(/(?:^|\s)@([a-zA-Z0-9_\-./]+)/g) || []
     return Array.from(new Set(matches.map((m) => m.trim().slice(1))))
@@ -576,6 +588,33 @@ export default function TaskDialog({
         .replace(/\s{2,}/g, " ")
         .trim()
     )
+  }
+
+  function addSkillMention(skillName: string) {
+    setBody((prev) => {
+      const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      if (new RegExp(`(?:^|\\s)\\$${escaped}(?=\\s|$)`).test(prev)) return prev
+      const needsSpace = prev.length > 0 && !/\s$/.test(prev)
+      return `${prev}${needsSpace ? " " : ""}$${skillName} `
+    })
+    setTimeout(() => {
+      const el = bodyRef.current
+      if (!el) return
+      const end = el.value.length
+      el.focus()
+      el.setSelectionRange(end, end)
+      setCursorPos(end)
+    }, 0)
+  }
+
+  // Opting into implementation is deliberately one click but two visible
+  // changes: the skill is summoned (so the dispatcher loads its content) and
+  // the scope becomes Design & Implement (so code edits are allowed and the
+  // direct pen-only shell harness is replaced by an agent harness).
+  function addImplementationSkill() {
+    setDesignScope("design_and_code")
+    if (executor === "shell") setExecutor("dsh")
+    addSkillMention(OPTIONAL_DESIGN_SKILL)
   }
 
   function removeSummonedRef(refPath: string) {
@@ -1533,7 +1572,16 @@ export default function TaskDialog({
                     </Label>
                     <Select
                       value={designScope}
-                      onValueChange={(v) => setDesignScope(v as "design_only" | "design_and_code")}
+                      onValueChange={(v) => {
+                        const next = v as "design_only" | "design_and_code"
+                        setDesignScope(next)
+                        // The direct pen CLI produces the mock only; a
+                        // design_and_code card needs an agent harness to make
+                        // the code edits that scope promises.
+                        if (next === "design_and_code" && executor === "shell") {
+                          setExecutor("dsh")
+                        }
+                      }}
                     >
                       <SelectTrigger
                         id="task-design-scope-inline"
@@ -1607,9 +1655,11 @@ export default function TaskDialog({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="shell" className="text-sm">
-                            Direct pen CLI (Fast shell — ~5s, 0 tokens) (Recommended)
-                          </SelectItem>
+                          {designScope === "design_only" && (
+                            <SelectItem value="shell" className="text-sm">
+                              Direct pen CLI (Fast shell — ~5s, 0 tokens) (Recommended)
+                            </SelectItem>
+                          )}
                           <SelectItem value="dsh" className="text-sm">
                             dsh (Agentic multi-turn harness)
                           </SelectItem>
@@ -1635,6 +1685,81 @@ export default function TaskDialog({
                     </div>
                   </div>
                 )}
+
+                <div className="rounded-card border border-[var(--c-line)] bg-[var(--c-canvas)]/40 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-ink-2">
+                      <Sparkles className="size-3 text-accent" />
+                      <span>Design skills auto-loaded</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-ink-3">pen brief</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    {AUTO_DESIGN_SKILLS.map((name) => {
+                      // Until the registry answers, assume the install matches
+                      // the code; only a loaded registry may say "missing".
+                      const installed = skillsQuery.data ? installedSkills.has(name) : true
+                      return (
+                        <span
+                          key={name}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px]",
+                            installed
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : "border-warning/40 bg-warning-tint text-warning",
+                          )}
+                          title={
+                            installed
+                              ? "Installed and injected into this card's pen brief"
+                              : `Not installed on the control plane (${name})`
+                          }
+                        >
+                          <span className={cn("size-1.5 rounded-full", installed ? "bg-emerald-500" : "bg-warning")} />
+                          {name}
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--c-line)] pt-2">
+                    <p className="min-w-0 flex-1 text-[10px] leading-4 text-ink-3">
+                      The dispatcher injects these into the pen brief.{" "}
+                      <code className="rounded bg-[var(--c-well)] px-1 py-0.5 font-mono text-[10px] text-ink-2">
+                        {OPTIONAL_DESIGN_SKILL}
+                      </code>{" "}
+                      stays opt-in — it edits code, so a design-only card never loads it by accident.
+                    </p>
+                    {hasImplementSkill ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-2 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                        {OPTIONAL_DESIGN_SKILL}
+                        <button
+                          type="button"
+                          onClick={() => removeSummonedSkill(OPTIONAL_DESIGN_SKILL)}
+                          className="rounded-full p-0.5 text-emerald-600/70 hover:bg-emerald-500/25 hover:text-emerald-800 dark:hover:text-emerald-100"
+                          aria-label={`Remove ${OPTIONAL_DESIGN_SKILL}`}
+                        >
+                          <X className="size-2.5" />
+                        </button>
+                      </span>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 shrink-0 px-2 text-2xs"
+                        onClick={addImplementationSkill}
+                        title="Switches this card to Design & Implement, then loads implement-brand-system"
+                      >
+                        <Sparkles className="mr-1 size-2.5" />
+                        Implement
+                      </Button>
+                    )}
+                  </div>
+                  {designScope === "design_only" && hasImplementSkill && (
+                    <p className="mt-1.5 text-[10px] leading-4 text-warning">
+                      This card is Design Only. Switch to Design &amp; Implement to let the implementation skill edit code.
+                    </p>
+                  )}
+                </div>
 
                 <div className="min-w-0">
                   <Label className="block text-xs text-ink-3" htmlFor="task-design-source-inline">

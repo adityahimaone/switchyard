@@ -121,6 +121,41 @@ func TestBuildDirectPenCommand(t *testing.T) {
 	}
 }
 
+func TestBuildDirectPenCommandAttachesDesignSkillBrief(t *testing.T) {
+	pack := "--- Design standards (auto-loaded skills) ---\n### Skill: pen-dev\n\nCreate a 1440x900 screen. Use $tokens and `type`."
+	cmd := buildDirectPenCommand("design/hero.pen", "Hero Section", "Create a modern 3D hero", "claude", "claude-sonnet-5", pack)
+
+	for _, want := range []string{
+		"<<'SWITCHYARD_DESIGN_BRIEF'",
+		"# Design intent",
+		"Create a modern 3D hero",
+		"Apply the attached design skill brief",
+		"--- Design standards (auto-loaded skills) ---",
+		"### Skill: pen-dev",
+		"Use $tokens and `type`.",
+		"--prompt-file \"$BRIEF\"",
+		"$(cat \"$BRIEF\")",
+		"trap 'rm -rf \"$BRIEF_DIR\"' EXIT",
+		"BRIEF=\"$BRIEF_DIR/brief.md\"",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("skill command missing %q:\n%s", want, cmd)
+		}
+	}
+	// The brief is a quoted heredoc; a $ or backtick in a skill must never be
+	// expanded or executed by the worker shell.
+	if strings.Contains(cmd, "cat > \"$BRIEF\" <<SWITCHYARD") {
+		t.Errorf("brief heredoc must be quoted:\n%s", cmd)
+	}
+}
+
+func TestAppendDesignMandateNamesTheDesignStandards(t *testing.T) {
+	prompt := appendDesignMandate("Build a contact card", "pen_cli", "design/contact.pen", "Contact Card", "design_only", "gemini", "")
+	if !strings.Contains(prompt, "Design standards") {
+		t.Errorf("mandate does not tell the agent to apply the design standards:\n%s", prompt)
+	}
+}
+
 // TestDispatchSelectionOrdersPriorityAndSkipsBlocked covers the
 // starvation the old query had: five dependency-blocked cards ahead
 // of free ones in the table, plus an urgent free card. A bare

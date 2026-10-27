@@ -124,7 +124,7 @@ func startRemoteDispatcher(ctx context.Context) {
 // dispatchCandidate is one card the dispatch selection surfaced.
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
-	baseBranch, model, effort, commandCodeMode, designScope, penAgent, penModel                                                                                   string
+	baseBranch, model, effort, commandCodeMode, designScope, penAgent, penModel                                                                                    string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -266,10 +266,26 @@ func dispatchPendingRemoteTasks() {
 				msg = appendDesignReference(msg, r.designSource)
 			}
 			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title, r.designScope, r.penAgent, r.penModel)
+			// Design skills ride the dispatch, not the worker's install: a pen
+			// task may run on any node, and the three standards are part of the
+			// task's instructions, not a local convention. The pack is added
+			// after context compaction so it cannot be trimmed off.
+			skillPack := kanban.DesignSkillPackForTask(r.body, r.designTool, r.designScope)
+			if len(skillPack.Missing) > 0 {
+				log.Printf("remote-dispatcher: %s design skills unavailable: %s", r.id, strings.Join(skillPack.Missing, ", "))
+			}
 			command := r.command
 			if r.executor == "shell" && command == "" {
+				if r.designTool == "pen_cli" && strings.EqualFold(r.designScope, "design_and_code") {
+					// Older cards predate the create-time validation. The
+					// direct pen CLI cannot implement code, so dispatch would
+					// stop at the mock while the card claims otherwise.
+					log.Printf("remote-dispatcher: %s blocked: design_and_code needs an agent harness (dsh or commandcode); the direct pen CLI only produces the mock", r.id)
+					releaseSlot()
+					continue
+				}
 				if r.designTool == "pen_cli" {
-					command = buildDirectPenCommand(r.designSource, r.title, r.body, r.penAgent, r.penModel)
+					command = buildDirectPenCommand(r.designSource, r.title, r.body, r.penAgent, r.penModel, skillPack.Markdown)
 					r.executionMode = "direct"
 				} else if r.executionMode != "agentic" {
 					log.Printf("remote-dispatcher: %s blocked: shell executor requires command", r.id)
@@ -294,6 +310,7 @@ func dispatchPendingRemoteTasks() {
 				wsLabels = wsObj.Labels
 			}
 			msg = kanban.AugmentSAASPrompt(msg, r.ws, wsLabels)
+			msg = kanban.AppendDesignSkillPack(msg, skillPack.Markdown)
 			model, modelErr := kanban.ProfileModel(r.assignee)
 			if strings.TrimSpace(r.model) != "" {
 				model = strings.TrimSpace(r.model)
@@ -489,6 +506,7 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 		return msg + "\n\n--- pen.dev Design (pen CLI) ---\n" +
 			"CRITICAL: This card is strictly DESIGN ONLY. Do NOT create, edit, or modify application source code, components, routes, or styles.\n" +
 			"Do NOT touch files in app/, features/, components/, or src/.\n" +
+			"Apply the \"Design standards\" section in this message: restate the canvas size, palette, type scale and section map in the pen prompt. When pen supports --prompt-file, write that section to a brief file and attach it.\n" +
 			"1. Generate the design mock using the pen.dev CLI:\n" +
 			"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
 			"2. Assert " + out + " parses as valid JSON and " + designExportPath(out) + " exists.\n" +
@@ -502,6 +520,7 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 		"This card's design must be produced with the pen.dev CLI (pen), which is installed and\n" +
 		"authenticated on the worker node. Do not use the desktop app or the pencil MCP to create\n" +
 		"the file: the MCP edits only the document already open in the app and cannot save a new one.\n" +
+		"Apply the \"Design standards\" section in this message: restate the canvas size, palette, type scale and section map in the pen prompt. When pen supports --prompt-file, write that section to a brief file and attach it.\n" +
 		"1. Generate the mock:\n" +
 		"   pen --out " + out + " --prompt \"<the design intent from this card's body>\" --export " + designExportPath(out) + " --export-scale 1 --agent " + agent + modelArg + "\n" +
 		"   (the default claude agent may have no API key on the node; gemini is the reliable backend)\n" +
@@ -513,7 +532,12 @@ func appendDesignMandate(msg, designTool, designSource, title, designScope, penA
 		"--- End pen.dev Design ---"
 }
 
-func buildDirectPenCommand(designSource, title, body, penAgent, penModel string) string {
+// directPenDesignContract is the short form of the loaded design standards.
+// It rides --prompt alongside the full brief so the essentials are never
+// contingent on how a particular pen build treats --prompt-file attachments.
+const directPenDesignContract = "Apply the attached design skill brief. Choose one accent, three type sizes, an 8pt spacing rhythm, AA contrast, real copy and a complete screen; no placeholder frames."
+
+func buildDirectPenCommand(designSource, title, body, penAgent, penModel string, designSkills ...string) string {
 	out := strings.TrimSpace(designSource)
 	if out == "" {
 		out = kanban.DesignPathForTitle(title)
@@ -523,7 +547,15 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 	if prompt == "" {
 		prompt = strings.TrimSpace(title)
 	}
-	cleanPrompt := strings.ReplaceAll(prompt, `"`, `\"`)
+	skillBrief := strings.TrimSpace(strings.Join(designSkills, "\n\n"))
+	promptForPen := prompt
+	if skillBrief != "" {
+		// The brief file carries the full skills. This short contract also
+		// rides --prompt so the essentials survive a pen build that attaches
+		// text files but does not feed them to the design agent.
+		promptForPen = prompt + "\n\n" + directPenDesignContract
+	}
+	cleanPrompt := strings.ReplaceAll(promptForPen, `"`, `\"`)
 	cleanPrompt = strings.ReplaceAll(cleanPrompt, "`", `\`+"`")
 	cleanPrompt = strings.ReplaceAll(cleanPrompt, "$", `\$`)
 
@@ -576,8 +608,43 @@ func buildDirectPenCommand(designSource, title, body, penAgent, penModel string)
 		}
 	}
 
-	return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen --out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
-		out, export, envPrefix, out, cleanPrompt, export, cliAgent, modelArg)
+	penArgs := fmt.Sprintf(`--out %q --prompt %q --export %q --export-scale 1 --agent %q%s`,
+		out, cleanPrompt, export, cliAgent, modelArg)
+
+	if skillBrief == "" {
+		return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && %spen %s`,
+			out, export, envPrefix, penArgs)
+	}
+
+	// A design brief is attached rather than pasted into --prompt: the pen
+	// skill is explicit that the prompt carries the intent and the attached
+	// brief carries the detail. The quoted heredoc keeps $, backticks and
+	// quotes in the skill text literal, so no escaping layer can corrupt it.
+	brief := strings.TrimRight("# Design intent\n\n"+prompt+"\n\n"+skillBrief, "\n")
+	delim := shellHeredocDelimiter(brief)
+	return fmt.Sprintf(`export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" && mkdir -p "$(dirname %q)" "$(dirname %q)" && (
+  BRIEF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/switchyard-design-brief.XXXXXX") || exit 1
+  BRIEF="$BRIEF_DIR/brief.md"
+  trap 'rm -rf "$BRIEF_DIR"' EXIT
+  cat > "$BRIEF" <<'%s'
+%s
+%s
+if pen --help 2>&1 | grep -q -- '--prompt-file'; then
+  %spen %s --prompt-file "$BRIEF"
+else
+  %spen --out %q --prompt "$(cat "$BRIEF")" --export %q --export-scale 1 --agent %q%s
+fi
+)`, out, export, delim, brief, delim, envPrefix, penArgs, envPrefix, out, export, cliAgent, modelArg)
+}
+
+// shellHeredocDelimiter returns a delimiter that does not occur in the
+// content, so a skill line can never terminate the brief early.
+func shellHeredocDelimiter(content string) string {
+	delim := "SWITCHYARD_DESIGN_BRIEF"
+	for strings.Contains(content, delim) {
+		delim += "_X"
+	}
+	return delim
 }
 
 // designExportPath is where a design mock's PNG export lands:

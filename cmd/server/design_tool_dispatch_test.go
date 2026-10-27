@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,9 @@ func TestCreateTaskDesignToolDispatch(t *testing.T) {
 	fake := startLoopFakeNode(t)
 	home := t.TempDir()
 	t.Setenv("HERMES_HOME", home)
+	skillRoot := filepath.Join(home, "skills")
+	t.Setenv("SWITCHYARD_SKILL_ROOTS", skillRoot)
+	writeDesignTestSkills(t, skillRoot)
 	t.Setenv("KANBAN_NODE_AGENT", fake.URL)
 	t.Setenv("KANBAN_VERIFY_ENABLED", "0")
 	t.Setenv("SWITCHYARD_DEV", "1")
@@ -104,6 +108,22 @@ func TestCreateTaskDesignToolDispatch(t *testing.T) {
 			t.Errorf("dispatch prompt missing %q", want)
 		}
 	}
+	// The three design skills ride the dispatch prompt, not the worker's
+	// install. implement-brand-system must stay out until it is summoned.
+	for _, want := range []string{
+		"--- Design standards (auto-loaded skills) ---",
+		"### Skill: sunnyside-brand-system",
+		"### Skill: pen-dev",
+		"### Skill: better-typography",
+		"--- End design standards ---",
+	} {
+		if !strings.Contains(disp.Message, want) {
+			t.Errorf("dispatch prompt missing design skill %q", want)
+		}
+	}
+	if strings.Contains(disp.Message, "### Skill: implement-brand-system") {
+		t.Error("implement-brand-system must not be auto-loaded on a design task")
+	}
 	// The design budget: agentic base would be 300s, but a
 	// pen_cli card always carries the full shared timeout.
 	if want := int(kanban.RemoteJobTimeout().Seconds()); disp.TimeoutS != want {
@@ -117,6 +137,44 @@ func TestCreateTaskDesignToolDispatch(t *testing.T) {
 	}
 	if loaded.DesignTool != "pen_cli" {
 		t.Errorf("persisted design_tool = %q, want pen_cli", loaded.DesignTool)
+	}
+
+	// The default create-task path is the direct pen CLI, not an agent. Its
+	// command must carry the same brief; both paths share one pack builder.
+	directBody := map[string]any{
+		"title":          "Design the checkout canvas",
+		"body":           "Cart summary, delivery slot, payment, confirmation.",
+		"executor":       "shell",
+		"assignee":       "default",
+		"execution_mode": "direct",
+		"workspace_path": "/Users/mac/loop-workspace",
+		"workspace_kind": "dir",
+		"isolation":      "workspace",
+		"design_tool":    "pen_cli",
+		"design_scope":   "design_only",
+	}
+	res = loopAPI(t, api.URL, cookie, http.MethodPost, "/api/boards/designtool/tasks", directBody)
+	if res.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("POST direct pen card = %d, want 201: %s", res.StatusCode, string(b))
+	}
+	dispatchPendingRemoteTasks()
+	direct := fake.dispatchByTitle("Design the checkout canvas")
+	if direct == nil {
+		t.Fatalf("the direct pen card was never dispatched; %d dispatch(es) recorded", fake.dispatchCount())
+	}
+	for _, want := range []string{
+		"--prompt-file \"$BRIEF\"",
+		"--- Design standards (auto-loaded skills) ---",
+		"### Skill: pen-dev",
+		"design/design-the-checkout-canvas.pen",
+	} {
+		if !strings.Contains(direct.Command, want) {
+			t.Errorf("direct pen command missing %q:\n%s", want, direct.Command)
+		}
+	}
+	if !strings.Contains(direct.Command, "SWITCHYARD_DESIGN_BRIEF") {
+		t.Errorf("direct pen command has no quoted brief heredoc:\n%s", direct.Command)
 	}
 }
 
@@ -184,6 +242,23 @@ func TestDesignToolPlainCardUnaffected(t *testing.T) {
 	for _, banned := range []string{"pen.dev", "pen --out", "Design (pen CLI)", "Design Reference"} {
 		if strings.Contains(disp.Message, banned) {
 			t.Errorf("a plain card's prompt must not mention %q", banned)
+		}
+	}
+}
+
+// writeDesignTestSkills installs the three auto skills in a temp root so the
+// dispatch test proves the real prompt assembly without depending on whatever
+// happens to be installed on the machine running the suite.
+func writeDesignTestSkills(t *testing.T, root string) {
+	t.Helper()
+	for _, name := range kanban.DesignAutoSkills {
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\nname: " + name + "\ndescription: test design skill\n---\n\nGuidance for " + name + "."
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

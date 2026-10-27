@@ -184,6 +184,14 @@ func ValidateNewTask(t *Task) []Issue {
 	if t.DesignScope != "" && t.DesignScope != "design_only" && t.DesignScope != "design_and_code" {
 		add(CodeBadRequest, "design_scope", "design_scope %q must be 'design_only' or 'design_and_code'", t.DesignScope)
 	}
+	// design_and_code is an agent job: the direct pen CLI only produces the
+	// mock, so a shell/direct card would silently stop at the design. Reject
+	// it at create time instead of dispatching a card that cannot do what it
+	// says. A custom shell command may still do both, so only the empty-command
+	// case is blocked.
+	if t.DesignScope == "design_and_code" && t.DesignTool == "pen_cli" && t.Executor == "shell" && strings.TrimSpace(t.Command) == "" {
+		add(CodeBadRequest, "executor", "design_and_code requires an agent harness (dsh or commandcode); the direct pen CLI only produces the mock")
+	}
 
 	// Existing rules, restated so the dry run reports them with the same codes
 	// rather than as a bare error string.

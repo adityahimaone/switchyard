@@ -493,7 +493,8 @@ func CreateTask(slug string, t *Task) error {
 	if t.MaxIterations > maxTaskIterations {
 		return fmt.Errorf("max iterations cannot exceed %d", maxTaskIterations)
 	}
-	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" {
+	if t.Executor == "shell" && t.ExecutionMode == "direct" && strings.TrimSpace(t.Command) == "" &&
+		strings.ToLower(strings.TrimSpace(t.DesignTool)) != "pen_cli" {
 		return fmt.Errorf("shell executor requires command")
 	}
 	// The design-tool switch: normalized once here so the row, the
