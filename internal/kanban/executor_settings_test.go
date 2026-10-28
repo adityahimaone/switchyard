@@ -114,3 +114,42 @@ func TestLoadExecutorSettingsFallsBackWhenMissing(t *testing.T) {
 		t.Fatalf("missing file must yield defaults, got %+v", got)
 	}
 }
+
+// The Execution menu writes per-executor configs. Enabled must fold into the
+// legacy Disabled list, because the picker only ever reads that one rule — two
+// independent flags would let the menu and the dialog disagree.
+func TestNormalizeFoldsEnabledIntoDisabled(t *testing.T) {
+	off := false
+	on := true
+	s := NormalizeExecutorSettings(ExecutorSettings{
+		Disabled: []string{"codex"},
+		Executors: map[string]ExecutorConfig{
+			"dsh": {Enabled: &off, DefaultModel: "adit-router/main", DefaultProvider: "adit-router", ModelProfile: "web"},
+			"codex": {Enabled: &on},
+			"auto":  {Enabled: &off},
+		},
+	})
+	if ExecutorEnabled("dsh", s) {
+		t.Fatal("Enabled=false must hide dsh from the picker")
+	}
+	if !ExecutorEnabled("codex", s) {
+		t.Fatal("Enabled=true must override a stale Disabled entry")
+	}
+	if !ExecutorEnabled("auto", s) {
+		t.Fatal("auto is never disableable")
+	}
+	if got := ExecutorDefaults(s, "dsh"); got.DefaultProvider != "adit-router" || got.ModelProfile != "web" {
+		t.Fatalf("defaults lost: %+v", got)
+	}
+}
+
+// A developer who never touches the Execution menu keeps every executor.
+func TestNormalizeWithoutExecutorsKeepsEverything(t *testing.T) {
+	s := NormalizeExecutorSettings(ExecutorSettings{})
+	if len(s.Disabled) != 0 {
+		t.Fatalf("disabled = %v, want none", s.Disabled)
+	}
+	if got := ExecutorDefaults(s, "dsh"); got.DefaultModel != "" || got.ModelProfile != "" || got.Enabled != nil {
+		t.Fatalf("defaults = %+v, want zero", got)
+	}
+}

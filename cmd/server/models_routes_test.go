@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestModelsRoutes(t *testing.T) {
@@ -27,38 +29,42 @@ func TestModelsRoutes(t *testing.T) {
 	if dshResp.Executor != "dsh" {
 		t.Fatalf("expected executor dsh, got %s", dshResp.Executor)
 	}
-	if len(dshResp.Models) < 100 {
-		t.Fatalf("expected at least 100 DSH models (got %d), adit-9router catalog must not be limited", len(dshResp.Models))
+	// dsh models belong to the worker that runs the card, and the default source
+	// is that worker's running DSH host. With no worker reachable this process has
+	// nothing honest to say, and an empty list is the correct answer: inventing one
+	// is what put thirteen fabricated models in the picker.
+	if len(dshResp.Models) > 0 {
+		t.Fatalf("expected no models without a reachable worker, got %d", len(dshResp.Models))
 	}
 
-	// Verify empty patch file falls back to full catalog
-	emptyParsed := parseCordisPatchModels([]byte("[]"))
-	if len(emptyParsed) < 100 {
-		t.Fatalf("expected fallback catalog with > 100 models, got %d", len(emptyParsed))
+	// The parser reports what the profile declares and nothing else: no invented
+	// pins, and no minimum length that quietly swaps in a different profile.
+	if got := parseCordisPatchModels([]byte("[]")); len(got) != 0 {
+		t.Fatalf("expected no models from an empty patch, got %d", len(got))
 	}
-
-	// Verify official and pinned models are present
-	hasOfficial := false
-	hasPremium := false
-	for _, m := range dshResp.Models {
-		if m.Value == "deepseek-account:DeepSeek-V4.1-Flash" {
-			hasOfficial = true
-			if !m.Pinned {
-				t.Errorf("expected deepseek-account:DeepSeek-V4.1-Flash to be pinned")
-			}
+	// Regression: the web profile declares six models. A short list is a real list,
+	// not evidence that the wrong profile was read.
+	small := []byte(`
+plugins:
+  adit-router:
+    models:
+      - id: main
+      - id: cheap
+      - id: free
+      - id: codex
+      - id: f8
+      - id: claude-office
+`)
+	if got := parseCordisPatchModels(small); len(got) != 6 {
+		t.Fatalf("expected 6 models from a 6-model patch, got %d", len(got))
+	}
+	for _, m := range fetchDSHModels("headless") {
+		if strings.Contains(m.Value, "DeepSeek-V4.1-Flash") || strings.HasSuffix(m.Value, "/premium") {
+			t.Errorf("model %q is not declared by any profile and must not be advertised", m.Value)
 		}
-		if m.Value == "adit-9router/premium" {
-			hasPremium = true
-			if !m.Pinned {
-				t.Errorf("expected premium to be pinned")
-			}
+		if m.Pinned {
+			t.Errorf("model %q is pinned; pins are not declared by a profile", m.Value)
 		}
-	}
-	if !hasOfficial {
-		t.Errorf("deepseek-account:DeepSeek-V4.1-Flash not found in DSH models")
-	}
-	if !hasPremium {
-		t.Errorf("adit-9router/premium not found in DSH models")
 	}
 
 	// 2. Test Command Code models
@@ -131,5 +137,33 @@ func TestModelsRoutes(t *testing.T) {
 	}
 	if !hasDeepSeek {
 		t.Errorf("deepseek:deepseek-flash not found in pen models")
+	}
+}
+
+// A catalog belongs to the node that reported it: keyed by executor alone, a
+// workspace on one machine could be answered with another machine's list.
+func TestModelsCacheIsKeyedPerNode(t *testing.T) {
+	modelsCacheMu.Lock()
+	modelsCache = map[string]cachedModels{}
+	modelsCacheMu.Unlock()
+
+	mac := ModelsResponse{Executor: "dsh", NodeID: "mac", Source: "probed", Models: []ModelOption{{Value: "a"}}}
+	win := ModelsResponse{Executor: "dsh", NodeID: "windows", Source: "probed", Models: []ModelOption{{Value: "b"}}}
+	modelsCache[modelsCacheKey("dsh", "", "mac")] = cachedModels{cachedAt: time.Now(), resp: mac}
+	modelsCache[modelsCacheKey("dsh", "", "windows")] = cachedModels{cachedAt: time.Now(), resp: win}
+
+	if got, ok := cachedFor(modelsCacheKey("dsh", "", "windows")); !ok || got.Models[0].Value != "b" {
+		t.Fatalf("windows key returned %v/%v", got.Models, ok)
+	}
+	if got, ok := cachedFor(modelsCacheKey("dsh", "", "mac")); !ok || got.Models[0].Value != "a" {
+		t.Fatalf("mac key returned %v/%v", got.Models, ok)
+	}
+	// The unreachable fallback may pick either node's list, but only within the
+	// same executor and profile.
+	if got, ok := cachedAnyNode("dsh", ""); !ok || got.Executor != "dsh" {
+		t.Fatalf("cachedAnyNode returned %v/%v", got.Executor, ok)
+	}
+	if _, ok := cachedAnyNode("commandcode", ""); ok {
+		t.Fatal("cachedAnyNode must not cross executors")
 	}
 }

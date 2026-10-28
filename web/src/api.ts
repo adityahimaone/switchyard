@@ -700,10 +700,25 @@ export interface ProviderModel {
   capabilities: Record<string, ModelCapability>
   api_key_set: boolean
 }
+/**
+ * Per-executor defaults from Settings → Execution. These seed the create-task
+ * dialog; a card that already exists keeps the choice it was created with.
+ */
+export interface ExecutorConfig {
+  enabled?: boolean
+  default_model?: string
+  default_provider?: string
+  default_effort?: string
+  /** dsh profile whose catalog the picker should ask for (default: headless). */
+  model_profile?: string
+  options?: Record<string, string>
+}
+
 export interface ExecutorSettings {
   order: string[]
   disabled: string[]
   default_execution_mode: "direct" | "agentic"
+  executors?: Record<string, ExecutorConfig>
 }
 export interface JEVStatus {
   enabled: boolean
@@ -1008,11 +1023,42 @@ export interface DynamicModelOption {
   disabled?: boolean
 }
 
+// Where a model list came from. The picker shows this, because a list the
+// worker probed and a list we guessed must not look the same.
+export type ModelCatalogSource =
+  | "probed"
+  | "cached"
+  | "pending"
+  | "unverified"
+  | "unavailable"
+  | "local"
+
 export interface ModelsResponse {
   executor: string
+  profile?: string
+  node_id?: string
+  source?: ModelCatalogSource
+  detail?: string
+  fetched_at?: number
   models: DynamicModelOption[]
 }
 
-export function listExecutorModels(executor: string) {
-  return api<ModelsResponse>(`/api/models?executor=${encodeURIComponent(executor)}`)
+export interface ListExecutorModelsOptions {
+  /** dsh profile to ask for; omit for the profile dispatch uses. */
+  profile?: string
+  /** Absolute workspace path: resolves the node that would run the card. */
+  workspace?: string
+  /** Force the node to re-probe instead of answering from cache. */
+  refresh?: boolean
+}
+
+export function listExecutorModels(
+  executor: string,
+  opts: ListExecutorModelsOptions = {},
+) {
+  const q = new URLSearchParams({ executor })
+  if (opts.profile) q.set("profile", opts.profile)
+  if (opts.workspace) q.set("workspace", opts.workspace)
+  if (opts.refresh) q.set("refresh", "1")
+  return api<ModelsResponse>(`/api/models?${q.toString()}`)
 }

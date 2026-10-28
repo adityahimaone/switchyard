@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"kanban-board/internal/kanban"
 )
 
 type ModelOption struct {
@@ -20,13 +22,24 @@ type ModelOption struct {
 	Label    string `json:"label"`
 	Sublabel string `json:"sublabel,omitempty"`
 	Badge    string `json:"badge,omitempty"`
+	Provider string `json:"provider,omitempty"`
 	Pinned   bool   `json:"pinned,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
 }
 
+// ModelsResponse is what the create-task picker renders. Source is load-bearing:
+// the modal has to distinguish "the node that will run this card said so" from
+// "this is the last list we saw" from "nobody could be asked". Presenting a
+// stale or local guess as a probed list is how the picker came to offer models
+// the worker cannot run.
 type ModelsResponse struct {
-	Executor string        `json:"executor"`
-	Models   []ModelOption `json:"models"`
+	Executor  string        `json:"executor"`
+	Profile   string        `json:"profile,omitempty"`
+	NodeID    string        `json:"node_id,omitempty"`
+	Source    string        `json:"source,omitempty"` // probed|cached|pending|unverified|unavailable|local
+	Detail    string        `json:"detail,omitempty"`
+	FetchedAt int64         `json:"fetched_at,omitempty"`
+	Models    []ModelOption `json:"models"`
 }
 
 var (
@@ -36,184 +49,264 @@ var (
 
 type cachedModels struct {
 	cachedAt time.Time
-	models   []ModelOption
+	resp     ModelsResponse
 }
 
-const modelsCacheTTL = 5 * time.Minute
+// modelsCacheTTL only absorbs bursts from one page: the catalog itself lives on
+// the node, and a picker that opens must be allowed to ask. Five minutes was
+// long enough for a model list edited in the user's own DSH GUI to stay hidden.
+const modelsCacheTTL = 20 * time.Second
+
+// modelCatalogExecutors are the executors whose model list belongs to the node
+// that runs the card. This process cannot know which dsh profile or which
+// Command Code build a Mac or Windows worker has, so answering from here would
+// be a guess dressed up as a fact.
+var modelCatalogExecutors = map[string]bool{"dsh": true, "commandcode": true}
 
 func registerModelsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) {
-		executor := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("executor")))
-		if executor == "" {
-			executor = "dsh"
+		executor := normalizeModelExecutor(r.URL.Query().Get("executor"))
+		profile := strings.TrimSpace(r.URL.Query().Get("profile"))
+		if profile == "" && executor == "dsh" {
+			// "live" asks the node's running DSH host for the catalog it is
+			// actually serving. That is the only list a person can compare with
+			// their own harness: an account-backed provider's models exist only
+			// at runtime, so any file-derived list is a guess.
+			profile = "live"
 		}
-		if executor == "cmd" {
-			executor = "commandcode"
-		}
+		workspace := strings.TrimSpace(r.URL.Query().Get("workspace"))
 		refresh := r.URL.Query().Get("refresh") == "true" || r.URL.Query().Get("refresh") == "1"
 
-		if !refresh {
-			modelsCacheMu.RLock()
-			cached, ok := modelsCache[executor]
-			modelsCacheMu.RUnlock()
-			if ok && time.Since(cached.cachedAt) < modelsCacheTTL && len(cached.models) > 0 {
-				writeJSON(w, http.StatusOK, ModelsResponse{
-					Executor: executor,
-					Models:   cached.models,
-				})
-				return
-			}
+		if modelCatalogExecutors[executor] {
+			writeJSON(w, http.StatusOK, resolveNodeModels(executor, profile, workspace, refresh))
+			return
 		}
 
 		var models []ModelOption
-		if executor == "dsh" {
-			models = fetchDSHModels()
-		} else if executor == "commandcode" {
-			models = fetchCommandCodeModels()
-		} else if executor == "pen" || executor == "pen_cli" || executor == "pencil" {
+		if executor == "pen" || executor == "pen_cli" || executor == "pencil" {
 			models = fetchPenModels()
 		} else {
 			models = []ModelOption{}
 		}
-
-		modelsCacheMu.Lock()
-		modelsCache[executor] = cachedModels{
-			cachedAt: time.Now(),
-			models:   models,
-		}
-		modelsCacheMu.Unlock()
-
-		writeJSON(w, http.StatusOK, ModelsResponse{
-			Executor: executor,
-			Models:   models,
-		})
+		writeJSON(w, http.StatusOK, ModelsResponse{Executor: executor, Source: "local", Models: models})
 	})
 }
 
-func fetchDSHModels() []ModelOption {
-	candidates := []string{}
-	if dshHome := os.Getenv("DSH_HOME"); dshHome != "" {
-		candidates = append(candidates,
-			filepath.Join(dshHome, "profiles", "web", "cordis.patch.yml"),
-			filepath.Join(dshHome, "profiles", "headless", "cordis.patch.yml"),
-		)
+func normalizeModelExecutor(raw string) string {
+	executor := strings.ToLower(strings.TrimSpace(raw))
+	if executor == "" {
+		return "dsh"
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates,
-			filepath.Join(home, ".dsh", "profiles", "web", "cordis.patch.yml"),
-			filepath.Join(home, ".dsh", "profiles", "headless", "cordis.patch.yml"),
-		)
+	if executor == "cmd" {
+		return "commandcode"
 	}
-	candidates = append(candidates,
-		"/home/adityahimaone/.dsh/profiles/web/cordis.patch.yml",
-		"/home/adityahimaone/.dsh/profiles/headless/cordis.patch.yml",
-		"/Users/adityahimawan/.dsh/profiles/web/cordis.patch.yml",
-		"/Users/adityahimawan/.dsh/profiles/headless/cordis.patch.yml",
-	)
-
-	for _, path := range candidates {
-		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-			if parsed := parseCordisPatchModels(data); len(parsed) > 13 {
-				return parsed
-			}
-		}
-	}
-
-	return getFallbackDSHModels()
+	return executor
 }
 
+// modelsCacheKey is per node. Keyed by executor alone, a Windows workspace could
+// be answered with the list a Mac had reported for the same executor.
+func modelsCacheKey(executor, profile, nodeID string) string {
+	key := executor
+	if profile != "" {
+		key += ":" + profile
+	}
+	return key + "@" + nodeID
+}
+
+// resolveNodeModels asks the node that owns the workspace what it can run, and
+// degrades in a way the UI can label.
+func resolveNodeModels(executor, profile, workspace string, refresh bool) ModelsResponse {
+	probed, err := fetchNodeModels(executor, profile, workspace, refresh)
+	if err == nil {
+		key := modelsCacheKey(executor, profile, probed.NodeID)
+		if probed.Source == "probed" && len(probed.Models) > 0 {
+			modelsCacheMu.Lock()
+			modelsCache[key] = cachedModels{cachedAt: time.Now(), resp: probed}
+			modelsCacheMu.Unlock()
+			return probed
+		}
+		// The node answered but has not reported this catalog yet: keep that
+		// node's last-known list visible, marked as not freshly probed.
+		if last, ok := cachedFor(key); ok {
+			last.Source = "cached"
+			if probed.Detail != "" {
+				last.Detail = probed.Detail
+			}
+			return last
+		}
+		probed.Executor = executor
+		if probed.Profile == "" {
+			probed.Profile = profile
+		}
+		return probed
+	}
+
+	// node-agent unreachable: nothing that runs cards can be asked, which is the
+	// only case where a local read is allowed — and it says so. A cached answer
+	// is preferred, naming the node it came from, because it is still a real
+	// catalog rather than this machine's guess.
+	if last, ok := cachedAnyNode(executor, profile); ok {
+		last.Source = "cached"
+		last.Detail = "node-agent unreachable: " + err.Error()
+		return last
+	}
+	local := localModelFallback(executor, profile)
+	local.Source = "unverified"
+	local.Detail = "node-agent unreachable: " + err.Error()
+	return local
+}
+
+func cachedFor(key string) (ModelsResponse, bool) {
+	modelsCacheMu.RLock()
+	defer modelsCacheMu.RUnlock()
+	cached, ok := modelsCache[key]
+	if !ok || len(cached.resp.Models) == 0 {
+		return ModelsResponse{}, false
+	}
+	return cached.resp, true
+}
+
+// cachedAnyNode finds the newest catalog for this executor from any node, used
+// only when no node can be asked.
+func cachedAnyNode(executor, profile string) (ModelsResponse, bool) {
+	prefix := modelsCacheKey(executor, profile, "")
+	modelsCacheMu.RLock()
+	defer modelsCacheMu.RUnlock()
+	var best cachedModels
+	for key, cached := range modelsCache {
+		if !strings.HasPrefix(key, prefix) || len(cached.resp.Models) == 0 {
+			continue
+		}
+		if best.cachedAt.IsZero() || cached.cachedAt.After(best.cachedAt) {
+			best = cached
+		}
+	}
+	if best.cachedAt.IsZero() {
+		return ModelsResponse{}, false
+	}
+	return best.resp, true
+}
+
+// fetchNodeModels proxies to node-agent /api/models, which resolves the node by
+// workspace exactly the way dispatch does.
+func fetchNodeModels(executor, profile, workspace string, refresh bool) (ModelsResponse, error) {
+	cat, err := kanban.FetchNodeModels(executor, profile, workspace, refresh)
+	if err != nil {
+		return ModelsResponse{}, err
+	}
+	out := ModelsResponse{
+		Executor:  cat.Executor,
+		Profile:   cat.Profile,
+		NodeID:    cat.NodeID,
+		Source:    cat.Source,
+		Detail:    cat.Detail,
+		FetchedAt: cat.FetchedAt,
+		Models:    make([]ModelOption, 0, len(cat.Models)),
+	}
+	for _, m := range cat.Models {
+		sublabel := m.Sublabel
+		if m.Note != "" {
+			sublabel = m.Note
+		}
+		out.Models = append(out.Models, ModelOption{
+			Value:    m.Value,
+			Label:    m.Label,
+			Sublabel: sublabel,
+			Badge:    m.Badge,
+			Provider: m.Provider,
+			Pinned:   m.Pinned,
+			Disabled: m.Disabled,
+		})
+	}
+	return out, nil
+}
+
+// localModelFallback reads this machine's own dsh profile or Command Code CLI.
+func localModelFallback(executor, profile string) ModelsResponse {
+	switch executor {
+	case "commandcode":
+		return ModelsResponse{Executor: executor, Models: fetchCommandCodeModels()}
+	case "dsh":
+		return ModelsResponse{Executor: executor, Profile: profile, Models: fetchDSHModels(profile)}
+	}
+	return ModelsResponse{Executor: executor, Models: []ModelOption{}}
+}
+
+// fetchDSHModels reads one profile on the local machine. Last resort only: the
+// authoritative list comes from the node that runs the card, because a 6-model
+// profile and a 1400-model router profile are both legitimate and this process
+// cannot tell which one the card will use.
+func fetchDSHModels(profile string) []ModelOption {
+	if profile == "" {
+		profile = "live"
+	}
+	candidates := []string{}
+	if dshHome := os.Getenv("DSH_HOME"); dshHome != "" {
+		candidates = append(candidates, filepath.Join(dshHome, "profiles", profile, "cordis.patch.yml"))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, ".dsh", "profiles", profile, "cordis.patch.yml"))
+	}
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		if parsed := parseCordisPatchModels(data); len(parsed) > 0 {
+			return parsed
+		}
+	}
+	return nil
+}
+
+// parseCordisPatchModels reads the models declared in a dsh profile patch file,
+// keeping each model's own provider.
+//
+// It used to prepend thirteen hand-written pins under a provider no profile
+// declared, and to reject any list shorter than fourteen entries as implausible
+// — which is exactly how a picker fed by the router profile advertised models a
+// worker running the web profile could not resolve.
 func parseCordisPatchModels(data []byte) []ModelOption {
-	official := []ModelOption{
-		{Value: "deepseek-account:DeepSeek-V4.1-Flash", Label: "DeepSeek-V4.1-Flash", Badge: "DeepSeek Account", Pinned: true},
-		{Value: "deepseek-account:DeepSeek-V4-Pro", Label: "DeepSeek-V4-Pro", Badge: "DeepSeek Account", Pinned: true},
-		{Value: "deepseek:DeepSeek-V4.1-Flash", Label: "DeepSeek-V4.1-Flash", Badge: "DeepSeek", Pinned: true},
-		{Value: "deepseek:DeepSeek-V4-Pro", Label: "DeepSeek-V4-Pro", Badge: "DeepSeek", Pinned: true},
-	}
-
-	pinnedRouter := []ModelOption{
-		{Value: "adit-9router/kiro-cheap-combo-2", Label: "Kiro Cheap Combo 2", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/claude-office", Label: "Claude Office", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/free-combo-q4-2026", Label: "Free Combo Q4 2026", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/codex", Label: "Codex", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/f8", Label: "F8", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/free", Label: "Free", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/god", Label: "God Mode", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/cheap", Label: "Cheap", Badge: "adit-9router", Pinned: true},
-		{Value: "adit-9router/premium", Label: "Premium", Badge: "adit-9router", Pinned: true},
-	}
-
 	seen := make(map[string]bool)
-	for _, p := range official {
-		seen[p.Value] = true
-	}
-	for _, p := range pinnedRouter {
-		seen[p.Value] = true
-		seen[strings.TrimPrefix(p.Value, "adit-9router/")] = true
-	}
-
-	var dynamicModels []ModelOption
+	var models []ModelOption
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	insideModels := false
 	idRe := regexp.MustCompile(`^\s*-\s*id:\s*([^\s#]+)`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
 		if strings.Contains(line, "models:") {
 			insideModels = true
 			continue
 		}
-		// If another top-level section starts, stop models
 		if insideModels && (strings.HasPrefix(line, "- id:") || (len(line) > 0 && line[0] != ' ' && line[0] != '\t' && line[0] != '#')) {
 			insideModels = false
 			continue
 		}
-		if insideModels {
-			if strings.HasPrefix(trimmed, "- id:") {
-				m := idRe.FindStringSubmatch(line)
-				if len(m) > 1 {
-					rawId := m[1]
-					val := "adit-9router/" + rawId
-					if seen[rawId] || seen[val] {
-						continue
-					}
-					seen[rawId] = true
-					seen[val] = true
-
-					badge := "9router"
-					label := rawId
-					if strings.Contains(rawId, "/") {
-						parts := strings.Split(rawId, "/")
-						badge = parts[0]
-						label = strings.Join(parts[1:], " · ")
-					}
-
-					dynamicModels = append(dynamicModels, ModelOption{
-						Value:    val,
-						Label:    label,
-						Sublabel: rawId,
-						Badge:    badge,
-					})
-				}
-			}
+		if !insideModels {
+			continue
 		}
+		m := idRe.FindStringSubmatch(line)
+		if len(m) < 2 || seen[m[1]] {
+			continue
+		}
+		id := m[1]
+		seen[id] = true
+		models = append(models, ModelOption{Value: id, Label: id, Sublabel: id})
 	}
-
-	if len(dynamicModels) > 0 {
-		var result []ModelOption
-		result = append(result, official...)
-		result = append(result, pinnedRouter...)
-		result = append(result, dynamicModels...)
-		return result
-	}
-
-	return getFallbackDSHModels()
+	// Empty is a truthful answer: no profile was readable, so there is nothing to
+	// offer. A hand-maintained catalog here would advertise ids this machine cannot
+	// resolve, which is the bug this parser was rewritten to stop causing.
+	return models
 }
 
 func fetchCommandCodeModels() []ModelOption {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Cold start on this CLI measured 4.3s against a 5s budget, which failed at
+	// random under test load. Listing models is not on a request path that needs
+	// sub-second latency, so the budget is generous on purpose.
 	cmdPaths := []string{"cmd", "/opt/homebrew/bin/cmd", "/usr/local/bin/cmd"}
 	for _, bin := range cmdPaths {
 		if path, err := exec.LookPath(bin); err == nil {
@@ -227,7 +320,9 @@ func fetchCommandCodeModels() []ModelOption {
 		}
 	}
 
-	return getFallbackCommandCodeModels()
+	// No CLI here means no answer here. The worker that runs cards is asked first
+	// anyway; inventing a list would only hide that this machine cannot run one.
+	return nil
 }
 
 func parseCommandCodeModels(data []byte) []ModelOption {
@@ -295,10 +390,7 @@ func parseCommandCodeModels(data []byte) []ModelOption {
 		}
 	}
 
-	if len(result) > 0 {
-		return result
-	}
-	return getFallbackCommandCodeModels()
+	return result
 }
 
 func formatCleanModelLabel(id string) string {

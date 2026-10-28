@@ -54,10 +54,6 @@ const EXECUTOR_LABELS: Record<string, string> = {
 const AUTO_DESIGN_SKILLS = ["sunnyside-brand-system", "pen-dev", "better-typography"] as const
 const OPTIONAL_DESIGN_SKILL = "implement-brand-system"
 
-export {
-  FALLBACK_DSH_MODELS as DSH_MODEL_OPTIONS,
-  FALLBACK_COMMANDCODE_MODELS as COMMANDCODE_MODEL_OPTIONS,
-} from "./modelCatalog"
 import { useExecutorModels } from "./modelCatalog"
 
 export const DSH_EFFORT_OPTIONS = [
@@ -208,9 +204,11 @@ export default function TaskDialog({
   const [wsUserEdited, setWsUserEdited] = useState(false)
   const [assignee, setAssignee] = useState(profiles[0]?.name ?? "default")
   const [executor, setExecutor] = useState("dsh")
-  const [dshModel, setDshModel] = useState("deepseek-account:DeepSeek-V4.1-Flash")
-  const [cmdModel, setCmdModel] = useState("qwen/qwen3.8-omni-flash")
-  const { models: dynamicModels } = useExecutorModels(executor)
+  // Empty until the worker's catalog and the saved defaults say otherwise: guessing a
+  // model here is what made the picker show ids this machine cannot run.
+  const [dshModel, setDshModel] = useState("")
+  const [cmdModel, setCmdModel] = useState("")
+  const [cmdModelDirty, setCmdModelDirty] = useState(false)
 
   const activeModel = executor === "dsh" ? dshModel : cmdModel
   const handleModelChange = (v: string) => {
@@ -219,6 +217,7 @@ export default function TaskDialog({
       setDshModel(v)
     } else if (executor === "commandcode") {
       setCmdModel(v)
+      setCmdModelDirty(true)
     }
   }
 
@@ -710,6 +709,14 @@ export default function TaskDialog({
   })
   const visibleExecutors = useMemo(() => visibleExecutorsFor(executorSettings), [executorSettings])
 
+  const execCfg = executorSettings?.executors?.[executor] ?? {}
+  // The catalog belongs to the worker that owns the chosen workspace, so the
+  // workspace is part of the question: a Windows node answers with its own models.
+  const { models: dynamicModels } = useExecutorModels(executor, {
+    workspace: ws,
+    profile: execCfg.model_profile,
+  })
+
   // Auto-select workspace from board tasks or live workspaces until user manually picks one.
   useEffect(() => {
     if (wsUserEdited) return
@@ -735,6 +742,7 @@ export default function TaskDialog({
 
   // Seed the default mode once, without stomping a user change on re-render.
   const seededMode = useRef(false)
+  const seededEffort = useRef(false)
   useEffect(() => {
     if (seededMode.current || !executorSettings) return
     setExecutionMode(executorSettings.default_execution_mode)
@@ -743,6 +751,50 @@ export default function TaskDialog({
     }
     seededMode.current = true
   }, [executorSettings, visibleExecutors, executor])
+
+  // Seed the model and effort from the saved per-executor defaults, once.
+  const seededModel = useRef(new Set<string>())
+  useEffect(() => {
+    if (!executorSettings) return
+    for (const name of ["dsh", "commandcode"]) {
+      if (seededModel.current.has(name)) continue
+      const cfg = executorSettings.executors?.[name]
+      if (!cfg) continue
+      if (name === "dsh" && !dshModel && cfg.default_model) setDshModel(cfg.default_model)
+      if (name === "commandcode" && !cmdModel && !cmdModelDirty && cfg.default_model) {
+        setCmdModel(cfg.default_model)
+      }
+      seededModel.current.add(name)
+    }
+    // A stored effort only applies to the executor it was stored for, so it is read
+    // when that executor becomes active rather than once for the whole dialog.
+    if (!seededEffort.current) {
+      const want = executorSettings.executors?.[executor]?.default_effort
+      if (want) {
+        setEffort(want)
+        seededEffort.current = true
+      }
+    }
+  }, [executorSettings, executor, dshModel, cmdModel, cmdModelDirty])
+
+  // The list is the worker's truth: if the current pick is not in it, fall back to
+  // the stored default when it is offered, else the first entry. A pick the user made
+  // from this list always wins, because it is in the list by construction.
+  useEffect(() => {
+    if (executor !== "dsh" && executor !== "commandcode") return
+    if (dynamicModels.length === 0) return
+    const has = (v: string) => v !== "" && dynamicModels.some((m) => m.value === v)
+    // A disabled entry cannot run on this worker, so it must never become the
+    // default: the card would fail on its first request instead of at pick time.
+    const usable = dynamicModels.filter((m) => !m.disabled)
+    const stored = executorSettings?.executors?.[executor]?.default_model ?? ""
+    const next = usable.some((m) => m.value === stored)
+      ? stored
+      : (usable[0]?.value ?? "")
+    if (!next) return
+    if (executor === "dsh" && !has(dshModel)) setDshModel(next)
+    if (executor === "commandcode" && !cmdModelDirty && !has(cmdModel)) setCmdModel(next)
+  }, [dynamicModels, executor, executorSettings, dshModel, cmdModel, cmdModelDirty])
 
   const draft: CreateTaskDraft = {
     title,

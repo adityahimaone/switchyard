@@ -22,7 +22,7 @@ const TABS = [
   { id: "appearance", label: "Appearance", keywords: "theme dark light density compact motion" },
   { id: "notifications", label: "Notifications", keywords: "alert browser review failure" },
   { id: "vision", label: "Vision and attachments", keywords: "ai jev image pdf model routing" },
-  { id: "executors", label: "Executors", keywords: "agent run order mode" },
+  { id: "execution", label: "Execution", keywords: "agent run order mode default model effort enable disable fetch" },
   { id: "boards", label: "Boards and dispatch", keywords: "archive board queue" },
   { id: "account", label: "Account", keywords: "password security login" },
   { id: "advanced", label: "Advanced", keywords: "export data history danger" },
@@ -148,7 +148,7 @@ export default function SettingsPage() {
                 {active === "appearance" && <AppearanceTab />}
                 {active === "notifications" && <NotificationsTab />}
                 {active === "vision" && <VisionTab />}
-                {active === "executors" && <ExecutorSettingsPanel />}
+                {active === "execution" && <ExecutorSettingsPanel />}
                 {active === "boards" && <BoardsTab />}
                 {active === "account" && <AccountTab />}
                 {active === "advanced" && <AdvancedTab />}
