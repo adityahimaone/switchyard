@@ -9,6 +9,7 @@ import { AgentTaskStatus, splitAgentResult } from "./AgentStatus"
 import { TaskOutput } from "./OutputPanels"
 import { ReviewSection } from "./ReviewSection"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
+import { CompletionSummary } from "./CompletionSummary"
 import { BlockedResolutionBanner } from "./BlockedResolutionBanner"
 import {
   AgentPicker, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
@@ -161,6 +162,13 @@ export default function TaskDetail({
             <>
               <AgentTaskStatus task={task} events={events.data ?? []} />
               <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} compact />
+              <CompletionSummary
+                slug={slug}
+                task={task}
+                profileModel={task.model || profile?.model}
+                compact
+                onViewLog={() => setPanel("output")}
+              />
 
               <AgentPicker
                 task={task}

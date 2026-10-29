@@ -17,6 +17,7 @@ import { ReviewSection } from "./ReviewSection"
 import { DiscussionPanel } from "./DiscussionPanel"
 import { useTaskDiscussion } from "./useTaskDiscussion"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
+import { CompletionSummary } from "./CompletionSummary"
 import { BlockedResolutionBanner } from "./BlockedResolutionBanner"
 import {
   AgentPicker, EmptyNote, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
@@ -292,6 +293,12 @@ export default function TaskDetailPage({
               <div className="mt-3 space-y-3">
                 <AgentTaskStatus task={task} events={events.data ?? []} />
                 <TaskRuntimeStatus task={task} profile={profile} workspace={ws} events={events.data ?? []} runs={runs.data ?? []} tasks={boardTasks.data ?? []} />
+                <CompletionSummary
+                  slug={slug}
+                  task={task}
+                  profileModel={task.model || profile?.model}
+                  onViewLog={() => setTab("output")}
+                />
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">

@@ -15,6 +15,16 @@ type WorkerLog struct {
 	Available bool   `json:"available"`
 }
 
+// WorkerLogPath is where a task's worker output is appended: one file per
+// task, so a completed card can point at its own log instead of guessing.
+func WorkerLogPath(slug, taskID string) string {
+	logDir := filepath.Join(boardDir(slug), "logs")
+	if slug == "default" {
+		logDir = filepath.Join(hermesHome(), "kanban", "logs")
+	}
+	return filepath.Join(logDir, taskID+".log")
+}
+
 func WorkerLogTail(slug, taskID string, offset int64) (WorkerLog, error) {
 	if taskID == "" || filepath.Base(taskID) != taskID {
 		return WorkerLog{}, fmt.Errorf("invalid task id")
@@ -22,11 +32,7 @@ func WorkerLogTail(slug, taskID string, offset int64) (WorkerLog, error) {
 	if offset < 0 {
 		offset = 0
 	}
-	logDir := filepath.Join(boardDir(slug), "logs")
-	if slug == "default" {
-		logDir = filepath.Join(hermesHome(), "kanban", "logs")
-	}
-	path := filepath.Join(logDir, taskID+".log")
+	path := WorkerLogPath(slug, taskID)
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return WorkerLog{}, nil

@@ -422,6 +422,7 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, log)
 	})
+	mux.HandleFunc("GET /api/boards/{slug}/tasks/{id}/completion", handleTaskCompletion)
 	mux.HandleFunc("GET /api/boards/{slug}/tasks/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
 		comments, err := kanban.ListComments(r.PathValue("slug"), r.PathValue("id"))
 		if err != nil {

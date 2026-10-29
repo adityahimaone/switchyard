@@ -160,6 +160,41 @@ export function taskRuns(slug: string, taskId: string) {
   return api<TaskRun[]>(`/api/boards/${slug}/tasks/${taskId}/runs`)
 }
 
+/** What a settled card actually produced: model, wall time, log file, git. */
+export interface CompletionData {
+  model: string
+  executor: string
+  execution_mode: string
+  attempt: number
+  started_at: number | null
+  completed_at: number | null
+  duration_seconds: number
+  approve_commit?: string
+  log: { path: string; bytes: number; modified: number; available: boolean }
+  git: {
+    available: boolean
+    reason?: string
+    branch?: string
+    head?: string
+    short?: string
+    subject?: string
+    author?: string
+    committed_at?: number
+    files: number
+    insertions: number
+    deletions: number
+    file_list?: string[]
+    upstream?: string
+    ahead: number
+    behind: number
+    dirty: number
+  }
+}
+
+export function taskCompletion(slug: string, taskId: string) {
+  return api<CompletionData>(`/api/boards/${slug}/tasks/${taskId}/completion`)
+}
+
 export function taskDependencies(slug: string, taskId: string) {
   return api<TaskDependency[]>(`/api/boards/${slug}/tasks/${taskId}/dependencies`)
 }

@@ -185,6 +185,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/boards/{slug}/tasks/{id}/runs":                          true,
 	"GET /api/boards/{slug}/tasks/{id}/verify":                        true,
 	"GET /api/boards/{slug}/tasks/{id}/worker-log":                    true,
+	"GET /api/boards/{slug}/tasks/{id}/completion":                    true,
 	"GET /api/chat/active":                                            true,
 	"GET /api/chat/daemon-health":                                     true,
 	"GET /api/chat/messages/{id}/attachments":                         true,

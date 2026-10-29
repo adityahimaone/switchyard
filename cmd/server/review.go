@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -657,11 +658,26 @@ func headSHA(t *reviewTask) string {
 	if code != 0 {
 		return ""
 	}
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return ""
+	return firstSHA(out)
+}
+
+// firstSHA picks the first commit hash out of command output.
+//
+// Not fields[0]: node-agent prefixes the worker's stdout with its provenance
+// line, so fields[0] is the word "provenance" and three cards recorded that as
+// their approve commit before anyone noticed. A hash is the first 40-or-64
+// all-hex token of a plausible length, and anything else is not a SHA.
+func firstSHA(out string) string {
+	for _, field := range strings.Fields(out) {
+		field = strings.Trim(field, "\"'`")
+		if len(field) < 7 || len(field) > 64 {
+			continue
+		}
+		if _, err := hex.DecodeString(field); err == nil {
+			return field
+		}
 	}
-	return fields[0]
+	return ""
 }
 
 // isNothingToCommit reports whether git refused because the index matched HEAD.
