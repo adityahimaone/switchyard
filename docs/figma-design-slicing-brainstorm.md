@@ -64,6 +64,26 @@ Do **not** delete Canvas Studio (`web/src/features/canvas/`), `.pen` JSON, or
 account dependency. They remain a valid authoring surface; they just stop being
 the only one.
 
+### Staging (rev 2.1, same day)
+
+**Phase 1 uses hosted `doop.design`, not a self-hosted instance.** Reason: only
+Doop Cloud has Figma import. Self-host moves in later, once designs are
+authored natively in Doop and the Figma bridge is no longer needed. MCP is the
+read path in both cases, so the Switchyard side of the contract does not change
+— only `DOOP_MCP_URL` does (`https://doop.design/mcp` → tailnet `:4400/mcp`).
+
+**Input decision: Figma link or screenshot?** Neither alone is enough.
+
+| Input | Role |
+|---|---|
+| Figma link with `node-id` | **Provenance / selection identity** — which frame, recorded in `frame.json`. Never handed to the agent as something to fetch. |
+| Screenshot PNG | **Grading reference** for `verify:ui` and human preview. Not a spec: no markup, spacing, tokens or copy. Useless alone if the executor is not vision-capable. |
+| **Doop frame HTML (`get_frame`)** | **The actual payload** — authoritative markup, styles, copy, selectors, version. This is what the agent implements. |
+
+So: Figma link → Doop Cloud import → `ready_for_dev` frame → snapshot
+`frame.html` + `frame.png` + `frame.json` → card. **The link names the design,
+the PNG grades it, the HTML implements it.**
+
 ---
 
 ## 1. Why pen.dev goes — and what "pen.dev" actually is here
@@ -319,7 +339,8 @@ Sources: [Figma MCP guide](https://help.figma.com/hc/en-us/articles/321321008335
 
 | Phase | Work | Cost | Exit criteria |
 |---|---|---|---|
-| **P0** | Self-host Doop on the Mac over Tailscale (`docker compose up -d`, agent key, `GET /healthz`). Manual frame snapshot attached to a card; extend `appendDesignReference`. | $0 | A real Doop frame dispatches and `verify:ui` can compare. |
+| **P0** | **Hosted `doop.design` first**: Figma import → frame `ready_for_dev` → manual/`get_frame` snapshot attached to a card; extend `appendDesignReference`. No self-host yet. | $0 beta | A real Doop frame dispatches and `verify:ui` can compare. |
+| **P0.5** | Self-host Doop on the Mac over Tailscale (`docker compose up -d`, agent key, `GET /healthz`); point `DOOP_MCP_URL` at it. Only when Figma import is no longer needed. | $0 | Same card contract works unchanged against the local MCP. |
 | **P1** | `POST /design-slices` Doop provider: `get_frame` + screenshot, bundle, version cache, manifest registration, agent key on control plane only. Ready-for-dev filter. | $0 | Paste/select frame → preview → Create → dispatch with zero manual files; 10 reruns with zero re-fetch. |
 | **P2** | Selector scoping from `get_comments`, Create Task frame picker + element checklist, `TaskDetail` version/approval display. | $0 | "Implement only these two layers" works without prose. |
 | **P3** | Remove `pen_cli` / `pencil_mcp`, `appendDesignMandate`, `buildDirectPenCommand`, `pen_agent`/`pen_model` UI and tests. Update `design/README.md`. | $0 | `go test ./...` and `pnpm --dir web verify:fast` green; no pen.dev credential anywhere. |
