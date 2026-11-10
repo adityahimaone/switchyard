@@ -35,6 +35,18 @@ suite skips cleanly.
 | `DOOP_MCP_URL` | `https://doop.design/mcp` | Hosted doop.design first; switch to a self-hosted tailnet `:4400/mcp` later. |
 | `DOOP_REST_URL` | derived from `DOOP_MCP_URL` | Optional override for the screenshot renderer. |
 
+Any unset variable falls back to **`~/.hermes/doop.env`** (mode `0600`,
+`KEY=VALUE` lines, `#` comments allowed). Prefer that file over
+`pm2 restart --update-env` on a live service: `--update-env` replaces the
+process environment with the calling shell's, which drops the `HERMES_*`
+variables the process was started with. The file is read per request, so a
+key added after startup takes effect without a restart.
+
+```sh
+install -m 600 /dev/null ~/.hermes/doop.env
+printf 'DOOP_AGENT_KEY=dpk_...\n' > ~/.hermes/doop.env
+```
+
 Staging is only a URL change — the card contract is identical hosted
 or self-hosted. **Figma / Canva / PSD import is Doop Cloud only**; a
 self-hosted instance cannot import a Figma file, so phase 1 uses the

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -155,6 +156,36 @@ func TestDoopClientAuthAndErrors(t *testing.T) {
 	client := NewDoopClient(DoopConfig{MCPURL: deny.URL, AgentKey: "dpk_test"})
 	if _, err := client.ListCanvases(context.Background()); err == nil || !strings.Contains(err.Error(), "rejected") {
 		t.Errorf("401 handling = %v", err)
+	}
+}
+
+// TestDoopConfigFromEnvFile covers the no-restart credential path: a key added
+// to ~/.hermes/doop.env is picked up on the next request, and a real
+// environment variable still wins over the file.
+func TestDoopConfigFromEnvFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	t.Setenv("DOOP_AGENT_KEY", "")
+	t.Setenv("DOOP_MCP_URL", "")
+	t.Setenv("DOOP_REST_URL", "")
+
+	if err := os.WriteFile(DoopEnvFilePath(), []byte("# doop\nDOOP_AGENT_KEY=\"dpk_file\"\nexport DOOP_MCP_URL=http://100.80.1.2:4400/mcp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DoopConfigFromEnv()
+	if cfg.AgentKey != "dpk_file" {
+		t.Errorf("agent key = %q, want the env-file value", cfg.AgentKey)
+	}
+	if cfg.MCPURL != "http://100.80.1.2:4400/mcp" {
+		t.Errorf("mcp url = %q", cfg.MCPURL)
+	}
+	if cfg.RESTURL != "http://100.80.1.2:4400" {
+		t.Errorf("rest url = %q, want it derived from the file's MCP url", cfg.RESTURL)
+	}
+
+	t.Setenv("DOOP_AGENT_KEY", "dpk_env")
+	if got := DoopConfigFromEnv().AgentKey; got != "dpk_env" {
+		t.Errorf("process env did not win over the file: %q", got)
 	}
 }
 

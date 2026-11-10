@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -41,11 +42,18 @@ type DoopConfig struct {
 // DoopConfigFromEnv reads the control-plane-only Doop credentials. Staging is a
 // URL change: hosted `https://doop.design/mcp` first, local tailnet `:4400/mcp`
 // later. The card contract does not change when that flips.
+//
+// An unset variable falls back to ~/.hermes/doop.env, the same one-file-per-
+// credential pattern node-agent already uses for its token. That fallback is
+// not a convenience: adding a secret to a live PM2 process with
+// `pm2 restart --update-env` replaces the process environment with the calling
+// shell's, which would drop the HERMES_* vars the service was started with. A
+// 0600 env file can be added and picked up on the next request instead.
 func DoopConfigFromEnv() DoopConfig {
 	cfg := DoopConfig{
-		MCPURL:   strings.TrimSpace(os.Getenv("DOOP_MCP_URL")),
-		RESTURL:  strings.TrimSpace(os.Getenv("DOOP_REST_URL")),
-		AgentKey: strings.TrimSpace(os.Getenv("DOOP_AGENT_KEY")),
+		MCPURL:   doopSetting("DOOP_MCP_URL"),
+		RESTURL:  doopSetting("DOOP_REST_URL"),
+		AgentKey: doopSetting("DOOP_AGENT_KEY"),
 	}
 	if cfg.MCPURL == "" {
 		cfg.MCPURL = DefaultDoopMCPURL
@@ -54,6 +62,48 @@ func DoopConfigFromEnv() DoopConfig {
 		cfg.RESTURL = doopRESTBase(cfg.MCPURL)
 	}
 	return cfg
+}
+
+// DoopEnvFilePath is the credential file an operator can write without
+// restarting the service.
+func DoopEnvFilePath() string { return filepath.Join(hermesHome(), "doop.env") }
+
+// doopSetting prefers the process environment, then the env file. The file is
+// read on every call (it is a few hundred bytes) so a key added after startup
+// takes effect on the next request rather than the next deploy.
+func doopSetting(key string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return doopEnvFile()[key]
+}
+
+func doopEnvFile() map[string]string {
+	out := map[string]string{}
+	raw, err := os.ReadFile(DoopEnvFilePath())
+	if err != nil || len(raw) > 64<<10 {
+		return out
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		value := strings.TrimSpace(line[eq+1:])
+		if len(value) >= 2 {
+			if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+		out[key] = value
+	}
+	return out
 }
 
 func (c DoopConfig) Configured() bool { return c.AgentKey != "" }
