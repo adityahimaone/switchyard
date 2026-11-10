@@ -90,6 +90,14 @@ set -euo pipefail
 SHA="$1"; STAMP="$2"; APP_DIR="$3"; PORT="$4"
 cd "$HOME/$APP_DIR"
 
+# The source tree is part of the deployment: scripts/, design/README.md and the
+# docs are read on the host, and a repo that lags the running binary is how
+# "the script isn't there" surprises happen. Fast-forward only — a diverged
+# checkout must stop the deploy, not get merged silently.
+git fetch -q origin main
+git merge --ff-only -q origin/main
+echo "    source $(git rev-parse --short HEAD)"
+
 echo "$SHA  /tmp/kanban-board.$STAMP" | sha256sum -c - >/dev/null \
   || { echo "uploaded binary does not match the local build"; exit 3; }
 
