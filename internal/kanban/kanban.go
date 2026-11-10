@@ -52,6 +52,10 @@ type Task struct {
 	WorkspaceKind   string `json:"workspace_kind"`
 	WorkspacePath   string `json:"workspace_path"`
 	Result          string `json:"result"`
+	// ResultTruncated is set when the list endpoint shortened Result to keep
+	// the board payload small. The full text is one GET away; a detail view
+	// that sees this must fetch it rather than render a half sentence.
+	ResultTruncated bool   `json:"result_truncated,omitempty"`
 	CreatedBy       string `json:"created_by"`
 	CreatedAt       int64  `json:"created_at"`
 	StartedAt       *int64 `json:"started_at"`

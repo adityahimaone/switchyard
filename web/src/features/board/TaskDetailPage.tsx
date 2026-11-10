@@ -25,6 +25,7 @@ import {
 } from "./taskDetailParts"
 import { AgentTrace } from "@/components/ui/agent-trace"
 import { traceOrigin, traceSpansFromHistory } from "./taskTrace"
+import { useFullTask } from "./useFullTask"
 
 function TruncValue({ value, mono, tone }: { value: string; mono?: boolean; tone?: string }) {
   const long = value.length > FIELD_TRUNCATE_LEN
@@ -122,7 +123,7 @@ function CollapsibleGroup({ group }: { group: EventGroup }) {
 
 export default function TaskDetailPage({
   slug,
-  task,
+  task: taskProp,
   profiles,
   workspaces,
   onBack,
@@ -139,6 +140,8 @@ export default function TaskDetailPage({
   onStop: () => Promise<void>
   onReassign: (a: string) => Promise<void>
 }) {
+  // The board list carries a preview; this is where the full result is wanted.
+  const task = useFullTask(slug, taskProp)
   const qc = useQueryClient()
   const [tab, setTab] = useState("overview")
   const discussion = useTaskDiscussion(slug, task.id, tab === "discussion")

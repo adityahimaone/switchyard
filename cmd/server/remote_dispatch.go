@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,7 +124,7 @@ func startRemoteDispatcher(ctx context.Context) {
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
 	baseBranch, model, effort, commandCodeMode, designScope, penAgent, penModel                                                                                    string
-	designProvider, designRef                                                                                                                                       string
+	designProvider, designRef                                                                                                                                      string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -264,7 +265,7 @@ func dispatchPendingRemoteTasks() {
 			if kanban.IsDoopDesign(r.designProvider) {
 				// A Doop card carries an immutable snapshot, not a live frame.
 				// Inline it so the worker never needs Doop, a token or egress.
-				msg = appendDoopDesignReference(msg, b.Slug, r.designRef)
+				msg = appendDoopDesignReference(msg, b.Slug, r.designRef, sessionContinuation)
 			} else if strings.TrimSpace(r.designTool) == "" {
 				msg = appendDesignReference(msg, r.designSource)
 			}
@@ -486,18 +487,80 @@ func appendDesignReference(msg, designSource string) string {
 		"--- End Design Reference ---"
 }
 
-// maxInlineDesignHTML bounds how much of a frozen frame rides the dispatch
-// prompt. The store allows bigger frames; a prompt does not need a megabyte of
-// markup to describe one screen, and an unbounded paste would crowd out task
-// context. Truncation is explicit so the agent never mistakes it for a short
-// design.
-const maxInlineDesignHTML = 96 << 10
+// maxInlineDesignHTML bounds how much of a frozen frame rides a cold dispatch.
+// Above it the prompt gets a structural digest instead of a raw cut: a design
+// truncated mid-document is worse than a summary, because the agent cannot tell
+// a short screen from a clipped one. Continuations skip the markup entirely —
+// the agent already has it, and re-sending 186 KB per review round was pure
+// token cost.
+const maxInlineDesignHTML = 256 << 10
+
+var (
+	designTagPattern   = regexp.MustCompile(`(?s)<[^>]*>`)
+	designIDPattern    = regexp.MustCompile(`\bid="([^"]{1,80})"`)
+	designClassPattern = regexp.MustCompile(`\bclass="([^"]{1,200})"`)
+	designSpacePattern = regexp.MustCompile(`[ \t\r\f\v]+`)
+	designBlankLines   = regexp.MustCompile(`\n{3,}`)
+)
+
+// designDigest summarises a frame too large to inline: its visible text, the
+// element ids and classes a card can name, and its size. It is deliberately
+// lossy and says so — the alternative was a silent mid-document cut.
+func designDigest(html string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "elements=%d bytes=%d\n", strings.Count(html, "<"), len(html))
+
+	seen := map[string]bool{}
+	ids := make([]string, 0, 24)
+	for _, m := range designIDPattern.FindAllStringSubmatch(html, -1) {
+		if id := strings.TrimSpace(m[1]); id != "" && !seen["#"+id] {
+			seen["#"+id] = true
+			ids = append(ids, "#"+id)
+		}
+		if len(ids) == 24 {
+			break
+		}
+	}
+	if len(ids) > 0 {
+		b.WriteString("ids: " + strings.Join(ids, ", ") + "\n")
+	}
+
+	classes := make([]string, 0, 32)
+	classSeen := map[string]bool{}
+	for _, m := range designClassPattern.FindAllStringSubmatch(html, -1) {
+		for _, c := range strings.Fields(m[1]) {
+			if c == "" || classSeen[c] {
+				continue
+			}
+			classSeen[c] = true
+			classes = append(classes, "."+c)
+			if len(classes) == 32 {
+				break
+			}
+		}
+	}
+	if len(classes) > 0 {
+		b.WriteString("classes: " + strings.Join(classes, ", ") + "\n")
+	}
+
+	text := designTagPattern.ReplaceAllString(html, "\n")
+	text = designSpacePattern.ReplaceAllString(text, " ")
+	text = designBlankLines.ReplaceAllString(text, "\n\n")
+	text = strings.TrimSpace(text)
+	if len(text) > 4096 {
+		text = text[:4096] + "\n[text truncated]"
+	}
+	if text != "" {
+		b.WriteString("\nvisible text:\n" + text + "\n")
+	}
+	return b.String()
+}
 
 // appendDoopDesignReference renders an immutable Doop snapshot into the task
 // prompt. This is deliberately self-contained: the worker sees the frame HTML
 // inline and never receives a URL it might try to fetch. A missing or broken
 // snapshot fails loud in the prompt rather than letting the agent invent a UI.
-func appendDoopDesignReference(msg, slug, designRef string) string {
+func appendDoopDesignReference(msg, slug, designRef string, continuation bool) string {
 	open := "\n\n--- Design Reference (Doop frame, immutable snapshot) ---\n"
 	closeBlock := "\n--- End Design Reference ---"
 
@@ -534,13 +597,27 @@ func appendDoopDesignReference(msg, slug, designRef string) string {
 		}
 		b.WriteString("\nDesign guidelines:\n" + guidelines + "\n")
 	}
-	b.WriteString("\n--- frame.html ---\n")
-	body := html
-	if len(body) > maxInlineDesignHTML {
-		body = body[:maxInlineDesignHTML] + "\n<!-- frame.html truncated for the dispatch prompt; the full file is in the design slice store -->"
+	// A review continuation already carries the design from the first turn.
+	// Re-sending the markup was the single largest avoidable token cost in the
+	// loop, and it grew with every round.
+	if continuation {
+		b.WriteString("\nThe design is unchanged from your previous turn. Implement to the snapshot you already have;")
+		b.WriteString(" do not re-read it, re-fetch it, or restyle it.\n")
+		b.WriteString(closeBlock)
+		return msg + b.String()
 	}
-	b.WriteString(body)
-	b.WriteString("\n--- end frame.html ---")
+
+	if len(html) > maxInlineDesignHTML {
+		b.WriteString("\nThis frame is too large to inline. A structural digest follows; the full markup is in the snapshot store.\n")
+		b.WriteString("Implement the selectors in scope. If the digest is not enough to build them, say so in your result instead of guessing.\n")
+		b.WriteString("\n--- design digest ---\n")
+		b.WriteString(designDigest(html))
+		b.WriteString("\n--- end design digest ---")
+	} else {
+		b.WriteString("\n--- frame.html ---\n")
+		b.WriteString(html)
+		b.WriteString("\n--- end frame.html ---")
+	}
 	b.WriteString(closeBlock)
 	return msg + b.String()
 }

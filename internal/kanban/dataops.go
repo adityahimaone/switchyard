@@ -13,6 +13,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TaskListResultPreview is how much of an agent result the board list ships
+// per card. One result on a real board is 2.5 MB; sending every task's full
+// output made the list payload ~4 MB before the UI could paint. A detail view
+// that needs the rest calls GetTask.
+const TaskListResultPreview = 16 << 10
+
 // TaskQuery controls server-side filtering/pagination.
 type TaskQuery struct {
 	Status     string

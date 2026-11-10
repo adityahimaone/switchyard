@@ -21,6 +21,11 @@ export interface Task {
   workspace_kind: string
   workspace_path: string
   result: string
+  /**
+   * True when the board list shortened `result` to keep its payload small.
+   * A detail view must fetch the full task before rendering the output.
+   */
+  result_truncated?: boolean
   created_by: string
   created_at: number
   started_at: number | null
@@ -200,6 +205,17 @@ export interface CompletionData {
 
 export function taskCompletion(slug: string, taskId: string) {
   return api<CompletionData>(`/api/boards/${slug}/tasks/${taskId}/completion`)
+}
+
+/**
+ * getTask reads one task with its full result.
+ *
+ * The board list carries a 16 KB preview per card because a single agent
+ * result can be megabytes. Detail views call this when `result_truncated`
+ * is set, so opening a card is the only time the full text travels.
+ */
+export function getTask(slug: string, taskId: string) {
+  return api<Task>(`/api/boards/${slug}/tasks/${taskId}`)
 }
 
 export function taskDependencies(slug: string, taskId: string) {

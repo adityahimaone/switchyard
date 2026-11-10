@@ -118,9 +118,36 @@ const SCRIM_BLUR = /backdrop-blur-\[2px\]/;
 // exactly one is on screen at a time and it floats above content rather than sitting
 // among peers. This is the scrim family, not the competing-panels problem. Panels
 // *inside* another glass panel are NOT exempt, and that is the expensive case.
-const TRANSIENT_OVERLAY_BLUR = /backdrop-blur-(?:sm|md|lg|xl)\b/;
+const TRANSIENT_OVERLAY_BLUR = /backdrop-blur-(?:sm|md|lg|xl|2xl|3xl)\b/;
 
-const TRANSIENT_OVERLAY_FILES = ["components/charts/tooltip/tooltip-box.tsx"];
+// Dropdown, mention and command panels belong to the same family: one floats
+// above content at a time, over the page rather than among peer panels. Listing
+// a file here weakens rule 2 for that file only, which is why each entry names
+// the surface it covers rather than being a blanket "this file is fine".
+const TRANSIENT_OVERLAY_FILES = [
+  "components/charts/tooltip/tooltip-box.tsx", // chart tooltip
+  "components/ui/popover.tsx", // popover surface
+  "components/ui/search-select.tsx", // command palette dropdown
+  "components/ui/select.tsx", // select menu
+  "features/board/TaskDialog.tsx", // mention and skill dropdowns
+  "features/board/VerificationBlock.tsx", // status badge over a screenshot
+  "features/knowledge/KnowledgePage.tsx", // sticky header over scrolling content
+];
+
+// The pen.dev canvas is a self-contained studio surface. It is a fixed dark
+// palette that deliberately does NOT follow the app's tonal ladder — a design
+// canvas has to look the same in light and dark mode, because the colours on it
+// are the document's, not the product's. It is not app chrome, so the token
+// ladder does not apply inside it.
+const STUDIO_SURFACE_PREFIXES = ["features/canvas/"];
+
+// Dot-matrix orb palettes are illustrative and categorical, in the same class as
+// the chart palettes above: they encode "which look", not "what does this mean".
+const ILLUSTRATIVE_PALETTE_FILES = ["lib/dotmatrix-core.tsx"];
+
+function inStudioSurface(rel) {
+  return STUDIO_SURFACE_PREFIXES.some((prefix) => rel.startsWith(prefix));
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -153,6 +180,7 @@ const TOKEN_FILES = ["index.css", "themes.css"];
 
 function checkRawColours(rel, text) {
   if (TOKEN_FILES.includes(rel)) return;
+  if (inStudioSurface(rel) || ILLUSTRATIVE_PALETTE_FILES.includes(rel)) return;
   const allowed = [
     ...CHART_PALETTE_FILES,
     ...CANVAS_DRAWING_FILES,
@@ -192,6 +220,7 @@ function checkRawColours(rel, text) {
 
 function checkBackdropFilter(rel, text) {
   if (TOKEN_FILES.includes(rel)) return; // glass-* utilities live in index.css
+  if (inStudioSurface(rel)) return; // studio surface, see STUDIO_SURFACE_PREFIXES
   const transient = TRANSIENT_OVERLAY_FILES.includes(rel);
   for (const [i, line] of stripComments(text).split("\n").entries()) {
     const m = /backdrop-(?:filter|blur[-\w]*)/.exec(line);

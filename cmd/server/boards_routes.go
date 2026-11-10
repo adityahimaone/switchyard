@@ -2,15 +2,31 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"kanban-board/internal/kanban"
 )
+
+// truncateUTF8 cuts s to at most max bytes without splitting a rune, so a
+// truncated agent result still renders as text rather than a replacement glyph.
+func truncateUTF8(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
+}
 
 // runControlError maps a domain-layer run-control refusal to its HTTP status.
 // A RunControlError already carries the code the caller should see (409 for a
@@ -141,8 +157,32 @@ func registerBoardsRoutes(mux *http.ServeMux) {
 			fail(w, err, 400)
 			return
 		}
+		// The list is a board, not an archive. A single agent result can be
+		// megabytes, and shipping every one of them delayed first paint far
+		// more than any query did. Truncate here, flag it, and let the detail
+		// view fetch the full text from GET /tasks/{id}.
+		for i := range tasks {
+			if len(tasks[i].Result) > kanban.TaskListResultPreview {
+				tasks[i].Result = truncateUTF8(tasks[i].Result, kanban.TaskListResultPreview)
+				tasks[i].ResultTruncated = true
+			}
+		}
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 		writeJSON(w, http.StatusOK, tasks)
+	})
+	// One task with its full result. The list above carries a preview only;
+	// this is what a detail view calls when result_truncated is set.
+	mux.HandleFunc("GET /api/boards/{slug}/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
+		task, err := kanban.GetTask(r.PathValue("slug"), r.PathValue("id"))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				fail(w, err, http.StatusNotFound)
+				return
+			}
+			runControlError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, task)
 	})
 	mux.HandleFunc("POST /api/boards/{slug}/tasks/reorder", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

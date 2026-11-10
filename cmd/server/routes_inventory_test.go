@@ -180,6 +180,7 @@ var expectedRoutes = map[string]bool{
 	"GET /api/boards/{slug}/health":                                   true,
 	"GET /api/boards/{slug}/leases":                                   true,
 	"GET /api/boards/{slug}/tasks":                                    true,
+	"GET /api/boards/{slug}/tasks/{id}":                               true,
 	"GET /api/boards/{slug}/tasks/{id}/attachments":                   true,
 	"GET /api/boards/{slug}/tasks/{id}/comments":                      true,
 	"GET /api/boards/{slug}/tasks/{id}/dependencies":                  true,

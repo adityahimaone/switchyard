@@ -11,6 +11,7 @@ import { ReviewSection } from "./ReviewSection"
 import TaskRuntimeStatus from "./TaskRuntimeStatus"
 import { CompletionSummary } from "./CompletionSummary"
 import { BlockedResolutionBanner } from "./BlockedResolutionBanner"
+import { useFullTask } from "./useFullTask"
 import {
   AgentPicker, FailureBlock, Field, FieldList, OsIcon, PriorityBadge,
   Section, StatusBadge, TaskActions,
@@ -18,7 +19,7 @@ import {
 
 export default function TaskDetail({
   slug,
-  task,
+  task: taskProp,
   profiles,
   workspaces,
   onClose,
@@ -37,6 +38,8 @@ export default function TaskDetail({
   onReassign: (a: string) => Promise<void>
   onOpenPage: () => void
 }) {
+  // The board list carries a preview; this is where the full result is wanted.
+  const task = useFullTask(slug, taskProp)
   const [panel, setPanel] = useState<"overview" | "output">("overview")
 
   /* Focus management: the drawer is a modal dialog, so move focus in on open

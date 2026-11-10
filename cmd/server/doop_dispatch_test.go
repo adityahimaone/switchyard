@@ -5,6 +5,7 @@ package main
 // loud instead of letting the agent invent a UI.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func TestAppendDoopDesignReferenceInlinesTheSnapshot(t *testing.T) {
 	ref := kanban.DoopRef{CanvasID: "canvas-1", FrameID: "frame-9", Version: "v7"}
 	saveTestSlice(t, ref, `<section id="hero">Hello</section>`, []string{"#hero", ".price"})
 
-	got := appendDoopDesignReference("Build the pricing screen", "default", ref.Canonical())
+	got := appendDoopDesignReference("Build the pricing screen", "default", ref.Canonical(), false)
 	for _, want := range []string{
 		"Build the pricing screen",
 		"--- Design Reference (Doop frame, immutable snapshot) ---",
@@ -61,12 +62,62 @@ func TestAppendDoopDesignReferenceInlinesTheSnapshot(t *testing.T) {
 
 func TestAppendDoopDesignReferenceFailsLoud(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
-	missing := appendDoopDesignReference("Build it", "default", "doop://c/f@v1")
+	missing := appendDoopDesignReference("Build it", "default", "doop://c/f@v1", false)
 	if !strings.Contains(missing, "missing from the control-plane store") || !strings.Contains(missing, "Do NOT") {
 		t.Errorf("missing snapshot did not fail loud: %s", missing)
 	}
-	invalid := appendDoopDesignReference("Build it", "default", "https://doop.design/c/x")
+	invalid := appendDoopDesignReference("Build it", "default", "https://doop.design/c/x", false)
 	if !strings.Contains(invalid, "invalid") || !strings.Contains(invalid, "Do NOT invent") {
 		t.Errorf("invalid ref did not fail loud: %s", invalid)
+	}
+}
+
+// TestAppendDoopDesignReferenceContinuationSkipsMarkup pins the cost rule: a
+// review continuation must not re-send a design the agent already has.
+func TestAppendDoopDesignReferenceContinuationSkipsMarkup(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	ref := kanban.DoopRef{CanvasID: "canvas-1", FrameID: "frame-9", Version: "v7"}
+	html := `<section id="hero">Hello</section>`
+	saveTestSlice(t, ref, html, []string{"#hero"})
+
+	got := appendDoopDesignReference("Address the review comment", "default", ref.Canonical(), true)
+	if strings.Contains(got, html) || strings.Contains(got, "--- frame.html ---") {
+		t.Errorf("continuation re-sent the frame markup:\n%s", got)
+	}
+	for _, want := range []string{"unchanged from your previous turn", ref.Canonical(), "--- End Design Reference ---"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("continuation prompt missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestAppendDoopDesignReferenceDigestsOversizedFrames proves a frame above the
+// inline budget gets a structural digest, never a silent mid-document cut.
+func TestAppendDoopDesignReferenceDigestsOversizedFrames(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	ref := kanban.DoopRef{CanvasID: "canvas-1", FrameID: "big", Version: "v1"}
+	var b strings.Builder
+	b.WriteString(`<main id="pricing">`)
+	for i := 0; b.Len() < maxInlineDesignHTML+1024; i++ {
+		fmt.Fprintf(&b, `<div class="card tier-%d" id="tier-%d">Plan %d includes seats</div>`, i%7, i, i)
+	}
+	b.WriteString(`</main>`)
+	saveTestSlice(t, ref, b.String(), nil)
+
+	got := appendDoopDesignReference("Build pricing", "default", ref.Canonical(), false)
+	if strings.Contains(got, "--- frame.html ---") {
+		t.Error("oversized frame was inlined instead of digested")
+	}
+	if !strings.Contains(got, "--- design digest ---") {
+		t.Error("no digest block for an oversized frame")
+	}
+	if !strings.Contains(got, "ids: #pricing, #tier-0") {
+		t.Errorf("digest did not list element ids:\n%.400s", got)
+	}
+	if !strings.Contains(got, "too large to inline") {
+		t.Error("prompt did not explain why it got a digest")
+	}
+	if strings.Contains(got, "truncated for the dispatch prompt") {
+		t.Error("prompt still contains the old silent-truncation marker")
 	}
 }

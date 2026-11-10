@@ -46,3 +46,6 @@ node_modules/
 .e2e/failures/
 .e2e/logs/
 .e2e/videos/
+
+# ship.sh staging area (build artefacts for one deploy)
+/.ship/

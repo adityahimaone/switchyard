@@ -75,6 +75,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # tsc and vitest are blind to design-token drift: neither resolves a CSS
+      # custom property nor compares a colour against a ratio. The gate is part
+      # of verify:fast locally; running it here is what stops it rotting.
+      - name: Design-token lint
+        run: node ../scripts/token-lint.mjs
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
