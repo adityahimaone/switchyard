@@ -1,22 +1,45 @@
 # Design loop
 
 Committed designs are the source of truth for cards that carry a
-`design_source`. The loop:
+`design_source`. The current loop uses **Doop**; the legacy pen.dev
+CLI loop is documented below for cards created before the migration.
 
-1. **Mock** — an agent (or you) produces a `.pen` file with the
-   pen.dev CLI and exports a PNG beside it.
-2. **Commit** — both files land in this directory, and the surface
-   is registered in `manifest.json`.
-3. **Implement** — a card with `design_source` pointing at the
-   `.pen` file is dispatched with the design in its prompt; the
-   coding agent reads the committed file and builds to it.
-4. **Compare** — `verify:ui` runs `e2e/design-compare.spec.ts`,
-   which renders the surface and asserts it is *close* to the
-   export (10% pixel budget — a drift alarm, not a pixel lock).
+1. **Approve** — in Doop, mark a frame `ready_for_dev`. Only approved
+   frames appear in the Create Task picker.
+2. **Snapshot** — Create Task calls `POST /api/boards/{slug}/design-slices`.
+   The control plane reads the frame over MCP (`get_frame`,
+   `get_frame_screenshot`) and freezes it into an immutable bundle:
+   `frame.html`, `frame.png`, `frame.json`. This happens **once, at
+   create time**.
+3. **Attach** — the card stores `design_provider=doop`,
+   `design_ref=doop://<canvas>/<frame>@<version>` and a repo-relative
+   `design_source`. It never stores a live Doop URL.
+4. **Implement** — the dispatcher inlines the frozen `frame.html` into
+   the prompt. Workers see a self-contained design contract: no Doop,
+   no agent key, no network access.
+5. **Compare** — `verify:ui` renders the surface and asserts it is
+   *close* to the export (10% pixel budget — a drift alarm, not a
+   pixel lock).
 
-A card with no `design_source` never invokes pen and never runs a
-compare. The `manifest.json` above starts empty for exactly that
-reason: with no surfaces, the compare suite skips cleanly.
+The snapshot store lives at
+`~/.hermes/kanban/design-slices/<slug>/<key>/` on the control plane.
+`frame.html` is served with a sandbox CSP because it is authored
+markup. `manifest.json` starts empty: with no surfaces the compare
+suite skips cleanly.
+
+### Configuration (control plane only)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DOOP_AGENT_KEY` | — | Required. Headless MCP bearer key (`dpk_…`). Never send it to a worker. |
+| `DOOP_MCP_URL` | `https://doop.design/mcp` | Hosted doop.design first; switch to a self-hosted tailnet `:4400/mcp` later. |
+| `DOOP_REST_URL` | derived from `DOOP_MCP_URL` | Optional override for the screenshot renderer. |
+
+Staging is only a URL change — the card contract is identical hosted
+or self-hosted. **Figma / Canva / PSD import is Doop Cloud only**; a
+self-hosted instance cannot import a Figma file, so phase 1 uses the
+hosted beta for that one-time import. Disable Doop's GitHub PR
+feature: the review gate owns every commit.
 
 ## Manifest
 
@@ -42,7 +65,7 @@ reason: with no surfaces, the compare suite skips cleanly.
 - `theme` is the theme the mock depicts; the app is toggled to it
   before the capture.
 
-## Producing a mock
+## Legacy: producing a .pen mock (deprecated)
 
 ```bash
 pen --out design/board.pen \
@@ -55,7 +78,12 @@ Iterate on an existing mock with `--in design/board.pen`. The
 edit it by hand when a change is a tweak, and let pen do the
 generative work.
 
-## One-time setup (needs your credentials)
+## Legacy: pen.dev CLI setup (deprecated)
+
+New cards attach a Doop frame. The pen.dev generator remains only so
+cards created before the migration can still run. Its free tier is
+5 agent-days + 25 image generations per month, and it needs a
+per-machine login — which is why it was replaced.
 
 The CLI authenticates per machine, and none of these can run
 unattended:
@@ -69,9 +97,6 @@ unattended:
   On the Mac, register it in the client that runs coding agents
   (`claude mcp add pen -- …` per the desktop app's instructions).
   This VPS has no GUI; headless generation above is the path here.
-
-Free tier: 5 agent-days and 25 image generations per month —
-enough for the loop, not for bulk production.
 
 ## The loop, end to end
 

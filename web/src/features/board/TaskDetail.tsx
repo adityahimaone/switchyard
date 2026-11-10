@@ -223,6 +223,18 @@ export default function TaskDetail({
                       </span>
                     </Field>
                   )}
+                  {task.design_provider && (
+                    <Field label="Design provider">
+                      <span className="font-mono text-[11px]">{task.design_provider}</span>
+                    </Field>
+                  )}
+                  {task.design_ref && (
+                    <Field label="Design ref">
+                      <span className="truncate font-mono text-[11px]" title={task.design_ref}>
+                        {task.design_ref}
+                      </span>
+                    </Field>
+                  )}
                   {task.design_tool && (
                     <Field label="Design tool">
                       <div className="flex flex-wrap items-center gap-1.5">

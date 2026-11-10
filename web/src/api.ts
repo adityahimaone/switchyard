@@ -57,8 +57,12 @@ export interface Task {
   /** "", "skipped", "running", "passed", "failed" or "unavailable". */
   verify_status?: string
   verify_output?: string
-  /** A committed .pen design this task implements verbatim. */
+  /** A committed design this task implements verbatim, repo-relative. */
   design_source?: string
+  /** Where the design came from: doop, figma_link, figma_plugin, figma_mcp, pen. */
+  design_provider?: DesignProvider
+  /** Immutable source identity, e.g. doop://<canvas>/<frame>@<version>. */
+  design_ref?: string
   /**
    * Which pen.dev surface produces this card's design:
    * "pen_cli" (the headless CLI — the only surface that can
@@ -83,6 +87,9 @@ export interface Task {
 
 /** The verification ladder, weakest first. */
 export type VerifyProfile = "none" | "fast" | "ui" | "e2e"
+
+/** Design provenance. Undefined means the card has no attached design. */
+export type DesignProvider = "doop" | "figma_link" | "figma_plugin" | "figma_mcp" | "pen"
 
 /** One file a verification run produced, stored as a task attachment. */
 export interface VerifyAttachment {
@@ -276,6 +283,8 @@ export function patchTaskFields(
     design_source?: string
     design_tool?: "pen_cli" | "pencil_mcp" | ""
     design_scope?: "design_only" | "design_and_code" | ""
+    design_provider?: DesignProvider | ""
+    design_ref?: string
     pen_agent?: string
     pen_model?: string
   },
@@ -1096,4 +1105,78 @@ export function listExecutorModels(
   if (opts.workspace) q.set("workspace", opts.workspace)
   if (opts.refresh) q.set("refresh", "1")
   return api<ModelsResponse>(`/api/models?${q.toString()}`)
+}
+
+/* ------------------------------------------------------------------------- *
+ * Doop design slices
+ *
+ * A frame is live; a card is not. listDesignFrames offers only frames a human
+ * marked ready_for_dev, and createDesignSlice freezes the chosen frame into an
+ * immutable snapshot on the control plane. The card then stores the returned
+ * design_ref / design_source — never a live Doop URL.
+ * ------------------------------------------------------------------------- */
+
+export interface DesignFrame {
+  canvas_id: string
+  frame_id: string
+  name: string
+  approval_status: string
+  version: string
+  width: number
+  height: number
+  preview_url?: string
+}
+
+export interface DesignFramesResponse {
+  configured: boolean
+  frames: DesignFrame[]
+  canvases: { id: string; name: string }[]
+  error?: string
+}
+
+export interface DesignSlice {
+  key: string
+  design_ref: string
+  design_source: string
+  canvas_id: string
+  frame_id: string
+  frame_name: string
+  version: string
+  approval_status: string
+  selectors?: string[]
+  width: number
+  height: number
+  html_bytes: number
+  png_bytes: number
+  created_at: number
+}
+
+export interface CreateDesignSliceResponse {
+  slice: DesignSlice
+  cached: boolean
+  preview_url: string
+  design_ref: string
+  design_source: string
+  design_provider: DesignProvider
+}
+
+export interface CreateDesignSliceRequest {
+  provider?: "doop"
+  canvas_id: string
+  frame_id: string
+  version?: string
+  selectors?: string[]
+  allow_unapproved?: boolean
+}
+
+export function listDesignFrames(slug: string, canvasId?: string) {
+  const q = canvasId ? `?canvas_id=${encodeURIComponent(canvasId)}` : ""
+  return api<DesignFramesResponse>(`/api/boards/${slug}/design-frames${q}`)
+}
+
+export function createDesignSlice(slug: string, req: CreateDesignSliceRequest) {
+  return api<CreateDesignSliceResponse>(`/api/boards/${slug}/design-slices`, {
+    method: "POST",
+    body: JSON.stringify({ provider: "doop", ...req }),
+  })
 }

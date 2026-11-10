@@ -123,6 +123,7 @@ func startRemoteDispatcher(ctx context.Context) {
 type dispatchCandidate struct {
 	id, title, body, result, lastError, ws, executor, assignee, command, executionMode, sshTarget, gateCommand, isolation, verifyProfile, designSource, designTool string
 	baseBranch, model, effort, commandCodeMode, designScope, penAgent, penModel                                                                                    string
+	designProvider, designRef                                                                                                                                       string
 	maxIterations                                                                                                                                                  int
 }
 
@@ -135,7 +136,7 @@ type dispatchCandidate struct {
 // both rules at claim time; this keeps the poll itself from even
 // considering a card that cannot run.
 func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
-	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,''), COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,''), COALESCE(design_scope,'design_only'), COALESCE(pen_agent,'gemini'), COALESCE(pen_model,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
+	rows, err := db.Query(`SELECT id, title, COALESCE(body,''), COALESCE(result,''), COALESCE(last_failure_error,''), workspace_path, COALESCE(executor,'auto'), COALESCE(assignee,''), COALESCE(command,''), COALESCE(execution_mode,'direct'), COALESCE(max_iterations,1), COALESCE(workspace_ssh_target,''), COALESCE(gate_command,''), COALESCE(isolation,'workspace'), COALESCE(base_branch,''), COALESCE(verify_profile,''), COALESCE(design_source,''), COALESCE(design_tool,''), COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,''), COALESCE(design_scope,'design_only'), COALESCE(pen_agent,'gemini'), COALESCE(pen_model,''), COALESCE(design_provider,''), COALESCE(design_ref,'') FROM tasks WHERE status IN ('todo','ready') AND workspace_transport='node-agent'
 		AND NOT EXISTS (
 			SELECT 1 FROM task_dependencies d
 			LEFT JOIN tasks dt ON dt.id = d.depends_on_id
@@ -149,7 +150,7 @@ func pendingDispatchCandidates(db *sql.DB) ([]dispatchCandidate, error) {
 	var pending []dispatchCandidate
 	for rows.Next() {
 		var r dispatchCandidate
-		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool, &r.model, &r.effort, &r.commandCodeMode, &r.designScope, &r.penAgent, &r.penModel); err != nil {
+		if err := rows.Scan(&r.id, &r.title, &r.body, &r.result, &r.lastError, &r.ws, &r.executor, &r.assignee, &r.command, &r.executionMode, &r.maxIterations, &r.sshTarget, &r.gateCommand, &r.isolation, &r.baseBranch, &r.verifyProfile, &r.designSource, &r.designTool, &r.model, &r.effort, &r.commandCodeMode, &r.designScope, &r.penAgent, &r.penModel, &r.designProvider, &r.designRef); err != nil {
 			return nil, err
 		}
 		if r.ws != "" {
@@ -260,15 +261,29 @@ func dispatchPendingRemoteTasks() {
 				msg = kanban.BuildColdRerunContextPack(db, r.id, r.ws, r.title, r.body, r.result)
 			}
 			// Design Mock Mandate
-			if strings.TrimSpace(r.designTool) == "" {
+			if kanban.IsDoopDesign(r.designProvider) {
+				// A Doop card carries an immutable snapshot, not a live frame.
+				// Inline it so the worker never needs Doop, a token or egress.
+				msg = appendDoopDesignReference(msg, b.Slug, r.designRef)
+			} else if strings.TrimSpace(r.designTool) == "" {
 				msg = appendDesignReference(msg, r.designSource)
 			}
-			msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title, r.designScope, r.penAgent, r.penModel)
+			if !kanban.IsDoopDesign(r.designProvider) {
+				msg = appendDesignMandate(msg, r.designTool, r.designSource, r.title, r.designScope, r.penAgent, r.penModel)
+			}
 			// Design skills ride the dispatch, not the worker's install: a pen
 			// task may run on any node, and the three standards are part of the
 			// task's instructions, not a local convention. The pack is added
 			// after context compaction so it cannot be trimmed off.
-			skillPack := kanban.DesignSkillPackForTask(r.body, r.designTool, r.designScope)
+			// pen.dev's auto-loaded brand/typography skills describe how to
+			// DRAW a .pen mock. A Doop card implements an already-authored
+			// frame, so those 22 KB would be noise at best and contradictory
+			// instructions at worst.
+			skillTool := r.designTool
+			if kanban.IsDoopDesign(r.designProvider) {
+				skillTool = ""
+			}
+			skillPack := kanban.DesignSkillPackForTask(r.body, skillTool, r.designScope)
 			if len(skillPack.Missing) > 0 {
 				log.Printf("remote-dispatcher: %s design skills unavailable: %s", r.id, strings.Join(skillPack.Missing, ", "))
 			}
@@ -469,6 +484,65 @@ func appendDesignReference(msg, designSource string) string {
 		"Read the .pen file (plain JSON) and the PNG exported beside it, then implement to match the design.\n" +
 		"The design is the reference this card is graded against — do not regenerate or move it.\n" +
 		"--- End Design Reference ---"
+}
+
+// maxInlineDesignHTML bounds how much of a frozen frame rides the dispatch
+// prompt. The store allows bigger frames; a prompt does not need a megabyte of
+// markup to describe one screen, and an unbounded paste would crowd out task
+// context. Truncation is explicit so the agent never mistakes it for a short
+// design.
+const maxInlineDesignHTML = 96 << 10
+
+// appendDoopDesignReference renders an immutable Doop snapshot into the task
+// prompt. This is deliberately self-contained: the worker sees the frame HTML
+// inline and never receives a URL it might try to fetch. A missing or broken
+// snapshot fails loud in the prompt rather than letting the agent invent a UI.
+func appendDoopDesignReference(msg, slug, designRef string) string {
+	open := "\n\n--- Design Reference (Doop frame, immutable snapshot) ---\n"
+	closeBlock := "\n--- End Design Reference ---"
+
+	ref, err := kanban.ParseDoopRef(designRef)
+	if err != nil {
+		return msg + open + "This card declares a Doop design but its design_ref is invalid: " + err.Error() +
+			"\nDo NOT invent or guess a UI. Report the missing design reference and stop.\n" + closeBlock
+	}
+	key := ref.Key()
+	slice, _, loadErr := kanban.LoadDesignSlice(slug, key)
+	html, htmlErr := kanban.LoadDesignSliceHTML(slug, key)
+	if loadErr != nil || htmlErr != nil {
+		log.Printf("remote-dispatcher: doop snapshot %s missing on board %s: meta=%v html=%v", key, slug, loadErr, htmlErr)
+		return msg + open + "This card implements Doop frame " + ref.Canonical() +
+			" but its immutable snapshot is missing from the control-plane store." +
+			"\nDo NOT call Doop, do NOT fetch it, and do NOT invent or guess a UI. Report the missing snapshot and stop.\n" + closeBlock
+	}
+
+	var b strings.Builder
+	b.WriteString(open)
+	fmt.Fprintf(&b, "Implement the Doop frame %q (design_ref %s, version %s, %dx%d).\n",
+		slice.FrameName, ref.Canonical(), slice.Version, slice.Width, slice.Height)
+	b.WriteString("The HTML below is the authoritative design. It is a frozen snapshot taken when this card was created.\n")
+	b.WriteString("Do NOT call Doop, do NOT fetch anything from the network, and do NOT regenerate, restyle or simplify the design.\n")
+	if len(slice.Selectors) > 0 {
+		b.WriteString("Only these selectors are in scope: " + strings.Join(slice.Selectors, ", ") + ".\n")
+	}
+	b.WriteString("Reuse existing design-system components where the markup matches one in this codebase.\n")
+	b.WriteString("frame.png is the scale-1 visual reference the verify:ui pixel gate grades against.\n")
+	if strings.TrimSpace(slice.Guidelines) != "" {
+		guidelines := strings.TrimSpace(slice.Guidelines)
+		if len(guidelines) > 4096 {
+			guidelines = guidelines[:4096] + "\n[... guidelines truncated ...]"
+		}
+		b.WriteString("\nDesign guidelines:\n" + guidelines + "\n")
+	}
+	b.WriteString("\n--- frame.html ---\n")
+	body := html
+	if len(body) > maxInlineDesignHTML {
+		body = body[:maxInlineDesignHTML] + "\n<!-- frame.html truncated for the dispatch prompt; the full file is in the design slice store -->"
+	}
+	b.WriteString(body)
+	b.WriteString("\n--- end frame.html ---")
+	b.WriteString(closeBlock)
+	return msg + b.String()
 }
 
 // appendDesignMandate renders the design-tool switch into a task's

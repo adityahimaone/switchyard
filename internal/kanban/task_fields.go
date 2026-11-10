@@ -27,6 +27,8 @@ type TaskFields struct {
 	VerifyProfile *string `json:"verify_profile,omitempty"`
 	DesignSource  *string `json:"design_source,omitempty"`
 	DesignTool    *string `json:"design_tool,omitempty"`
+	DesignProvider *string `json:"design_provider,omitempty"`
+	DesignRef      *string `json:"design_ref,omitempty"`
 	DesignScope   *string `json:"design_scope,omitempty"`
 	PenAgent      *string `json:"pen_agent,omitempty"`
 	PenModel      *string `json:"pen_model,omitempty"`
@@ -99,6 +101,34 @@ func UpdateTaskFields(slug, taskID string, f TaskFields) error {
 				changed = append(changed, "design_source")
 			}
 		}
+	}
+	if f.DesignProvider != nil {
+		provider := strings.ToLower(strings.TrimSpace(*f.DesignProvider))
+		if provider != "" && !ValidDesignProviders[provider] {
+			return &RunControlError{Code: 400, Err: fmt.Errorf(
+				"design_provider %q is not one of %s", provider, strings.Join(DesignProviderLadder, "/"))}
+		}
+		sets = append(sets, "design_provider=?")
+		args = append(args, provider)
+		changed = append(changed, "design_provider")
+	}
+	if f.DesignRef != nil {
+		ref := strings.TrimSpace(*f.DesignRef)
+		// Validate against the provider this card will have after this same
+		// PATCH, not the one it has now: clearing a Doop card and setting a
+		// Figma ref in one request must be legal.
+		provider := ""
+		if f.DesignProvider != nil {
+			provider = strings.ToLower(strings.TrimSpace(*f.DesignProvider))
+		} else {
+			_ = db.QueryRow(`SELECT COALESCE(design_provider,'') FROM tasks WHERE id=?`, taskID).Scan(&provider)
+		}
+		if err := ValidateDesignRef(provider, ref); err != nil {
+			return &RunControlError{Code: 400, Err: err}
+		}
+		sets = append(sets, "design_ref=?")
+		args = append(args, ref)
+		changed = append(changed, "design_ref")
 	}
 	if f.DesignScope != nil {
 		scope := strings.ToLower(strings.TrimSpace(*f.DesignScope))

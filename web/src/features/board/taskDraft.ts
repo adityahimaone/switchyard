@@ -41,6 +41,14 @@ export interface CreateTaskDraft {
    */
   designSource: string
   /**
+   * Design provenance. "doop" means designSource points at an immutable Doop
+   * snapshot and designRef names the frame version it came from. Optional so
+   * a card with no design stays a plain card.
+   */
+  designProvider?: "doop" | ""
+  /** Immutable source identity, e.g. doop://<canvas>/<frame>@<version>. */
+  designRef?: string
+  /**
    * The pen.dev surface that produces this card's design. "pen_cli"
    * generates a new .pen headlessly (the only surface that can create
    * one on a worker); "pencil_mcp" edits the document open in the
@@ -113,6 +121,10 @@ export function buildCreatePayload(draft: CreateTaskDraft): Record<string, unkno
     // Omitted when empty, unlike verify_profile: an empty design source is the
     // absence of a requirement, not a declaration of "no design".
     ...(draft.designSource.trim() ? { design_source: draft.designSource.trim() } : {}),
+    // Design provenance is only sent for cards that actually attached a
+    // snapshot. A plain card carries no design keys at all.
+    ...(draft.designProvider ? { design_provider: draft.designProvider } : {}),
+    ...(draft.designProvider && draft.designRef?.trim() ? { design_ref: draft.designRef.trim() } : {}),
     // The design-tool switch: omitted when off. The server renders the
     // tool's mandate into the dispatch prompt from this field, so the
     // agent's instructions cannot go stale the way body text can.

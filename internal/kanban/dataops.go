@@ -99,9 +99,10 @@ func taskSelectCols() string {
 	        COALESCE(gate_output,''), COALESCE(start_mode,'manual'), COALESCE(attempt,1),
 	        COALESCE(isolation,'workspace'), COALESCE(branch,''), COALESCE(worktree_path,''), COALESCE(base_branch,''),
 	        COALESCE(verify_profile,''), COALESCE(verify_profile_effective,''),
-	        COALESCE(verify_status,''), COALESCE(verify_output,''), COALESCE(design_source,''), COALESCE(design_tool,''),
-	        COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,''),
-	        COALESCE(design_scope,'design_only'), COALESCE(pen_agent,'gemini'), COALESCE(pen_model,'')`
+        COALESCE(verify_status,''), COALESCE(verify_output,''), COALESCE(design_source,''), COALESCE(design_tool,''),
+        COALESCE(model,''), COALESCE(effort,''), COALESCE(commandcode_mode,''),
+        COALESCE(design_scope,'design_only'), COALESCE(pen_agent,'gemini'), COALESCE(pen_model,''),
+        COALESCE(design_provider,''), COALESCE(design_ref,'')`
 }
 
 func scanTask(rows *sql.Rows) (Task, error) {
@@ -117,7 +118,7 @@ func scanTask(rows *sql.Rows) (Task, error) {
 		&t.Isolation, &t.Branch, &t.WorktreePath, &t.BaseBranch,
 		&t.VerifyProfile, &t.VerifyProfileEffective, &t.VerifyStatus, &t.VerifyOutput,
 		&t.DesignSource, &t.DesignTool, &t.Model, &t.Effort, &t.CommandCodeMode,
-		&t.DesignScope, &t.PenAgent, &t.PenModel); err != nil {
+		&t.DesignScope, &t.PenAgent, &t.PenModel, &t.DesignProvider, &t.DesignRef); err != nil {
 		return t, err
 	}
 	t.Paths = PathsParse(pathsJSON)

@@ -181,6 +181,19 @@ func ValidateNewTask(t *Task) []Issue {
 		add(CodeBadRequest, "design_tool", "design_tool %q is not one of %s",
 			t.DesignTool, strings.Join(DesignToolLadder, "/"))
 	}
+	// Design provenance. The provider is a fixed token; the ref is identity
+	// text, so it gets a cap and a control-character check rather than the
+	// path treatment design_source receives.
+	if len(t.DesignProvider) > 32 {
+		add(CodeBadRequest, "design_provider", "design provider is %d bytes, maximum is 32", len(t.DesignProvider))
+	}
+	if t.DesignProvider != "" && !ValidDesignProviders[t.DesignProvider] {
+		add(CodeBadRequest, "design_provider", "design_provider %q is not one of %s",
+			t.DesignProvider, strings.Join(DesignProviderLadder, "/"))
+	}
+	if err := ValidateDesignRef(t.DesignProvider, t.DesignRef); err != nil {
+		add(CodeBadRequest, "design_ref", "%s", err)
+	}
 	if t.DesignScope != "" && t.DesignScope != "design_only" && t.DesignScope != "design_and_code" {
 		add(CodeBadRequest, "design_scope", "design_scope %q must be 'design_only' or 'design_and_code'", t.DesignScope)
 	}

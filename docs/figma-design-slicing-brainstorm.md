@@ -1,7 +1,26 @@
 # Figma / Doop → Create Task: design slicing brainstorm
 
 **Date:** 2026-11-10
-**Status:** Revision 2 — **DECISION**. No runtime code changed yet.
+**Status:** Revision 3 — **IMPLEMENTED** (2026-11-10). P0/P1/P2 are in the
+tree; P3 (hard-removing the pen.dev generator) was deliberately kept as a
+backward-compatible legacy path so cards created before the migration still
+run. P4 (Figma import bridge) remains a hosted-beta one-time step.
+
+Implementation map: `internal/kanban/design_provider.go` (provenance + ref),
+`doop_client.go` (stateless MCP client), `design_bundle.go` +
+`design_resolver.go` (immutable snapshot store),
+`cmd/server/design_slice_routes.go` (create-time HTTP boundary),
+`cmd/server/remote_dispatch.go` (`appendDoopDesignReference`), two new
+`tasks` columns (`design_provider`, `design_ref`), and
+`web/src/features/board/DoopDesignPicker.tsx` (Create Task frame picker).
+See [design/README.md](../design/README.md) for configuration and the loop.
+
+**One deliberate deviation from this proposal:** the bundle lives in the
+control-plane slice store and its `frame.html` is inlined into the dispatch
+prompt, rather than being materialised as files in the worker's checkout.
+That keeps workers free of Doop URLs, tokens and network access without
+requiring a node-agent change. Materialising the bundle into the workspace
+so `verify:ui` can diff it directly is a follow-up.
 **Supersedes:** rev 1 of this document (the doop assessment in rev 1 was wrong —
 see "Correction" in §2).
 **Question:** when creating a Kanban card, how do we attach a design so the

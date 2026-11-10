@@ -26,6 +26,7 @@ import { AttachmentChip } from "@/components/feedback/attachment-chip"
 import { uploadAttachment, type Attachment } from "../../api"
 import { cn } from "@/lib/utils"
 import type { CanvasPrefill } from "../canvas/canvasPrefill"
+import { DoopDesignPicker, type DoopAttachment } from "./DoopDesignPicker"
 import {
   buildCreatePayload,
   canSubmit,
@@ -234,6 +235,10 @@ export default function TaskDialog({
   const [baseBranch, setBaseBranch] = useState("")
   const [verifyProfile, setVerifyProfile] = useState<VerifyProfile | "auto">("auto")
   const [designSource, setDesignSource] = useState("")
+  // A Doop card points at an immutable slice frozen at create time. The
+  // attachment carries the ref, the design_source path and the preview.
+  const [doopOpen, setDoopOpen] = useState(false)
+  const [doopAttachment, setDoopAttachment] = useState<DoopAttachment | null>(null)
   // "none" is the form's sentinel for "no pen.dev design" — Radix
   // Select items need non-empty values, the API wants the absence.
   const [designTool, setDesignTool] = useState<"none" | "pen_cli" | "pencil_mcp">("none")
@@ -812,7 +817,9 @@ export default function TaskDialog({
     isolation,
     baseBranch,
     verifyProfile,
-    designSource,
+    designSource: doopAttachment ? doopAttachment.designSource : designSource,
+    designProvider: doopAttachment ? ("doop" as const) : "",
+    designRef: doopAttachment?.designRef,
     designTool: designTool === "none" ? "" : designTool,
     designScope: designTool === "none" ? undefined : designScope,
     penAgent: designTool === "none" ? undefined : (penModel.includes(":") ? penModel.split(":")[0] : "gemini"),
@@ -846,7 +853,7 @@ export default function TaskDialog({
     }
     // draft is rebuilt every render; the individual fields are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, designTool, designScope, penModel, dshModel, cmdModel, effort, commandCodeMode, deps.join(",")])
+  }, [slug, title, body, ws, executor, executionMode, maxIterations, priority, pathsRaw, gateCommand, isolation, baseBranch, verifyProfile, designSource, doopAttachment, designTool, designScope, penModel, dshModel, cmdModel, effort, commandCodeMode, deps.join(",")])
 
   async function improveBody(mode: "fast" | "deep") {
     if (!body.trim()) return
@@ -1450,33 +1457,21 @@ export default function TaskDialog({
 
                 <button
                   type="button"
-                  aria-pressed={designTool !== "none"}
-                  onClick={() => {
-                    if (designTool === "none") {
-                      setDesignTool("pen_cli")
-                      setDesignScope("design_only")
-                      setExecutor("shell")
-                      setPenModel("deepseek:deepseek-flash")
-                    } else {
-                      setDesignTool("none")
-                      if (executor === "shell") {
-                        setExecutor("dsh")
-                      }
-                    }
-                  }}
+                  aria-pressed={doopOpen}
+                  onClick={() => setDoopOpen((v) => !v)}
                   className={cn(
                     "glass-flat inline-flex h-7 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] duration-150 ease-[var(--ease-out-expo)] active:scale-[0.97]",
-                    designTool !== "none"
+                    doopOpen || doopAttachment
                       ? "border-[var(--c-accent)]/50 bg-accent-tint text-accent"
                       : "text-ink-3 hover:text-ink",
                   )}
-                  title="Toggle pen.dev design workflow"
+                  title="Attach a ready-for-dev Doop frame as this card's design"
                 >
-                  <PenTool className="size-3" />
-                  <span>pen.dev</span>
-                  {designTool !== "none" && (
+                  <Layers className="size-3" />
+                  <span>Doop design</span>
+                  {doopAttachment && (
                     <span className="rounded bg-[var(--c-canvas)]/70 px-1 py-0.5 font-mono text-[10px] leading-none text-accent">
-                      {designScope === "design_only" ? "Design Only" : "Design & Code"}
+                      1 frame
                     </span>
                   )}
                 </button>
@@ -1504,6 +1499,21 @@ export default function TaskDialog({
                 ]}
               />
             </div>
+
+            {doopOpen && (
+              <DoopDesignPicker
+                slug={slug}
+                attachment={doopAttachment}
+                onAttach={(next) => {
+                  setDoopAttachment(next)
+                  setDesignSource(next.designSource)
+                  // A Doop card implements an authored frame; never let a
+                  // legacy pen.dev generator switch ride the same card.
+                  setDesignTool("none")
+                }}
+                onClear={() => setDoopAttachment(null)}
+              />
+            )}
 
             {execOverrideOpen && (
               <div className="mt-2 grid grid-cols-2 gap-3 rounded-card border border-[var(--c-line)] bg-[var(--c-surface)]/50 p-3">
@@ -2192,13 +2202,14 @@ export default function TaskDialog({
                 id="task-design-source"
                 value={designSource}
                 onChange={(e) => setDesignSource(e.target.value)}
-                placeholder="design/task-card.pen"
+                placeholder="design/doop/<slice> or design/task-card.pen"
                 className="mt-1 border-[var(--c-line)] bg-[var(--c-canvas)] text-xs"
               />
               <p className="mt-1 text-[11px] text-ink-3">
-                A committed pen.dev design this task must implement verbatim,
-                repo-relative. Leave empty for everything else — a card with no
-                design source never invokes pen and never spends an agent-day.
+                A committed design this task implements verbatim, repo-relative.
+                Use <strong>Doop design</strong> above to snapshot a ready-for-dev
+                frame; the path is filled in automatically. Leave empty for a
+                plain card.
               </p>
               {issuesForField(issues, "design_source").map((i) => (
                 <FieldIssue key={i.code + i.message} issue={i} />
@@ -2215,20 +2226,18 @@ export default function TaskDialog({
                 </SelectTrigger>
                 <SelectContent className="">
                   <SelectItem value="none" className="text-sm">
-                    None — no pen.dev design
+                    None — use Doop design above
                   </SelectItem>
                   <SelectItem value="pen_cli" className="text-sm">
-                    pen CLI — generate the mock headlessly
+                    Legacy pen CLI (deprecated)
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="mt-1 text-[11px] text-ink-3">
-                How this card's design is produced. The pen CLI writes a
-                new .pen and its PNG export on the worker; the pencil MCP
-                edits the document already open in the desktop app (it
-                cannot save a new one). The choice rides the dispatch
-                prompt structurally, so it cannot go stale the way body
-                text can.
+                New cards attach a Doop frame. The pen.dev generator is kept
+                only so cards created before the migration can still run; it
+                needs a per-machine PEN_CLI_KEY and a 5 agent-day/month free
+                tier, so it is no longer offered as a default.
               </p>
               {issuesForField(issues, "design_tool").map((i) => (
                 <FieldIssue key={i.code + i.message} issue={i} />

@@ -94,6 +94,14 @@ type Task struct {
 	// the tool's mandate into the prompt from this column, so the
 	// tool choice cannot go stale the way card prose can.
 	DesignTool string `json:"design_tool,omitempty"`
+	// DesignProvider is where the design came from: doop, figma_link,
+	// figma_plugin, figma_mcp or pen. It is provenance, NOT the pen.dev
+	// generator switch above — see design_provider.go for why they are apart.
+	DesignProvider string `json:"design_provider,omitempty"`
+	// DesignRef is the immutable identity of the source object, e.g.
+	// doop://<canvas>/<frame>@<version>. The control plane resolves it once
+	// at create time; the agent is never told to fetch it.
+	DesignRef string `json:"design_ref,omitempty"`
 	// manual: wait for the dispatcher poll. now: claim on create.
 	StartMode string `json:"start_mode,omitempty"`
 	// Retry counter. Attempt 1 is the original run.
@@ -360,6 +368,10 @@ func ensureTaskExecutionColumns(db *sql.DB) error {
 		// DesignTool on the Task struct. Empty for every card that
 		// is not a pen.dev design task.
 		`ALTER TABLE tasks ADD COLUMN design_tool TEXT NOT NULL DEFAULT ''`,
+		// Design provenance: which tool produced the design and the immutable
+		// identity of the source frame. Empty on every card with no design.
+		`ALTER TABLE tasks ADD COLUMN design_provider TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN design_ref TEXT NOT NULL DEFAULT ''`,
 		// manual = wait for the dispatcher poll; now = claim on create.
 		`ALTER TABLE tasks ADD COLUMN start_mode TEXT NOT NULL DEFAULT 'manual'`,
 		// Incremented by retry. Attempt 1 is the original run.
@@ -509,9 +521,32 @@ func CreateTask(slug string, t *Task) error {
 	if (t.DesignTool == "pen_cli" || t.DesignTool == "pencil_mcp") && strings.TrimSpace(t.DesignSource) == "" {
 		t.DesignSource = DesignPathForTitle(t.Title)
 	}
+	// Design provenance is normalised here so the row, the dry-run validator
+	// and the dispatcher all read the same token. A Doop card derives its
+	// design_source from the ref when the client did not send one, so the
+	// card always names the immutable snapshot it implements.
+	t.DesignProvider = strings.ToLower(strings.TrimSpace(t.DesignProvider))
+	if t.DesignProvider != "" && !ValidDesignProviders[t.DesignProvider] {
+		return fmt.Errorf("invalid design_provider %q (want one of %s)", t.DesignProvider, strings.Join(DesignProviderLadder, "/"))
+	}
+	t.DesignRef = strings.TrimSpace(t.DesignRef)
+	if err := ValidateDesignRef(t.DesignProvider, t.DesignRef); err != nil {
+		return err
+	}
+	if IsDoopDesign(t.DesignProvider) && strings.TrimSpace(t.DesignSource) == "" {
+		if ref, err := ParseDoopRef(t.DesignRef); err == nil {
+			t.DesignSource = ref.DesignSourcePath()
+		}
+	}
 	t.DesignScope = strings.ToLower(strings.TrimSpace(t.DesignScope))
 	if t.DesignScope == "" && (t.DesignTool != "" || t.DesignSource != "") {
-		t.DesignScope = "design_only"
+		// A Doop card receives an already-authored design and implements it;
+		// "design_only" would describe the opposite workflow.
+		if IsDoopDesign(t.DesignProvider) {
+			t.DesignScope = "design_and_code"
+		} else {
+			t.DesignScope = "design_only"
+		}
 	}
 	t.PenAgent = strings.ToLower(strings.TrimSpace(t.PenAgent))
 	if t.PenAgent == "" && (t.DesignTool != "" || t.DesignSource != "") {
@@ -578,12 +613,12 @@ func CreateTask(slug string, t *Task) error {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool, model, effort, commandcode_mode, design_scope, pen_agent, pen_model)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.Exec(`INSERT INTO tasks (id, title, body, status, priority, assignee, executor, command, claude_session_id, execution_mode, max_iterations, workspace_kind, workspace_path, workspace_transport, workspace_ssh_target, created_by, created_at, paths, gate_command, start_mode, attempt, isolation, base_branch, verify_profile, design_source, design_tool, model, effort, commandcode_mode, design_scope, pen_agent, pen_model, design_provider, design_ref)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Body, t.Status, t.Priority, t.Assignee, t.Executor, t.Command, t.ClaudeSessionID, t.ExecutionMode, t.MaxIterations, t.WorkspaceKind, t.WorkspacePath, transport, target, t.CreatedBy, t.CreatedAt, PathsJSON(t.Paths), t.GateCommand, t.StartMode, t.Attempt, t.Isolation, t.BaseBranch,
 		// verify_profile_effective/verify_status are intentionally not inserted:
 		// they are decided by routing after the run, not by the author of the card.
-		t.VerifyProfile, t.DesignSource, t.DesignTool, strings.TrimSpace(t.Model), strings.TrimSpace(t.Effort), strings.TrimSpace(t.CommandCodeMode), t.DesignScope, t.PenAgent, t.PenModel); err != nil {
+		t.VerifyProfile, t.DesignSource, t.DesignTool, strings.TrimSpace(t.Model), strings.TrimSpace(t.Effort), strings.TrimSpace(t.CommandCodeMode), t.DesignScope, t.PenAgent, t.PenModel, t.DesignProvider, t.DesignRef); err != nil {
 		return err
 	}
 	if len(t.DependsOn) > 0 {

@@ -396,6 +396,10 @@ Workspace source of truth is `~/.hermes/workspaces.json` (shared with Hermes CLI
 | GET | `/api/boards/{slug}/tasks/{id}/diff` | Diff from remote workspace |
 | POST | `/api/boards/{slug}/tasks/{id}/approve` | Commit or push |
 | GET/POST/PUT/DELETE | `/api/workspaces*` | Workspaces and health |
+| GET | `/api/boards/{slug}/design-frames` | Doop frames marked `ready_for_dev` for the Create Task picker |
+| POST | `/api/boards/{slug}/design-slices` | Freeze one Doop frame into an immutable snapshot bundle |
+| GET | `/api/boards/{slug}/design-slices/{key}/frame.png` | Serve the frozen scale-1 visual reference |
+| GET | `/api/boards/{slug}/design-slices/{key}/frame.html` | Serve the frozen frame HTML (sandbox CSP) |
 | GET | `/api/flow/active` | Active flow tasks |
 | POST | `/api/remote/dispatch` | Manual dispatch to node-agent |
 | GET | `/api/nodes` | Node-agent status |
@@ -450,6 +454,9 @@ Shell agentic path gives a read-only planner workspace visibility, then executes
 | `KANBAN_NODE_AGENT_TOKEN` | env | Shared auth token for node-agent HTTP + gRPC metadata |
 | `NODE_AGENT_PUBLIC_URL` | env | URL the node-agent server advertises (e.g. `http://<tailscale-ip>:8788`); powers the install/update commands on the Overview page |
 | `KANBAN_SSH_TARGET` | env | Override SSH target for review and legacy transport |
+| `DOOP_AGENT_KEY` | env | Headless Doop MCP bearer key, **control plane only** — never sent to workers |
+| `DOOP_MCP_URL` | env | Doop MCP endpoint (default `https://doop.design/mcp`; self-host via tailnet `:4400/mcp`) |
+| `DOOP_REST_URL` | env | Optional override for Doop's scale-1 screenshot renderer |
 | `TYPESAFE_API_KEY` | env | Optional TypeSafe AI key; enables JEV task classification before dispatch |
 | `TYPESAFE_JEV_MODEL` | env | Optional JEV model override (default `jev-latest`) |
 | `TYPESAFE_API_URL` | env | Optional TypeSafe endpoint override (default `https://api.typesafe.ai/v1/systemone`) |
