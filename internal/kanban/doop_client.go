@@ -18,10 +18,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -270,7 +272,13 @@ func stringField(obj map[string]any, keys ...string) string {
 			return v
 		}
 		if v, ok := obj[key].(float64); ok {
-			return fmt.Sprintf("%v", v)
+			// updatedAt is a millisecond epoch. %v would render it as
+			// 1.793862752615e+12, which is a legal but ugly design_ref version
+			// and unstable across JSON round-trips.
+			if v == math.Trunc(v) {
+				return strconv.FormatInt(int64(v), 10)
+			}
+			return strconv.FormatFloat(v, 'f', -1, 64)
 		}
 	}
 	return ""
@@ -337,29 +345,52 @@ func (c *DoopClient) ListCanvases(ctx context.Context) ([]DoopCanvas, error) {
 // Doop get_canvas filter, so the human sign-off is enforced before a card can
 // be created from a frame.
 func (c *DoopClient) ListReadyFrames(ctx context.Context, canvasID string) ([]DoopFrame, error) {
-	payload, _, err := c.CallTool(ctx, "get_canvas", map[string]any{
-		"canvas_id":       canvasID,
-		"approval_status": "ready_for_dev",
-	})
+	return c.ListFrames(ctx, canvasID, "ready_for_dev")
+}
+
+// ListFrames reads a canvas's frames, optionally filtered by approval status.
+// An empty status returns every frame — used by the picker's explicit
+// "no approved frames yet" fallback, never as a silent default.
+//
+// The real payload is {"canvas": {...}, "frames": [...]} — frames is a SIBLING
+// of canvas, not a child. Doop is beta and a build may nest it, so both shapes
+// are accepted; the top-level array is checked first because that is what the
+// live API returns.
+func (c *DoopClient) ListFrames(ctx context.Context, canvasID, approvalStatus string) ([]DoopFrame, error) {
+	args := map[string]any{"canvas_id": canvasID}
+	if strings.TrimSpace(approvalStatus) != "" {
+		args["approval_status"] = approvalStatus
+	}
+	payload, _, err := c.CallTool(ctx, "get_canvas", args)
 	if err != nil {
 		return nil, err
 	}
 	obj := asObject(payload)
-	framesObj := obj
-	for _, key := range []string{"canvas", "result", "data"} {
-		if child := nested(obj, key); child != nil {
-			framesObj = child
-			break
+	if obj == nil {
+		return []DoopFrame{}, nil
+	}
+	rawFrames := itemArray(obj, "frames")
+	if rawFrames == nil {
+		for _, key := range []string{"canvas", "result", "data"} {
+			if child := nested(obj, key); child != nil {
+				if arr := itemArray(child, "frames"); arr != nil {
+					rawFrames = arr
+					break
+				}
+			}
 		}
 	}
 	out := []DoopFrame{}
-	for _, raw := range itemArray(framesObj, "frames", "items") {
+	for _, raw := range rawFrames {
 		item, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
 		id := stringField(item, "id", "frame_id", "frameId")
 		if id == "" {
+			continue
+		}
+		if empty, ok := item["empty"].(bool); ok && empty {
 			continue
 		}
 		out = append(out, DoopFrame{
@@ -370,6 +401,7 @@ func (c *DoopClient) ListReadyFrames(ctx context.Context, canvasID string) ([]Do
 			Version:        stringField(item, "version", "updatedAt", "updated_at"),
 			Width:          intField(item, "width", "w"),
 			Height:         intField(item, "height", "h"),
+			PreviewURL:     stringField(item, "image_url", "imageUrl"),
 		})
 	}
 	return out, nil

@@ -39,6 +39,7 @@ export function DoopDesignPicker({
 }) {
   const [frames, setFrames] = useState<DesignFrame[]>([])
   const [configured, setConfigured] = useState(true)
+  const [unapproved, setUnapproved] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -52,6 +53,7 @@ export function DoopDesignPicker({
       const res = await listDesignFrames(slug)
       setConfigured(res.configured)
       setFrames(res.frames ?? [])
+      setUnapproved(Boolean(res.unapproved))
       setError(res.configured ? (res.error ?? "") : (res.error ?? "Doop is not configured on the control plane."))
       setSelected((current) => {
         const ids = (res.frames ?? []).map(frameKey)
@@ -86,6 +88,9 @@ export function DoopDesignPicker({
         frame_id: chosen.frame_id,
         ...(chosen.version ? { version: chosen.version } : {}),
         ...(selectors.length ? { selectors } : {}),
+        // The server only offers drafts when nothing is approved. Say so on
+        // the request rather than letting the resolver silently accept them.
+        ...(unapproved ? { allow_unapproved: true } : {}),
       })
       onAttach({
         designRef: res.design_ref,
@@ -127,6 +132,13 @@ export function DoopDesignPicker({
           Set <code className="font-mono text-accent">DOOP_AGENT_KEY</code> on the control plane to enable
           the Doop MCP. Changing <code className="font-mono">DOOP_MCP_URL</code> later switches from
           hosted doop.design to a self-hosted instance without changing this form.
+        </p>
+      )}
+
+      {unapproved && (
+        <p className="text-[11px] text-amber-400">
+          No frame is marked <strong>ready for dev</strong> in Doop, so drafts are listed. Mark the
+          frame ready for dev in Doop before creating the card — a draft snapshot is recorded as such.
         </p>
       )}
 

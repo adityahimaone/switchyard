@@ -78,6 +78,23 @@ func handleListDesignFrames(w http.ResponseWriter, r *http.Request) {
 		}
 		frames = append(frames, found...)
 	}
+	// Nothing is approved anywhere. Offering an empty picker would look broken
+	// and teach nobody why, so fall back to drafts and say so explicitly: the
+	// snapshot then requires allow_unapproved, which the picker sends only
+	// after surfacing this warning.
+	unapproved := false
+	if len(frames) == 0 {
+		for _, canvas := range canvases {
+			found, err := client.ListFrames(ctx, canvas.ID, "")
+			if err != nil {
+				resp["error"] = err.Error()
+				continue
+			}
+			frames = append(frames, found...)
+		}
+		unapproved = len(frames) > 0
+	}
+	resp["unapproved"] = unapproved
 	resp["canvases"] = canvases
 	resp["frames"] = frames
 	writeJSON(w, http.StatusOK, resp)

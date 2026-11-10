@@ -141,6 +141,57 @@ func TestDesignSliceRoutesEndToEnd(t *testing.T) {
 	}
 }
 
+// TestDesignFramesFallsBackToDrafts proves an account with nothing approved
+// still gets a usable picker, with the fallback declared rather than hidden.
+func TestDesignFramesFallsBackToDrafts(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Params struct {
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var structured any
+		switch req.Params.Name {
+		case "list_canvases":
+			structured = map[string]any{"canvases": []any{map[string]any{"id": "c1", "name": "Site"}}}
+		case "get_canvas":
+			frames := []any{}
+			if _, filtered := req.Params.Arguments["approval_status"]; !filtered {
+				frames = []any{map[string]any{"id": "f1", "name": "Draft home", "width": 1280, "height": 800}}
+			}
+			structured = map[string]any{"canvas": map[string]any{"id": "c1"}, "frames": frames}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"structuredContent": structured}})
+	}))
+	defer srv.Close()
+	t.Setenv("DOOP_MCP_URL", srv.URL)
+	t.Setenv("DOOP_AGENT_KEY", "dpk_test")
+
+	mux := http.NewServeMux()
+	registerDesignSliceRoutes(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/boards/default/design-frames", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Unapproved bool `json:"unapproved"`
+		Frames     []struct {
+			FrameID string `json:"frame_id"`
+		} `json:"frames"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Unapproved || len(got.Frames) != 1 || got.Frames[0].FrameID != "f1" {
+		t.Errorf("fallback payload = %+v", got)
+	}
+}
+
 func TestDesignSliceRoutesUnconfigured(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	t.Setenv("DOOP_AGENT_KEY", "")

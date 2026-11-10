@@ -121,6 +121,82 @@ func TestDoopClientToolShapes(t *testing.T) {
 	}
 }
 
+// TestDoopListFramesRealShape pins the payload shape the live API actually
+// returns: frames is a SIBLING of canvas, and get_frame is flat (no "frame"
+// wrapper). The nested shape is covered by fakeDoopMCP; this one is the
+// regression guard for the shape that shipped and broke the picker.
+func TestDoopListFramesRealShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Params struct {
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var structured any
+		switch req.Params.Name {
+		case "get_canvas":
+			frames := []any{
+				map[string]any{"id": "f1", "name": "Home", "width": 1280, "height": 800, "image_url": "https://doop.design/i/f1.png", "empty": false},
+				map[string]any{"id": "f2", "name": "Empty", "empty": true},
+			}
+			// The real filter returns no frames when nothing is approved.
+			if req.Params.Arguments["approval_status"] == "ready_for_dev" {
+				frames = []any{}
+			}
+			structured = map[string]any{
+				"canvas": map[string]any{"id": "c1", "name": "Site", "url": "https://doop.design/c/c1"},
+				"frames": frames,
+			}
+		case "get_frame":
+			structured = map[string]any{
+				"id": "f1", "name": "Home", "html": "<main>Home</main>",
+				"approvalStatus": "ready_for_dev", "updatedAt": float64(1793862752615),
+				"width": 1280, "height": 800,
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"structuredContent": structured}})
+	}))
+	defer srv.Close()
+	client := NewDoopClient(DoopConfig{MCPURL: srv.URL, AgentKey: "dpk_test"})
+	ctx := context.Background()
+
+	ready, err := client.ListReadyFrames(ctx, "c1")
+	if err != nil {
+		t.Fatalf("ListReadyFrames: %v", err)
+	}
+	if len(ready) != 0 {
+		t.Errorf("ready frames = %d, want 0 for an unapproved canvas", len(ready))
+	}
+
+	all, err := client.ListFrames(ctx, "c1", "")
+	if err != nil {
+		t.Fatalf("ListFrames: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("frames = %d, want 1 (empty frames are skipped)", len(all))
+	}
+	if all[0].FrameID != "f1" || all[0].Width != 1280 || all[0].PreviewURL == "" {
+		t.Errorf("frame parsed incorrectly: %+v", all[0])
+	}
+
+	frame, err := client.GetFrame(ctx, "c1", "f1")
+	if err != nil {
+		t.Fatalf("GetFrame: %v", err)
+	}
+	if frame.HTML != "<main>Home</main>" {
+		t.Errorf("flat get_frame HTML = %q", frame.HTML)
+	}
+	if frame.Version != "1793862752615" {
+		t.Errorf("version = %q, want the integer-formatted updatedAt", frame.Version)
+	}
+	if frame.ApprovalStatus != "ready_for_dev" {
+		t.Errorf("approval = %q", frame.ApprovalStatus)
+	}
+}
+
 func TestDoopClientScreenshotRESTFallback(t *testing.T) {
 	srv, _ := fakeDoopMCP(t, false)
 	defer srv.Close()

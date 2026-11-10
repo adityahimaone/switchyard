@@ -1131,6 +1131,8 @@ export interface DesignFramesResponse {
   configured: boolean
   frames: DesignFrame[]
   canvases: { id: string; name: string }[]
+  /** True when no frame is marked ready_for_dev and drafts were returned instead. */
+  unapproved?: boolean
   error?: string
 }
 
