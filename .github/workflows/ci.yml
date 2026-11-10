@@ -56,7 +56,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The version is required: the action reads `packageManager` from the
+      # repo-root package.json, and this repo keeps its only package.json under
+      # web/. Without it the job fails in 7 seconds with
+      # "No pnpm version is specified". Keep this in step with
+      # web/package.json → packageManager.
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
 
       - uses: actions/setup-node@v4
         with:
