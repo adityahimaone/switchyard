@@ -25,9 +25,29 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"kanban-board/internal/kanban"
 )
+
+// waitForDispatch polls until the dispatcher has delivered a card.
+//
+// dispatchPendingRemoteTasks claims synchronously but hands each card to a
+// worker goroutine, so a one-shot lookup right after it returns is a race — and
+// under full-suite load it lost that race often enough to fail intermittently.
+func waitForDispatch(t *testing.T, fake *loopFakeNode, title string, timeout time.Duration) *kanban.NodeDispatchRequest {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if d := fake.dispatchByTitle(title); d != nil {
+			return d
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
 
 // dispatchByTitle returns the dispatch recorded for one
 // card. The dispatch's task_id is the run id, not the
@@ -130,7 +150,7 @@ func TestCreateTaskDesignSource(t *testing.T) {
 	// The real dispatcher: claim both cards, dispatch both.
 	dispatchPendingRemoteTasks()
 
-	withDesign := fake.dispatchByTitle("Sign-in card to the design mock")
+	withDesign := waitForDispatch(t, fake, "Sign-in card to the design mock", 10*time.Second)
 	if withDesign == nil {
 		t.Fatalf("the designed card was never dispatched; %d dispatch(es) recorded", fake.dispatchCount())
 	}
@@ -143,7 +163,7 @@ func TestCreateTaskDesignSource(t *testing.T) {
 		}
 	}
 
-	withoutDesign := fake.dispatchByTitle("Plain card with no design")
+	withoutDesign := waitForDispatch(t, fake, "Plain card with no design", 10*time.Second)
 	if withoutDesign == nil {
 		t.Fatalf("the plain card was never dispatched; %d dispatch(es) recorded", fake.dispatchCount())
 	}
