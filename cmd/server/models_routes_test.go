@@ -9,7 +9,29 @@ import (
 	"time"
 )
 
+// seedNodeModels plants a node catalog in the cache the handler reads when no
+// node can be asked, and removes it afterwards.
+func seedNodeModels(t *testing.T, executor, profile, nodeID string, models []ModelOption) {
+	t.Helper()
+	key := modelsCacheKey(executor, profile, nodeID)
+	modelsCacheMu.Lock()
+	modelsCache[key] = cachedModels{cachedAt: time.Now(), resp: ModelsResponse{
+		Executor: executor, Profile: profile, NodeID: nodeID, Source: "probed", Models: models,
+	}}
+	modelsCacheMu.Unlock()
+	t.Cleanup(func() {
+		modelsCacheMu.Lock()
+		delete(modelsCache, key)
+		modelsCacheMu.Unlock()
+	})
+}
+
 func TestModelsRoutes(t *testing.T) {
+	// Point the probe at a closed port. Otherwise this test's answer depends on
+	// whether a node-agent happens to be running on the machine — the same
+	// class of environment dependency that made the Command Code section below
+	// flaky for 30 seconds at a time.
+	t.Setenv("KANBAN_NODE_AGENT", "http://127.0.0.1:1")
 	mux := buildMux("web/dist")
 
 	// 1. Test DSH models
@@ -68,6 +90,18 @@ plugins:
 	}
 
 	// 2. Test Command Code models
+	//
+	// The fallback for this executor shells out to `cmd --list-models` with a
+	// 30s budget. Asserting on it meant the test passed only where that CLI
+	// happened to be installed, and failed after a 30s wait where it was not.
+	// The handler's contract is "surface the node's catalog and invent nothing",
+	// so seed a catalog and check that instead. CLI output parsing has its own
+	// test below, with a fixture, where it belongs.
+	seedNodeModels(t, "commandcode", "", "test-node", []ModelOption{
+		{Value: "qwen/qwen3.8-omni-flash", Label: "Qwen 3.8 Omni Flash"},
+		{Value: "claude-sonnet-5-5", Label: "Claude Sonnet 5.5"},
+		{Value: "deepseek/deepseek-v4.1-flash", Label: "DeepSeek V4.1 Flash"},
+	})
 	reqCmd := httptest.NewRequest("GET", "/api/models?executor=commandcode", nil)
 	recCmd := httptest.NewRecorder()
 	mux.ServeHTTP(recCmd, reqCmd)
@@ -165,5 +199,29 @@ func TestModelsCacheIsKeyedPerNode(t *testing.T) {
 	}
 	if _, ok := cachedAnyNode("commandcode", ""); ok {
 		t.Fatal("cachedAnyNode must not cross executors")
+	}
+}
+
+// TestParseCommandCodeModels covers the CLI-output contract with a fixture.
+// Executing the real CLI is what made the route test machine-dependent; parsing
+// its output is a pure function and belongs in its own test.
+func TestParseCommandCodeModels(t *testing.T) {
+	out := []byte(`Available models
+
+qwen/qwen3.8-omni-flash    Qwen 3.8 Omni Flash
+claude-sonnet-5-5    Claude Sonnet 5.5
+deepseek/deepseek-v4.1-flash    DeepSeek V4.1 Flash
+`)
+	got := parseCommandCodeModels(out)
+	if len(got) != 3 {
+		t.Fatalf("parsed %d models, want 3: %+v", len(got), got)
+	}
+	if got[0].Value != "qwen/qwen3.8-omni-flash" || got[0].Label != "Qwen 3.8 Omni Flash" {
+		t.Errorf("first model = %+v", got[0])
+	}
+	for _, m := range got {
+		if m.Pinned {
+			t.Errorf("model %q is pinned; a CLI listing declares no pins", m.Value)
+		}
 	}
 }
