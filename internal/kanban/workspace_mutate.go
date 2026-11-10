@@ -53,7 +53,7 @@ func AtomicEditWorkspaceFile(ws Workspace, path, content string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err = io.WriteString(tmp, content); err != nil {
 		tmp.Close()
 		return err
@@ -115,7 +115,7 @@ func UploadWorkspaceFile(ws Workspace, path string, src io.Reader, maxBytes int6
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	written, copyErr := io.Copy(tmp, io.LimitReader(src, maxBytes+1))
 	if copyErr != nil {
 		tmp.Close()

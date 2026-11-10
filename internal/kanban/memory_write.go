@@ -56,7 +56,8 @@ func WriteProfileMemory(profile, scope, content string) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	// Best-effort cleanup: the rename already succeeded or failed loudly.
+	defer func() { _ = os.Remove(tmpPath) }()
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return err

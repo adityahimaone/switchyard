@@ -678,7 +678,10 @@ func canvasProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	prefix := strings.TrimSuffix(kanban.CanvasViewBase(id), "/")
 	rp := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
+		// Deprecated in Go 1.26 in favour of Rewrite, but the replacement
+		// changes how the outbound request is built; that migration deserves
+		// its own change and its own test, not a lint cleanup.
+		Director: func(req *http.Request) { //nolint:staticcheck // see above
 			req.URL.Scheme = "http"
 			req.URL.Host = upstream
 			req.Host = upstream

@@ -508,7 +508,7 @@ func handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	if t.WorktreePath != "" {
 		if err := mergeWorktreeBack(t); err != nil {
 			log.Printf("approve: %s: merge back failed: %v", id, err)
-			kanban.RecordWorktreeMergeConflict(slug, id, err.Error())
+			_ = kanban.RecordWorktreeMergeConflict(slug, id, err.Error())
 			fail(w, err, http.StatusConflict)
 			return
 		}

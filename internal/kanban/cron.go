@@ -402,15 +402,15 @@ func CronRuns(jobID string, limit int) ([]CronExecution, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 20
 	}
-	args := []string{"cron", "runs", "--limit", fmt.Sprintf("%d", limit)}
+	// The job id is still validated: readCronExecutions binds it as a query
+	// parameter, but an id that cannot be a cron id should not reach the DB at
+	// all. The old `hermes cron runs` argv built here was never executed.
 	if strings.TrimSpace(jobID) != "" {
 		if err := validateCronID(jobID); err != nil {
 			return nil, err
 		}
-		args = append(args, jobID)
 	}
-	// hermes cron runs prints text table; use DB directly for structured data
-	// Fallback: read executions.db via sqlite
+	// hermes cron runs prints a text table; the DB is the structured source.
 	dbPath := filepath.Join(hermesHome(), "cron", "executions.db")
 	return readCronExecutions(dbPath, jobID, limit)
 }

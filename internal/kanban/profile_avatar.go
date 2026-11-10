@@ -270,7 +270,7 @@ func writeAvatarFiles(rawPath, metaPath, mime string, data []byte) error {
 		return err
 	}
 	rawTmpPath := rawTmp.Name()
-	defer os.Remove(rawTmpPath)
+	defer func() { _ = os.Remove(rawTmpPath) }()
 	if _, err := rawTmp.Write(data); err != nil {
 		rawTmp.Close()
 		return err
@@ -283,7 +283,7 @@ func writeAvatarFiles(rawPath, metaPath, mime string, data []byte) error {
 		return err
 	}
 	metaTmpPath := metaTmp.Name()
-	defer os.Remove(metaTmpPath)
+	defer func() { _ = os.Remove(metaTmpPath) }()
 	if _, err := metaTmp.Write(metaRaw); err != nil {
 		metaTmp.Close()
 		return err

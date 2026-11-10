@@ -81,7 +81,7 @@ func WriteProfileSkill(profile, skill, content string) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return err

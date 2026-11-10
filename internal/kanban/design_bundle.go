@@ -137,7 +137,7 @@ func SaveDesignSlice(slice *DesignSlice, html string, png []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	slice.HTMLBytes = len(html)
 	slice.PNGBytes = len(png)
 	if slice.CreatedAt == 0 {

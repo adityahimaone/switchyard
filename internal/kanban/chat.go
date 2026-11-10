@@ -301,8 +301,7 @@ func DeleteChatSession(id string) error {
 		return err
 	}
 	defer db.Close()
-	result, err := db.Exec(`DELETE FROM chat_run_events WHERE run_id IN (SELECT id FROM chat_runs WHERE session_id=?)`, id)
-	if err != nil {
+	if _, err := db.Exec(`DELETE FROM chat_run_events WHERE run_id IN (SELECT id FROM chat_runs WHERE session_id=?)`, id); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`DELETE FROM chat_runs WHERE session_id=?`, id); err != nil {
@@ -311,7 +310,7 @@ func DeleteChatSession(id string) error {
 	if _, err := db.Exec(`DELETE FROM chat_messages WHERE session_id=?`, id); err != nil {
 		return err
 	}
-	result, err = db.Exec(`DELETE FROM chat_sessions WHERE id=?`, id)
+	result, err := db.Exec(`DELETE FROM chat_sessions WHERE id=?`, id)
 	if err != nil {
 		return err
 	}

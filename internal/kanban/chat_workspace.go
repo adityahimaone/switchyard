@@ -431,7 +431,10 @@ func TranscriptChatSession(id string) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\nAgent: %s | Profile: %s | Model: %s\n\n", s.Title, s.Agent, s.Profile, s.Model)
 	for _, x := range m {
-		fmt.Fprintf(&b, "## %s\n\n%s\n\n", strings.Title(x.Role), x.Content)
+		// Role names are ASCII identifiers ("user", "assistant"), so the
+		// Unicode word-boundary problem that deprecated strings.Title cannot
+		// occur here. x/text/cases would add a dependency for no behaviour.
+		fmt.Fprintf(&b, "## %s\n\n%s\n\n", strings.Title(x.Role), x.Content) //nolint:staticcheck // see above
 	}
 	return b.String(), nil
 }

@@ -56,7 +56,9 @@ func TestNoRoutesLostDuringExtraction(t *testing.T) {
 func routesRegisteredInSource(t *testing.T) map[string]bool {
 	t.Helper()
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+	// ParseDir is deprecated in favour of go/packages, but this test only needs
+	// the syntax tree of one flat package and deliberately ignores build tags.
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { //nolint:staticcheck // see above
 		return !strings.HasSuffix(fi.Name(), "_test.go")
 	}, 0)
 	if err != nil {

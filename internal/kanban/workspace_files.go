@@ -274,7 +274,9 @@ func SearchWorkspaceSymbols(ws Workspace, query string, limit int) ([]SymbolSear
 		for lineIdx, line := range lines {
 			if strings.Contains(strings.ToLower(line), lowerQ) {
 				trimmed := strings.TrimSpace(line)
-				kind := "symbol"
+				// Every branch below either assigns kind or continues, so the
+				// old "symbol" seed was dead and never reached a caller.
+				var kind string
 				if strings.HasPrefix(trimmed, "func ") || strings.HasPrefix(trimmed, "function ") || strings.Contains(trimmed, "() =>") || strings.Contains(trimmed, " = (") {
 					kind = "function"
 				} else if strings.HasPrefix(trimmed, "type ") || strings.HasPrefix(trimmed, "interface ") || strings.HasPrefix(trimmed, "class ") || strings.HasPrefix(trimmed, "struct ") {

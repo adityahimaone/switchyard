@@ -305,7 +305,6 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile, designSource
 	// round trip. A declared profile does not need it — but collecting it anyway
 	// keeps the effective column meaningful for every card.
 	files, _, fileErr := verifyChangedFiles(workspacePath, title, slug)
-	profile := declaredProfile
 	if fileErr != nil {
 		// Without a diff there is nothing to route on. A declared profile can
 		// still run; an auto card is recorded as unverified rather than
@@ -315,7 +314,7 @@ func RunVerify(slug, taskID, workspacePath, title, declaredProfile, designSource
 			return recordVerifyUnavailable(db, slug, taskID, "could not read the diff: "+fileErr.Error())
 		}
 	}
-	profile = VerifyProfileFor(declaredProfile, files, LoadVerifyFlowPaths())
+	profile := VerifyProfileFor(declaredProfile, files, LoadVerifyFlowPaths())
 
 	command := VerifyCommandFor(profile)
 	if command == "" {

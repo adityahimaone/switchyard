@@ -21,9 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Track the latest 1.26 patch rather than the exact `go 1.26.0` in go.mod.
+      # govulncheck reports standard-library CVEs that are fixed in patch
+      # releases (GO-2026-5972 in encoding/asn1, GO-2026-5026 in net/http, both
+      # fixed in 1.26.6); pinning 1.26.0 makes the security step fail on the
+      # toolchain rather than on this code.
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: "1.26"
           cache: true
 
       - name: go vet
@@ -37,10 +42,14 @@ jobs:
       - name: Test (race)
         run: go test -race ./...
 
+      # Pinned, not "latest": golangci-lint refuses to run when the Go it was
+      # built with is older than the module's target, so an unpinned action
+      # broke CI with "go1.24 ... lower than the targeted Go version (1.26.0)"
+      # without a single line of Go changing. v2.15.0 is built with Go 1.26.
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.15.0
 
       - name: govulncheck
         run: |

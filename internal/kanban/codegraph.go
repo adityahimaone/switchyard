@@ -106,7 +106,7 @@ func codeGraphStatus(w Workspace, app CodeGraphApp) CodeGraphStatus {
 		}
 	}
 	if len(lines) > 1 {
-		fmt.Sscanf(strings.TrimSpace(lines[len(lines)-1]), "%d", &st.LastChanged)
+		_, _ = fmt.Sscanf(strings.TrimSpace(lines[len(lines)-1]), "%d", &st.LastChanged)
 		if st.LastChanged > 0 {
 			st.LastLabel = "last changed"
 		}

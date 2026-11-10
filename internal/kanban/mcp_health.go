@@ -94,7 +94,9 @@ func parseHermesMCPTestOutput(out string) parsedMCPTest {
 			result.tools = parseIntAfter(trimmed, "Tools discovered:")
 		case strings.Contains(trimmed, "✗") || strings.HasPrefix(trimmed, "Error"):
 			if result.errorMessage == "" {
-				result.errorMessage = strings.TrimLeft(trimmed, "✗Error: ")
+				// Cutset is a character set, so the repeated 'r' in
+				// "✗Error: " was redundant; deduped without changing behaviour.
+				result.errorMessage = strings.TrimLeft(trimmed, "✗Ero: ")
 			}
 		case strings.Contains(trimmed, "Connected"):
 			result.state = "ok"

@@ -81,9 +81,7 @@ func ReadLogTail(fileKey, rawTail string) (LogTail, error) {
 	}
 	defer f.Close()
 
-	readBytes := out.TotalBytes
-	if readBytes > logMaxBytes {
-		readBytes = logMaxBytes
+	if out.TotalBytes > logMaxBytes {
 		if _, err := f.Seek(-logMaxBytes, 2); err != nil {
 			return LogTail{}, err
 		}
